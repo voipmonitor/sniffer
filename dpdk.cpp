@@ -50,6 +50,7 @@ extern int opt_dpdk_main_thread_lcore;
 extern string opt_dpdk_read_thread_lcore;
 extern string opt_dpdk_worker_thread_lcore;
 extern string opt_dpdk_worker2_thread_lcore;
+extern bool opt_dpdk_worker_slave_thread;
 extern int opt_dpdk_memory_channels;
 extern string opt_dpdk_pci_device;
 extern int opt_dpdk_force_max_simd_bitwidth;
@@ -110,7 +111,7 @@ extern vector<string> opt_dpdk_vdev;
 #define DEBUG_CYCLES_MAX_LT_MS 100
 #define DEBUG_EXT_STAT false
 
-#define ENABLE_WORKER_SLAVE (MAX_PKT_BURST > 1000 && opt_dpdk_copy_packetbuffer && !opt_dpdk_mbufs_in_packetbuffer)
+#define ENABLE_WORKER_SLAVE (opt_dpdk_worker_slave_thread && opt_dpdk_copy_packetbuffer && !opt_dpdk_mbufs_in_packetbuffer)
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
 

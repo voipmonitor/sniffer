@@ -1046,6 +1046,7 @@ bool opt_use_dpdk = false;
 int opt_dpdk_init = 1;
 int opt_dpdk_read_thread = 2;
 int opt_dpdk_worker_thread = 2;
+bool opt_dpdk_worker_slave_thread = false;
 int opt_dpdk_worker2_thread = 0;
 int opt_dpdk_iterations_per_call = 1000;
 int opt_dpdk_read_usleep_if_no_packet = 1;
@@ -6265,6 +6266,7 @@ void cConfig::addConfigItems() {
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("dpdk_worker_thread", &opt_dpdk_worker_thread))
 						->addValues("std:1|rte:2")
 						->setDefaultValueStr("rte"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_worker_slave_thread", &opt_dpdk_worker_slave_thread));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("dpdk_worker2_thread", &opt_dpdk_worker2_thread))
 						->addValues("rte:1")
 						->setDefaultValueStr("no"));
@@ -8727,6 +8729,11 @@ void set_context_config() {
 		}
 		if(!CONFIG.isSet("packetbuffer_block_maxsize")) {
 			opt_pcap_queue_block_max_size = 4 * 1024 * 1024;
+		}
+		if(opt_dpdk_worker_slave_thread && !CONFIG.isSet("dpdk_pkt_burst")) {
+			opt_dpdk_pkt_burst = 2048;
+		} else if(opt_dpdk_pkt_burst >= 1024 && !CONFIG.isSet("dpdk_worker_slave_thread")) {
+			opt_dpdk_worker_slave_thread = true;
 		}
 	}
 	

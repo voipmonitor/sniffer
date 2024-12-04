@@ -398,8 +398,9 @@ bool pcap_block_store::add_hp(pcap_pkthdr_plus *header, u_char *packet, int memc
 	if(this->full) {
 		return(false);
 	}
+	u_int32_t caplen = header->get_caplen();
 	u_int32_t size_header_a = (hm == plus2 ? PACKETBUFFER_ALIGN_PCAP_PKTHDR_PLUS2_SIZE : sizeof(pcap_pkthdr_plus));
-	u_int32_t size_packet_a = PACKETBUFFER_ALIGN_PCAP_SIZE(header->get_caplen());
+	u_int32_t size_packet_a = PACKETBUFFER_ALIGN_PCAP_SIZE(caplen);
 	if((this->size + size_header_a + size_packet_a) > opt_pcap_queue_block_max_size ||
 	   (!(this->count % 20) && this->size && getTimeMS_rdtsc() > (this->timestampMS + opt_pcap_queue_block_max_time_ms))) {
 		this->full = true;
@@ -460,10 +461,10 @@ bool pcap_block_store::add_hp(pcap_pkthdr_plus *header, u_char *packet, int memc
 	this->size += size_header_a;
 	memcpy_heapsafe(this->block + this->size, this->block,
 			packet, NULL,
-			(memcpy_packet_size ? memcpy_packet_size : header->get_caplen()),
+			(memcpy_packet_size ? memcpy_packet_size : caplen),
 			__FILE__, __LINE__);
 	this->size += size_packet_a;
-	this->size_packets += size_packet_a;
+	this->size_packets += caplen;
 	++this->count;
 	return(true);
 }
@@ -504,7 +505,7 @@ void pcap_block_store::inc_h(u_int32_t caplen) {
 	u_int32_t size_header_a = PACKETBUFFER_ALIGN_PCAP_PKTHDR_PLUS2_SIZE;
 	u_int32_t size_packet_a = PACKETBUFFER_ALIGN_PCAP_SIZE(caplen);
 	this->size += size_header_a + size_packet_a;
-	this->size_packets += size_packet_a;
+	this->size_packets += caplen;
 	++this->count;
 }
 
@@ -561,8 +562,9 @@ void pcap_block_store::add_dpdk(pcap_pkthdr_plus2 *header, void *mbuf) {
 	this->dpdk_data[this->count].header = *header;
 	this->dpdk_data[this->count].packet = dpdk_mbuf_to_packet(mbuf);
 	this->dpdk_data[this->count].mbuf = mbuf;
- 	this->size += header->get_caplen();
-	this->size_packets += header->get_caplen();
+	u_int32_t caplen = header->get_caplen();
+ 	this->size += caplen;
+	this->size_packets += caplen;
 	++this->count;
 }
 
