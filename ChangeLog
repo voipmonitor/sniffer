@@ -1,3 +1,9 @@
+2024.11.2 02.12.2024
+====================
+- fix mirror receiver crash if mirror sender disconnects
+- add dpdk parameter dpdk_mtu [VS-1665]
+
+
 2024.11.1 27.11.2024
 ====================
 - fix cleanup calls in t2_boost=no [VS-1664]

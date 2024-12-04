@@ -129,6 +129,8 @@ extern vector<string> opt_mo_mt_identification_prefix;
 extern bool srvcc_set;
 extern int opt_separate_storage_ipv6_ipv4_address;
 
+extern bool opt_sql_log_all_errors;
+
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
 bool opt_cdr_partition_oldver = false;
@@ -799,7 +801,7 @@ SqlDb::eQueryByRemoteSocketRslt SqlDb::processResponseFromQueryBy(const char *re
 			} else {
 				errorString = result;
 			}
-			if(!sql_noerror && !this->disableLogError) {
+			if((!sql_noerror && !this->disableLogError) || opt_sql_log_all_errors) {
 				if(query) {
 					errorString = "sql response: [" + errorString + "] from query: [" + query + "]";
 				}
@@ -2268,8 +2270,9 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 					syslog(LOG_NOTICE, "query error - query: %s", prepareQueryForPrintf(preparedQuery).c_str());
 					syslog(LOG_NOTICE, "query error - error: %s", mysql_error(this->hMysql));
 				}
-				this->checkLastError("query error in [" + preparedQuery.substr(0,200) + (preparedQuery.size() > 200 ? "..." : "") + "]", !sql_noerror && !this->disableLogError);
-				if(!sql_noerror && !this->disableLogError) {
+				this->checkLastError("query error in [" + preparedQuery.substr(0,200) + (preparedQuery.size() > 200 ? "..." : "") + "]", 
+						     (!sql_noerror && !this->disableLogError) || opt_sql_log_all_errors);
+				if((!sql_noerror && !this->disableLogError) || opt_sql_log_all_errors) {
 					if(verbosity > 1 || sverb.query_error) {
 						cout << endl << "ERROR IN QUERY {" << this->getLastErrorString() << "}:"<< endl
 						     << preparedQuery << endl;
@@ -2529,8 +2532,17 @@ string SqlDb_mysql::getJsonError() {
 }
 
 int64_t SqlDb_mysql::getInsertId() {
-	if(this->hMysqlConn) {
-		return(mysql_insert_id(this->hMysqlConn));
+	if(isCloud() || snifferClientOptions.isEnableRemoteQuery()) {
+		if(this->query("select last_insert_id()")) {
+			SqlDb_row row;
+			if((row = this->fetchRow()) != 0) {
+				return(atoll(row[0].c_str()));
+			}
+		}
+	} else {
+		if(this->hMysqlConn) {
+			return(mysql_insert_id(this->hMysqlConn));
+		}
 	}
 	return(-1);
 }
@@ -3183,7 +3195,7 @@ bool SqlDb_odbc::query(string query, bool /*callFromStoreProcessWithFixDeadlock*
 			}
 			rslt = SQLExecDirect(this->hStatement, (SQLCHAR*)preparedQuery.c_str(), SQL_NTS);   
 			if(!this->okRslt(rslt) && rslt != SQL_NO_DATA) {
-				if(!sql_noerror && !this->disableLogError) {
+				if((!sql_noerror && !this->disableLogError) || opt_sql_log_all_errors) {
 					this->checkLastError("odbc query error", true);
 				}
 				if(sql_disable_next_attempt_if_error || 
