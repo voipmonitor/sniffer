@@ -396,6 +396,9 @@ struct pcap_block_store {
 		}
 		return(0);
 	}
+	size_t getCountPackets() {
+		return(count);
+	}
 	u_char *getSaveBuffer(uint32_t block_counter = 0);
 	void restoreFromSaveBuffer(u_char *saveBuffer);
 	int addRestoreChunk(u_char *buffer, u_char *buffer_alloc_begin, size_t size, size_t *offset = NULL, bool restoreFromStore = false, string *error = NULL);

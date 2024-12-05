@@ -232,6 +232,9 @@ struct sDpdk {
 	volatile u_int32_t batch_count;
 	volatile int worker_slave_state;
 	u_int64_t timestamp_us;
+	#if LOG_PACKETS_SUM
+	u_int64_t count_packets[2];
+	#endif
 	sDpdk() {
 		memset((void*)this, 0, sizeof(*this));
 	}
@@ -830,6 +833,14 @@ int pcap_dpdk_stats(sDpdk *dpdk, pcap_stat *ps, string *str_out) {
 		       << "; errors: " << dpdk->curr_stats.ierrors
 		       << "; imissed: " << dpdk->curr_stats.imissed
 		       << "; nombuf: " << dpdk->curr_stats.rx_nombuf;
+		#if LOG_PACKETS_SUM
+		if(dpdk->count_packets[0] > 0) {
+			outStr << "; packets_read: " << dpdk->count_packets[0];
+		}
+		if(dpdk->count_packets[1] > 0) {
+			outStr << "; packets_worker: " << dpdk->count_packets[1];
+		}
+		#endif
 		if(dpdk->rx_to_worker_ring) {
 			outStr << "; ring count: " << rte_ring_count(dpdk->rx_to_worker_ring);
 			outStr << "; ring full: " << dpdk->ring_full_drop;
@@ -1020,6 +1031,9 @@ static int rte_read_thread(void *arg) {
 				if(nb_rx == zcd.n1 && nb_zcd > zcd.n1) {
 					nb_rx += rte_eth_rx_burst(dpdk->portid, 0, (rte_mbuf**)zcd.ptr2, nb_zcd - zcd.n1);
 				}
+				#if LOG_PACKETS_SUM
+				dpdk->count_packets[0] += nb_rx;
+				#endif
 				rte_ring_enqueue_zc_finish(dpdk->rx_to_worker_ring, nb_rx);
 				if(!nb_rx && dpdk->config.read_usleep_if_no_packet) {
 					if(dpdk->config.read_usleep_type == _dpdk_usleep_type_rte) {
@@ -1051,6 +1065,9 @@ static int rte_read_thread(void *arg) {
 					if(!nb_rx[pkts_burst_cnt]) {
 						break;
 					}
+					#if LOG_PACKETS_SUM
+					dpdk->count_packets[0] += nb_rx[pkts_burst_cnt];
+					#endif
 					#if DPDK_TIMESTAMP_IN_MBUF
 					timestamp_us[pkts_burst_cnt] = get_timestamp_us(dpdk);
 					#endif
@@ -1093,6 +1110,9 @@ static int rte_read_thread(void *arg) {
 					if(!nb_rx[pkts_burst_cnt]) {
 						break;
 					}
+					#if LOG_PACKETS_SUM
+					dpdk->count_packets[0] += nb_rx[pkts_burst_cnt];
+					#endif
 					timestamp_us[pkts_burst_cnt] = get_timestamp_us(dpdk);
 					++pkts_burst_cnt;
 				}
@@ -1133,6 +1153,9 @@ static int rte_read_thread(void *arg) {
 				dpdk->cycles[2].setBegin();
 				#endif
 				if(likely(nb_rx)) {
+					#if LOG_PACKETS_SUM
+					dpdk->count_packets[0] += nb_rx;
+					#endif
 					#if DPDK_TIMESTAMP_IN_MBUF
 					timestamp_us = get_timestamp_us(dpdk);
 					for(u_int16_t i = 0; i < nb_rx; i++) {
@@ -1183,6 +1206,9 @@ static int rte_read_thread(void *arg) {
 				dpdk->cycles[2].setBegin();
 				#endif
 				if(likely(nb_rx)) {
+					#if LOG_PACKETS_SUM
+					dpdk->count_packets[0] += nb_rx;
+					#endif
 					timestamp_us = get_timestamp_us(dpdk);
 					for(uint16_t i = 0; i < nb_rx; i++) {
 						dpdk_process_packet_2(dpdk, pkts_burst[i], timestamp_us
@@ -1243,6 +1269,9 @@ static int rte_worker_thread(void *arg) {
 	while(!dpdk->terminating) {
 		nb_rx = rte_ring_dequeue_burst(dpdk->rx_to_worker_ring, (void**)dpdk->pkts_burst, MAX_PKT_BURST, NULL);
 		if(likely(nb_rx)) {
+			#if LOG_PACKETS_SUM
+			dpdk->count_packets[1] += nb_rx;
+			#endif
 			//cout << " * " << nb_rx << endl;
 			#if not DPDK_TIMESTAMP_IN_MBUF
 			dpdk->timestamp_us = get_timestamp_us(dpdk);

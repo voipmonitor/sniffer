@@ -233,7 +233,13 @@ static unsigned long sumPacketsCounterOut[3];
 static unsigned long sumBlocksCounterIn[3];
 static unsigned long sumBlocksCounterOut[3];
 static unsigned long long sumPacketsSize[3];
+#if LOG_PACKETS_PER_SEC or LOG_PACKETS_SUM
+static unsigned long long sumPacketsCount[3];
+#endif
 static unsigned long long sumPacketsSizeOut[3];
+#if LOG_PACKETS_PER_SEC or LOG_PACKETS_SUM
+static unsigned long long sumPacketsCountOut[3];
+#endif
 static unsigned long long sumPacketsSizeCompress[3];
 static unsigned long countBypassBufferSizeExceeded;
 static double heap_pb_perc = 0;
@@ -1543,8 +1549,16 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 		sumBlocksCounterOut[1] = sumBlocksCounterOut[0];
 		sumPacketsSize[2] = sumPacketsSize[0] - sumPacketsSize[1];
 		sumPacketsSize[1] = sumPacketsSize[0];
+		#if LOG_PACKETS_PER_SEC or LOG_PACKETS_SUM
+		sumPacketsCount[2] = sumPacketsCount[0] - sumPacketsCount[1];
+		sumPacketsCount[1] = sumPacketsCount[0];
+		#endif
 		sumPacketsSizeOut[2] = sumPacketsSizeOut[0] - sumPacketsSizeOut[1];
 		sumPacketsSizeOut[1] = sumPacketsSizeOut[0];
+		#if LOG_PACKETS_PER_SEC or LOG_PACKETS_SUM
+		sumPacketsCountOut[2] = sumPacketsCountOut[0] - sumPacketsCountOut[1];
+		sumPacketsCountOut[1] = sumPacketsCountOut[0];
+		#endif
 		sumPacketsSizeCompress[2] = sumPacketsSizeCompress[0] - sumPacketsSizeCompress[1];
 		sumPacketsSizeCompress[1] = sumPacketsSizeCompress[0];
 	}
@@ -2040,36 +2054,91 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 		if(compress >= 0) {
 			outStr << "comp[" << setprecision(0) << compress << "] ";
 		}
-		double speed = this->pcapStat_get_speed_mb_s(statPeriod);
-		double speed_out = this->pcapStat_get_speed_out_mb_s(statPeriod);
-		if(speed >= 0 || speed_out >= 0) {
+		double speed_mb_s = this->pcapStat_get_speed_mb_s(statPeriod);
+		double speed_out_mb_s = this->pcapStat_get_speed_out_mb_s(statPeriod);
+		#if LOG_PACKETS_PER_SEC
+		double speed_packets_s = this->pcapStat_get_speed_packets_s(statPeriod);
+		double speed_out_packets_s = this->pcapStat_get_speed_out_packets_s(statPeriod);
+		#endif
+		if(speed_mb_s >= 0 || speed_mb_s >= 0) {
 			outStr << "[";
-			if(speed >= 0) {
-				outStr << setprecision(1) << speed;
-			} else {
-				outStr << "-";
-			}
-			if(speed_out >= 0) {
-				outStr << "/";
-				if(speed_out >= 0) {
-					outStr << setprecision(1) << speed_out;
+			#if LOG_PACKETS_PER_SEC or LOG_PACKETS_SUM
+			bool needSeparator = false;
+			#endif
+			if(speed_mb_s >= 0 || speed_mb_s >= 0) {
+				if(speed_mb_s >= 0) {
+					outStr << setprecision(1) << speed_mb_s;
 				} else {
 					outStr << "-";
 				}
+				if(speed_out_mb_s >= 0) {
+					outStr << "/";
+					if(speed_out_mb_s >= 0) {
+						outStr << setprecision(1) << speed_out_mb_s;
+					} else {
+						outStr << "-";
+					}
+				}
+				outStr << "Mb/s";
+				#if LOG_PACKETS_PER_SEC or LOG_PACKETS_SUM
+				needSeparator = true;
+				#endif
 			}
-			outStr << "Mb/s] ";
+			#if LOG_PACKETS_PER_SEC
+			if(speed_packets_s >= 0 || speed_out_packets_s >= 0) {
+				if(needSeparator) {
+					outStr << " ";
+					needSeparator = false;
+				}
+				if(speed_packets_s >= 0) {
+					outStr << setprecision(0) << speed_packets_s;
+				} else {
+					outStr << "-";
+				}
+				if(speed_out_packets_s >= 0) {
+					outStr << "/";
+					if(speed_out_mb_s >= 0) {
+						outStr << setprecision(0) << speed_out_packets_s;
+					} else {
+						outStr << "-";
+					}
+				}
+				outStr << "p/s";
+				needSeparator = true;
+			}
+			#endif
+			#if LOG_PACKETS_SUM
+			if(needSeparator) {
+				outStr << " ";
+				needSeparator = false;
+			}
+			if(sumPacketsCount[0] > 0) {
+				outStr << setprecision(0) << sumPacketsCount[0];
+			} else {
+				outStr << "-";
+			}
+			outStr << "/";
+			if(sumPacketsCountOut[0] > 0) {
+				outStr << setprecision(0) << sumPacketsCountOut[0];
+			} else {
+				outStr << "-";
+			}
+			outStr << "p";
+			needSeparator = true;
+			#endif
+			outStr << "] ";
 			if(opt_rrd) {
-				rrd_set_value(RRD_VALUE_mbs, speed);
+				rrd_set_value(RRD_VALUE_mbs, speed_mb_s);
 			}
-			last_traffic = speed;
+			last_traffic = speed_mb_s;
 		}
 		
 		extern bool use_push_batch_limit_ms;
 		extern unsigned int opt_push_batch_limit_ms;
-		use_push_batch_limit_ms = opt_push_batch_limit_ms > 0 && speed < 200;
+		use_push_batch_limit_ms = opt_push_batch_limit_ms > 0 && speed_mb_s < 200;
 		
 		extern unsigned int opt_t2_boost_high_traffic_limit;
-		if(opt_t2_boost == 2 && opt_t2_boost_high_traffic_limit > 0 && speed > opt_t2_boost_high_traffic_limit) {
+		if(opt_t2_boost == 2 && opt_t2_boost_high_traffic_limit > 0 && speed_mb_s > opt_t2_boost_high_traffic_limit) {
 			extern bool batch_length_high_traffic_need;
 			batch_length_high_traffic_need = true;
 		}
@@ -3541,6 +3610,16 @@ double PcapQueue::pcapStat_get_speed_mb_s(int statPeriod) {
 	}
 }
 
+#if LOG_PACKETS_PER_SEC
+u_int64_t PcapQueue::pcapStat_get_speed_packets_s(int statPeriod) {
+	if(sumPacketsCount[2]) {
+		return(sumPacketsCount[2]/statPeriod);
+	} else {
+		return(-1);
+	}
+}
+#endif
+
 double PcapQueue::pcapStat_get_speed_out_mb_s(int statPeriod) {
 	if(sumPacketsSizeOut[2]) {
 		return(((double)sumPacketsSizeOut[2])/statPeriod/(1024*1024)*8);
@@ -3548,6 +3627,16 @@ double PcapQueue::pcapStat_get_speed_out_mb_s(int statPeriod) {
 		return(-1);
 	}
 }
+
+#if LOG_PACKETS_PER_SEC
+u_int64_t PcapQueue::pcapStat_get_speed_out_packets_s(int statPeriod) {
+	if(sumPacketsCountOut[2]) {
+		return(sumPacketsCountOut[2]/statPeriod);
+	} else {
+		return(-1);
+	}
+}
+#endif
 
 int PcapQueue::getThreadPid(eTypeThread typeThread) {
 	switch(typeThread) {
@@ -7633,6 +7722,9 @@ bool PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(u_char *buffer, u_cha
 			}
 			sumPacketsCounterIn[0] += blockStore->count;
 			sumPacketsSize[0] += blockStore->getSizePackets();
+			#if LOG_PACKETS_PER_SEC or LOG_PACKETS_SUM
+			sumPacketsCount[0] += blockStore->getCountPackets();
+			#endif
 			sumPacketsSizeCompress[0] += blockStore->size_compress;
 			++sumBlocksCounterIn[0];
 			*block_counter = blockStore->block_counter;
@@ -8067,6 +8159,9 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 											}
 											sumPacketsCounterIn[0] += blockStore->count;
 											sumPacketsSize[0] += blockStore->getSizePackets();
+											#if LOG_PACKETS_PER_SEC or LOG_PACKETS_SUM
+											sumPacketsCount[0] += blockStore->getCountPackets();
+											#endif
 											sumPacketsSizeCompress[0] += blockStore->size_compress;
 											++sumBlocksCounterIn[0];
 											blockStore = new FILE_LINE(15055) pcap_block_store;
@@ -8138,9 +8233,15 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 				}
 				size_t blockSize = blockStore->size;
 				size_t blockSizePackets = blockStore->size_packets;
+				#if LOG_PACKETS_PER_SEC or LOG_PACKETS_SUM
+				size_t blockCountPackets = blockStore->count;
+				#endif
 				if(blockStore->compress()) {
 					if(this->pcapStoreQueue.push(blockStore, false)) {
 						sumPacketsSize[0] += blockSizePackets ? blockSizePackets : blockSize;
+						#if LOG_PACKETS_PER_SEC or LOG_PACKETS_SUM
+						sumPacketsCount[0] += blockCountPackets;
+						#endif
 						blockStoreBypassQueue->pop(true, blockSize);
 						usleepCounter = 0;
 					} else {
@@ -9220,6 +9321,9 @@ void PcapQueue_readFromFifo::cleanupConnections(bool all) {
 void PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp) {
  
 	sumPacketsSizeOut[0] += hp->header->get_caplen();
+	#if LOG_PACKETS_PER_SEC or LOG_PACKETS_SUM
+	++sumPacketsCountOut[0];
+	#endif
 	
 	extern int opt_sleepprocesspacket;
 	if(opt_sleepprocesspacket) {

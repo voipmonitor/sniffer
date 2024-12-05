@@ -241,7 +241,13 @@ protected:
 	virtual string pcapStatString_packets(int statPeriod);
 	virtual double pcapStat_get_compress();
 	virtual double pcapStat_get_speed_mb_s(int statPeriod);
+	#if LOG_PACKETS_PER_SEC
+	virtual u_int64_t pcapStat_get_speed_packets_s(int statPeriod);
+	#endif
 	virtual double pcapStat_get_speed_out_mb_s(int statPeriod);
+	#if LOG_PACKETS_PER_SEC
+	virtual u_int64_t pcapStat_get_speed_out_packets_s(int statPeriod);
+	#endif
 	virtual unsigned long pcapStat_get_bypass_buffer_size_exeeded() { return(0); }
 	virtual double pcapStat_get_disk_buffer_perc() { return(-1); }
 	virtual double pcapStat_get_disk_buffer_mb() { return(-1); }
