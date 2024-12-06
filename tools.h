@@ -352,6 +352,7 @@ vector<string> explode(const string&, const char);
 string implode(vector<string> &vect, const char *sep);
 string implode(list<string> &items, const char *sep);
 string implode(vector<int> &vect, const char *sep);
+string implode(list<int> &vect, const char *sep);
 string implode(list<u_int64_t> *items, const char *sep);
 string implode(list<unsigned> *items, const char *sep);
 int getUpdDifTime(struct timeval *before);

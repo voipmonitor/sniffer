@@ -299,6 +299,19 @@ string implode(vector<int> &vect, const char *sep) {
 	return(rslt);
 }
 
+string implode(list<int> &items, const char *sep) {
+	string rslt;
+	unsigned i = 0;
+	for(list<int>::iterator iter = items.begin(); iter != items.end(); iter++) {
+		if(i) {
+			rslt += sep;
+		}
+		rslt += intToString(*iter);
+		++i;
+	}
+	return(rslt);
+}
+
 string implode(list<u_int64_t> *items, const char *sep) {
 	string rslt;
 	unsigned i = 0;

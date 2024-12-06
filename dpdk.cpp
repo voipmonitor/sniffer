@@ -166,6 +166,8 @@ public:
 	string getAllCores(bool without_main, bool detect_ht);
 	string getCoresMap();
 	int getMainThreadLcore();
+	void getCoresForLcore(int lcore, list<int> *cores);
+	string getCoresForLcore(int lcore);
 private:
 	int getFreeLcore(map<int, bool> &main_map, int numa_node);
 	bool lcoreIsUsed(int lcore);
@@ -528,10 +530,18 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 			return(PCAP_ERROR);
 		} else {
 			ret = rte_eal_remote_launch(rte_worker_thread, dpdk, lcore_id);
+			string cores_info;
+			if(ret >= 0) {
+				cores_info = dpdk_tools->getCoresForLcore(lcore_id);
+				if(!cores_info.empty()) {
+					cores_info = "/" + cores_info;
+				}
+			}
 			dpdk_eval_res(ret, NULL, 2, error,
-				      "dpdk_activate(%s) - rte_eal_remote_launch(%i) / worker",
+				      "dpdk_activate(%s) - rte_eal_remote_launch(%i%s) / worker",
 				      config->device,
-				      lcore_id);
+				      lcore_id,
+				      cores_info.c_str());
 			if(ret < 0) {
 				return(PCAP_ERROR);
 			}
@@ -548,10 +558,18 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 			return(PCAP_ERROR);
 		} else {
 			ret = rte_eal_remote_launch(rte_worker_slave_thread, dpdk, lcore_id);
+			string cores_info;
+			if(ret >= 0) {
+				cores_info = dpdk_tools->getCoresForLcore(lcore_id);
+				if(!cores_info.empty()) {
+					cores_info = "/" + cores_info;
+				}
+			}
 			dpdk_eval_res(ret, NULL, 2, error,
-				      "dpdk_activate(%s) - rte_eal_remote_launch(%i) / worker slave",
+				      "dpdk_activate(%s) - rte_eal_remote_launch(%i%s) / worker slave",
 				      config->device,
-				      lcore_id);
+				      lcore_id,
+				      cores_info.c_str());
 			if(ret < 0) {
 				return(PCAP_ERROR);
 			}
@@ -568,10 +586,18 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 			return(PCAP_ERROR);
 		} else {
 			ret = rte_eal_remote_launch(rte_worker2_thread, dpdk, lcore_id);
+			string cores_info;
+			if(ret >= 0) {
+				cores_info = dpdk_tools->getCoresForLcore(lcore_id);
+				if(!cores_info.empty()) {
+					cores_info = "/" + cores_info;
+				}
+			}
 			dpdk_eval_res(ret, NULL, 2, error,
-				      "dpdk_activate(%s) - rte_eal_remote_launch(%i) / worker 2",
+				      "dpdk_activate(%s) - rte_eal_remote_launch(%i%s) / worker 2",
 				      config->device,
-				      lcore_id);
+				      lcore_id,
+				      cores_info.c_str());
 			if(ret < 0) {
 				return(PCAP_ERROR);
 			}
@@ -588,10 +614,18 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 			return(PCAP_ERROR);
 		} else {
 			ret = rte_eal_remote_launch(rte_read_thread, dpdk, lcore_id);
+			string cores_info;
+			if(ret >= 0) {
+				cores_info = dpdk_tools->getCoresForLcore(lcore_id);
+				if(!cores_info.empty()) {
+					cores_info = "/" + cores_info;
+				}
+			}
 			dpdk_eval_res(ret, NULL, 2, error,
-				      "dpdk_activate(%s) - rte_eal_remote_launch(%i) / read",
+				      "dpdk_activate(%s) - rte_eal_remote_launch(%i%s) / read",
 				      config->device,
-				      lcore_id);
+				      lcore_id,
+				      cores_info.c_str());
 			if(ret < 0) {
 				return(PCAP_ERROR);
 			}
@@ -2181,6 +2215,25 @@ string cDpdkTools::getCoresMap() {
 
 int cDpdkTools::getMainThreadLcore() {
 	return(main_thread_lcore >= 0 ? main_thread_lcore  : opt_dpdk_main_thread_lcore);
+}
+
+void cDpdkTools::getCoresForLcore(int lcore, list<int> *cores) {
+	map<int, list<int> >::iterator iter = lcores_map.find(lcore);
+	if(iter != lcores_map.end()) {
+		*cores = iter->second;
+	} else {
+		cores->clear();
+	}
+}
+
+string cDpdkTools::getCoresForLcore(int lcore) {
+	list<int> cores;
+	getCoresForLcore(lcore, &cores);
+	if(cores.size()) {
+		return(implode(cores, ","));
+	} else {
+		return("");
+	}
 }
 
 int cDpdkTools::getFreeLcore(map<int, bool> &main_map, int numa_node) {
