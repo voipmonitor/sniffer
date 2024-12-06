@@ -8820,10 +8820,10 @@ void set_context_config() {
 		if(!opt_pcap_queue_disk_folder.length() || !opt_pcap_queue_store_queue_max_disk_size) {
 			// disable disc save
 			if(opt_pcap_queue_compress || !opt_pcap_queue_suppress_t1_thread) {
-				// enable compress or not suppress t1 thread - maximum thread0 buffer = 100MB
+				// enable compress or not suppress t1 thread - maximum thread0 buffer = opt_use_dpdk || opt_t2_boost > 1 ? 500MB : 100MB
 				thread0_buffer_mb = max_buffer_mem_mb / 8;
-				if(thread0_buffer_mb > 100) {
-					thread0_buffer_mb = 100;
+				if(thread0_buffer_mb > (opt_use_dpdk || opt_t2_boost > 1 ? 500 : 100)) {
+					thread0_buffer_mb = (opt_use_dpdk || opt_t2_boost > 1 ? 500 : 100);
 				}
 			} else {
 				// disable compress and suppress t1 thread - thread0 buffer not need
