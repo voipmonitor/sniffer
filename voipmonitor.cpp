@@ -8740,6 +8740,11 @@ void set_context_config() {
 		}
 	}
 	
+	if(opt_use_dpdk || opt_t2_boost > 1) {
+		opt_pcap_queue_store_queue_max_disk_size = 0;
+		opt_pcap_queue_disk_folder = "";
+	}
+	
 	if(is_read_from_file_simple() && opt_mysql_enable_set_id) {
 		opt_mysql_enable_set_id = false;
 	}
