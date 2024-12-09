@@ -237,6 +237,13 @@ struct sDpdk {
 	#if LOG_PACKETS_SUM
 	u_int64_t count_packets[2];
 	#endif
+	u_int64_t last_stat_ipackets;
+	u_int64_t last_stat_ierrors;
+	u_int64_t last_stat_imissed;
+	u_int64_t last_stat_nombuf;
+	u_int64_t last_stat_cout_packets[2];
+	u_int64_t last_stat_ring_full_drop;
+	u_int64_t last_stat_ring2_full_drop;
 	sDpdk() {
 		memset((void*)this, 0, sizeof(*this));
 	}
@@ -863,26 +870,34 @@ int pcap_dpdk_stats(sDpdk *dpdk, pcap_stat *ps, string *str_out) {
 		       << " portid " << dpdk->portid
 		       << " ["
 		       << setprecision(2) << dpdk->bps/1e6f << "Mb/s"
-		       << "; packets: " << dpdk->curr_stats.ipackets
-		       << "; errors: " << dpdk->curr_stats.ierrors
-		       << "; imissed: " << dpdk->curr_stats.imissed
-		       << "; nombuf: " << dpdk->curr_stats.rx_nombuf;
+		       << "; packets: " << (dpdk->curr_stats.ipackets - dpdk->last_stat_ipackets)
+		       << "; errors: " << (dpdk->curr_stats.ierrors - dpdk->last_stat_ierrors)
+		       << "; imissed: " << (dpdk->curr_stats.imissed - dpdk->last_stat_imissed)
+		       << "; nombuf: " << (dpdk->curr_stats.rx_nombuf - dpdk->last_stat_nombuf);
+		dpdk->last_stat_ipackets = dpdk->curr_stats.ipackets;
+		dpdk->last_stat_ierrors = dpdk->curr_stats.ierrors;
+		dpdk->last_stat_imissed = dpdk->curr_stats.imissed;
+		dpdk->last_stat_nombuf = dpdk->curr_stats.rx_nombuf;
 		#if LOG_PACKETS_SUM
 		if(dpdk->count_packets[0] > 0) {
-			outStr << "; packets_read: " << dpdk->count_packets[0];
+			outStr << "; packets_read: " << (dpdk->count_packets[0] - dpdk->last_stat_cout_packets[0]);
+			dpdk->last_stat_cout_packets[0] = dpdk->count_packets[0];
 		}
 		if(dpdk->count_packets[1] > 0) {
-			outStr << "; packets_worker: " << dpdk->count_packets[1];
+			outStr << "; packets_worker: " << (dpdk->count_packets[1] - dpdk->last_stat_cout_packets[1]);
+			dpdk->last_stat_cout_packets[1] = dpdk->count_packets[1];
 		}
 		#endif
 		if(dpdk->rx_to_worker_ring) {
 			outStr << "; ring count: " << rte_ring_count(dpdk->rx_to_worker_ring);
-			outStr << "; ring full: " << dpdk->ring_full_drop;
+			outStr << "; ring full: " << (dpdk->ring_full_drop - dpdk->last_stat_ring_full_drop);
+			dpdk->last_stat_ring_full_drop = dpdk->ring_full_drop;
 		}
 		#if WORKER2_THREAD_SUPPORT
 		if(dpdk->worker_to_worker2_ring) {
 			outStr << "; ring2 count: " << rte_ring_count(dpdk->worker_to_worker2_ring);
-			outStr << "; ring2 full: " << dpdk->ring2_full_drop;
+			outStr << "; ring2 full: " << (dpdk->ring2_full_drop - dpdk->last_stat_ring2_full_drop);
+			dpdk->last_stat_ring2_full_drop = dpdk->ring2_full_drop;
 		}
 		#endif
 		#if DEBUG_EXT_STAT	
@@ -2451,6 +2466,10 @@ double rte_read_thread_cpu_usage(sDpdk *dpdk) {
 }
 
 double rte_worker_thread_cpu_usage(sDpdk *dpdk) {
+	return(-1);
+}
+
+double rte_worker_slave_thread_cpu_usage(sDpdk *dpdk) {
 	return(-1);
 }
 
