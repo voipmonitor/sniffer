@@ -2389,6 +2389,9 @@ void term_dpdk() {
 #else //HAVE_LIBDPDK
 
 
+#define ENABLE_WORKER_SLAVE false
+
+
 struct sDpdk {
 	sDpdkConfig config;
 };
