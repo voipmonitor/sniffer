@@ -589,7 +589,7 @@ int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, nat_aliases
 	
 	unsigned found_length = 0;
 	u_int64_t found_flags = 0;
-	nat_aliases_t *found_nat_aliases;
+	nat_aliases_t *found_nat_aliases = NULL;
 	for(int src_dst = 1; src_dst <= 2; src_dst++) {
 		const char *telnum = src_dst == 1 ? telnum_src : telnum_dst;
 		unsigned telnum_length = strlen(telnum);

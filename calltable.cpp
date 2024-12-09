@@ -13228,7 +13228,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				#if CALLX_MOD_OLDVER
 				for(int passListMap = -1; passListMap < (typeCall == INVITE && useCallFindX() ? preProcessPacketCallX_count : 0); passListMap++) {
 				#endif
-					map<string, Call*> *_calls_listMAP;
+					map<string, Call*> *_calls_listMAP = NULL;
 					list<Call*>::iterator callIT1;
 					map<string, Call*>::iterator callMAPIT1;
 					map<sStreamIds2, Call*>::iterator callMAPIT2;
