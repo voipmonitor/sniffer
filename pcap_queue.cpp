@@ -4499,11 +4499,11 @@ string PcapQueue_readFromInterface_base::pcapStatString_interface(int /*statPeri
 					       << " rx:" << (ps.ps_recv - this->last_ps.ps_recv);
 					if(pcapdrop) {
 						outStr << " pcapdrop:" << (ps.ps_drop - this->last_ps.ps_drop) << " " 
-						       << setprecision(1) << ((double)(ps.ps_drop - this->last_ps.ps_drop) / (ps.ps_recv - this->last_ps.ps_recv) * 100) << "%%";
+						       << setprecision(1) << ((double)(ps.ps_drop - this->last_ps.ps_drop) / (ps.ps_recv - this->last_ps.ps_recv) * 100) << "%";
 					}
 					if(ifdrop) {
 						outStr << " ifdrop:" << (ps.ps_ifdrop - this->last_ps.ps_ifdrop) << " " 
-						       << setprecision(1) << ((double)(ps.ps_ifdrop - this->last_ps.ps_ifdrop) / (ps.ps_recv - this->last_ps.ps_recv) * 100) << "%%";
+						       << setprecision(1) << ((double)(ps.ps_ifdrop - this->last_ps.ps_ifdrop) / (ps.ps_recv - this->last_ps.ps_recv) * 100) << "%";
 					}
 					outStr << endl
 					       << "     increase --ring-buffer (kernel >= 2.6.31 and libpcap >= 1.0.0)" 
@@ -4540,11 +4540,11 @@ string PcapQueue_readFromInterface_base::pcapStatString_interface(int /*statPeri
 					       << " rx:" << (ps.ps_recv - this->last_ps.ps_recv);
 					if(pcapdrop) {
 						outStr << " pcapdrop:" << (ps.ps_drop - this->last_ps.ps_drop) << " " 
-						       << setprecision(1) << ((double)(ps.ps_drop - this->last_ps.ps_drop) / (ps.ps_recv - this->last_ps.ps_recv) * 100) << "%%";
+						       << setprecision(1) << ((double)(ps.ps_drop - this->last_ps.ps_drop) / (ps.ps_recv - this->last_ps.ps_recv) * 100) << "%";
 					}
 					if(ifdrop) {
 						outStr << " ifdrop:" << (ps.ps_ifdrop - this->last_ps.ps_ifdrop) << " " 
-						       << setprecision(1) << ((double)(ps.ps_ifdrop - this->last_ps.ps_ifdrop) / (ps.ps_recv - this->last_ps.ps_recv) * 100) << "%%";
+						       << setprecision(1) << ((double)(ps.ps_ifdrop - this->last_ps.ps_ifdrop) / (ps.ps_recv - this->last_ps.ps_recv) * 100) << "%";
 					}
 					outStr << endl;
 				}
