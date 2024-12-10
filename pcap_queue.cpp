@@ -8312,6 +8312,8 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 	u_int64_t blockInfo_at_first = 0;
 	u_int64_t blockInfo_at_last = 0;
 	sBlockInfo blockInfo[blockInfoCountMax];
+	// dequeu - method 3
+	sBlocksInfo blocksInfo(512);
 	//
 	unsigned int usleepCounter = 0;
 	unsigned long usleepSumTime = 0;
@@ -8363,7 +8365,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 			}
 			if((opt_pcap_queue_dequeu_window_length > 0 ||
 			    opt_pcap_queue_dequeu_need_blocks > 0) &&
-			   (opt_pcap_queue_dequeu_method == 1 || opt_pcap_queue_dequeu_method == 2)) {
+			   (opt_pcap_queue_dequeu_method == 1 || opt_pcap_queue_dequeu_method == 2 || opt_pcap_queue_dequeu_method == 3)) {
 				int _opt_pcap_queue_dequeu_window_length = opt_pcap_queue_dequeu_window_length;
 				int _opt_pcap_queue_dequeu_need_blocks = opt_pcap_queue_dequeu_need_blocks;
 				if(opt_pcap_queue_dequeu_window_length_div > 0) {
@@ -8442,7 +8444,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							}
 						}
 					}
-				} else {
+				} else if(opt_pcap_queue_dequeu_method == 2) {
 					u_int64_t at = getTimeUS();
 					if(blockStore) {
 						buffersControl.add__pb_used_dequeu_size(blockStore->getUseAllSize());
@@ -8542,6 +8544,64 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						usleepSumTime = 0;
 						usleepSumTime_lastPush = 0;
 					}
+				} else {
+					u_int64_t at = getTimeUS();
+					if(blockStore) {
+						buffersControl.add__pb_used_dequeu_size(blockStore->getUseAllSize());
+						sBlockInfo new_block_info;
+						new_block_info.blockStore = blockStore;
+						if(new_block_info.set_first_last()) {
+							new_block_info.set_time_first_last();
+							new_block_info.at = at;
+							int new_block_info_index = blocksInfo.new_block();
+							blocksInfo.set(new_block_info_index, &new_block_info);
+							blocksInfo.update_times(new_block_info_index);
+							sBlocksInfo::sMinHeapData minHeapData(new_block_info_index);
+							blocksInfo.minHeap->insert(minHeapData);
+							buffersControl.set_dequeu_time(blocksInfo.utime_last > blocksInfo.utime_first ?
+											(blocksInfo.utime_last - blocksInfo.utime_first) / 1000 : 0);
+						}
+					}
+					while(blocksInfo.usedCount &&
+					      (_opt_pcap_queue_dequeu_need_blocks ?
+						blocksInfo.usedCount >= _opt_pcap_queue_dequeu_need_blocks :
+						((blocksInfo.utime_last - blocksInfo.utime_first > (unsigned)_opt_pcap_queue_dequeu_window_length * 1000 &&
+						  blocksInfo.at_last - blocksInfo.at_first > (unsigned)_opt_pcap_queue_dequeu_window_length * 1000) ||
+						  at - blocksInfo.at_first > (unsigned)_opt_pcap_queue_dequeu_window_length * 1000 * 4 ||
+						  buffersControl.getPerc_pb_used_dequeu() > 20 ||
+						  blocksInfo.is_full())) &&
+					      !TERMINATING) {
+						int min_block_info_index = blocksInfo.minHeap->getMin();
+						if(min_block_info_index < 0) {
+							break;
+						}
+						sBlockInfo *minBlockInfo = &blocksInfo.blocks[min_block_info_index];
+						hp_out.header = (*minBlockInfo->blockStore)[minBlockInfo->pos_act].header;
+						hp_out.packet = (*minBlockInfo->blockStore)[minBlockInfo->pos_act].packet;
+						hp_out.block_store = minBlockInfo->blockStore;
+						hp_out.block_store_index = minBlockInfo->pos_act;
+						hp_out.dlt = (*minBlockInfo->blockStore)[minBlockInfo->pos_act].header->dlink ? 
+								(*minBlockInfo->blockStore)[minBlockInfo->pos_act].header->dlink :
+								minBlockInfo->blockStore->dlink;
+						hp_out.sensor_id = minBlockInfo->blockStore->sensor_id;
+						hp_out.sensor_ip = minBlockInfo->blockStore->sensor_ip;
+						hp_out.block_store_locked = false;
+						hp_out.header_ip_last_offset = 0xFFFF;
+						this->processPacket(&hp_out);
+						if(!minBlockInfo->inc_pos_act()) {
+							this->blockStoreTrashPush(minBlockInfo->blockStore);
+							buffersControl.sub__pb_used_dequeu_size(minBlockInfo->blockStore->getUseAllSize());
+							blocksInfo.free_block(min_block_info_index);
+							blocksInfo.minHeap->extractMin();
+							blocksInfo.update_times();
+						} else {
+							minBlockInfo->update_time_first();
+							blocksInfo.minHeap->doHeapify();
+						}
+						usleepCounter = 0;
+						usleepSumTime = 0;
+						usleepSumTime_lastPush = 0;
+					}
 				}
 			} else {
 				if(blockStore) {
@@ -8606,6 +8666,12 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 	} else if(opt_pcap_queue_dequeu_method == 2) {
 		for(int i = 0; i < blockInfoCount; i++) {
 			this->blockStoreTrashPush(blockInfo[i].blockStore);
+		}
+	} else if(opt_pcap_queue_dequeu_method == 3) {
+		list<int> used;
+		blocksInfo.get_used(&used);
+		for(list<int>::iterator iter = used.begin(); iter != used.end(); iter++) {
+			this->blockStoreTrashPush(blocksInfo.blocks[*iter].blockStore);
 		}
 	}
 	this->writeThreadTerminated = true;
@@ -9678,9 +9744,9 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 		cout << "COUNT REST PACKETBUFFER BLOCKS: " << this->blockStoreTrash.size() << endl;
 	}
 	lock_blockStoreTrash();
+	u_int64_t time_ms = getTimeMS_rdtsc();
 	for(int i = 0; i < ((int)this->blockStoreTrash.size() - (all ? 0 : 5)); i++) {
 		bool del = false;
-		u_int64_t time_ms = getTimeMS_rdtsc();
 		if(all || 
 		   (this->blockStoreTrash[i]->enableDestroy() &&
 		    time_ms > this->blockStoreTrash[i]->pushToTrashMS + 100)) {

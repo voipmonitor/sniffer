@@ -972,6 +972,7 @@ public:
 		u_int64_t utime_first;
 		u_int64_t utime_last;
 		u_int64_t at;
+		int next_block;
 		inline bool set_first_last() {
 			pos_first = 0;
 			while(pos_first < blockStore->count && blockStore->is_ignore(pos_first)) {
@@ -1027,6 +1028,125 @@ public:
 			}
 			return(false);
 		}
+	};
+	struct sBlocksInfo {
+		struct sMinHeapData {
+			inline sMinHeapData() {
+				this->block_index = -1;
+			}
+			inline sMinHeapData(int block_index) {
+				this->block_index = block_index;
+			}
+			inline int getIndex() {
+				return(block_index);
+			}
+			int block_index;
+			static inline bool gt(sMinHeapData a, sMinHeapData b, void *cmp_data) {
+				sBlockInfo *blocks = (sBlockInfo*)cmp_data;
+				return(blocks[a.block_index].utime_first > blocks[b.block_index].utime_first);
+			}
+			static inline bool lt(sMinHeapData a, sMinHeapData b, void *cmp_data) {
+				sBlockInfo *blocks = (sBlockInfo*)cmp_data;
+				return(blocks[a.block_index].utime_first < blocks[b.block_index].utime_first);
+			}
+		};
+		sBlocksInfo(int blockInfoMax) {
+			this->blockInfoMax = blockInfoMax;
+			blocks = new FILE_LINE(0) sBlockInfo[blockInfoMax];
+			for(int i = 0; i < blockInfoMax - 1; i++) {
+				blocks[i].next_block = i + 1;
+			}
+			blocks[blockInfoMax - 1].next_block = -1;
+			minHeap = new FILE_LINE(0) cMinHeap<sMinHeapData>(blockInfoMax, blocks);
+			freeHead = 0;
+			usedHead = -1;
+			usedCount = 0;
+			clean_times();
+		}
+		~sBlocksInfo() {
+			delete [] blocks;
+			delete minHeap;
+		}
+		inline int new_block() {
+			if(freeHead == -1) {
+				return(-1);
+			}
+			int _new = freeHead;
+			freeHead = blocks[freeHead].next_block;
+			blocks[_new].next_block = usedHead;
+			usedHead = _new;
+			++usedCount;
+			return(_new);
+		}
+		inline void free_block(int index) {
+			if(index < 0 || index >= blockInfoMax) {
+				return;
+			}
+			int *prev = &usedHead;
+			while(*prev != -1) {
+				if(*prev == index) {
+					*prev = blocks[index].next_block;
+					break;
+				}
+				prev = &blocks[*prev].next_block;
+			}
+			blocks[index].next_block = freeHead;
+			freeHead = index;
+			--usedCount;
+		}
+		inline void set(int index, sBlockInfo *set_data) {
+			int _next_block = blocks[index].next_block;
+			blocks[index] = *set_data;
+			blocks[index].next_block = _next_block;
+		}
+		inline bool is_full() {
+			return(freeHead == -1);
+		}
+		inline void get_used(list<int> *used) {
+			int index = usedHead;
+			while(index != -1) {
+				used->push_back(index);
+				index = blocks[index].next_block;
+			}
+		}
+		inline void clean_times() {
+			utime_first = 0;
+			utime_last = 0;
+			at_first = 0;
+			at_last = 0;
+		}
+		inline void update_times(int index) {
+			if(!utime_first || blocks[index].utime_first < utime_first) {
+				utime_first = blocks[index].utime_first;
+			}
+			if(!utime_last || blocks[index].utime_last > utime_last) {
+				utime_last = blocks[index].utime_last;
+			}
+			if(!at_first || blocks[index].at < at_first) {
+				at_first = blocks[index].at;
+			}
+			if(!at_last || blocks[index].at > at_last) {
+				at_last = blocks[index].at;
+			}
+		}
+		inline void update_times() {
+			clean_times();
+			int index = usedHead;
+			while(index != -1) {
+				update_times(index);
+				index = blocks[index].next_block;
+			}
+		}
+		sBlockInfo *blocks;
+		cMinHeap<sMinHeapData> *minHeap;
+		int blockInfoMax;
+		int freeHead;
+		int usedHead;
+		int usedCount;
+		u_int64_t utime_first;
+		u_int64_t utime_last;
+		u_int64_t at_first;
+		u_int64_t at_last;
 	};
 public:
 	PcapQueue_readFromFifo(const char *nameQueue, const char *fileStoreFolder);

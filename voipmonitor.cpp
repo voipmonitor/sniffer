@@ -8925,7 +8925,7 @@ void set_context_config() {
 		if(is_read_from_file_simple()) {
 			setThreadingMode(1);
 		}
-		if(!CONFIG.isSet("pcap_queue_dequeu_window_length")) {
+		if(!CONFIG.isSet("pcap_queue_dequeu_window_length") && !CONFIG.isSet("pcap_queue_dequeu_method")) {
 			opt_pcap_queue_dequeu_method = 0;
 		}
 	}

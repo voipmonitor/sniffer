@@ -4764,6 +4764,99 @@ public:
 	cCsv *csv;
 };
 
+template <class TYPE>
+class cMinHeap {
+public:
+	cMinHeap(int capacity, void *cmp_data) {
+		size = 0;
+		this->capacity = capacity;
+		data = new FILE_LINE(0) TYPE[capacity];
+		this->cmp_data = cmp_data;
+	}
+	~cMinHeap() {
+		delete [] data;
+	}
+	bool insert(TYPE new_data) {
+		if(size >= capacity) {
+			return(false);
+		}
+		data[size] = new_data;
+		int current = size;
+		size++;
+		while(current != 0 && TYPE::gt(data[parent(current)], data[current], cmp_data)) {
+			swap(&data[current], &data[parent(current)]);
+			current = parent(current);
+		}
+		return(true);
+	}
+	int getMin() {
+		if(size <= 0) {
+			return(-1);
+		}
+		return data[0].getIndex();
+	}
+	int extractMin() {
+		if(size <= 0) {
+			return(-1);
+		}
+		if(size == 1) {
+			size--;
+			return data[0].getIndex();
+		}
+		int rslt = data[0].getIndex();
+		data[0] = data[size - 1];
+		size--;
+		heapify(0);
+		return(rslt);
+	}
+	int extractMinAndInsert(TYPE new_data) {
+		if(size <= 0) {
+			return(-1);
+		}
+		int rslt = data[0].getIndex();
+		data[0] = new_data;
+		heapify(0);
+		return(rslt);
+	}
+	void doHeapify() {
+		heapify(0);
+	}
+private:
+	void heapify(int i) {
+		int smallest = i;
+		int left = leftChild(i);
+		int right = rightChild(i);
+		if(left < size && TYPE::lt(data[left], data[smallest], cmp_data)) {
+			smallest = left;
+		}
+		if(right < size && TYPE::lt(data[right], data[smallest], cmp_data)) {
+			smallest = right;
+		}
+		if(smallest != i) {
+			swap(&data[i], &data[smallest]);
+			heapify(smallest);
+		}
+	}
+	void swap(TYPE* a, TYPE* b) {
+		TYPE temp = *a;
+		*a = *b;
+		*b = temp;
+	}
+	int parent(int i) { 
+		return (i - 1) / 2;
+	}
+	int leftChild(int i) {
+		return (2 * i) + 1;
+	}
+	int rightChild(int i) {
+		return (2 * i) + 2;
+	}
+private:
+	int size;
+	int capacity;
+	TYPE *data;
+	void *cmp_data;
+};
 
 string jeMallocStat(bool full);
 void jeMallocStat_save();
