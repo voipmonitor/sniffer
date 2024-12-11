@@ -8447,9 +8447,9 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 				} else if(opt_pcap_queue_dequeu_method == 2) {
 					u_int64_t at = getTimeUS();
 					if(blockStore) {
-						buffersControl.add__pb_used_dequeu_size(blockStore->getUseAllSize());
 						blockInfo[blockInfoCount].blockStore = blockStore;
 						if(blockInfo[blockInfoCount].set_first_last()) {
+							buffersControl.add__pb_used_dequeu_size(blockStore->getUseAllSize());
 							blockInfo[blockInfoCount].set_time_first_last();
 							blockInfo[blockInfoCount].at = at;
 							if(!blockInfo_utime_first ||
@@ -8547,10 +8547,10 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 				} else {
 					u_int64_t at = getTimeUS();
 					if(blockStore) {
-						buffersControl.add__pb_used_dequeu_size(blockStore->getUseAllSize());
 						sBlockInfo new_block_info;
 						new_block_info.blockStore = blockStore;
 						if(new_block_info.set_first_last()) {
+							buffersControl.add__pb_used_dequeu_size(blockStore->getUseAllSize());
 							new_block_info.set_time_first_last();
 							new_block_info.at = at;
 							int new_block_info_index = blocksInfo.new_block();
