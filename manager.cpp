@@ -3769,47 +3769,47 @@ int Mgmt_active_call_info(Mgmt_params *params) {
 	}
 	int rslt = 0;
 	string error;
-	extern bool opt_active_call_info;
-	if(opt_active_call_info) {
-		long long callreference = 0;
-		string callreference_str;
-		bool zip = false;
-		char params_str[1000];
-		sscanf(params->buf, "active_call_info %[^\n\r]", params_str);
-		if(isJsonObject(params_str)) {
-			JsonItem jsonParams;
-			jsonParams.parse(params_str);
-			callreference_str = jsonParams.getValue("callreference");
-			string zip_str = jsonParams.getValue("zip");
-			zip = yesno(zip_str.c_str()) || is_true(zip_str.c_str());
-		} else {
-			callreference_str = params_str;
-		}
-		sscanf(callreference_str.c_str(), "%llu", &callreference);
-		if(!callreference) {
-			sscanf(callreference_str.c_str(), "%llx", &callreference);
-		}
-		params->zip = zip;
-		calltable->lock_calls_listMAP();
-		Call *call = calltable->find_by_reference(callreference, false);
-		if(call) {
-			JsonExport json_export;
-			json_export.addJson("call", call->getJsonData());
+	long long callreference = 0;
+	string callreference_str;
+	bool zip = false;
+	char params_str[1000];
+	sscanf(params->buf, "active_call_info %[^\n\r]", params_str);
+	if(isJsonObject(params_str)) {
+		JsonItem jsonParams;
+		jsonParams.parse(params_str);
+		callreference_str = jsonParams.getValue("callreference");
+		string zip_str = jsonParams.getValue("zip");
+		zip = yesno(zip_str.c_str()) || is_true(zip_str.c_str());
+	} else {
+		callreference_str = params_str;
+	}
+	sscanf(callreference_str.c_str(), "%llu", &callreference);
+	if(!callreference) {
+		sscanf(callreference_str.c_str(), "%llx", &callreference);
+	}
+	params->zip = zip;
+	calltable->lock_calls_listMAP();
+	Call *call = calltable->find_by_reference(callreference, false);
+	if(call) {
+		JsonExport json_export;
+		json_export.addJson("call", call->getJsonData());
+		extern bool opt_active_call_info;
+		if(opt_active_call_info) {
 			string sip_packets = call->branch_main()->get_sip_packets_info_json();
 			json_export.addJson("sip_packets", sip_packets);
-			string rtp_streams = call->get_rtp_streams_info_json();
-			json_export.addJson("rtp_streams", rtp_streams);
-			string json_rslt = json_export.getJson();
-			if(params->sendString(&json_rslt) == -1) {
-				rslt = -1;
-			}
 		} else {
-			error = "call not found";
+			json_export.add("sip_packets", "active call info is disabled (option active_call_info)");
 		}
-		calltable->unlock_calls_listMAP();
+		string rtp_streams = call->get_rtp_streams_info_json();
+		json_export.addJson("rtp_streams", rtp_streams);
+		string json_rslt = json_export.getJson();
+		if(params->sendString(&json_rslt) == -1) {
+			rslt = -1;
+		}
 	} else {
-		error = "active call info is disabled (option active_call_info)";
+		error = "call not found";
 	}
+	calltable->unlock_calls_listMAP();
 	if(!error.empty()) {
 		if(params->sendString(&error) == -1) {
 			rslt = -1;
