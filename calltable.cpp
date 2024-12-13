@@ -4722,7 +4722,7 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		rfield->set(call_id.c_str());
 		break;
 	case cf_calldate:
-		if(opt_time_precision_in_ms) {
+		if(opt_time_precision_in_ms || existsColumns.cdr_calldate_ms) {
 			rfield->set(calltime_us(), RecordArrayField::tf_time_ms);
 		} else {
 			rfield->set(calltime_s(), RecordArrayField::tf_time);

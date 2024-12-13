@@ -1167,7 +1167,7 @@ bool Register::getDataRow(RecordArray *rec) {
 	rec->fields[rf_digestusername].set(digest_username);
 	rec->fields[rf_id_sensor].set(state->id_sensor);
 	rec->fields[rf_fname].set(state->fname_last);
-	if(opt_time_precision_in_ms) {
+	if(opt_time_precision_in_ms || existsColumns.register_state_created_at_ms) {
 		rec->fields[rf_calldate].set(state->state_to_us, RecordArrayField::tf_time_ms);
 	} else {
 		rec->fields[rf_calldate].set(TIME_US_TO_S(state->state_to_us), RecordArrayField::tf_time);
