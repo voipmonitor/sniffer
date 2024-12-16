@@ -355,7 +355,7 @@ struct pcap_block_store {
 	inline bool is_ignore(size_t indexItem) {
 		return(dpdk ?
 			this->dpdk_data[this->count - 1].header.ignore :
-			((pcap_pkthdr_plus2*)(this->block + this->offsets[indexItem]))->ignore);
+			hm == plus2 && ((pcap_pkthdr_plus2*)(this->block + this->offsets[indexItem]))->ignore);
 	}
 	void dpdk_free(size_t indexItem) {
 		if(dpdk && this->dpdk_data[indexItem].mbuf) {
