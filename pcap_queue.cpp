@@ -2133,9 +2133,12 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			last_traffic = speed_mb_s;
 		}
 		
-		extern bool use_push_batch_limit_ms;
-		extern unsigned int opt_push_batch_limit_ms;
-		use_push_batch_limit_ms = opt_push_batch_limit_ms > 0 && speed_mb_s < 200;
+		extern unsigned int opt_push_batch_limit_for_traffic_lt_mb_s;
+		if(opt_push_batch_limit_for_traffic_lt_mb_s) {
+			extern unsigned int opt_push_batch_limit_ms;
+			extern bool use_push_batch_limit_ms;
+			use_push_batch_limit_ms = opt_push_batch_limit_ms > 0 && speed_mb_s < opt_push_batch_limit_for_traffic_lt_mb_s;
+		}
 		
 		extern unsigned int opt_t2_boost_high_traffic_limit;
 		if(opt_t2_boost == 2 && opt_t2_boost_high_traffic_limit > 0 && speed_mb_s > opt_t2_boost_high_traffic_limit) {

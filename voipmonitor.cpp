@@ -461,6 +461,7 @@ unsigned int opt_process_rtp_packets_qring_item_length = 0;
 unsigned int opt_process_rtp_packets_qring_usleep = 10;
 unsigned int opt_process_rtp_packets_qring_push_usleep = 10;
 unsigned int opt_push_batch_limit_ms = 100;
+unsigned int opt_push_batch_limit_for_traffic_lt_mb_s = 0;
 bool use_push_batch_limit_ms = true;
 unsigned int opt_batch_length_sip_high_traffic = 5000;
 unsigned int opt_batch_length_rtp_high_traffic = 40000;
@@ -6417,6 +6418,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42160) cConfigItem_integer("process_rtp_packets_qring_usleep", &opt_process_rtp_packets_qring_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("process_rtp_packets_qring_push_usleep", &opt_process_rtp_packets_qring_push_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("push_batch_limit_ms", &opt_push_batch_limit_ms));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("push_batch_limit_for_traffic_lt_mb_s", &opt_push_batch_limit_for_traffic_lt_mb_s));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("batch_length_sip_high_traffic", &opt_batch_length_sip_high_traffic));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("batch_length_rtp_high_traffic", &opt_batch_length_rtp_high_traffic));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleanup_calls_period", &opt_cleanup_calls_period));
