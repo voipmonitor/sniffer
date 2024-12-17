@@ -4115,7 +4115,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	
-	if(opt_rrd) {
+	if(!opt_test && opt_rrd) {
 		extern RrdCharts *rrd_charts;
 		rrd_charts->startQueueThread();
 	}
