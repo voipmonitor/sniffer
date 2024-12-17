@@ -1,7 +1,6 @@
 2024.12.0 17.12.2024
 ====================
 - fix missing RTP packets caused by SIP/SDP Packet Handling at Higher Traffic Rates: Previously, when t2_boost = yes (default setting), VoIPmonitor relied on the block of packets filling up quickly to trigger processing. For traffic rates below 200 Mb/s, an additional delay detection mechanism ensured blocks with a time difference exceeding 100ms between the first and last packet would be forwarded to the next thread. At higher traffic rates (>200 Mb/s), this delay detection was disabled, as it was assumed blocks would fill quickly. However, under certain conditions (e.g., low SIP traffic between threads), SIP/SDP packets could be delayed, causing RTP packets to be processed before the corresponding SIP/SDP packets. [VS-1669]
-- fix SIP buffer when t2_boost = yes (which is default) when the traffic was exactly >= 200Mbit the buffer were not treated 
 - add parameter sql_log_all_errors (overrides error log suppression)
 - suppress the use of autocleanmingb if the disk size is smaller than this parameter
 - suppress log entry 'Critical low disk space in spool...' if _maxpoolsize_autoclean is greater than the used space
