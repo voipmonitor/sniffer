@@ -7294,8 +7294,13 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_sql_redirect_queue_limit", &snifferServerOptions.mysql_redirect_queue_limit));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_sql_concat_limit", &snifferServerOptions.mysql_concat_limit));
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("server_type_compress", (int*)&snifferServerOptions.type_compress))
-					->addValues("gzip:1|zip:1|lzo:2")
-					->setDefaultValueStr("yes"));
+					->addValues("gzip:1|zip:1|lzo:2|zstd:3")
+					#ifdef HAVE_LIBZSTD
+					->setDefaultValueStr("zstd")
+					#else
+					->setDefaultValueStr("yes")
+					#endif
+					);
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("server_cp_store_simple_connect_response", &snifferServerOptions.cp_store_simple_connect_response));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_connect_maximum_time_diff_s", &opt_client_server_connect_maximum_time_diff_s));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_sleep_ms_if_queue_is_full", &opt_client_server_sleep_ms_if_queue_is_full));
@@ -9330,6 +9335,17 @@ void set_context_config() {
 	#if defined(__x86_64__)
 	if(!CONFIG.isSet("usleep_minimal") && is_vmware()) {
 		opt_usleep_minimal = 50;
+	}
+	#endif
+	
+	#ifndef HAVE_LIBLZO
+	if(snifferServerOptions.type_compress == _cs_compress_lzo) {
+		snifferServerOptions.type_compress = _cs_compress_gzip;
+	}
+	#endif
+	#ifndef HAVE_LIBZSTD
+	if(snifferServerOptions.type_compress == _cs_compress_zstd) {
+		snifferServerOptions.type_compress = _cs_compress_gzip;
 	}
 	#endif
 }

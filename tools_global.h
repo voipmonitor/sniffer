@@ -27,6 +27,10 @@
 #include "config.h"
 #endif
 
+#ifdef HAVE_LIBZSTD
+#include <zstd.h>
+#endif
+
 #ifdef FREEBSD
 #include <sys/thr.h>
 #endif
@@ -940,7 +944,7 @@ public:
 	bool compressString(string &str, u_char **cbuffer, size_t *cbufferLength);
 	bool decompress(u_char *buffer, size_t bufferLength, u_char **dbuffer, size_t *dbufferLength);
 	string decompressString(u_char *buffer, size_t bufferLength);
-	bool isCompress(u_char *buffer, size_t bufferLength);
+	static bool isCompress(u_char *buffer, size_t bufferLength);
 private:
 	void initCompress();
 	void initDecompress();
@@ -969,6 +973,38 @@ private:
 	bool use_1_11;
 	u_char *wrkmem;
 	const char *header_string;
+};
+#endif
+
+
+#ifdef HAVE_LIBZSTD
+class cZstd {
+public:
+	cZstd();
+	~cZstd();
+public:
+	bool compress(u_char *buffer, size_t bufferLength, u_char **cbuffer, size_t *cbufferLength);
+	bool compress_simple(u_char *buffer, size_t bufferLength, u_char **cbuffer, size_t *cbufferLength);
+	bool compressString(string &str, u_char **cbuffer, size_t *cbufferLength);
+	bool decompress(u_char *buffer, size_t bufferLength, u_char **dbuffer, size_t *dbufferLength);
+	bool decompress_simple(u_char *buffer, size_t bufferLength, u_char **dbuffer, size_t *dbufferLength, size_t originalSize = 0);
+	string decompressString(u_char *buffer, size_t bufferLength);
+	void setLevel(int level);
+	void setStrategy(int strategy);
+	static bool isCompress(u_char *buffer, size_t bufferLength);
+private:
+	bool initCompress();
+	bool initDecompress();
+	void term();
+private:
+	ZSTD_CCtx *cctx;
+	ZSTD_DCtx* dctx;
+	u_char *compressBuffer;
+	size_t compressBufferLength;
+	u_char *decompressBuffer;
+	size_t decompressBufferLength;
+	int level;
+	int strategy;
 };
 #endif
 

@@ -2002,6 +2002,226 @@ bool cLzo::isCompress(u_char *buffer, size_t bufferLength) {
 #endif
 
 
+#ifdef HAVE_LIBZSTD
+cZstd::cZstd() {
+	cctx = NULL;
+	dctx = NULL;
+	compressBuffer = NULL;
+	compressBufferLength = 0;
+	decompressBuffer = NULL;
+	decompressBufferLength = 0;
+	level = 1;
+	strategy = 0;
+}
+
+cZstd::~cZstd() {
+	term();
+}
+
+bool cZstd::compress(u_char *buffer, size_t bufferLength, u_char **cbuffer, size_t *cbufferLength) {
+	if(!initCompress()) {
+		*cbuffer = NULL;
+		*cbufferLength = 0;
+		return(false);
+	}
+	SimpleBuffer destBuffer;
+	bool ok = true;
+	ZSTD_inBuffer inBuffer = { buffer, bufferLength, 0 };
+        do {
+		ZSTD_outBuffer outBuffer = { compressBuffer, compressBufferLength, 0 };
+		size_t const rslt = ZSTD_compressStream(cctx, &outBuffer , &inBuffer);
+		if(!ZSTD_isError(rslt)) {
+			if(outBuffer.pos > 0) {
+				destBuffer.add(compressBuffer, outBuffer.pos);
+			}
+		} else {
+			ok = false;
+			break;
+		}
+        } while(inBuffer.pos < inBuffer.size);
+	if(ok) {
+		size_t remaining = 0;
+		do {
+			ZSTD_outBuffer outBuffer = { compressBuffer, compressBufferLength, 0 };
+			remaining = ZSTD_endStream(cctx, &outBuffer);
+			if(!ZSTD_isError(remaining)) {
+				if(outBuffer.pos > 0) {
+					destBuffer.add(compressBuffer, outBuffer.pos);
+				}
+			} else {
+				ok = false;
+				break;
+			}
+		} while(remaining);
+	}
+	if(destBuffer.size() && ok) {
+		*cbufferLength = destBuffer.size();
+		*cbuffer = new FILE_LINE(0) u_char[*cbufferLength];
+		memcpy(*cbuffer, destBuffer.data(), *cbufferLength);
+	} else {
+		*cbuffer = NULL;
+		*cbufferLength = 0;
+	}
+	return(ok);
+}
+
+bool cZstd::compress_simple(u_char *buffer, size_t bufferLength, u_char **cbuffer, size_t *cbufferLength) {
+	size_t cbufferCapacity = ZSTD_compressBound(bufferLength);
+	*cbuffer = new u_char[cbufferCapacity];
+	size_t compressedSize = ZSTD_compress(*cbuffer, cbufferCapacity,
+					      buffer, bufferLength,
+					      level);
+	if(ZSTD_isError(compressedSize)) {
+		delete [] *cbuffer;
+		*cbuffer = NULL;
+		*cbufferLength = 0;
+		return(false);
+	} else {
+		*cbufferLength = compressedSize;
+	}
+	return(true);
+}
+
+bool cZstd::compressString(string &str, u_char **cbuffer, size_t *cbufferLength) {
+	return(compress((u_char*)str.c_str(), str.length(), cbuffer, cbufferLength));
+}
+
+bool cZstd::decompress(u_char *buffer, size_t bufferLength, u_char **dbuffer, size_t *dbufferLength) {
+	if(!initDecompress()) {
+		*dbuffer = NULL;
+		*dbufferLength = 0;
+		return(false);
+	}
+	SimpleBuffer destBuffer;
+	bool ok = true;
+	ZSTD_inBuffer inBuffer = { buffer, bufferLength, 0 };
+	ZSTD_outBuffer outBuffer = { decompressBuffer, decompressBufferLength, 0 };
+	while(inBuffer.pos < inBuffer.size) {
+		size_t result = ZSTD_decompressStream(dctx, &outBuffer, &inBuffer);
+		if(!ZSTD_isError(result)) {
+			destBuffer.add(outBuffer.dst, outBuffer.pos);
+		} else {
+			ok = false;
+			break;
+		}
+	}
+	if(destBuffer.size() && ok) {
+		*dbufferLength = destBuffer.size();
+		*dbuffer = new FILE_LINE(0) u_char[*dbufferLength];
+		memcpy(*dbuffer, destBuffer.data(), *dbufferLength);
+	} else {
+		*dbuffer = NULL;
+		*dbufferLength = 0;
+	}
+	return(ok);
+}
+
+bool cZstd::decompress_simple(u_char *buffer, size_t bufferLength, u_char **dbuffer, size_t *dbufferLength, size_t originalSize) {
+	if(!originalSize) {
+		originalSize = ZSTD_getFrameContentSize(buffer, bufferLength);
+		if(originalSize == ZSTD_CONTENTSIZE_ERROR ||
+		   originalSize == ZSTD_CONTENTSIZE_UNKNOWN) {
+			*dbuffer = NULL;
+			*dbufferLength = 0;
+			return(false);
+		}
+	}
+	*dbuffer = new u_char[originalSize];
+	size_t decompressSize = ZSTD_decompress(*dbuffer, originalSize,
+						buffer, bufferLength);
+	if(ZSTD_isError(decompressSize)) {
+		delete [] *dbuffer;
+		*dbuffer = NULL;
+		*dbufferLength = 0;
+		return(false);
+	} else {
+		*dbufferLength = decompressSize;
+	}
+	return(true);
+}
+
+string cZstd::decompressString(u_char *buffer, size_t bufferLength) {
+	u_char *dbuffer;
+	size_t dbufferLength;
+	if(decompress(buffer, bufferLength, &dbuffer, &dbufferLength)) {
+		string rslt = string((char*)dbuffer, dbufferLength);
+		delete [] dbuffer;
+		return(rslt);
+	} else {
+		return("");
+	}
+}
+
+void cZstd::setLevel(int level) {
+	this->level = level;
+}
+
+void cZstd::setStrategy(int strategy) {
+	this->strategy = strategy;
+}
+
+bool cZstd::isCompress(u_char *buffer, size_t bufferLength) {
+	return(bufferLength > 4 && buffer && buffer[0] == 0x28 && buffer[1] == 0xB5 && buffer[2] == 0x2F && buffer[3] == 0xFD);
+}
+
+bool cZstd::initCompress() {
+	if(!cctx) {
+		cctx = ZSTD_createCCtx();
+		if(!cctx) {
+			return(false);
+		}
+		int rslt;
+		rslt = ZSTD_CCtx_setParameter(cctx, ZSTD_c_strategy, strategy);
+		if(ZSTD_isError(rslt)) {
+			//syslog(LOG_NOTICE, "bad zstd strategy %i", ZSTD_fast);
+		}
+		rslt = ZSTD_CCtx_setParameter(cctx, ZSTD_c_compressionLevel, level);
+		if(ZSTD_isError(rslt)) {
+			//syslog(LOG_NOTICE, "bad zstd level %i", zstdlevel);
+		}
+	}
+	if(!compressBuffer) {
+		compressBufferLength = ZSTD_DStreamOutSize();
+		compressBuffer = new u_char[compressBufferLength];
+	}
+	return(true);
+}
+
+bool cZstd::initDecompress() {
+	if(!dctx) {
+		dctx = ZSTD_createDCtx();
+		if(!dctx) {
+			return(false);
+		}
+	}
+	if(!decompressBuffer) {
+		decompressBufferLength = ZSTD_DStreamOutSize();
+		decompressBuffer = new u_char[decompressBufferLength];
+	}
+	return(true);
+}
+
+void cZstd::term() {
+	if(cctx) {
+		ZSTD_freeCCtx(cctx);
+		cctx = NULL;
+	}
+	if(compressBuffer) {
+		delete [] compressBuffer;
+		compressBuffer = NULL;
+	}
+	if(dctx) {
+		ZSTD_freeDCtx(dctx);
+		dctx = NULL;
+	}
+	if(decompressBuffer) {
+		delete [] decompressBuffer;
+		decompressBuffer = NULL;
+	}
+}
+#endif
+
+
 cResolver::cResolver() {
 	use_lock = true;
 	res_timeout = 120;

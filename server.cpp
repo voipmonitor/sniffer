@@ -594,6 +594,12 @@ void cSnifferServerConnection::cp_service() {
 	if(use_encode_data) {
 		socket->set_aes_keys(aes_ckey, aes_ivec);
 	}
+	eServerClientTypeCompress type_compress = snifferServerOptions.type_compress;
+	string compress_types = jsonPasswordAesKeys.getValue("compress_types");
+	if((type_compress == _cs_compress_lzo && compress_types.find("lzo") == string::npos) ||
+	   (type_compress == _cs_compress_zstd && compress_types.find("zstd") == string::npos)) {
+		type_compress = _cs_compress_gzip;
+	}
 	string okAndParameters;
 	if(autoParameters) {
 		JsonExport ok_parameters;
@@ -622,7 +628,7 @@ void cSnifferServerConnection::cp_service() {
 		if(opt_charts_cache_store) {
 			ok_parameters.add("charts_cache_store", true);
 		}
-		ok_parameters.add("type_compress", snifferServerOptions.type_compress);
+		ok_parameters.add("type_compress", type_compress);
 		ok_parameters.add("enable_responses_sender", true);
 		okAndParameters = ok_parameters.getJson();
 	} else {
@@ -697,7 +703,7 @@ void cSnifferServerConnection::cp_service() {
 			string *rchs_query = snifferServerServices->get_rchs_query();
 			if(rchs_query) {
 				bool okSend = true;
-				if(snifferServerOptions.type_compress == _cs_compress_gzip) {
+				if(type_compress == _cs_compress_gzip) {
 					cGzip gzipCompressQuery;
 					u_char *queryGzip;
 					size_t queryGzipLength;
@@ -708,8 +714,21 @@ void cSnifferServerConnection::cp_service() {
 						}
 						delete [] queryGzip;
 					}
+				#ifdef HAVE_LIBZSTD
+				} else if(type_compress == _cs_compress_zstd) {
+					cZstd zstdCompressQuery;
+					u_char *queryZstd;
+					size_t queryZtdLength;
+					if(zstdCompressQuery.compress((u_char*)rchs_query->c_str(), rchs_query->length(), &queryZstd, &queryZtdLength)) {
+						if(!socket->writeBlock((u_char*)("rch:" + string((char*)queryZstd, queryZtdLength)).c_str(), queryZtdLength + 4, 
+								       use_encode_data ? cSocket::_te_aes : cSocket::_te_na)) {
+							okSend = false;
+						}
+						delete [] queryZstd;
+					}
+				#endif
 				#ifdef HAVE_LIBLZO
-				} else if(snifferServerOptions.type_compress == _cs_compress_lzo) {
+				} else if(type_compress == _cs_compress_lzo) {
 					cLzo lzoCompressQuery;
 					u_char *queryLzo;
 					size_t queryLzoLength;
@@ -969,11 +988,18 @@ void cSnifferServerConnection::cp_store() {
 		if(cp_store_check()) {
 			string queryStr;
 			cGzip gzipDecompressQuery;
+			#ifdef HAVE_LIBZSTD
+			cZstd zstdDecompressQuery;
+			#endif
 			#ifdef HAVE_LIBLZO
 			cLzo lzoDecompressQuery;
 			#endif
 			if(gzipDecompressQuery.isCompress(query, queryLength)) {
 				queryStr = gzipDecompressQuery.decompressString(query, queryLength);
+			#ifdef HAVE_LIBZSTD
+			} else if(zstdDecompressQuery.isCompress(query, queryLength)) {
+				queryStr = zstdDecompressQuery.decompressString(query, queryLength);
+			#endif
 			#ifdef HAVE_LIBLZO
 			} else if(lzoDecompressQuery.isCompress(query, queryLength)) {
 				queryStr = lzoDecompressQuery.decompressString(query, queryLength);
@@ -1388,6 +1414,14 @@ int cSnifferClientService::receive_process_loop_begin() {
 	}
 	json_keys.add("check_ping_response", true);
 	json_keys.add("auto_parameters", true);
+	string compress_types = "gzip";
+	#ifdef HAVE_LIBZSTD
+	compress_types += ",zstd";
+	#endif
+	#ifdef HAVE_LIBLZO
+	compress_types += ",lzo";
+	#endif
+	json_keys.add("compress_types", compress_types);
 	if(client_options->remote_chart_server) {
 		json_keys.add("remote_chart_server", client_options->remote_chart_server);
 	}
@@ -1540,6 +1574,9 @@ void cSnifferClientService::evData(u_char *data, size_t dataLen) {
 		}
 		string queryStr;
 		cGzip gzipDecompressQuery;
+		#ifdef HAVE_LIBZSTD
+		cZstd zstdDecompressQuery;
+		#endif
 		#ifdef HAVE_LIBLZO
 		cLzo lzoDecompressQuery;
 		#endif
@@ -1549,6 +1586,14 @@ void cSnifferClientService::evData(u_char *data, size_t dataLen) {
 				receive_socket->writeBlock("error in decompress zip");
 				return;
 			}
+		#ifdef HAVE_LIBZSTD
+		} else if(zstdDecompressQuery.isCompress(data + 4, dataLen - 4)) {
+			queryStr = zstdDecompressQuery.decompressString(data + 4, dataLen - 4);
+			if(queryStr.empty()) {
+				receive_socket->writeBlock("error in decompress zstd");
+				return;
+			}
+		#endif
 		#ifdef HAVE_LIBLZO
 		} else if(lzoDecompressQuery.isCompress(data + 4, dataLen - 4)) {
 			queryStr = lzoDecompressQuery.decompressString(data + 4, dataLen - 4);

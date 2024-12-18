@@ -32,7 +32,8 @@ struct sSnifferServerVerbose {
 enum eServerClientTypeCompress {
 	_cs_compress_na,
 	_cs_compress_gzip,
-	_cs_compress_lzo
+	_cs_compress_lzo,
+	_cs_compress_zstd
 };
 
 struct sSnifferServerOptions {
@@ -41,7 +42,12 @@ struct sSnifferServerOptions {
 		mysql_queue_limit = 1000000;
 		mysql_redirect_queue_limit = 0;
 		mysql_concat_limit = 1000;
-		type_compress = _cs_compress_gzip;
+		type_compress = 
+				#ifdef HAVE_LIBZSTD
+				_cs_compress_zstd;
+				#else
+				_cs_compress_gzip;
+				#endif
 		cp_store_simple_connect_response = false;
 	}
 	bool isEnable() {
@@ -68,7 +74,12 @@ struct sSnifferClientOptions {
 		mysql_concat_limit = 0; // set only from server due compatibility client/server with different versions
 		csv_store_format = false;
 		charts_cache_store = false;
-		type_compress = _cs_compress_gzip;
+		type_compress = 
+				#ifdef HAVE_LIBZSTD
+				_cs_compress_zstd;
+				#else
+				_cs_compress_gzip;
+				#endif
 		remote_chart_server = false;
 	}
 	bool isEnable() {
