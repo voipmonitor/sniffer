@@ -34,6 +34,8 @@
 #include <math.h>
 #include <signal.h>
 #include <sys/resource.h>
+#include <sys/mman.h>
+#include <sys/wait.h>
 
 #include "voipmonitor.h"
 
@@ -6722,6 +6724,7 @@ void cPng::pixel::setFromHsv(pixel_hsv p_hsv) {
 
 cPng::cPng(size_t width, size_t height) {
 	pixels = NULL;
+	pixels_mmap = false;
 	if(width && height) {
 		setWidthHeight(width, height);
 	} else {
@@ -6734,21 +6737,35 @@ cPng::cPng(size_t width, size_t height) {
 
 cPng::~cPng() {
 	if(pixels) {
-		delete [] pixels;
-	}
-}
-
-void cPng::setWidthHeight(size_t width, size_t height) {
-	if(pixels) {
-		if(width == this->width || height == this->height) {
-			return;
+		if(pixels_mmap) {
+			munmap(pixels, width * height * sizeof(pixel));
 		} else {
 			delete [] pixels;
 		}
 	}
+}
+
+void cPng::setWidthHeight(size_t width, size_t height, bool use_mmap) {
+	if(pixels) {
+		if(width == this->width && height == this->height && use_mmap == pixels_mmap) {
+			return;
+		} else {
+			if(pixels_mmap) {
+				munmap(pixels, width * height * sizeof(pixel));
+			} else {
+				delete [] pixels;
+			}
+		}
+	}
 	this->width = width;
 	this->height = height;
-	pixels = new FILE_LINE(0) pixel[width * height];
+	if(use_mmap) {
+		pixels = (pixel*)mmap(NULL, width * height * sizeof(pixel), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+		pixels_mmap = true;
+	} else {
+		pixels = new FILE_LINE(0) pixel[width * height];
+		pixels_mmap = false;
+	}
 }
 
 void cPng::setPixel(size_t x, size_t y, u_int8_t red, u_int8_t green, u_int8_t blue) {
@@ -7236,7 +7253,10 @@ bool create_spectrogram_from_raw(u_char *raw, size_t rawSamples, unsigned sample
 	if(rawSamples < 1) {
 		return(false);
 	}
-	fftw_multithread_init();
+	extern bool opt_fftw_fork_mode;
+	if(!opt_fftw_fork_mode) {
+		fftw_multithread_init();
+	}
 	cPng::pixel palette[256];
 	set_spectrogram_palette(palette);
 	size_t palette_size = sizeof(palette) / sizeof(cPng::pixel);
@@ -7248,13 +7268,55 @@ bool create_spectrogram_from_raw(u_char *raw, size_t rawSamples, unsigned sample
 	size_t fftSize;
 	double *fftw_in;
 	fftw_complex *fftw_out;
-	fftw_plan *fftw_pl, _fftw_pl;
-	if(fftw_thread_data && thread_index >= 0 && thread_index < (int)fftw_thread_data_size) {
-		height = fftw_thread_data[thread_index].height;
-		fftSize = fftw_thread_data[thread_index].fftSize;
-		fftw_in = fftw_thread_data[thread_index].fftw_in;
-		fftw_out = fftw_thread_data[thread_index].fftw_out;
-		fftw_pl = &fftw_thread_data[thread_index].fftw_pl;
+	if(!opt_fftw_fork_mode) {
+		fftw_plan *fftw_pl, _fftw_pl;
+		if(fftw_thread_data && thread_index >= 0 && thread_index < (int)fftw_thread_data_size) {
+			height = fftw_thread_data[thread_index].height;
+			fftSize = fftw_thread_data[thread_index].fftSize;
+			fftw_in = fftw_thread_data[thread_index].fftw_in;
+			fftw_out = fftw_thread_data[thread_index].fftw_out;
+			fftw_pl = &fftw_thread_data[thread_index].fftw_pl;
+		} else {
+			if(height) {
+				fftSize = height * 2;
+			} else {
+				fftSize = 128;
+				height = fftSize / 2;
+			}
+			fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
+			fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
+			__SYNC_LOCK_USLEEP(fftw_planner_sync, 20);
+			_fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
+			fftw_pl = &_fftw_pl;
+		}
+		double *multipliers = new FILE_LINE(0) double[fftSize];
+		for(size_t i = 0; i < fftSize; i++) {
+			multipliers[i] = 0.5 * (1 - cos(2. * M_PI * i / (fftSize - 1)));
+		}
+		png->setWidthHeight(width, height);
+		for(size_t x = 0; x < width; x++) {
+			if((x * stepSamples + (fftSize - 1)) >= rawSamples) {
+				break;
+			}
+			for(size_t i = 0; i < fftSize; i++) {
+				u_char *raw_p = raw + (x * stepSamples + i) * bytesPerSample;
+				fftw_in[i] = (bytesPerSample == 1 ? *(int8_t*)raw_p : *(int16_t*)raw_p) * multipliers[i];
+			}
+			fftw_execute(*fftw_pl);
+			for(size_t i = 0; i < height; i++) {
+				double out = sqrt(fftw_out[i][0]*fftw_out[i][0] + fftw_out[i][1]*fftw_out[i][1]);
+				out = log(max(1., out));
+				png->setPixel(x, height - (i + 1), palette[(int)min((int)(out / 13.86 * palette_size), (int)palette_size - 1)]);
+			}
+		}
+		if(!(thread_index >= 0 && thread_index < (int)fftw_thread_data_size)) {
+			fftw_destroy_plan(*fftw_pl);
+			fftw_cleanup_threads();
+			__SYNC_UNLOCK(fftw_planner_sync);
+			fftw_free(fftw_in); 
+			fftw_free(fftw_out);
+		}
+		delete [] multipliers;
 	} else {
 		if(height) {
 			fftSize = height * 2;
@@ -7262,40 +7324,48 @@ bool create_spectrogram_from_raw(u_char *raw, size_t rawSamples, unsigned sample
 			fftSize = 128;
 			height = fftSize / 2;
 		}
-		fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
-		fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
-		__SYNC_LOCK_USLEEP(fftw_planner_sync, 20);
-		_fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
-		fftw_pl = &_fftw_pl;
-	}
-	double *multipliers = new FILE_LINE(0) double[fftSize];
-	for(size_t i = 0; i < fftSize; i++) {
-		multipliers[i] = 0.5 * (1 - cos(2. * M_PI * i / (fftSize - 1)));
-	}
-	png->setWidthHeight(width, height);
-	for(size_t x = 0; x < width; x++) {
-		if((x * stepSamples + (fftSize - 1)) >= rawSamples) {
-			break;
+		png->setWidthHeight(width, height, true);
+		pid_t pid = fork();
+		if(pid < 0) {
+		    return(false);
 		}
-		for(size_t i = 0; i < fftSize; i++) {
-			u_char *raw_p = raw + (x * stepSamples + i) * bytesPerSample;
-			fftw_in[i] = (bytesPerSample == 1 ? *(int8_t*)raw_p : *(int16_t*)raw_p) * multipliers[i];
-		}
-		fftw_execute(*fftw_pl);
-		for(size_t i = 0; i < height; i++) {
-			double out = sqrt(fftw_out[i][0]*fftw_out[i][0] + fftw_out[i][1]*fftw_out[i][1]);
-			out = log(max(1., out));
-			png->setPixel(x, height - (i + 1), palette[(int)min((int)(out / 13.86 * palette_size), (int)palette_size - 1)]);
+		if(pid == 0) {
+			close_all_fd();
+			fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
+			fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
+			double *multipliers = new FILE_LINE(0) double[fftSize];
+			for(size_t i = 0; i < fftSize; i++) {
+				multipliers[i] = 0.5 * (1 - cos(2. * M_PI * i / (fftSize - 1)));
+			}
+			fftw_plan fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
+			for(size_t x = 0; x < width; x++) {
+				if((x * stepSamples + (fftSize - 1)) >= rawSamples) {
+					break;
+				}
+				for(size_t i = 0; i < fftSize; i++) {
+					u_char *raw_p = raw + (x * stepSamples + i) * bytesPerSample;
+					fftw_in[i] = (bytesPerSample == 1 ? *(int8_t*)raw_p : *(int16_t*)raw_p) * multipliers[i];
+				}
+				fftw_execute(fftw_pl);
+				for(size_t i = 0; i < height; i++) {
+					double out = sqrt(fftw_out[i][0]*fftw_out[i][0] + fftw_out[i][1]*fftw_out[i][1]);
+					out = log(max(1., out));
+					png->setPixel(x, height - (i + 1), palette[(int)min((int)(out / 13.86 * palette_size), (int)palette_size - 1)]);
+				}
+			}
+			fftw_destroy_plan(fftw_pl);
+			fftw_free(fftw_in); 
+			fftw_free(fftw_out);
+			delete [] multipliers;
+			_exit(0);
+		} else {
+			int status;
+			wait(&status);
+			if(!(WIFEXITED(status) && WEXITSTATUS(status) == 0)) {
+				return(false);
+			}
 		}
 	}
-	if(!(thread_index >= 0 && thread_index < (int)fftw_thread_data_size)) {
-		fftw_destroy_plan(*fftw_pl);
-		fftw_cleanup_threads();
-		__SYNC_UNLOCK(fftw_planner_sync);
-		fftw_free(fftw_in); 
-		fftw_free(fftw_out);
-	}
-	delete [] multipliers;
 	return(true);
 #else
 	return(false);
@@ -7338,7 +7408,10 @@ bool create_spectrogram_from_raw(const char *rawInput, unsigned sampleRate, unsi
 		if(!inputRawHandle) {
 			return(false);
 		}
-		fftw_multithread_init();
+		extern bool opt_fftw_fork_mode;
+		if(!opt_fftw_fork_mode) {
+			fftw_multithread_init();
+		}
 		cPng::pixel palette[256];
 		set_spectrogram_palette(palette);
 		size_t palette_size = sizeof(palette) / sizeof(cPng::pixel);
@@ -7350,61 +7423,120 @@ bool create_spectrogram_from_raw(const char *rawInput, unsigned sampleRate, unsi
 		size_t fftSize;
 		double *fftw_in;
 		fftw_complex *fftw_out;
-		fftw_plan *fftw_pl, _fftw_pl;
-		if(fftw_thread_data && thread_index >= 0 && thread_index < (int)fftw_thread_data_size) {
-			height = fftw_thread_data[thread_index].height;
-			fftSize = fftw_thread_data[thread_index].fftSize;
-			fftw_in = fftw_thread_data[thread_index].fftw_in;
-			fftw_out = fftw_thread_data[thread_index].fftw_out;
-			fftw_pl = &fftw_thread_data[thread_index].fftw_pl;
+		if(!opt_fftw_fork_mode) {
+			fftw_plan *fftw_pl, _fftw_pl;
+			if(fftw_thread_data && thread_index >= 0 && thread_index < (int)fftw_thread_data_size) {
+				height = fftw_thread_data[thread_index].height;
+				fftSize = fftw_thread_data[thread_index].fftSize;
+				fftw_in = fftw_thread_data[thread_index].fftw_in;
+				fftw_out = fftw_thread_data[thread_index].fftw_out;
+				fftw_pl = &fftw_thread_data[thread_index].fftw_pl;
+			} else {
+				if(height) {
+					fftSize = height * 2;
+				} else {
+					fftSize = 128;
+					height = fftSize / 2;
+				}
+				fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
+				fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
+				__SYNC_LOCK_USLEEP(fftw_planner_sync, 20);
+				_fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
+				fftw_pl = &_fftw_pl;
+			}
+			double *multipliers = new FILE_LINE(0) double[fftSize];
+			for(size_t i = 0; i < fftSize; i++) {
+				multipliers[i] = 0.5 * (1 - cos(2. * M_PI * i / (fftSize - 1)));
+			}
+			png->setWidthHeight(width, height);
+			for(size_t x = 0; x < width; x++) {
+				if((x * stepSamples + (fftSize - 1)) >= rawSamples) {
+					break;
+				}
+				fseek(inputRawHandle, x * stepSamples * bytesPerSample, SEEK_SET);
+				u_char inputBuff[fftSize * bytesPerSample];
+				if(fread(inputBuff, 1, sizeof(inputBuff), inputRawHandle) == fftSize * bytesPerSample) {
+					for(size_t i = 0; i < fftSize; i++) {
+						u_char *raw_p = inputBuff + i * bytesPerSample;
+						fftw_in[i] = (bytesPerSample == 1 ? *(int8_t*)raw_p : *(int16_t*)raw_p) * multipliers[i];
+					}
+					fftw_execute(*fftw_pl);
+					for(size_t i = 0; i < height; i++) {
+						double out = sqrt(fftw_out[i][0]*fftw_out[i][0] + fftw_out[i][1]*fftw_out[i][1]);
+						out = log(max(1., out));
+						png->setPixel(x, height - (i + 1), palette[(int)min((int)(out / 13.86 * palette_size), (int)palette_size - 1)]);
+					}
+				} else {
+					break;
+				}
+			}
+			if(!(thread_index >= 0 && thread_index < (int)fftw_thread_data_size)) {
+				fftw_destroy_plan(*fftw_pl);
+				fftw_cleanup_threads();
+				__SYNC_UNLOCK(fftw_planner_sync);
+				fftw_free(fftw_in); 
+				fftw_free(fftw_out);
+			}
+			delete [] multipliers;
+			fclose(inputRawHandle);
 		} else {
+			fclose(inputRawHandle);
 			if(height) {
 				fftSize = height * 2;
 			} else {
 				fftSize = 128;
 				height = fftSize / 2;
 			}
-			fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
-			fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
-			__SYNC_LOCK_USLEEP(fftw_planner_sync, 20);
-			_fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
-			fftw_pl = &_fftw_pl;
-		}
-		double *multipliers = new FILE_LINE(0) double[fftSize];
-		for(size_t i = 0; i < fftSize; i++) {
-			multipliers[i] = 0.5 * (1 - cos(2. * M_PI * i / (fftSize - 1)));
-		}
-		png->setWidthHeight(width, height);
-		for(size_t x = 0; x < width; x++) {
-			if((x * stepSamples + (fftSize - 1)) >= rawSamples) {
-				break;
-			}
-			fseek(inputRawHandle, x * stepSamples * bytesPerSample, SEEK_SET);
-			u_char inputBuff[fftSize * bytesPerSample];
-			if(fread(inputBuff, 1, sizeof(inputBuff), inputRawHandle) == fftSize * bytesPerSample) {
+			png->setWidthHeight(width, height, true);
+			pid_t pid = fork();
+			if(pid == 0) {
+				close_all_fd();
+				FILE *inputRawHandle = fopen(rawInput, "rb");
+				if(!inputRawHandle) {
+					_exit(1);
+				}
+				fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
+				fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
+				double *multipliers = new FILE_LINE(0) double[fftSize];
 				for(size_t i = 0; i < fftSize; i++) {
-					u_char *raw_p = inputBuff + i * bytesPerSample;
-					fftw_in[i] = (bytesPerSample == 1 ? *(int8_t*)raw_p : *(int16_t*)raw_p) * multipliers[i];
+					multipliers[i] = 0.5 * (1 - cos(2. * M_PI * i / (fftSize - 1)));
 				}
-				fftw_execute(*fftw_pl);
-				for(size_t i = 0; i < height; i++) {
-					double out = sqrt(fftw_out[i][0]*fftw_out[i][0] + fftw_out[i][1]*fftw_out[i][1]);
-					out = log(max(1., out));
-					png->setPixel(x, height - (i + 1), palette[(int)min((int)(out / 13.86 * palette_size), (int)palette_size - 1)]);
+				fftw_plan fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
+				for(size_t x = 0; x < width; x++) {
+					if((x * stepSamples + (fftSize - 1)) >= rawSamples) {
+						break;
+					}
+					fseek(inputRawHandle, x * stepSamples * bytesPerSample, SEEK_SET);
+					u_char inputBuff[fftSize * bytesPerSample];
+					if(fread(inputBuff, 1, sizeof(inputBuff), inputRawHandle) == fftSize * bytesPerSample) {
+						for(size_t i = 0; i < fftSize; i++) {
+							u_char *raw_p = inputBuff + i * bytesPerSample;
+							fftw_in[i] = (bytesPerSample == 1 ? *(int8_t*)raw_p : *(int16_t*)raw_p) * multipliers[i];
+						}
+						fftw_execute(fftw_pl);
+						for(size_t i = 0; i < height; i++) {
+							double out = sqrt(fftw_out[i][0]*fftw_out[i][0] + fftw_out[i][1]*fftw_out[i][1]);
+							out = log(max(1., out));
+							png->setPixel(x, height - (i + 1), palette[(int)min((int)(out / 13.86 * palette_size), (int)palette_size - 1)]);
+						}
+					} else {
+						break;
+					}
 				}
+				fftw_destroy_plan(fftw_pl);
+				fftw_free(fftw_in); 
+				fftw_free(fftw_out);
+				delete [] multipliers;
+				fclose(inputRawHandle);
+				_exit(0);
 			} else {
-				break;
+				int status;
+				wait(&status);
+				if(!(WIFEXITED(status) && WEXITSTATUS(status) == 0)) {
+					return(false);
+				}
 			}
 		}
-		if(!(thread_index >= 0 && thread_index < (int)fftw_thread_data_size)) {
-			fftw_destroy_plan(*fftw_pl);
-			fftw_cleanup_threads();
-			__SYNC_UNLOCK(fftw_planner_sync);
-			fftw_free(fftw_in); 
-			fftw_free(fftw_out);
-		}
-		delete [] multipliers;
-		fclose(inputRawHandle);
 		if(rawSamplesOutput) {
 			*rawSamplesOutput = rawSamples;
 		}

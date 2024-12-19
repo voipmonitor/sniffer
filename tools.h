@@ -3098,7 +3098,7 @@ public:
 public:
 	cPng(size_t width = 0, size_t height = 0);
 	~cPng();
-	void setWidthHeight(size_t width, size_t height);
+	void setWidthHeight(size_t width, size_t height, bool use_mmap = false);
 	void setPixel(size_t x, size_t y, u_int8_t red, u_int8_t green, u_int8_t blue);
 	void setPixel(size_t x, size_t y, pixel p);
 	pixel getPixel(size_t x, size_t y);
@@ -3127,6 +3127,7 @@ private:
 	size_t width;
 	size_t height;
 	pixel *pixels;
+	bool pixels_mmap;
 	int pixel_size;
 	int depth;
 };

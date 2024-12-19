@@ -265,6 +265,7 @@ int opt_audiograph_ms_per_pixel = 0;
 int opt_audiograph_spectrogram_height = 32;
 int opt_audiograph_spectrogram_jpeg_quality = 10;
 bool opt_fftw_multithread_mode = false;
+bool opt_fftw_fork_mode = false;
 FileZipHandler::eTypeCompress opt_gzip_audiograph = FileZipHandler::compress_na;
 int opt_save_sdp_ipport = 1;
 int opt_save_ip_from_encaps_ipheader = 0;
@@ -6651,6 +6652,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("audiograph_spectrogram_height", &opt_audiograph_spectrogram_height));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("audiograph_spectrogram_jpeg_quality", &opt_audiograph_spectrogram_jpeg_quality));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audiograph_fftw_multithread_mode", &opt_fftw_multithread_mode));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audiograph_fftw_fork_mode", &opt_fftw_fork_mode));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_type_compress("pcap_dump_zip_audiograph", &opt_gzip_audiograph));
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pcap_dump_ziplevel_audiograph", &opt_pcap_dump_compresslevel_audiograph))
