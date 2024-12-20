@@ -3960,11 +3960,16 @@ void ParsePacket::setStdParse() {
 		this->timeSync_custom_headers_sip_msg = custom_headers_sip_msg->getLoadTime();
 	}
 	
-	extern vmIP opt_kamailio_dstip;
-	if(opt_kamailio_dstip.isSet()) {
+	extern bool opt_kamailio;
+	if(if_unlikely(opt_kamailio)) {
 		addNode("X-Siptrace-Fromip:");
 		addNode("X-Siptrace-Toip:");
 		addNode("X-Siptrace-Time:");
+	}
+	extern bool opt_ribbonsbc;
+	if(if_unlikely(opt_ribbonsbc)) {
+		addNode("srcIP:");
+		addNode("dstIP:");
 	}
 	
 	/* obsolete
