@@ -9518,20 +9518,20 @@ bool PcapQueue_readFromFifo::processPacket_analysis(sHeaderPacketPQout* hp) {
 			datalen = get_udp_data_len(header_ip, header_udp, &data, hp->packet, header->caplen);
 			sport = header_udp->get_source();
 			dport = header_udp->get_dest();
-			pflags.ss7 = opt_enable_ss7 && (ss7_rudp_portmatrix[sport] || ss7_rudp_portmatrix[dport]);
+			pflags.set_ss7(opt_enable_ss7 && (ss7_rudp_portmatrix[sport] || ss7_rudp_portmatrix[dport]));
 		} else if(header_ip_protocol == IPPROTO_TCP) {
 			tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
 			datalen = get_tcp_data_len(header_ip, header_tcp, &data, hp->packet, header->caplen);
-			pflags.tcp = 1;
+			pflags.set_tcp(1);
 			sport = header_tcp->get_source();
 			dport = header_tcp->get_dest();
 			if(opt_enable_ss7 && (ss7portmatrix[sport] || ss7portmatrix[dport])) {
-				pflags.ss7 = 1;
+				pflags.set_ss7(true);
 			} else if(cFilters::saveMrcp() && IS_MRCP(data, datalen)) {
-				pflags.mrcp = 1;
+				pflags.set_mrcp(true);
 			}
 		} else if(opt_enable_ss7 && header_ip_protocol == IPPROTO_SCTP) {
-			pflags.ss7 = 1;
+			pflags.set_ss7(true);
 			datalen = get_sctp_data_len(header_ip, &data, hp->packet, header->caplen);
 		} else {
 			//packet is not UDP and is not TCP, we are not interested, go to the next packet
@@ -9540,7 +9540,7 @@ bool PcapQueue_readFromFifo::processPacket_analysis(sHeaderPacketPQout* hp) {
 	} else if(opt_enable_ss7) {
 		data = (char*)hp->packet;
 		datalen = header->caplen;
-		pflags.ss7 = 1;
+		pflags.set_ss7(true);
 	}
 	
 	if(!data || datalen < 0 || datalen > 0xFFFFF ||

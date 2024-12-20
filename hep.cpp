@@ -135,7 +135,7 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
 					      ((tcphdr2*)(tcpPacket + sizeof(header_eth) + iphdrSize))->doff * 4;
 			packet_flags pflags;
 			pflags.init();
-			pflags.tcp = 2;
+			pflags.set_tcp(2);
 			sPacketInfoData pid;
 			pid.clear();
 			if(opt_t2_boost_direct_rtp) {

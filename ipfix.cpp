@@ -170,8 +170,8 @@ void cIPFixConnection::push_packet(sIPFixHeader *header, string &data, bool tcp,
 				      ((tcphdr2*)(tcpPacket + sizeof(header_eth) + iphdrSize))->doff * 4;
 		packet_flags pflags;
 		pflags.init();
-		pflags.tcp = 2;
-		pflags.ssl = true;
+		pflags.set_tcp(2);
+		pflags.set_ssl(true);
 		sPacketInfoData pid;
 		pid.clear();
 		if(opt_t2_boost_direct_rtp) {
@@ -209,7 +209,7 @@ void cIPFixConnection::push_packet(sIPFixHeader *header, string &data, bool tcp,
 				      sizeof(udphdr2);
 		packet_flags pflags;
 		pflags.init();
-		pflags.ssl = true;
+		pflags.set_ssl(true);
 		sPacketInfoData pid;
 		pid.clear();
 		if(opt_t2_boost_direct_rtp) {

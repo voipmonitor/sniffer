@@ -250,7 +250,7 @@ void cSipMsgRequestResponse::savePacket(packet_s_process *packetS) {
 		u_char *packet = (u_char*)packetS->packet;
 		cdp.pcap->dump(header, packet, packetS->dlt, false, 
 			       (u_char*)packetS->data_() + packetS->sipDataOffset, packetS->sipDataLen, 0,
-			       packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.tcp);
+			       packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.get_tcp());
 	}
 }
 

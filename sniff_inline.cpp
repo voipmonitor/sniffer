@@ -798,10 +798,10 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				ppd->header_udp = (udphdr2*) ((char*) ppd->header_ip + ppd->header_ip->get_hdr_size());
 				ppd->datalen = get_udp_data_len(ppd->header_ip, ppd->header_udp, &ppd->data, packet, caplen);
 				ppd->flags.init();
-				ppd->flags.ss7 = opt_enable_ss7 && (ss7_rudp_portmatrix[ppd->header_udp->get_source()] || ss7_rudp_portmatrix[ppd->header_udp->get_dest()]);
+				ppd->flags.set_ss7(opt_enable_ss7 && (ss7_rudp_portmatrix[ppd->header_udp->get_source()] || ss7_rudp_portmatrix[ppd->header_udp->get_dest()]));
 			} else if (protocol == IPPROTO_TCP) {
 				ppd->flags.init();
-				ppd->flags.tcp = 1;
+				ppd->flags.set_tcp(1);
 				// prepare packet pointers 
 				ppd->header_tcp = (tcphdr2*) ((char*) ppd->header_ip + ppd->header_ip->get_hdr_size());
 				ppd->datalen = get_tcp_data_len(ppd->header_ip, ppd->header_tcp, &ppd->data, packet, caplen);
@@ -819,9 +819,9 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				   (opt_enable_diameter && (diameter_tcp_portmatrix[ppd->header_tcp->get_source()] || diameter_tcp_portmatrix[ppd->header_tcp->get_dest()]))) {
 					// OK
 				} else if(opt_enable_ss7 && (ss7portmatrix[ppd->header_tcp->get_source()] || ss7portmatrix[ppd->header_tcp->get_dest()])) {
-					ppd->flags.ss7 = 1;
+					ppd->flags.set_ss7(true);
 				} else if(cFilters::saveMrcp() && IS_MRCP(ppd->data, ppd->datalen)) {
-					ppd->flags.mrcp = 1;
+					ppd->flags.set_mrcp(true);
 				} else {
 					// not interested in TCP packet other than SIP port
 					if(!opt_ipaccount && !DEBUG_ALL_PACKETS && (ppf & ppf_returnZeroInCheckData)) {
@@ -836,7 +836,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				ppd->header_udp->_dest = ppd->header_tcp->_dest;
 			} else if (opt_enable_ss7 && protocol == IPPROTO_SCTP) {
 				ppd->flags.init();
-				ppd->flags.ss7 = 1;
+				ppd->flags.set_ss7(true);
 				ppd->datalen = get_sctp_data_len(ppd->header_ip, &ppd->data, packet, caplen);
 			} else {
 				//packet is not UDP and is not TCP, we are not interested, go to the next packet (but if ipaccount is enabled, do not skip IP
@@ -864,7 +864,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			}
 		} else if(opt_enable_ss7) {
 			ppd->flags.init();
-			ppd->flags.ss7 = 1;
+			ppd->flags.set_ss7(true);
 			ppd->data = (char*)packet;
 			ppd->datalen = caplen;
 		}
@@ -888,9 +888,9 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		   ppd->dedup_buffer != NULL && 
 		   (((ppf & ppf_defragInPQout) && is_ip_frag == 1) ||
 		    (ppd->datalen > 0 && (opt_dup_check_ipheader || ppd->traillen < ppd->datalen))) &&
-		   !(ppd->flags.tcp && opt_enable_http && (httpportmatrix[ppd->header_tcp->get_source()] || httpportmatrix[ppd->header_tcp->get_dest()])) &&
-		   !(ppd->flags.tcp && opt_enable_webrtc && (webrtcportmatrix[ppd->header_tcp->get_source()] || webrtcportmatrix[ppd->header_tcp->get_dest()])) &&
-		   !(ppd->flags.tcp && opt_enable_ssl && isSslIpPort(ppd->header_ip->get_saddr(), ppd->header_tcp->get_source(), ppd->header_ip->get_daddr(), ppd->header_tcp->get_dest()))) {
+		   !(ppd->flags.get_tcp() && opt_enable_http && (httpportmatrix[ppd->header_tcp->get_source()] || httpportmatrix[ppd->header_tcp->get_dest()])) &&
+		   !(ppd->flags.get_tcp() && opt_enable_webrtc && (webrtcportmatrix[ppd->header_tcp->get_source()] || webrtcportmatrix[ppd->header_tcp->get_dest()])) &&
+		   !(ppd->flags.get_tcp() && opt_enable_ssl && isSslIpPort(ppd->header_ip->get_saddr(), ppd->header_tcp->get_source(), ppd->header_ip->get_daddr(), ppd->header_tcp->get_dest()))) {
 			sPacketDuplCheck *_dc = header_packet ? &(*header_packet)->dc : &pcap_header_plus2->dc;
 			#if DEDUPLICATE_COLLISION_TEST
 			sPacketDuplCheck *_dc_ct_md5 = header_packet ? &(*header_packet)->dc_ct_md5 : &pcap_header_plus2->dc_ct_md5;

@@ -60,7 +60,7 @@ void DiameterTcpData::processData(vmIP ip_src, vmIP ip_dst,
 			packetS->packet = tcpPacket; 
 			packetS->_packet_alloc_type = _t_packet_alloc_header_std; 
 			packetS->pflags.init();
-			packetS->pflags.tcp = 2;
+			packetS->pflags.set_tcp(2);
 			packetS->header_ip_offset = ethHeaderLength;
 			#if not NOT_USE_SEPARATE_TIME_US
 			packetS->time_us = ::getTimeUS(tcpHeader);
@@ -71,7 +71,7 @@ void DiameterTcpData::processData(vmIP ip_src, vmIP ip_dst,
 			packetS->sensor_id_u = (u_int16_t)sensor_id;
 			packetS->sensor_ip = sensor_ip;
 			packetS->pid = pid;
-			packetS->pflags.diameter = true;
+			packetS->pflags.set_diameter(true);
 			packetS->need_sip_process = true;
 			packetS->init2();
 			((PreProcessPacket*)uData)->process_diameterExt(&packetS, (packet_s_process*)uData2_last);

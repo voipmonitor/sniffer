@@ -571,26 +571,53 @@ struct pcap_block_store {
 };
 
 
-
 struct packet_flags {
-	u_int8_t tcp : 2;
-	u_int8_t ss7 : 1;
-	u_int8_t mrcp : 1;
-	u_int8_t ssl : 1;
-	u_int8_t skinny : 1;
-	u_int8_t mgcp: 1;
-	u_int8_t dtls_handshake: 1;
-	u_int8_t diameter: 1;
-	inline void init() {
-		for(unsigned i = 0; i < sizeof(*this); i++) {
-			((u_char*)this)[i] = 0;
-		}
-	}
+ 
+	static const uint16_t TCP_MASK            = ((1 << 0) | (1 << 1));
+	static const uint16_t SS7_MASK            = (1 << 2);
+	static const uint16_t MRCP_MASK           = (1 << 3);
+	static const uint16_t SSL_MASK            = (1 << 4);
+	static const uint16_t SKINNY_MASK         = (1 << 5);
+	static const uint16_t MGCP_MASK           = (1 << 6);
+	static const uint16_t DTLS_HANDSHAKE_MASK = (1 << 7);
+	static const uint16_t DIAMETER_MASK       = (1 << 8);
+	
+	uint16_t flags;
+
+	inline void init() { flags = 0; }
+	
+	inline void set_tcp(uint8_t value) { flags = (flags & ~TCP_MASK) | (value & TCP_MASK); }
+	inline uint8_t get_tcp() { return(flags & TCP_MASK); }
+	
+	inline void set_ss7(bool value) { flags = (flags & ~SS7_MASK) | (value ? SS7_MASK : 0); }
+	inline bool is_ss7() { return(flags & SS7_MASK) != 0; }
+	
+	inline void set_mrcp(bool value) { flags = (flags & ~MRCP_MASK) | (value ? MRCP_MASK : 0); }
+	inline bool is_mrcp() { return((flags & MRCP_MASK) != 0); }
+
+	inline void set_ssl(bool value) { flags = (flags & ~SSL_MASK) | (value ? SSL_MASK : 0); }
+	inline bool is_ssl() { return((flags & SSL_MASK) != 0); }
+
+	inline void set_skinny(bool value) { flags = (flags & ~SKINNY_MASK) | (value ? SKINNY_MASK : 0); }
+	inline bool is_skinny() { return((flags & SKINNY_MASK) != 0); }
+
+	inline void set_mgcp(bool value) { flags = (flags & ~MGCP_MASK) | (value ? MGCP_MASK : 0); }
+	inline bool is_mgcp() { return((flags & MGCP_MASK) != 0); }
+
+	inline void set_dtls_handshake(bool value) { flags = (flags & ~DTLS_HANDSHAKE_MASK) | (value ? DTLS_HANDSHAKE_MASK : 0); }
+	inline bool is_dtls_handshake() { return((flags & DTLS_HANDSHAKE_MASK) != 0); }
+
+	inline void set_diameter(bool value) { flags = (flags & ~DIAMETER_MASK) | (value ? DIAMETER_MASK : 0); }
+	inline bool is_diameter() { return((flags & DIAMETER_MASK) != 0); }
+
 	inline bool other_processing() {
-		return(ss7);
+		return(is_ss7());
 	}
 	inline bool rtp_processing() {
-		return(mrcp);
+		return(is_mrcp());
+	}
+	inline bool call_signalling() {
+		return((flags & (TCP_MASK | SS7_MASK | SSL_MASK | SKINNY_MASK | MGCP_MASK)) != 0);
 	}
 };
 

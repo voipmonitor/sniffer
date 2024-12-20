@@ -1313,7 +1313,7 @@ static inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_c
 	packetS._source = source;
 	packetS._dest = dest;
 	packetS.pflags.init();
-	packetS.pflags.tcp = istcp;
+	packetS.pflags.set_tcp(istcp);
 	packetS.header_ip_offset = header_ip ? ((u_char*)header_ip - packet) : 0;
 	#if not NOT_USE_SEPARATE_TIME_US
 	packetS.time_us = ::getTimeUS(header);

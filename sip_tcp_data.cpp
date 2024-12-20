@@ -179,7 +179,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 					packetS->packet = tcpPacket; 
 					packetS->_packet_alloc_type = _t_packet_alloc_header_std; 
 					packetS->pflags.init();
-					packetS->pflags.tcp = 2;
+					packetS->pflags.set_tcp(2);
 					packetS->header_ip_offset = ethHeaderLength; 
 					#if not NOT_USE_SEPARATE_TIME_US
 					packetS->time_us = ::getTimeUS(tcpHeader);
@@ -193,20 +193,20 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 					extern int opt_skinny;
 					extern char *sipportmatrix;
 					extern char *skinnyportmatrix;
-					packetS->pflags.skinny = opt_skinny && (skinnyportmatrix[_port_src] || skinnyportmatrix[_port_dst]);
+					packetS->pflags.set_skinny(opt_skinny && (skinnyportmatrix[_port_src] || skinnyportmatrix[_port_dst]));
 					extern int opt_mgcp;
 					extern unsigned opt_tcp_port_mgcp_gateway;
 					extern unsigned opt_tcp_port_mgcp_callagent;
 					extern bool opt_enable_diameter;
 					extern char *diameter_tcp_portmatrix;
-					packetS->pflags.mgcp = opt_mgcp && ((unsigned)_port_src == opt_tcp_port_mgcp_gateway || (unsigned)_port_dst == opt_tcp_port_mgcp_gateway ||
-									    (unsigned)_port_src == opt_tcp_port_mgcp_callagent || (unsigned)_port_dst == opt_tcp_port_mgcp_callagent);
-					packetS->pflags.diameter = opt_enable_diameter && (diameter_tcp_portmatrix[_port_src] || diameter_tcp_portmatrix[_port_dst]);
+					packetS->pflags.set_mgcp(opt_mgcp && ((unsigned)_port_src == opt_tcp_port_mgcp_gateway || (unsigned)_port_dst == opt_tcp_port_mgcp_gateway ||
+									     (unsigned)_port_src == opt_tcp_port_mgcp_callagent || (unsigned)_port_dst == opt_tcp_port_mgcp_callagent));
+					packetS->pflags.set_diameter(opt_enable_diameter && (diameter_tcp_portmatrix[_port_src] || diameter_tcp_portmatrix[_port_dst]));
 					packetS->need_sip_process = !packetS->pflags.other_processing() &&
 								    (sipportmatrix[_port_src] || sipportmatrix[_port_dst] ||
-								     packetS->pflags.skinny ||
-								     packetS->pflags.mgcp ||
-								     packetS->pflags.diameter);
+								     packetS->pflags.is_skinny() ||
+								     packetS->pflags.is_mgcp() ||
+								     packetS->pflags.is_diameter());
 					packetS->init2();
 					((PreProcessPacket*)uData)->process_parseSipDataExt(&packetS, (packet_s_process*)uData2_last);
 					
@@ -218,7 +218,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 				} else {
 					packet_flags pflags;
 					pflags.init();
-					pflags.tcp = 2;
+					pflags.set_tcp(2);
 					if(opt_t2_boost_direct_rtp) {
 						sHeaderPacketPQout hp(tcpHeader, tcpPacket,
 								      dlt, sensor_id, sensor_ip);

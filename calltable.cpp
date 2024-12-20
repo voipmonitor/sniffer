@@ -2003,7 +2003,7 @@ bool Call::read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscal
 			save_packet(this, packetS, _t_packet_dtls, 0, 0, __FILE__, __LINE__);
 		}
 		return(true);
-	} else if(packetS->pflags.mrcp) {
+	} else if(packetS->pflags.is_mrcp()) {
 		if(enable_save_packet) {
 			save_packet(this, packetS, _t_packet_mrcp, 0, 0, __FILE__, __LINE__);
 		}

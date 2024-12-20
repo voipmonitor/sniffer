@@ -83,7 +83,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 						      ((tcphdr2*)(tcpPacket + ethHeaderLength + iphdrSize))->doff * 4;
 				packet_flags pflags;
 				pflags.init();
-				pflags.tcp = 2;
+				pflags.set_tcp(2);
 				if(opt_t2_boost_direct_rtp) {
 					sHeaderPacketPQout hp(tcpHeader, tcpPacket,
 							      dlt, sensor_id, sensor_ip);
@@ -481,8 +481,8 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 				      ((tcphdr2*)(tcpPacket + ethHeaderLength + iphdrSize))->doff * 4;
 		packet_flags pflags;
 		pflags.init();
-		pflags.tcp = 2;
-		pflags.ssl = true;
+		pflags.set_tcp(2);
+		pflags.set_ssl(true);
 		preProcessPacket[opt_t2_boost_direct_rtp ?
 				  PreProcessPacket::ppt_sip :
 				  PreProcessPacket::ppt_detach]->push_packet(
@@ -508,7 +508,7 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 				      sizeof(udphdr2);
 		packet_flags pflags;
 		pflags.init();
-		pflags.ssl = true;
+		pflags.set_ssl(true);
 		preProcessPacket[opt_t2_boost_direct_rtp ?
 				  PreProcessPacket::ppt_sip :
 				  PreProcessPacket::ppt_detach]->push_packet(

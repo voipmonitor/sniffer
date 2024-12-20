@@ -341,7 +341,7 @@ struct packet_s {
 		return((tcphdr2*)((char*)header_ip + header_ip->get_hdr_size()));
 	}
 	inline u_int32_t tcp_seq() {
-		if(pflags.tcp) {
+		if(pflags.get_tcp()) {
 			tcphdr2 *header_tcp = header_tcp_();
 			if(header_tcp) {
 				return(header_tcp->seq);
@@ -504,17 +504,17 @@ struct packet_s {
 		return(IS_STUN(data_(), datalen_()));
 	}
 	inline bool isDtls() {
-		return(!pflags.tcp &&
+		return(!pflags.get_tcp() &&
 		       IS_DTLS(data_(), datalen_()));
 	}
 	inline bool isDtlsHandshake() {
-		return(pflags.dtls_handshake);
+		return(pflags.is_dtls_handshake());
 	}
 	inline bool isMrcp() {
 		return(IS_MRCP(data_(), datalen_()));
 	}
 	inline bool isUdptl() {
-		return(!pflags.tcp && !isRtp() && !isStun() && !isDtls() && !isMrcp());
+		return(!pflags.get_tcp() && !isRtp() && !isStun() && !isDtls() && !isMrcp());
 	}
 	inline bool okDataLenForRtp() {
 		return(datalen_() > 12);

@@ -5336,30 +5336,30 @@ void convertAnonymousInPacket(sHeaderPacket *header_packet, pcapProcessData *ppd
 	unsigned caplen = HPH(header_packet)->caplen;
 	iphdr2 *header_ip = ppd->header_ip;
 	header_ip_offset = ppd->header_ip_offset;
-	tcphdr2 *header_tcp = ppd->flags.tcp ? ppd->header_tcp : NULL;
-	udphdr2 *header_udp = !ppd->flags.tcp ? ppd->header_udp : NULL;
+	tcphdr2 *header_tcp = ppd->flags.get_tcp() ? ppd->header_tcp : NULL;
+	udphdr2 *header_udp = !ppd->flags.get_tcp() ? ppd->header_udp : NULL;
 	u_char *payload_tcp_udp = NULL;
 	u_char *payload_ip = NULL;
 	unsigned payload_ip_length = MIN(header_ip->get_tot_len() - header_ip->get_hdr_size(),
 					 caplen - header_ip_offset - header_ip->get_hdr_size());
 	bool mod = false;
 	if(header_tcp || header_udp) {
-		unsigned header_tcp_udp_length = (ppd->flags.tcp ? get_tcp_header_len(header_tcp) : get_udp_header_len(header_udp));
+		unsigned header_tcp_udp_length = (ppd->flags.get_tcp() ? get_tcp_header_len(header_tcp) : get_udp_header_len(header_udp));
 		unsigned payload_tcp_udp_length = payload_ip_length - header_tcp_udp_length;
 		payload_tcp_udp = new FILE_LINE(0) u_char[payload_tcp_udp_length + 1];
 		memcpy(payload_tcp_udp, (u_char*)header_ip + header_ip->get_hdr_size() + header_tcp_udp_length, payload_tcp_udp_length);
 		payload_tcp_udp[payload_tcp_udp_length] = 0;
 		extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp);
 		bool do_convert_sip = false;
-		if(check_sip20((char*)payload_tcp_udp, payload_tcp_udp_length, NULL, ppd->flags.tcp)) {
-			if(check_websocket(payload_tcp_udp, payload_tcp_udp_length, ppd->flags.tcp ? cWebSocketHeader::_chdst_na : cWebSocketHeader::_chdst_ge_limit)) {
+		if(check_sip20((char*)payload_tcp_udp, payload_tcp_udp_length, NULL, ppd->flags.get_tcp())) {
+			if(check_websocket(payload_tcp_udp, payload_tcp_udp_length, ppd->flags.get_tcp() ? cWebSocketHeader::_chdst_na : cWebSocketHeader::_chdst_ge_limit)) {
 				cWebSocketHeader ws(payload_tcp_udp, payload_tcp_udp_length);
 				if(payload_tcp_udp_length > ws.getHeaderLength()) {
 					bool allocData;
 					u_char *ws_data = ws.decodeData(&allocData, payload_tcp_udp_length);
 					if(ws_data) {
 						delete [] payload_tcp_udp;
-						payload_tcp_udp_length =  ppd->flags.tcp ?
+						payload_tcp_udp_length =  ppd->flags.get_tcp() ?
 									   min((u_int64_t)(header_tcp_udp_length - ws.getHeaderLength()),
 									       ws.getDataLength()) :
 									   ws.getDataLength();
@@ -5378,7 +5378,7 @@ void convertAnonymousInPacket(sHeaderPacket *header_packet, pcapProcessData *ppd
 			if(payload_tcp_udp) {
 				do_convert_sip = true;
 			}
-		} else if((ppd->flags.tcp ?
+		} else if((ppd->flags.get_tcp() ?
 			    ((unsigned)(header_tcp->get_source()) == opt_tcp_port_mgcp_gateway || (unsigned)(header_tcp->get_dest()) == opt_tcp_port_mgcp_gateway ||
 			     (unsigned)(header_tcp->get_source()) == opt_tcp_port_mgcp_callagent || (unsigned)(header_tcp->get_dest()) == opt_tcp_port_mgcp_callagent) :
 			    ((unsigned)(header_udp->get_source()) == opt_udp_port_mgcp_gateway || (unsigned)(header_udp->get_dest()) == opt_udp_port_mgcp_gateway ||
@@ -5399,9 +5399,9 @@ void convertAnonymousInPacket(sHeaderPacket *header_packet, pcapProcessData *ppd
 			}
 			payload_ip_length = header_tcp_udp_length + payload_tcp_udp_length;
 			payload_ip = new FILE_LINE(0) u_char[payload_ip_length];
-			memcpy(payload_ip, ppd->flags.tcp ? (void*)header_tcp : (void*)header_udp, header_tcp_udp_length);
+			memcpy(payload_ip, ppd->flags.get_tcp() ? (void*)header_tcp : (void*)header_udp, header_tcp_udp_length);
 			memcpy(payload_ip + header_tcp_udp_length, payload_tcp_udp, payload_tcp_udp_length);
-			if(!ppd->flags.tcp) {
+			if(!ppd->flags.get_tcp()) {
 				((udphdr2*)payload_ip)->len = htons(payload_ip_length);
 			}
 		}

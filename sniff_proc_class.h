@@ -654,25 +654,25 @@ public:
 		extern unsigned opt_udp_port_mgcp_gateway;
 		extern unsigned opt_tcp_port_mgcp_callagent;
 		extern unsigned opt_udp_port_mgcp_callagent;
-		pflags.skinny = opt_skinny && pflags.tcp && (skinnyportmatrix[source] || skinnyportmatrix[dest]);
-		pflags.mgcp = opt_mgcp && 
-			      (pflags.tcp ?
-				((unsigned)source == opt_tcp_port_mgcp_gateway || (unsigned)dest == opt_tcp_port_mgcp_gateway ||
-				 (unsigned)source == opt_tcp_port_mgcp_callagent || (unsigned)dest == opt_tcp_port_mgcp_callagent) :
-				((unsigned)source == opt_udp_port_mgcp_gateway || (unsigned)dest == opt_udp_port_mgcp_gateway ||
-				 (unsigned)source == opt_udp_port_mgcp_callagent || (unsigned)dest == opt_udp_port_mgcp_callagent));
-		pflags.dtls_handshake = !pflags.tcp && IS_DTLS_HANDSHAKE(packet + dataoffset, datalen);
-		pflags.diameter = opt_enable_diameter && 
-				  (pflags.tcp ?
-				    diameter_tcp_portmatrix[source] || diameter_tcp_portmatrix[dest] :
-				    diameter_udp_portmatrix[source] || diameter_udp_portmatrix[dest]);
+		pflags.set_skinny(opt_skinny && pflags.get_tcp() && (skinnyportmatrix[source] || skinnyportmatrix[dest]));
+		pflags.set_mgcp(opt_mgcp && 
+				(pflags.get_tcp() ?
+				  ((unsigned)source == opt_tcp_port_mgcp_gateway || (unsigned)dest == opt_tcp_port_mgcp_gateway ||
+				   (unsigned)source == opt_tcp_port_mgcp_callagent || (unsigned)dest == opt_tcp_port_mgcp_callagent) :
+				  ((unsigned)source == opt_udp_port_mgcp_gateway || (unsigned)dest == opt_udp_port_mgcp_gateway ||
+				   (unsigned)source == opt_udp_port_mgcp_callagent || (unsigned)dest == opt_udp_port_mgcp_callagent)));
+		pflags.set_dtls_handshake(!pflags.get_tcp() && IS_DTLS_HANDSHAKE(packet + dataoffset, datalen));
+		pflags.set_diameter(opt_enable_diameter && 
+				    (pflags.get_tcp() ?
+				      diameter_tcp_portmatrix[source] || diameter_tcp_portmatrix[dest] :
+				      diameter_udp_portmatrix[source] || diameter_udp_portmatrix[dest]));
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 		extern bool opt_audiocodes;
 		extern unsigned opt_udp_port_audiocodes;
 		extern unsigned opt_tcp_port_audiocodes;
 		sAudiocodes *audiocodes = NULL;
 		if(opt_audiocodes &&
-		   (pflags.tcp ?
+		   (pflags.get_tcp() ?
 		     (opt_tcp_port_audiocodes && 
 		      (source.getPort() == opt_tcp_port_audiocodes || dest.getPort() == opt_tcp_port_audiocodes)) : 
 		     (opt_udp_port_audiocodes && 
@@ -685,11 +685,11 @@ public:
 		}
 		#endif
 		bool need_sip_process = (!pflags.other_processing() &&
-					 (pflags.ssl ||
+					 (pflags.is_ssl() ||
 					  sipportmatrix[source] || sipportmatrix[dest] ||
-					  pflags.skinny ||
-					  pflags.mgcp ||
-					  pflags.diameter))
+					  pflags.is_skinny() ||
+					  pflags.is_mgcp() ||
+					  pflags.is_diameter()))
 					#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 					||
 					(audiocodes && audiocodes->media_type == sAudiocodes::ac_mt_SIP)
@@ -1594,25 +1594,25 @@ private:
 		vmIP daddr = ((iphdr2*)(packet + packet_data->header_ip_offset))->get_daddr();
 		#endif
 		int blockstore_lock = packet_data->hp.block_store_locked ? 2 : 1;
-		packet_data->pflags.skinny = opt_skinny && packet_data->pflags.tcp && (skinnyportmatrix[packet_data->source] || skinnyportmatrix[packet_data->dest]);
-		packet_data->pflags.mgcp = opt_mgcp && 
-					   (packet_data->pflags.tcp ?
-					     ((unsigned)packet_data->source == opt_tcp_port_mgcp_gateway || (unsigned)packet_data->dest == opt_tcp_port_mgcp_gateway ||
-					      (unsigned)packet_data->source == opt_tcp_port_mgcp_callagent || (unsigned)packet_data->dest == opt_tcp_port_mgcp_callagent) :
-					     ((unsigned)packet_data->source == opt_udp_port_mgcp_gateway || (unsigned)packet_data->dest == opt_udp_port_mgcp_gateway ||
-					      (unsigned)packet_data->source == opt_udp_port_mgcp_callagent || (unsigned)packet_data->dest == opt_udp_port_mgcp_callagent));
-		packet_data->pflags.dtls_handshake = !packet_data->pflags.tcp && IS_DTLS_HANDSHAKE(packet + packet_data->data_offset, packet_data->datalen);
-		packet_data->pflags.diameter = opt_enable_diameter && 
-					       (packet_data->pflags.tcp ?
-						 diameter_tcp_portmatrix[packet_data->source] || diameter_tcp_portmatrix[packet_data->dest] :
-						 diameter_udp_portmatrix[packet_data->source] || diameter_udp_portmatrix[packet_data->dest]);
+		packet_data->pflags.set_skinny(opt_skinny && packet_data->pflags.get_tcp() && (skinnyportmatrix[packet_data->source] || skinnyportmatrix[packet_data->dest]));
+		packet_data->pflags.set_mgcp(opt_mgcp && 
+					     (packet_data->pflags.get_tcp() ?
+					       ((unsigned)packet_data->source == opt_tcp_port_mgcp_gateway || (unsigned)packet_data->dest == opt_tcp_port_mgcp_gateway ||
+						(unsigned)packet_data->source == opt_tcp_port_mgcp_callagent || (unsigned)packet_data->dest == opt_tcp_port_mgcp_callagent) :
+					       ((unsigned)packet_data->source == opt_udp_port_mgcp_gateway || (unsigned)packet_data->dest == opt_udp_port_mgcp_gateway ||
+						(unsigned)packet_data->source == opt_udp_port_mgcp_callagent || (unsigned)packet_data->dest == opt_udp_port_mgcp_callagent)));
+		packet_data->pflags.set_dtls_handshake(!packet_data->pflags.get_tcp() && IS_DTLS_HANDSHAKE(packet + packet_data->data_offset, packet_data->datalen));
+		packet_data->pflags.set_diameter(opt_enable_diameter && 
+						 (packet_data->pflags.get_tcp() ?
+						   diameter_tcp_portmatrix[packet_data->source] || diameter_tcp_portmatrix[packet_data->dest] :
+						   diameter_udp_portmatrix[packet_data->source] || diameter_udp_portmatrix[packet_data->dest]));
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 		extern bool opt_audiocodes;
 		extern unsigned opt_udp_port_audiocodes;
 		extern unsigned opt_tcp_port_audiocodes;
 		sAudiocodes *audiocodes = NULL;
 		if(opt_audiocodes &&
-		   (packet_data->pflags.tcp ?
+		   (packet_data->pflags.get_tcp() ?
 		     (opt_tcp_port_audiocodes && 
 		      (packet_data->source == opt_tcp_port_audiocodes || packet_data->dest == opt_tcp_port_audiocodes)) : 
 		     (opt_udp_port_audiocodes && 
@@ -1625,20 +1625,29 @@ private:
 		}
 		#endif
 		bool need_sip_process = (!packet_data->pflags.other_processing() &&
-					 (packet_data->pflags.ssl ||
+					 (packet_data->pflags.is_ssl() ||
 					  sipportmatrix[packet_data->source] || sipportmatrix[packet_data->dest] ||
-					  packet_data->pflags.skinny ||
-					  packet_data->pflags.mgcp))
+					  packet_data->pflags.is_skinny() ||
+					  packet_data->pflags.is_mgcp()))
 					#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 					||
 					(audiocodes && audiocodes->media_type == sAudiocodes::ac_mt_SIP)
 					#endif
 					;
 		bool is_rtp = opt_t2_boost_direct_rtp ?
-			       (packet_data->datalen > 2 &&
+			       (!packet_data->pflags.call_signalling() &&
+				packet_data->datalen > 2 &&
 				(IS_RTP(packet + packet_data->data_offset, packet_data->datalen) || 
 				 IS_DTLS(packet + packet_data->data_offset, packet_data->datalen))) :
 			       false;
+		if(need_sip_process && is_rtp && opt_t2_boost_direct_rtp) {
+			extern bool check_sip_method(u_char *data, unsigned long len);
+			if(check_sip_method(packet + packet_data->data_offset, packet_data->datalen)) {
+				is_rtp = false;
+			} else {
+				need_sip_process = false;
+			}
+		}
 		bool ok_push = !opt_t2_boost ||
 			       need_sip_process ||
 			       (opt_t2_boost_direct_rtp ? is_rtp : packet_data->datalen > 2) ||
