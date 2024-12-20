@@ -1473,6 +1473,11 @@ bool opt_kamailio;
 vmIP opt_kamailio_dstip;
 vmIP opt_kamailio_srcip;
 unsigned opt_kamailio_port;
+bool opt_ribbonsbc;
+vmIP opt_ribbonsbc_dstip;
+vmIP opt_ribbonsbc_srcip;
+unsigned opt_ribbonsbc_port;
+bool sip_data_subst = false;
 
 SensorsMap sensorsMap;
 
@@ -7362,7 +7367,10 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_ports("audiocodes_sip_ports", &opt_audiocodes_sip_ports));
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("kamailio_dstip",  &opt_kamailio_dstip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("kamailio_srcip",  &opt_kamailio_srcip));
-					addConfigItem(new FILE_LINE(0) cConfigItem_integer("kamailio_port",  &opt_kamailio_port));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("kamailio_port",  &opt_kamailio_port ));
+					addConfigItem(new FILE_LINE(0) cConfigItem_ip("ribbonsbc_dstip",  &opt_ribbonsbc_dstip));
+					addConfigItem(new FILE_LINE(0) cConfigItem_ip("ribbonsbc_srcip",  &opt_ribbonsbc_srcip));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("ribbonsbc_port",  &opt_ribbonsbc_port));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("socket_use_poll",  &opt_socket_use_poll));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("interrupts_counters",  &opt_interrupts_counters));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipv6", &useIPv6));
@@ -9273,8 +9281,10 @@ void set_context_config() {
 			srvcc_numbers->add(opt_srvcc_numbers[i].c_str());
 		}
 	}
-	
+
 	opt_kamailio = opt_kamailio_dstip.isSet();
+	opt_ribbonsbc = opt_ribbonsbc_dstip.isSet();
+	sip_data_subst = opt_kamailio || opt_ribbonsbc || opt_audiocodes;
 	
 	if(opt_dup_check_type == _dedup_murmur && opt_dup_check_ipheader == 2) {
 		opt_dup_check_type = _dedup_crc64;
