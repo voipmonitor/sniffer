@@ -1824,16 +1824,19 @@ bool Call::read_rtcp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 	}
 
 #if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-	extern int opt_audiocodes_rtcp;
-	if(packetS->audiocodes) {
-		if(opt_audiocodes_rtcp == 0 ||
-		   (opt_audiocodes_rtcp == 3 && !this->is_audiocodes)) {
-			return(false);
-		}
-	} else {
-		if(opt_audiocodes_rtcp == 2 ||
-		   (opt_audiocodes_rtcp == 3 && this->is_audiocodes)) {
-			return(false);
+	extern bool opt_audiocodes;
+	if(if_unlikely(opt_audiocodes)) {
+		extern int opt_audiocodes_rtcp;
+		if(packetS->audiocodes) {
+			if(opt_audiocodes_rtcp == 0 ||
+			   (opt_audiocodes_rtcp == 3 && !this->is_audiocodes)) {
+				return(false);
+			}
+		} else {
+			if(opt_audiocodes_rtcp == 2 ||
+			   (opt_audiocodes_rtcp == 3 && this->is_audiocodes)) {
+				return(false);
+			}
 		}
 	}
 #endif
@@ -1888,16 +1891,19 @@ bool Call::read_rtcp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 bool Call::read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, char enable_save_packet, char *ifname) {
  
 #if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-	extern int opt_audiocodes_rtp;
-	if(packetS->audiocodes) {
-		if(opt_audiocodes_rtp == 0 ||
-		   (opt_audiocodes_rtp == 3 && !this->is_audiocodes)) {
-			return(false);
-		}
-	} else {
-		if(opt_audiocodes_rtp == 2 ||
-		   (opt_audiocodes_rtp == 3 && this->is_audiocodes)) {
-			return(false);
+	extern bool opt_audiocodes;
+	if(if_unlikely(opt_audiocodes)) {
+		extern int opt_audiocodes_rtp;
+		if(packetS->audiocodes) {
+			if(opt_audiocodes_rtp == 0 ||
+			   (opt_audiocodes_rtp == 3 && !this->is_audiocodes)) {
+				return(false);
+			}
+		} else {
+			if(opt_audiocodes_rtp == 2 ||
+			   (opt_audiocodes_rtp == 3 && this->is_audiocodes)) {
+				return(false);
+			}
 		}
 	}
 #endif

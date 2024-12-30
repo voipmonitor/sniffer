@@ -668,19 +668,20 @@ public:
 				      diameter_udp_portmatrix[source] || diameter_udp_portmatrix[dest]));
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 		extern bool opt_audiocodes;
-		extern unsigned opt_udp_port_audiocodes;
-		extern unsigned opt_tcp_port_audiocodes;
 		sAudiocodes *audiocodes = NULL;
-		if(opt_audiocodes &&
-		   (pflags.get_tcp() ?
-		     (opt_tcp_port_audiocodes && 
-		      (source.getPort() == opt_tcp_port_audiocodes || dest.getPort() == opt_tcp_port_audiocodes)) : 
-		     (opt_udp_port_audiocodes && 
-		      (source.getPort() == opt_udp_port_audiocodes || dest.getPort() == opt_udp_port_audiocodes)))) {
-			audiocodes = new FILE_LINE(0) sAudiocodes;
-			if(!audiocodes->parse((u_char*)(packet + dataoffset), datalen)) {
-				delete audiocodes;
-				audiocodes = NULL;
+		if(if_unlikely(opt_audiocodes)) {
+			extern unsigned opt_udp_port_audiocodes;
+			extern unsigned opt_tcp_port_audiocodes;
+			if(pflags.get_tcp() ?
+			    (opt_tcp_port_audiocodes && 
+			     (source.getPort() == opt_tcp_port_audiocodes || dest.getPort() == opt_tcp_port_audiocodes)) : 
+			    (opt_udp_port_audiocodes && 
+			     (source.getPort() == opt_udp_port_audiocodes || dest.getPort() == opt_udp_port_audiocodes))) {
+				audiocodes = new FILE_LINE(0) sAudiocodes;
+				if(!audiocodes->parse((u_char*)(packet + dataoffset), datalen)) {
+					delete audiocodes;
+					audiocodes = NULL;
+				}
 			}
 		}
 		#endif
@@ -1608,19 +1609,20 @@ private:
 						   diameter_udp_portmatrix[packet_data->source] || diameter_udp_portmatrix[packet_data->dest]));
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 		extern bool opt_audiocodes;
-		extern unsigned opt_udp_port_audiocodes;
-		extern unsigned opt_tcp_port_audiocodes;
 		sAudiocodes *audiocodes = NULL;
-		if(opt_audiocodes &&
-		   (packet_data->pflags.get_tcp() ?
-		     (opt_tcp_port_audiocodes && 
-		      (packet_data->source == opt_tcp_port_audiocodes || packet_data->dest == opt_tcp_port_audiocodes)) : 
-		     (opt_udp_port_audiocodes && 
-		      (packet_data->source == opt_udp_port_audiocodes || packet_data->dest == opt_udp_port_audiocodes)))) {
-			audiocodes = new FILE_LINE(0) sAudiocodes;
-			if(!audiocodes->parse(packet + packet_data->data_offset, packet_data->datalen)) {
-				delete audiocodes;
-				audiocodes = NULL;
+		if(if_unlikely(opt_audiocodes)) {
+			extern unsigned opt_udp_port_audiocodes;
+			extern unsigned opt_tcp_port_audiocodes;
+			if(packet_data->pflags.get_tcp() ?
+			    (opt_tcp_port_audiocodes && 
+			     (packet_data->source == opt_tcp_port_audiocodes || packet_data->dest == opt_tcp_port_audiocodes)) : 
+			    (opt_udp_port_audiocodes && 
+			     (packet_data->source == opt_udp_port_audiocodes || packet_data->dest == opt_udp_port_audiocodes))) {
+				audiocodes = new FILE_LINE(0) sAudiocodes;
+				if(!audiocodes->parse(packet + packet_data->data_offset, packet_data->datalen)) {
+					delete audiocodes;
+					audiocodes = NULL;
+				}
 			}
 		}
 		#endif

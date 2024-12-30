@@ -67,6 +67,7 @@ unsigned int setCallFlags(unsigned long int flags, nat_aliases_t **nat_aliases,
 extern bool opt_audiocodes;
 extern bool opt_kamailio;
 extern bool opt_ribbonsbc;
+extern bool sip_data_subst;
 extern int opt_t2_boost_direct_rtp;
 
 
@@ -185,16 +186,18 @@ struct packet_s {
 				header_ip->get_saddr() :
 				vmIP(0));
 		}
-		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(if_unlikely(opt_audiocodes && audiocodes)) {
-			return(audiocodes->packet_source_ip);
+		if(if_unlikely(sip_data_subst)) {
+			#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+			if(if_unlikely(opt_audiocodes && audiocodes)) {
+				return(audiocodes->packet_source_ip);
+			}
+			#endif
+			#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
+			if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
+				return(kamailio_subst->saddr);
+			}
+			#endif
 		}
-		#endif
-		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
-			return(kamailio_subst->saddr);
-		}
-		#endif
 		#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 		return(_saddr);
 		#else
@@ -206,16 +209,18 @@ struct packet_s {
 	}
 	#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 	inline vmIP *saddr_pt_() {
-		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(if_unlikely(opt_audiocodes && audiocodes)) {
-			return(&audiocodes->packet_source_ip);
+		if(if_unlikely(sip_data_subst)) {
+			#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+			if(if_unlikely(opt_audiocodes && audiocodes)) {
+				return(&audiocodes->packet_source_ip);
+			}
+			#endif
+			#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
+			if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
+				return(&kamailio_subst->saddr);
+			}
+			#endif
 		}
-		#endif
-		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
-			return(&kamailio_subst->saddr);
-		}
-		#endif
 		return(&_saddr);
 	}
 	#endif
@@ -226,16 +231,18 @@ struct packet_s {
 				header_ip->get_daddr() :
 				vmIP(0));
 		}
-		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(if_unlikely(opt_audiocodes && audiocodes)) {
-			return(audiocodes->packet_dest_ip);
+		if(if_unlikely(sip_data_subst)) {
+			#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+			if(if_unlikely(opt_audiocodes && audiocodes)) {
+				return(audiocodes->packet_dest_ip);
+			}
+			#endif
+			#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
+			if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
+				return(kamailio_subst->daddr);
+			}
+			#endif
 		}
-		#endif
-		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
-			return(kamailio_subst->daddr);
-		}
-		#endif
 		#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 		return(_daddr);
 		#else
@@ -247,43 +254,49 @@ struct packet_s {
 	}
 	#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 	inline vmIP *daddr_pt_() {
-		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(if_unlikely(opt_audiocodes && audiocodes)) {
-			return(&audiocodes->packet_dest_ip);
+		if(if_unlikely(sip_data_subst)) {
+			#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+			if(if_unlikely(opt_audiocodes && audiocodes)) {
+				return(&audiocodes->packet_dest_ip);
+			}
+			#endif
+			#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
+			if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
+				return(&kamailio_subst->daddr);
+			}
+			#endif
 		}
-		#endif
-		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
-			return(&kamailio_subst->daddr);
-		}
-		#endif
 		return(&_daddr);
 	}
 	#endif
 	inline vmPort source_() {
-		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(if_unlikely(opt_audiocodes && audiocodes)) {
-			return(audiocodes->packet_source_port);
+		if(if_unlikely(sip_data_subst)) {
+			#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+			if(if_unlikely(opt_audiocodes && audiocodes)) {
+				return(audiocodes->packet_source_port);
+			}
+			#endif
+			#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
+			if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
+				return(kamailio_subst->source);
+			}
+			#endif
 		}
-		#endif
-		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
-			return(kamailio_subst->source);
-		}
-		#endif
 		return(_source);
 	}
 	inline vmPort dest_() {
-		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(if_unlikely(opt_audiocodes && audiocodes)) {
-			return(audiocodes->packet_dest_port);
+		if(if_unlikely(sip_data_subst)) {
+			#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+			if(if_unlikely(opt_audiocodes && audiocodes)) {
+				return(audiocodes->packet_dest_port);
+			}
+			#endif
+			#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
+			if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
+				return(kamailio_subst->dest);
+			}
+			#endif
 		}
-		#endif
-		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
-			return(kamailio_subst->dest);
-		}
-		#endif
 		return(_dest);
 	}
 	inline char *data_() {
@@ -420,18 +433,20 @@ struct packet_s {
 		#endif
 	}
 	inline void term() {
-		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(if_unlikely(opt_audiocodes && audiocodes)) {
-			delete audiocodes;
-			audiocodes = NULL;
+		if(if_unlikely(sip_data_subst)) {
+			#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+			if(if_unlikely(opt_audiocodes && audiocodes)) {
+				delete audiocodes;
+				audiocodes = NULL;
+			}
+			#endif
+			#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
+			if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
+				delete kamailio_subst;
+				kamailio_subst = NULL;
+			}
+			#endif
 		}
-		#endif
-		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
-			delete kamailio_subst;
-			kamailio_subst = NULL;
-		}
-		#endif
 	}
 	inline void blockstore_lock(int lock_flag) {
 		if(!_blockstore_lock && block_store) {
