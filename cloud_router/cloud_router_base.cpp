@@ -480,6 +480,7 @@ bool cSocket::connect(unsigned loopSleepS) {
 			if(!udp) {
 				int on = 1;
 				setsockopt(handle, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(int));
+				setsockopt(handle, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(int));
 				int flags = fcntl(handle, F_GETFL, 0);
 				if(flags >= 0) {
 					fcntl(handle, F_SETFL, flags | O_NONBLOCK);

@@ -1,3 +1,12 @@
+2025.01.0 29.01.2025
+====================
+- add support for server_type_compress=zstd [VS-1503]
+- adding option audiograph_fftw_fork_mode = NO/yes (if enabled, fftw functions will be used in fork mode; this prevents the sniffer from crashing if something in the fftw library fails) 
+- add support for Ribbon SBC monitoring profiles [VS-1649]
+- redesign packet_flags structure to resolve possible conflict between sip and rtp ports in t2_boost=high_traffic mode
+- enable SO_KEEPALIVE flag when sniffer makes TCP connection (keylogger, sniffer->sniffer etc.) 
+
+
 2024.12.0 17.12.2024
 ====================
 - fix missing RTP packets caused by SIP/SDP Packet Handling at Higher Traffic Rates: Previously, when t2_boost = yes (default setting), VoIPmonitor relied on the block of packets filling up quickly to trigger processing. For traffic rates below 200 Mb/s, an additional delay detection mechanism ensured blocks with a time difference exceeding 100ms between the first and last packet would be forwarded to the next thread. At higher traffic rates (>200 Mb/s), this delay detection was disabled, as it was assumed blocks would fill quickly. However, under certain conditions (e.g., low SIP traffic between threads), SIP/SDP packets could be delayed, causing RTP packets to be processed before the corresponding SIP/SDP packets. [VS-1669]
