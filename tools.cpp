@@ -6224,6 +6224,75 @@ void BogusDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char 
 }
 
 
+TrafficDumper::TrafficDumper(const char *path, eBy by, bool force_flush) {
+	this->path = path;
+	this->by = by;
+	this->force_flush = force_flush;
+	this->_sync = 0;
+	time = getActDateTimeF(true);
+}
+
+TrafficDumper::~TrafficDumper() {
+	for(map<int, PcapDumper*>::iterator iter = dumpers_by_dlt.begin(); iter != dumpers_by_dlt.end(); iter++) {
+		iter->second->close();
+		delete iter->second;
+	}
+	for(map<string, PcapDumper*>::iterator iter = dumpers_by_interface.begin(); iter != dumpers_by_interface.end(); iter++) {
+		iter->second->close();
+		delete iter->second;
+	}
+}
+
+void TrafficDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char *interfaceName) {
+	this->lock();
+	PcapDumper *dumper = NULL;
+	if(this->by == _byDlt) {
+		map<int, PcapDumper*>::iterator iter = dumpers_by_dlt.find(dlt);
+		if(iter != dumpers_by_dlt.end()) {
+			dumper = iter->second;
+		}
+	} else {
+		if(!strncmp(interfaceName, "interface", 9)) {
+			interfaceName += 9;
+		}
+		while(*interfaceName == ' ') {
+			++interfaceName;
+		}
+		map<string, PcapDumper*>::iterator iter = dumpers_by_interface.find(interfaceName);
+		if(iter != dumpers_by_interface.end()) {
+			dumper = iter->second;
+		}
+	}
+	if(!dumper) {
+		string dumpFileName = path + "/traffic_" + 
+				      (by == _byDlt ?
+					"dlt_" + intToString(dlt) :
+					"iface_" + find_and_replace(find_and_replace(interfaceName, " ", "").c_str(), "/", "|")) + 
+				      "_" + time + ".pcap";
+		dumper = new FILE_LINE(0) PcapDumper(PcapDumper::na, NULL);
+		dumper->setEnableAsyncWrite(false);
+		dumper->setTypeCompress(FileZipHandler::compress_na);
+		if(dumper->open(tsf_na, dumpFileName.c_str(), dlt)) {
+			if(by == _byDlt) {
+				dumpers_by_dlt[dlt] = dumper;
+			} else {
+				dumpers_by_interface[interfaceName] = dumper;
+			}
+		} else {
+			delete dumper;
+			dumper = NULL;
+		}
+	}
+	if(dumper) {
+		dumper->dump(header, packet, dlt, true);
+		if(force_flush) {
+			dumper->flush();
+		}
+	}
+	this->unlock();
+}
+
+
 volatile int _tz_sync;
 map<unsigned int, sLocalTimeHourCache*> timeCacheMap;
 volatile int timeCacheMap_sync;

@@ -2691,6 +2691,33 @@ private:
 	volatile int _sync;
 };
 
+class TrafficDumper {
+public:
+	enum eBy {
+		_byDlt,
+		_byInterface
+	};
+public:
+	TrafficDumper(const char *path, eBy by, bool force_flush);
+	~TrafficDumper();
+	void dump(pcap_pkthdr* header, u_char* packet, int dlt, const char *interfaceName);
+private:
+	void lock() {
+		__SYNC_LOCK(this->_sync);
+	}
+	void unlock() {
+		__SYNC_UNLOCK(this->_sync);
+	}
+private:
+	map<int, PcapDumper*> dumpers_by_dlt;
+	map<string, PcapDumper*> dumpers_by_interface;
+	eBy by;
+	bool force_flush;
+	string path;
+	string time;
+	volatile int _sync;
+};
+
 
 #define LOCALTIME_MINCACHE_LENGTH 6
 #define LOCALTIME_TIMEZONE_LENGTH 10
