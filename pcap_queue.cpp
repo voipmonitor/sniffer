@@ -9389,6 +9389,15 @@ void PcapQueue_readFromFifo::cleanupConnections(bool all) {
 
 void PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp) {
  
+	#if TRAFFIC_DUMPER
+	extern TrafficDumper *trafficDumper;
+	if(trafficDumper) {
+		pcap_pkthdr *header = hp->header->convertToStdHeader();
+		trafficDumper->dump(header, hp->packet, hp->dlt, 
+				    hp->block_store && hp->block_store->ifname[0] ? hp->block_store->ifname : "undefined");
+	}
+	#endif
+ 
 	sumPacketsSizeOut[0] += hp->header->get_caplen();
 	#if LOG_PACKETS_PER_SEC or LOG_PACKETS_SUM
 	++sumPacketsCountOut[0];
