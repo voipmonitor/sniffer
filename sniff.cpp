@@ -2873,7 +2873,8 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 	
 	bool sdp_sendonly = false;
 	bool sdp_sendrecv = false;
-	if(memmem(sdp_text, sdp_text_len, "a=sendonly", 10)) {
+	if(memmem(sdp_text, sdp_text_len, "a=sendonly", 10) || 
+	   memmem(sdp_text, sdp_text_len, "a=inactive", 10)) {
 		call->use_sdp_sendonly = true;
 		if(sip_method == INVITE) {
 			sdp_sendonly = true;
