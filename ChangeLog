@@ -1,3 +1,9 @@
+2025.02.0 03.02.2025
+====================
+- fix zstd decompress which fixes CDR transmission from client server configuraiton
+- treat a=inactive in SDP as HOLD event as well as a=sendonly [VS-1311]
+
+
 2025.01.0 29.01.2025
 ====================
 - add support for server_type_compress=zstd [VS-1503]
