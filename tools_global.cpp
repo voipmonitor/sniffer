@@ -2097,6 +2097,7 @@ bool cZstd::decompress(u_char *buffer, size_t bufferLength, u_char **dbuffer, si
 	ZSTD_inBuffer inBuffer = { buffer, bufferLength, 0 };
 	ZSTD_outBuffer outBuffer = { decompressBuffer, decompressBufferLength, 0 };
 	while(inBuffer.pos < inBuffer.size) {
+		outBuffer.pos = 0;
 		size_t result = ZSTD_decompressStream(dctx, &outBuffer, &inBuffer);
 		if(!ZSTD_isError(result)) {
 			destBuffer.add(outBuffer.dst, outBuffer.pos);
