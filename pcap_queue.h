@@ -339,13 +339,18 @@ struct pcapProcessData {
 				this->dedup_buffer_ct_md5 = NULL;
 			}
 			#endif
+		} else {
+			this->dedup_buffer = NULL;
+			#if DEDUPLICATE_COLLISION_TEST
+			this->dedup_buffer_ct_md5 = new FILE_LINE(0) cPacketDuplBuffer(cPacketDuplBuffer::_hashtable, _dedup_md5);
+			#endif
 		}
 		#if not DEFRAG_MOD_OLDVER
 		extern int opt_udpfrag;
 		if(opt_udpfrag) {
 			ip_defrag = new FILE_LINE(0) cIpFrag();
 		} else {
-			ip_defrag = 0;
+			ip_defrag = NULL;
 		}
 		#endif
 	}
@@ -368,11 +373,17 @@ struct pcapProcessData {
 		}
 	}
 	void null() {
-		#if not DEFRAG_MOD_OLDVER
-		memset((void*)this, 0, sizeof(pcapProcessData) - sizeof(ip_defrag));
-		#else
-		memset((void*)this, 0, sizeof(pcapProcessData) - sizeof(ipfrag_data_s));
+		int not_null_size = 0;
+		not_null_size += sizeof(dedup_buffer);
+		#if DEDUPLICATE_COLLISION_TEST
+		not_null_size += sizeof(dedup_buffer_ct_md5);
 		#endif
+		#if not DEFRAG_MOD_OLDVER
+		not_null_size += sizeof(ip_defrag);
+		#else
+		not_null_size += sizeof(ipfrag_data_s);
+		#endif
+		memset((void*)this, 0, sizeof(pcapProcessData) - not_null_size);
 	}
 	ether_header *header_eth;
 	iphdr2 *header_ip;
@@ -387,11 +398,11 @@ struct pcapProcessData {
 	int16_t traillen;
 	packet_flags flags;
 	sPacketInfoData pid;
+	u_int ipfrag_lastprune;
 	cPacketDuplBuffer *dedup_buffer;
 	#if DEDUPLICATE_COLLISION_TEST
 	cPacketDuplBuffer *dedup_buffer_ct_md5;
 	#endif
-	u_int ipfrag_lastprune;
 	#if not DEFRAG_MOD_OLDVER
 	cIpFrag *ip_defrag;
 	#else
