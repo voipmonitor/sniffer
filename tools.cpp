@@ -6964,6 +6964,12 @@ static void _jpeg_term_destination(j_compress_ptr jpeg_ptr) {
 #endif
 
 bool cPng::_write_jpeg(const char *filePathName, SimpleBuffer *jpeg, int quality, string *error) {
+	if(!width || !height) {
+		if(error) {
+			*error = "empty jpeg image";
+		}
+		return(false);
+	}
 #ifdef HAVE_LIBJPEG
 	FILE *fp = NULL;
 	if(filePathName) {
@@ -7327,6 +7333,14 @@ bool create_spectrogram_from_raw(u_char *raw, size_t rawSamples, unsigned sample
 	if(rawSamples < 1) {
 		return(false);
 	}
+	if(!msPerPixel) {
+		msPerPixel = get_audiograph_ms_per_pixel(rawSamples, sampleRate);
+	}
+	size_t stepSamples = sampleRate * msPerPixel / 1000;
+	size_t width = rawSamples / stepSamples;
+	if(width < 2) {
+		return(false);
+	}
 	extern bool opt_fftw_fork_mode;
 	if(!opt_fftw_fork_mode) {
 		fftw_multithread_init();
@@ -7334,11 +7348,6 @@ bool create_spectrogram_from_raw(u_char *raw, size_t rawSamples, unsigned sample
 	cPng::pixel palette[256];
 	set_spectrogram_palette(palette);
 	size_t palette_size = sizeof(palette) / sizeof(cPng::pixel);
-	if(!msPerPixel) {
-		msPerPixel = get_audiograph_ms_per_pixel(rawSamples, sampleRate);
-	}
-	size_t stepSamples = sampleRate * msPerPixel / 1000;
-	size_t width = rawSamples / stepSamples;
 	size_t fftSize;
 	double *fftw_in;
 	fftw_complex *fftw_out;
@@ -7478,6 +7487,14 @@ bool create_spectrogram_from_raw(const char *rawInput, unsigned sampleRate, unsi
 		if(rawSamples < 1) {
 			return(false);
 		}
+		if(!msPerPixel) {
+			msPerPixel = get_audiograph_ms_per_pixel(rawSamples, sampleRate);
+		}
+		size_t stepSamples = sampleRate * msPerPixel / 1000;
+		size_t width = rawSamples / stepSamples;
+		if(width < 2) {
+			return(false);
+		}
 		FILE *inputRawHandle = fopen(rawInput, "rb");
 		if(!inputRawHandle) {
 			return(false);
@@ -7489,11 +7506,6 @@ bool create_spectrogram_from_raw(const char *rawInput, unsigned sampleRate, unsi
 		cPng::pixel palette[256];
 		set_spectrogram_palette(palette);
 		size_t palette_size = sizeof(palette) / sizeof(cPng::pixel);
-		if(!msPerPixel) {
-			msPerPixel = get_audiograph_ms_per_pixel(rawSamples, sampleRate);
-		}
-		size_t stepSamples = sampleRate * msPerPixel / 1000;
-		size_t width = rawSamples / stepSamples;
 		size_t fftSize;
 		double *fftw_in;
 		fftw_complex *fftw_out;
