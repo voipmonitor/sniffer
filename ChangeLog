@@ -1,3 +1,9 @@
+2025.02.1 12.02.2025
+====================
+- fix pcap deduplication command line --dedup-pcap [VG-2935]
+- fix crash when creating audiograph (save_audiograph is enabled aither in .conf or capture ruels) for very short RTP streams [VS-1654]
+
+
 2025.02.0 03.02.2025
 ====================
 - fix zstd decompress which fixes CDR transmission from client server configuraiton
