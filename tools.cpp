@@ -6961,6 +6961,19 @@ static void _jpeg_term_destination(j_compress_ptr jpeg_ptr) {
 	SimpleBuffer *buffer = ((_jpeg_dest_buffer*)jpeg_ptr->dest)->buffer;
 	buffer->set_data_len(buffer->data_capacity() - jpeg_ptr->dest->free_in_buffer);
 }
+
+struct _jpeg_error_mgr {
+	struct jpeg_error_mgr pub;
+	jmp_buf setjmp_buffer;
+	char last_error[JMSG_LENGTH_MAX];
+};
+
+METHODDEF(void) _jpeg_error_exit(j_common_ptr cinfo) {
+	_jpeg_error_mgr *err = (_jpeg_error_mgr*)cinfo->err;
+	(*cinfo->err->format_message)(cinfo, err->last_error);
+	longjmp(err->setjmp_buffer, 1);
+}
+
 #endif
 
 bool cPng::_write_jpeg(const char *filePathName, SimpleBuffer *jpeg, int quality, string *error) {
@@ -6983,8 +6996,16 @@ bool cPng::_write_jpeg(const char *filePathName, SimpleBuffer *jpeg, int quality
 	}
 	jpeg_compress_struct jpeg_ptr;
 	jpeg_create_compress(&jpeg_ptr);
-	jpeg_error_mgr jpeg_err;
-	jpeg_ptr.err = jpeg_std_error(&jpeg_err);
+	struct _jpeg_error_mgr jpeg_err;
+	jpeg_ptr.err = jpeg_std_error(&jpeg_err.pub);
+	jpeg_err.pub.error_exit = _jpeg_error_exit;
+	if(setjmp(jpeg_err.setjmp_buffer)) {
+		jpeg_destroy_compress(&jpeg_ptr);
+		if(error) {
+			*error = jpeg_err.last_error;
+		}
+		return(false);
+	}
 	_jpeg_dest_buffer dest_buffer;
 	if(fp) {
 		jpeg_stdio_dest(&jpeg_ptr, fp);

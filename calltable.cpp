@@ -4237,19 +4237,25 @@ Call::convertRawToWav(void **transcribe_call, int thread_index) {
 		SimpleBuffer complete;
 		for(int i = 0; i <= 1; i++) {
 			if(spectrogram[i]) {
+				bool write_rslt = false;
+				string write_error;
 				SimpleBuffer buffer;
 				#ifdef HAVE_LIBJPEG
 				extern int opt_audiograph_spectrogram_jpeg_quality;
-				spectrogram[i]->write_jpeg(&buffer, opt_audiograph_spectrogram_jpeg_quality);
+				write_rslt = spectrogram[i]->write_jpeg(&buffer, opt_audiograph_spectrogram_jpeg_quality, &write_error);
 				#else
-				spectrogram[i]->write(&buffer);
+				write_rslt = spectrogram[i]->write(&buffer, &write_error);
 				#endif
-				if(buffer.size() > 0) {
-					complete.add(("S" + intToString(i + 1) + ":" +
-						      intToString(buffer.size()) + "/" +
-						      floatToString(wav_duration_s[i]) + "/" +
-						      intToString(ms_per_pixel) + ":").c_str());
-					complete.add(&buffer);
+				if(write_rslt) {
+					if(buffer.size() > 0) {
+						complete.add(("S" + intToString(i + 1) + ":" +
+							      intToString(buffer.size()) + "/" +
+							      floatToString(wav_duration_s[i]) + "/" +
+							      intToString(ms_per_pixel) + ":").c_str());
+						complete.add(&buffer);
+					}
+				} else {
+					syslog(LOG_ERR, "jpeg error %s in create audiograph for %s", write_error.c_str(), call_id.c_str());
 				}
 				delete spectrogram[i];
 			}
