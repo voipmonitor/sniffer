@@ -263,8 +263,7 @@ public:
 	~cIPFixConnection();
 	virtual void connection_process();
 private:
-	bool read(SimpleBuffer *out_buffer, int timeout_ms = 5000);
-	int check(SimpleBuffer *data, bool strict = true);
+	int check(SimpleBuffer *data);
 	int process(SimpleBuffer *data);
 	void process_ipfix(sIPFixHeader *header);
 	void process_ipfix_HandShake(sIPFixHeader *header);
@@ -276,7 +275,7 @@ private:
 };
 
 
-int checkIPFixData(SimpleBuffer *data, bool strict = true);
+int checkIPFixData(SimpleBuffer *data, bool strict);
 void IPFix_client_emulation(const char *pcap, vmIP client_ip, vmIP server_ip, vmIP destination_ip, vmPort destination_port);
 void IPFixServerStart(const char *host, int port);
 void IPFixServerStop();

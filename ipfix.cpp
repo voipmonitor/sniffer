@@ -9,6 +9,9 @@
 #include <pcap.h>
 
 
+#define IPFIX_VERSION 10
+
+
 cIPFixServer::cIPFixServer() {
 }
 
@@ -31,36 +34,26 @@ cIPFixConnection::~cIPFixConnection() {
 }
 
 void cIPFixConnection::connection_process() {
+	SimpleBuffer read_buffer;
 	while((socket && !socket->isError() && !socket->isTerminate()) && !is_terminating())  {
-		SimpleBuffer read_buffer;
-		if(read(&read_buffer)) {
-			// cout << "ok read" << endl;
-			process(&read_buffer);
+		u_char buffer[10000];
+		size_t buffer_length = sizeof(buffer);
+		if(socket->read(buffer, &buffer_length) && buffer_length > 0) {
+			read_buffer.add(buffer, buffer_length);
+			bool rslt_check = check(&read_buffer);
+			if(rslt_check) {
+				process(&read_buffer);
+			}
+		} else if(read_buffer.size() > 1024 * 1024) {
+			read_buffer.clear();
+			syslog(LOG_NOTICE, "IPFIX data exceeded the limit of 1MB. Check the IPFIX data sent.");
 		}
 	}
 	delete this;
 }
 
-bool cIPFixConnection::read(SimpleBuffer *out_buffer, int timeout_ms) {
-	u_int64_t time_start_ms = getTimeMS();
-	do {
-		u_char buffer[10000];
-		size_t read_length = sizeof(buffer);
-		if(socket->read(buffer, &read_length)) {
-			out_buffer->add(buffer, read_length);
-		}
-		if(check(out_buffer)) {
-			return(true);
-		}
-		if(getTimeMS() - time_start_ms > (unsigned)timeout_ms) {
-			return(false);
-		}
-	} while(!socket->isError());
-	return(false);
-}
-
-int cIPFixConnection::check(SimpleBuffer *data, bool strict) {
-	return(checkIPFixData(data, strict));
+int cIPFixConnection::check(SimpleBuffer *data) {
+	return(checkIPFixData(data, false));
 }
 
 int cIPFixConnection::process(SimpleBuffer *data) {
@@ -71,14 +64,27 @@ int cIPFixConnection::process(SimpleBuffer *data) {
 	unsigned counter = 0;
 	do {
 		sIPFixHeader *header = (sIPFixHeader*)(data->data() + offset);
+		if(ntohs(header->Version) != IPFIX_VERSION) {
+			++offset;
+			continue;
+		}
 		if(ntohs(header->Length) > data->size() - offset) {
 			break;
 		}
 		process_ipfix(header);
-		offset += ntohs(header->Length);
+		u_int16_t length = ntohs(header->Length);
+		if(length < sizeof(sIPFixHeader)) {
+			length = sizeof(sIPFixHeader);
+		}
+		offset += length;
 		++counter;
 	} while(offset < data->size() &&
 		data->size() - offset > sizeof(sIPFixHeader));
+	if(offset == data->size()) {
+		data->clear();
+	} else {
+		data->removeDataFromLeft(offset);
+	}
 	return(counter);
 }
 
@@ -104,8 +110,8 @@ void cIPFixConnection::process_ipfix(sIPFixHeader *header) {
 }
 
 void cIPFixConnection::process_ipfix_HandShake(sIPFixHeader *header) {
-	sIPFixHandShake *data = (sIPFixHandShake*)((u_char*)header + sizeof(sIPFixHeader));
-	cout << data->Hostname() << endl;
+	// sIPFixHandShake *data = (sIPFixHandShake*)((u_char*)header + sizeof(sIPFixHeader));
+	// cout << "Hostname: " << data->Hostname() << " |" << endl;
 	header->SetID = ntohs(_ipfix_HandShake_Response);
 	socket->write((u_char*)header, htons(header->Length));
 }
@@ -246,14 +252,28 @@ int checkIPFixData(SimpleBuffer *data, bool strict) {
 	unsigned counter = 0;
 	do {
 		sIPFixHeader *header = (sIPFixHeader*)(data->data() + offset);
-		if(ntohs(header->Length) > data->size() - offset) {
-			return(false);
+		if(ntohs(header->Version) != IPFIX_VERSION) {
+			if(strict) {
+				break;
+			}
+			++offset;
+			continue;
 		}
-		offset += ntohs(header->Length);
+		if(ntohs(header->Length) > data->size() - offset) {
+			break;
+		}
+		u_int16_t length = ntohs(header->Length);
+		if(length < sizeof(sIPFixHeader)) {
+			if(strict) {
+				break;
+			}
+			length = sizeof(sIPFixHeader);
+		}
+		offset += length;
 		++counter;
 	} while(offset < data->size() &&
 		data->size() - offset > sizeof(sIPFixHeader));
-	return(strict ? offset == data->size() : counter);
+	return(strict ? offset == data->size() : counter > 0);
 }
 
 
@@ -327,7 +347,7 @@ void IPFix_client_emulation(const char *pcap, vmIP client_ip, vmIP server_ip, vm
 						if(socket.read(buffer, &read_length)) {
 							read_buffer.add(buffer, read_length);
 						}
-						if(checkIPFixData(&read_buffer)) {
+						if(checkIPFixData(&read_buffer, true)) {
 							cout << "ok read" << endl;
 							break;
 						}
