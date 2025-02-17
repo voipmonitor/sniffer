@@ -2628,9 +2628,9 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 	e_sdp_media_type sdp_media_type[sdp_media_start_max];
 	vmPort sdp_media_port[sdp_media_start_max];
 	char *sdp_text_pointer = sdp_text;
-	while(sdp_media_start_count < sdp_media_start_max) {
+	while(sdp_media_start_count < sdp_media_start_max && sdp_text_pointer < sdp_text + sdp_text_len) {
 		s = _gettag(sdp_text_pointer,
-			    sdp_text_len - (sdp_media_start_count > 0 ? sdp_text_pointer - sdp_text: 0), 
+			    sdp_text_len - (sdp_text_pointer - sdp_text), 
 			    "\nm=", &l);
 		if(l > 0) {
 			if(sdp_media_start_count > 0 && !sdp_media_stop[sdp_media_start_count - 1]) {
