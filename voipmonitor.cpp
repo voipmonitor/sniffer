@@ -1468,6 +1468,7 @@ map<u_int16_t, bool> opt_audiocodes_sip_ports;
 bool opt_ipfix;
 string opt_ipfix_bind_ip;
 unsigned opt_ipfix_bind_port;
+vector<int> opt_ipfix_version;
 
 bool opt_hep;
 string opt_hep_bind_ip;
@@ -7378,6 +7379,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix",  &opt_ipfix));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("ipfix_bind_ip",  &opt_ipfix_bind_ip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("ipfix_bind_port",  &opt_ipfix_bind_port));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("ipfix_version",  &opt_ipfix_version));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep",  &opt_hep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("hep_bind_ip",  &opt_hep_bind_ip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hep_bind_port",  &opt_hep_bind_port));
@@ -8029,6 +8031,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "heap_use_time")			sverb.heap_use_time = 1;
 	else if(verbParam == "dtmf")				sverb.dtmf = 1;
 	else if(verbParam == "dtls")				sverb.dtls = 1;
+	else if(verbParam == "ipfix_counter")			sverb.ipfix_counter = 1;
 	else if(verbParam == "hep3")				sverb.hep3 = 1;
 	else if(verbParam == "cleanspool")			sverb.cleanspool = 1;
 	else if(verbParam == "cleanspool_disable_rm")		sverb.cleanspool_disable_rm = 1;

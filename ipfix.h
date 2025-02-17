@@ -274,8 +274,35 @@ private:
 	void push_packet(sIPFixHeader *header, string &data, bool tcp, timeval time, vmIPport src, vmIPport dst);
 };
 
+class cIpFixCounter {
+public:
+	void inc(vmIP ip) {
+		lock();
+		ip_counter[ip]++;
+		unlock();
+	}
+	void reset() {
+		lock();
+		ip_counter.clear();
+		unlock();
+	}
+	string get_ip_counter();
+	u_int64_t get_sum_counter();
+private:
+	void lock() {
+		__SYNC_LOCK(sync);
+	}
+	void unlock() {
+		__SYNC_UNLOCK(sync);
+	}
+private:
+	map<vmIP, u_int64_t> ip_counter;
+	volatile int sync;
+};
+
 
 int checkIPFixData(SimpleBuffer *data, bool strict);
+bool checkIPFixVersion(u_int16_t version);
 void IPFix_client_emulation(const char *pcap, vmIP client_ip, vmIP server_ip, vmIP destination_ip, vmPort destination_port);
 void IPFixServerStart(const char *host, int port);
 void IPFixServerStop();

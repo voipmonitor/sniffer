@@ -41,6 +41,7 @@
 #include "tcmalloc_hugetables.h"
 #include "heap_chunk.h"
 #include "transcribe.h"
+#include "ipfix.h"
 
 #ifndef FREEBSD
 #include <malloc.h>
@@ -3001,6 +3002,17 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				if(sverb.log_profiler) {
 					lapTime.push_back(getTimeMS_rdtsc());
 					lapTimeDescr.push_back("tsip");
+				}
+			}
+			if(sverb.ipfix_counter) {
+				extern bool opt_ipfix;
+				if(opt_ipfix) {
+					extern cIpFixCounter ipfix_counter;
+					string ipfix_counter_rslt = ipfix_counter.get_ip_counter();
+					if(!ipfix_counter_rslt.empty()) {
+						ipfix_counter.reset();
+						outStrStat << "ipfix[" << ipfix_counter_rslt << "] ";
+					}
 				}
 			}
 		}

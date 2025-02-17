@@ -9,7 +9,10 @@
 #include <pcap.h>
 
 
-#define IPFIX_VERSION 10
+#define IPFIX_VERSION_DEFAULT 10
+
+
+cIpFixCounter ipfix_counter;
 
 
 cIPFixServer::cIPFixServer() {
@@ -64,18 +67,19 @@ int cIPFixConnection::process(SimpleBuffer *data) {
 	unsigned counter = 0;
 	do {
 		sIPFixHeader *header = (sIPFixHeader*)(data->data() + offset);
-		if(ntohs(header->Version) != IPFIX_VERSION) {
+		if(!checkIPFixVersion(ntohs(header->Version))) {
 			++offset;
 			continue;
 		}
-		if(ntohs(header->Length) > data->size() - offset) {
+		u_int16_t length = ntohs(header->Length);
+		if(length > data->size() - offset) {
 			break;
 		}
-		process_ipfix(header);
-		u_int16_t length = ntohs(header->Length);
 		if(length < sizeof(sIPFixHeader)) {
-			length = sizeof(sIPFixHeader);
+			offset += sizeof(sIPFixHeader);
+			continue;
 		}
+		process_ipfix(header);
 		offset += length;
 		++counter;
 	} while(offset < data->size() &&
@@ -90,6 +94,9 @@ int cIPFixConnection::process(SimpleBuffer *data) {
 
 void cIPFixConnection::process_ipfix(sIPFixHeader *header) {
 	// cout << htons(header->SetID) << endl;
+	if(sverb.ipfix_counter) {
+		 ipfix_counter.inc(socket->getIPL());
+	}
 	switch(htons(header->SetID)) {
 	case _ipfix_HandShake:
 		process_ipfix_HandShake(header);
@@ -244,6 +251,30 @@ void cIPFixConnection::push_packet(sIPFixHeader *header, string &data, bool tcp,
 }
 
 
+string cIpFixCounter::get_ip_counter() {
+	string rslt;
+	lock();
+	for(map<vmIP, u_int64_t>::iterator iter = ip_counter.begin(); iter != ip_counter.end(); iter++) {
+		if(!rslt.empty()) {
+			rslt += ";";
+		}
+		rslt += iter->first.getString() + ":" + intToString(iter->second);
+	}
+	unlock();
+	return(rslt);
+}
+
+u_int64_t cIpFixCounter::get_sum_counter() {
+	u_int64_t sum = 0;
+	lock();
+	for(map<vmIP, u_int64_t>::iterator iter = ip_counter.begin(); iter != ip_counter.end(); iter++) {
+		sum += iter->second;
+	}
+	unlock();
+	return(sum);
+}
+
+
 int checkIPFixData(SimpleBuffer *data, bool strict) {
 	if(data->size() < sizeof(sIPFixHeader)) {
 		return(false);
@@ -252,28 +283,43 @@ int checkIPFixData(SimpleBuffer *data, bool strict) {
 	unsigned counter = 0;
 	do {
 		sIPFixHeader *header = (sIPFixHeader*)(data->data() + offset);
-		if(ntohs(header->Version) != IPFIX_VERSION) {
+		if(!checkIPFixVersion(ntohs(header->Version))) {
 			if(strict) {
 				break;
 			}
 			++offset;
 			continue;
 		}
-		if(ntohs(header->Length) > data->size() - offset) {
+		u_int16_t length = ntohs(header->Length);
+		if(length > data->size() - offset) {
 			break;
 		}
-		u_int16_t length = ntohs(header->Length);
 		if(length < sizeof(sIPFixHeader)) {
 			if(strict) {
 				break;
 			}
-			length = sizeof(sIPFixHeader);
+			offset += sizeof(sIPFixHeader); 
+			continue;
 		}
 		offset += length;
 		++counter;
 	} while(offset < data->size() &&
 		data->size() - offset > sizeof(sIPFixHeader));
 	return(strict ? offset == data->size() : counter > 0);
+}
+
+bool checkIPFixVersion(u_int16_t version) {
+	extern vector<int> opt_ipfix_version;
+	if(opt_ipfix_version.size()) {
+		for(unsigned i = 0; i < opt_ipfix_version.size(); i++) {
+			if(opt_ipfix_version[i] == version) {
+				return(true);
+			}
+		}
+	} else {
+		return(version == IPFIX_VERSION_DEFAULT);
+	}
+	return(false);
 }
 
 

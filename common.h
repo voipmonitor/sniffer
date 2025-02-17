@@ -106,6 +106,7 @@ struct sVerbose {
 	int heap_use_time;
 	int dtmf;
 	int dtls;
+	int ipfix_counter;
 	int hep3;
 	int cleanspool;
 	int cleanspool_disable_rm;
