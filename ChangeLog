@@ -1,3 +1,10 @@
+2025.02.2 17.02.2025
+====================
+- fix crash when creating audiograph - adding an error message handler to jpeg creation so that exit cannot be called [VS-1654]
+- fix potential crash when parsing sdp if sdp data ends with "m=X", where X is one character or \0 
+- ipfix fixes (stream stucked occasianlly) [VS-1682]
+
+
 2025.02.1 12.02.2025
 ====================
 - fix pcap deduplication command line --dedup-pcap [VG-2935]
