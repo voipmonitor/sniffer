@@ -109,7 +109,6 @@ extern char *webrtcportmatrix;
 extern char *diameter_tcp_portmatrix;
 extern MirrorIP *mirrorip;
 extern int opt_multi_filter;
-extern char user_filter[10*2048];
 extern Calltable *calltable;
 extern volatile int calls_counter;
 extern volatile int calls_for_store_counter;
@@ -7244,20 +7243,20 @@ bool PcapQueue_readFromInterface::openPcap(const char *filename, string *tempFil
 	}
 	u_int16_t pcapHandleIndex = register_pcap_handle(pcapHandle);
 	int pcapLinklayerHeaderType = pcap_datalink(pcapHandle);
-	if(*user_filter != '\0') {
+	if(this->filter.length() > 0) {
 		if(this->filterDataUse) {
 			pcap_freecode(&this->filterData);
 			this->filterDataUse = false;
 		}
-		if (pcap_compile(pcapHandle, &this->filterData, user_filter, 0, PCAP_NETMASK_UNKNOWN) == -1) {
+		if (pcap_compile(pcapHandle, &this->filterData, this->filter.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1) {
 			char user_filter_err[2048];
-			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", user_filter, strlen(user_filter) > 2000 ? "..." : "");
+			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", this->filter.c_str(), strlen(this->filter.c_str()) > 2000 ? "..." : "");
 			syslog(LOG_NOTICE, "packetbuffer - %s: can not parse filter %s: %s", filename, user_filter_err, pcap_geterr(pcapHandle));
 			return(false);
 		}
 		if (pcap_setfilter(pcapHandle, &this->filterData) == -1) {
 			char user_filter_err[2048];
-			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", user_filter, strlen(user_filter) > 2000 ? "..." : "");
+			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", this->filter.c_str(), strlen(this->filter.c_str()) > 2000 ? "..." : "");
 			syslog(LOG_NOTICE, "packetbuffer - %s: can not install filter %s: %s", filename, user_filter_err, pcap_geterr(pcapHandle));
 			return(false);
 		}
