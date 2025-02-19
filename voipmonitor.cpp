@@ -3760,10 +3760,10 @@ int main(int argc, char *argv[]) {
 		}
 
 		// `filter` must have the same number of items as `interface`
-		std::string filters = user_filter;
-		std::string interfaces = ifname;
+		vector<string> interfaces = split(ifname, split(",|;| |\t|\r|\n", "|"), true);
+		vector<string> filters = split(user_filter, ";", false, true);
 
-		if (std::count(filters.begin(), filters.end(), ';') != std::count(interfaces.begin(), interfaces.end(), ',')) {
+		if (interfaces.size() != filters.size()) {
 			puts("Number of filters must match number of interfaces.\n");
 			return(0);
 		}

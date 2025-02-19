@@ -4038,7 +4038,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 			mirrorip = new FILE_LINE(15024) MirrorIP(opt_mirrorip_src, opt_mirrorip_dst);
 		}
 	}
-	if(*this->filter.c_str() != '\0') {
+	if(this->filter.length() > 0) {
 		// Compile and apply the filter
 		struct bpf_program fp;
 		if (pcap_compile(this->pcapHandle, &fp, this->filter.c_str(), 0, this->interfaceMask) == -1) {
@@ -6700,7 +6700,7 @@ bool PcapQueue_readFromInterface::init() {
 	vector<string> interfaces = split(this->interfaceName.c_str(), split(",|;| |\t|\r|\n", "|"), true);
 
 	if (opt_multi_filter) {
-		filters = split(this->filter.c_str(), ';');
+		filters = split(this->filter.c_str(), ";", false, true);
 	}
 
 	for(size_t i = 0; i < interfaces.size(); i++) {
