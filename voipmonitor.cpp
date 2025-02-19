@@ -1095,6 +1095,7 @@ bool opt_scanpcapdir_disable_inotify = false;
 int opt_scanpcapmethod = IN_CLOSE_WRITE; // Specifies how to watch for new files in opt_scanpcapdir
 #endif
 int opt_promisc = 1;	// put interface to promisc mode?
+int opt_multi_filter = 0;
 int opt_use_oneshot_buffer = 1;
 int opt_snaplen = 0;
 char pcapcommand[4092] = "";
@@ -3745,7 +3746,29 @@ int main(int argc, char *argv[]) {
 			return(0);
 		}
 	}
-	
+
+	if (opt_multi_filter) {
+		if (opt_pcap_queue_disable) {
+			puts("Filter per interface is not supported when packetbuffer is disabled.\n");
+			return(0);
+		}
+
+		// @todo Create a separate filter config for pcap dir scanning
+		if (opt_scanpcapdir[0] != '\0') {
+			puts("Filter per interface is not supported when scanpcapdir is enabled.\n");
+			return(0);
+		}
+
+		// `filter` must have the same number of items as `interface`
+		vector<string> interfaces = split(ifname, split(",|;| |\t|\r|\n", "|"), true);
+		vector<string> filters = split(user_filter, ";", false, true);
+
+		if (interfaces.size() != filters.size()) {
+			puts("Number of filters must match number of interfaces.\n");
+			return(0);
+		}
+	}
+
 	if(updateSchema) {
 		SipHistorySetting();
 		return(SqlInitSchema() > 0 ? 0 : 1);
@@ -5115,6 +5138,7 @@ int main_init_read() {
 						     is_read_from_file_by_pb() ? 
 						      "read_from_file" :
 						      "scanpcapdir");
+			pcapQueueI->setFilter(user_filter);
 			pcapQueueI->setEnableAutoTerminate(false);
 		}
 		
@@ -6348,6 +6372,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_vdev", &opt_dpdk_vdev));
 			normal();
 			addConfigItem(new FILE_LINE(42135) cConfigItem_yesno("promisc", &opt_promisc));
+			addConfigItem(new FILE_LINE(42135) cConfigItem_yesno("filter_multi_interface", &opt_multi_filter));
 			addConfigItem(new FILE_LINE(42136) cConfigItem_string("filter", user_filter, sizeof(user_filter)));
 			addConfigItem(new FILE_LINE(42137) cConfigItem_ip_port("mirror_bind", &opt_pcap_queue_receive_from_ip_port));
 			addConfigItem((new FILE_LINE(42138) cConfigItem_string("mirror_bind_ip"))

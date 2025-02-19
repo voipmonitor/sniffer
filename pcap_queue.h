@@ -423,6 +423,7 @@ public:
 	PcapQueue_readFromInterface_base(const char *interfaceName = NULL);
 	virtual ~PcapQueue_readFromInterface_base();
 	void setInterfaceName(const char *interfaceName);
+	void setFilter(const char *filter);
 protected:
 	virtual bool startCapture(string *error, sDpdkConfig *dpdkConfig);
 	inline int pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet,
@@ -450,6 +451,7 @@ protected:
 	virtual inline void tryForcePush() {}
 protected:
 	string interfaceName;
+	string filter;
 	bpf_u_int32 interfaceNet;
 	bpf_u_int32 interfaceMask;
 	pcap_t *pcapHandle;
@@ -890,6 +892,7 @@ public:
 	PcapQueue_readFromInterface(const char *nameQueue);
 	virtual ~PcapQueue_readFromInterface();
 	void setInterfaceName(const char *interfaceName);
+	void setFilter(const char *filter);
 	void terminate();
 	bool openPcap(const char *filename, string *tempFileName = NULL);
 	bool isPcapEnd() {

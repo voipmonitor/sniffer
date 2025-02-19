@@ -108,7 +108,7 @@ extern char *httpportmatrix;
 extern char *webrtcportmatrix;
 extern char *diameter_tcp_portmatrix;
 extern MirrorIP *mirrorip;
-extern char user_filter[10*2048];
+extern int opt_multi_filter;
 extern Calltable *calltable;
 extern volatile int calls_counter;
 extern volatile int calls_for_store_counter;
@@ -3905,6 +3905,10 @@ void PcapQueue_readFromInterface_base::setInterfaceName(const char *interfaceNam
 	this->interfaceName = interfaceName;
 }
 
+void PcapQueue_readFromInterface_base::setFilter(const char *filter) {
+	this->filter = filter;
+}
+
 bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *dpdkConfig) {
 	*error = "";
 	static volatile int _sync_start_capture = 0;
@@ -3948,7 +3952,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 		return(true);
 	}
 	if(VERBOSE) {
-		syslog(LOG_NOTICE, "packetbuffer - %s: capturing", this->getInterfaceName().c_str());
+		syslog(LOG_NOTICE, "packetbuffer - %s: capturing - pcap filter: %s", this->getInterfaceName().c_str(), this->filter.length() > 0 ? this->filter.c_str() : "<none>");
 	}
 	if(opt_use_dpdk && dpdkConfig && dpdkConfig->device[0]) {
 		this->dpdkHandle = create_dpdk_handle();
@@ -4033,12 +4037,12 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 			mirrorip = new FILE_LINE(15024) MirrorIP(opt_mirrorip_src, opt_mirrorip_dst);
 		}
 	}
-	if(*user_filter != '\0') {
+	if(this->filter.length() > 0) {
 		// Compile and apply the filter
 		struct bpf_program fp;
-		if (pcap_compile(this->pcapHandle, &fp, user_filter, 0, this->interfaceMask) == -1) {
+		if (pcap_compile(this->pcapHandle, &fp, this->filter.c_str(), 0, this->interfaceMask) == -1) {
 			char user_filter_err[2048];
-			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", user_filter, strlen(user_filter) > 2000 ? "..." : "");
+			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", this->filter.c_str(), strlen(this->filter.c_str()) > 2000 ? "..." : "");
 			snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: can not parse filter %s: %s", this->getInterfaceName().c_str(), user_filter_err, pcap_geterr(this->pcapHandle));
 			if(opt_fork) {
 				ostringstream outStr;
@@ -4049,7 +4053,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 		}
 		if (pcap_setfilter(this->pcapHandle, &fp) == -1) {
 			char user_filter_err[2048];
-			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", user_filter, strlen(user_filter) > 2000 ? "..." : "");
+			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", this->filter.c_str(), strlen(this->filter.c_str()) > 2000 ? "..." : "");
 			snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: can not install filter %s: %s", this->getInterfaceName().c_str(), user_filter_err, pcap_geterr(this->pcapHandle));
 			if(opt_fork) {
 				ostringstream outStr;
@@ -4801,6 +4805,7 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 	this->headerPacketStackSnaplen = NULL;
 	this->headerPacketStackShort = NULL;
 	this->headerPacketStackShortPacketLen = 0;
+	this->filter = filter;
 	if(typeThread == read) {
 		this->headerPacketStackSnaplen = new FILE_LINE(15030) cHeaderPacketStack(opt_pcap_queue_iface_qring_size, get_pcap_snaplen());
 		if(opt_pcap_queue_iface_dedup_separate_threads_extend == 2) {
@@ -6673,6 +6678,10 @@ void PcapQueue_readFromInterface::setInterfaceName(const char* interfaceName) {
 	this->interfaceName = interfaceName;
 }
 
+void PcapQueue_readFromInterface::setFilter(const char* filter) {
+	this->filter = filter;
+}
+
 void PcapQueue_readFromInterface::terminate() {
 	for(int i = 0; i < this->readThreadsCount; i++) {
 		this->readThreads[i]->terminate();
@@ -6681,14 +6690,22 @@ void PcapQueue_readFromInterface::terminate() {
 }
 
 bool PcapQueue_readFromInterface::init() {
+	vector<string> filters;
+
 	if(opt_scanpcapdir[0] ||
 	   !opt_pcap_queue_iface_separate_threads) {
 		return(true);
 	}
 	vector<string> interfaces = split(this->interfaceName.c_str(), split(",|;| |\t|\r|\n", "|"), true);
+
+	if (opt_multi_filter) {
+		filters = split(this->filter.c_str(), ";", false, true);
+	}
+
 	for(size_t i = 0; i < interfaces.size(); i++) {
 		if(this->readThreadsCount < READ_THREADS_MAX - 1) {
 			this->readThreads[this->readThreadsCount] = new FILE_LINE(15047) PcapQueue_readFromInterfaceThread(interfaces[i].c_str(), PcapQueue_readFromInterfaceThread::read, NULL, NULL, this);
+			this->readThreads[this->readThreadsCount]->setFilter(opt_multi_filter ? filters[i].c_str() : this->filter.c_str());
 			++this->readThreadsCount;
 		}
 	}
@@ -7226,20 +7243,20 @@ bool PcapQueue_readFromInterface::openPcap(const char *filename, string *tempFil
 	}
 	u_int16_t pcapHandleIndex = register_pcap_handle(pcapHandle);
 	int pcapLinklayerHeaderType = pcap_datalink(pcapHandle);
-	if(*user_filter != '\0') {
+	if(this->filter.length() > 0) {
 		if(this->filterDataUse) {
 			pcap_freecode(&this->filterData);
 			this->filterDataUse = false;
 		}
-		if (pcap_compile(pcapHandle, &this->filterData, user_filter, 0, PCAP_NETMASK_UNKNOWN) == -1) {
+		if (pcap_compile(pcapHandle, &this->filterData, this->filter.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1) {
 			char user_filter_err[2048];
-			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", user_filter, strlen(user_filter) > 2000 ? "..." : "");
+			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", this->filter.c_str(), strlen(this->filter.c_str()) > 2000 ? "..." : "");
 			syslog(LOG_NOTICE, "packetbuffer - %s: can not parse filter %s: %s", filename, user_filter_err, pcap_geterr(pcapHandle));
 			return(false);
 		}
 		if (pcap_setfilter(pcapHandle, &this->filterData) == -1) {
 			char user_filter_err[2048];
-			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", user_filter, strlen(user_filter) > 2000 ? "..." : "");
+			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", this->filter.c_str(), strlen(this->filter.c_str()) > 2000 ? "..." : "");
 			syslog(LOG_NOTICE, "packetbuffer - %s: can not install filter %s: %s", filename, user_filter_err, pcap_geterr(pcapHandle));
 			return(false);
 		}
