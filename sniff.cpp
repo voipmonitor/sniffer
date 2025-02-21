@@ -7630,7 +7630,7 @@ inline Call *process_packet__merge(packet_s_process *packetS, char *callidstr, i
 		long unsigned int l2 = 0;
 		unsigned char buf[1024];
 		s2 = gettag_sip(packetS, opt_callidmerge_header, &l2);
-		if(l2) { // header exists
+		if(l2 && l2 < 1024) { // header exists
 			if(opt_callidmerge_secret[0] != '\0') {
 				// header is encoded - decode it 
 				char c = s2[l2];
