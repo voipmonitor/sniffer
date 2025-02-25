@@ -9,6 +9,7 @@
 #include "config_param.h"
 #include "voipmonitor.h"
 #include "sql_db.h"
+#include "tools_global.h"
 
 #ifdef FREEBSD
 #include <sys/socket.h>
@@ -2259,6 +2260,96 @@ bool cConfigItem_custom_headers::setParamFromValueStr(string value_str, bool ena
 void cConfigItem_custom_headers::initBeforeSet() {
 	if(param_custom_headers) {
 		param_custom_headers->clear();
+	}
+}
+
+cConfigItem_dstrings::cConfigItem_dstrings(const char* name, vector<dstring> *dstrings)
+ : cConfigItem(name) {
+	init();
+	this->param_dstrings = dstrings;
+}
+
+string cConfigItem_dstrings::getValueStr(bool configFile) {
+	if(!param_dstrings || !param_dstrings->size()) {
+		return("");
+	}
+	ostringstream outStr;
+	int counter = 0;
+	for(vector<dstring>::iterator iter = param_dstrings->begin(); iter != param_dstrings->end(); iter++) {
+		if(counter) {
+			if(configFile) {
+				outStr << endl << config_name << " = ";
+			} else {
+				outStr << ';';
+			}
+		}
+		outStr << iter->str[0] << ':' << iter->str[1];
+		++counter;
+	}
+	return(outStr.str());
+}
+
+string cConfigItem_dstrings::normalizeStringValueForCmp(string value) {
+	vector<string> value_vect = split(value.c_str(), ";", true);
+	string rslt;
+	for(vector<string>::iterator iter = value_vect.begin(); iter != value_vect.end(); iter++) {
+		if(!rslt.empty()) {
+			rslt += ";";
+		}
+		string str = *iter;
+		size_t pos_sep = str.find(':');
+		if(pos_sep != string::npos) {
+			string str1 = trim_str(str.substr(0, pos_sep));
+			string str2 = trim_str(str.substr(pos_sep + 1));
+			if(str1.length() && str2.length()) {
+				rslt += str1 + ':' + str2;
+			}
+		}
+		rslt += *iter;
+	}
+	return(rslt);
+}
+
+bool cConfigItem_dstrings::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(getValuesFromConfigFile(ini, enableInitBeforeSet), enableInitBeforeSet, enableClearBeforeFirstSet));
+}
+
+bool cConfigItem_dstrings::setParamFromValueStr(string value_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(split(value_str, ';'), enableInitBeforeSet, enableClearBeforeFirstSet));
+}
+
+bool cConfigItem_dstrings::setParamFromValuesStr(vector<string> list_values_str, bool enableInitBeforeSet, bool /*enableClearBeforeFirstSet*/) {
+	if(!param_dstrings) {
+		return(false);
+	}
+	if(list_values_str.empty()) {
+		if(enableInitBeforeSet) {
+			initBeforeSet();
+		}
+		return(false);
+	}
+	int ok = 0;
+	if(enableInitBeforeSet) {
+		initBeforeSet();
+	}
+	for(vector<string>::iterator iter = list_values_str.begin(); iter != list_values_str.end(); iter++) {
+		string str = *iter;
+		size_t pos_sep = str.find(':');
+		if(pos_sep != string::npos) {
+			string str1 = trim_str(str.substr(0, pos_sep));
+			string str2 = trim_str(str.substr(pos_sep + 1));
+			if(str1.length() && str2.length()) {
+				param_dstrings->push_back(dstring(str1, str2));
+				ok++;
+			}
+		}
+	}
+	return(ok > 0);
+}
+
+void cConfigItem_dstrings::initBeforeSet() {
+	if(param_dstrings) {
+		param_dstrings->clear();
 	}
 }
 

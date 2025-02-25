@@ -1041,6 +1041,7 @@ eSnifferMode sniffer_mode = snifferMode_read_from_interface;
 char ifname[1024];	// Specifies the name of the network device to use for 
 			// the network lookup, for example, eth0
 vector<string> ifnamev;
+vector<dstring> ifname_libpcap_filter;
 vector<vmIP> if_filter_ip;
 vector<vmIPmask> if_filter_net;
 bool opt_if_filter_ip_quick = true;
@@ -1058,6 +1059,8 @@ int opt_dpdk_read_usleep_type = 0;
 int opt_dpdk_worker_usleep_if_no_packet = 1;
 int opt_dpdk_worker_usleep_type = 0;
 int opt_dpdk_nb_rx = 4096;
+int opt_dpdk_nb_rxq = 1;
+bool opt_dpdk_nb_rxq_rss = true;
 int opt_dpdk_nb_tx = 1024;
 int opt_dpdk_nb_mbufs = 1024;
 bool opt_dpdk_nb_mbufs_strictly = false;
@@ -5110,11 +5113,14 @@ int main_init_read() {
 	
 		if((ifname[0] && strcmp(ifname, "--")) || is_read_from_file_by_pb() || opt_scanpcapdir[0]) {
 			pcapQueueI = new FILE_LINE(42035) PcapQueue_readFromInterface("interface");
-			pcapQueueI->setInterfaceName(ifname[0] ? 
-						      ifname :
-						     is_read_from_file_by_pb() ? 
-						      "read_from_file" :
-						      "scanpcapdir");
+			pcapQueueI->setInterfaces(ifname[0] ? 
+						   ifname :
+						  is_read_from_file_by_pb() ? 
+						   "read_from_file" :
+						   "scanpcapdir");
+			if(ifname_libpcap_filter.size()) {
+				pcapQueueI->setFiltersByInterface(ifname_libpcap_filter);
+			}
 			pcapQueueI->setEnableAutoTerminate(false);
 		}
 		
@@ -6275,6 +6281,7 @@ void cConfig::addConfigItems() {
 			setDisableIfBegin("sniffer_mode!" + snifferMode_read_from_interface_str);
 			addConfigItem(new FILE_LINE(42132) cConfigItem_string("interface", ifname, sizeof(ifname)));
 				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_dstrings("interface_libpcap_filter", &ifname_libpcap_filter));
 				addConfigItem(new FILE_LINE(0) cConfigItem_hosts("interface_ip_filter", &if_filter_ip, &if_filter_net));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("interface_ip_filter_quick", &opt_if_filter_ip_quick));
@@ -6317,6 +6324,8 @@ void cConfig::addConfigItems() {
 						->setDefaultValueStr("std"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_nb_rx", &opt_dpdk_nb_rx));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_nb_tx", &opt_dpdk_nb_tx));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_nb_rxq", &opt_dpdk_nb_rxq));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_nb_rxq_rss", &opt_dpdk_nb_rxq_rss));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_nb_mbufs", &opt_dpdk_nb_mbufs));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_nb_mbufs_strictly", &opt_dpdk_nb_mbufs_strictly));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_pkt_burst", &opt_dpdk_pkt_burst));

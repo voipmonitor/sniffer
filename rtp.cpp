@@ -1197,6 +1197,7 @@ bool RTP::read(CallBranch *c_branch,
 		     << " direction: " << iscaller_description(iscaller) 
 		     << " packets_received: " << this->stats.received
 		     << " counter: " << read_rtp_counter
+		     << " ifname: " << (ifname ? ifname : "undefined")
 		     << endl;
 	}
 	#endif

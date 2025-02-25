@@ -412,6 +412,12 @@ struct pcapProcessData {
 
 class PcapQueue_readFromInterface_base {
 public:
+public:
+	struct sInterface {
+		string interface;
+		string alias;
+		string filter;
+	};
 	struct sCheckProtocolData {
 		sll_header *header_sll;
 		ether_header *header_eth;
@@ -420,9 +426,8 @@ public:
 		u_int16_t vlan;
 	};
 public:
-	PcapQueue_readFromInterface_base(const char *interfaceName = NULL);
+	PcapQueue_readFromInterface_base(sInterface *interface = NULL);
 	virtual ~PcapQueue_readFromInterface_base();
-	void setInterfaceName(const char *interfaceName);
 protected:
 	virtual bool startCapture(string *error, sDpdkConfig *dpdkConfig);
 	inline int pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet,
@@ -439,7 +444,8 @@ protected:
 	virtual ulong getCountPacketDrop();
 	virtual string getStatPacketDrop();
 	virtual void initStat_interface();
-	virtual string getInterfaceName(bool simple = false);
+	virtual string getInterface();
+	virtual string getInterfaceAlias();
 	inline bool useOneshotBuffer() {
 		return(libpcap_buffer);
 	}
@@ -449,7 +455,9 @@ protected:
 	void terminatingAtEndOfReadPcap();
 	virtual inline void tryForcePush() {}
 protected:
-	string interfaceName;
+	string interfaces;
+	vector<dstring> filtersByInterface;
+	sInterface interface;
 	bpf_u_int32 interfaceNet;
 	bpf_u_int32 interfaceMask;
 	pcap_t *pcapHandle;
@@ -648,7 +656,7 @@ public:
 		sCheckProtocolData checkProtocolData;
 		sDpdkHeaderPacket headerPacket;
 	};
-	PcapQueue_readFromInterfaceThread(const char *interfaceName, eTypeInterfaceThread typeThread = read,
+	PcapQueue_readFromInterfaceThread(sInterface interface, eTypeInterfaceThread typeThread = read,
 					  PcapQueue_readFromInterfaceThread *readThread = NULL,
 					  PcapQueue_readFromInterfaceThread *prevThread = NULL,
 					  class PcapQueue_readFromInterface *parent = NULL);
@@ -889,7 +897,8 @@ class PcapQueue_readFromInterface : public PcapQueue, protected PcapQueue_readFr
 public:
 	PcapQueue_readFromInterface(const char *nameQueue);
 	virtual ~PcapQueue_readFromInterface();
-	void setInterfaceName(const char *interfaceName);
+	void setInterfaces(const char *interfaces);
+	void setFiltersByInterface(vector<dstring> filters);
 	void terminate();
 	bool openPcap(const char *filename, string *tempFileName = NULL);
 	bool isPcapEnd() {
@@ -897,6 +906,7 @@ public:
 	}
 protected:
 	bool init();
+	void parseInterfaces(vector<sInterface> *interfaces);
 	bool initThread(void *arg, unsigned int arg2, string *error);
 	void *threadFunction(void *arg, unsigned int arg2);
 	void threadFunction_blocks();
@@ -916,7 +926,8 @@ protected:
 	virtual string getStatPacketDrop();
 	void initStat_interface();
 	string pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, int divide, int pstatDataIndex);
-	string getInterfaceName(bool simple = false);
+	string getInterface();
+	string getInterfaceAlias();
 	void prepareLogTraffic();
 private:
 	inline void check_bypass_buffer();

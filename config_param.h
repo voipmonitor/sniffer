@@ -628,6 +628,26 @@ protected:
 	vector<dstring> *param_custom_headers;
 };
 
+class cConfigItem_dstrings : public cConfigItem {
+public:
+	cConfigItem_dstrings(const char* name, vector<dstring> *dstrings);
+	string getValueStr(bool configFile = false);
+	string normalizeStringValueForCmp(string value);
+protected:
+	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValuesStr(vector<string> list_values_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet);
+	void initBeforeSet();
+	void initParamPointers() {
+		param_dstrings = NULL;
+	}
+	string getTypeName() {
+		return("dstrings_list");
+	}
+protected:
+	vector<dstring> *param_dstrings;
+};
+
 class cConfigItem_type_compress : public cConfigItem_yesno {
 public:
 	cConfigItem_type_compress(const char* name, CompressStream::eTypeCompress *type_compress = NULL);

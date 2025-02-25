@@ -3795,9 +3795,9 @@ inline void *_PcapQueue_writeThreadFunction(void *arg) {
 }
 
 
-PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *interfaceName) {
-	if(interfaceName) {
-		this->interfaceName = interfaceName;
+PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(sInterface *interface) {
+	if(interface) {
+		this->interface = *interface;
 	}
 	this->interfaceNet = 0;
 	this->interfaceMask = 0;
@@ -3884,11 +3884,11 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *i
 PcapQueue_readFromInterface_base::~PcapQueue_readFromInterface_base() {
 	if(this->pcapHandle) {
 		pcap_close(this->pcapHandle);
-		syslog(LOG_NOTICE, "packetbuffer terminating: pcap_close pcapHandle (%s)", interfaceName.c_str());
+		syslog(LOG_NOTICE, "packetbuffer terminating: pcap_close pcapHandle (%s)", getInterfaceAlias().c_str());
 	}
 	if(this->pcapDumpHandle) {
 		pcap_dump_close(this->pcapDumpHandle);
-		syslog(LOG_NOTICE, "packetbuffer terminating: pcap_close pcapDumpHandle (%s)", interfaceName.c_str());
+		syslog(LOG_NOTICE, "packetbuffer terminating: pcap_close pcapDumpHandle (%s)", getInterfaceAlias().c_str());
 	}
 	if(this->dpdkHandle) {
 		destroy_dpdk_handle(this->dpdkHandle);
@@ -3899,10 +3899,6 @@ PcapQueue_readFromInterface_base::~PcapQueue_readFromInterface_base() {
 	if(filter_ip_std) {
 		delete filter_ip_std;
 	}
-}
-
-void PcapQueue_readFromInterface_base::setInterfaceName(const char *interfaceName) {
-	this->interfaceName = interfaceName;
 }
 
 bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *dpdkConfig) {
@@ -3941,14 +3937,14 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 			char pname[2048];
 			snprintf(pname, sizeof(pname), "%s/dump-%s-%u.pcap", 
 				 getPcapdumpDir(),
-				 this->interfaceName.c_str(), (unsigned int)time(NULL));
+				 this->getInterfaceAlias().c_str(), (unsigned int)time(NULL));
 			this->pcapDumpHandle = pcap_dump_open(this->pcapHandle, pname);
 		}
 		__SYNC_UNLOCK(_sync_start_capture);
 		return(true);
 	}
 	if(VERBOSE) {
-		syslog(LOG_NOTICE, "packetbuffer - %s: capturing", this->getInterfaceName().c_str());
+		syslog(LOG_NOTICE, "packetbuffer - %s: capturing", this->getInterfaceAlias().c_str());
 	}
 	if(opt_use_dpdk && dpdkConfig && dpdkConfig->device[0]) {
 		this->dpdkHandle = create_dpdk_handle();
@@ -3964,11 +3960,11 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 			this->dpdkHandle = NULL;
 		}
 	}
-	if(pcap_lookupnet(this->interfaceName.c_str(), &this->interfaceNet, &this->interfaceMask, errbuf) == -1) {
+	if(pcap_lookupnet(this->getInterface().c_str(), &this->interfaceNet, &this->interfaceMask, errbuf) == -1) {
 		this->interfaceMask = PCAP_NETMASK_UNKNOWN;
 	}
-	if((this->pcapHandle = pcap_create(this->interfaceName.c_str(), errbuf)) == NULL) {
-		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_create failed: %s", this->getInterfaceName().c_str(), errbuf); 
+	if((this->pcapHandle = pcap_create(this->getInterface().c_str(), errbuf)) == NULL) {
+		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_create failed: %s", this->getInterfaceAlias().c_str(), errbuf); 
 		goto failed;
 	}
 	this->pcapHandleIndex = register_pcap_handle(this->pcapHandle);
@@ -3976,28 +3972,28 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 	global_pcap_handle_index = this->pcapHandleIndex;
 	int status;
 	if((status = pcap_set_snaplen(this->pcapHandle, this->pcap_snaplen)) != 0) {
-		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_snaplen failed", this->getInterfaceName().c_str()); 
+		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_snaplen failed", this->getInterfaceAlias().c_str()); 
 		goto failed;
 	}
 	if((status = pcap_set_promisc(this->pcapHandle, this->pcap_promisc)) != 0) {
-		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_set_promisc failed", this->getInterfaceName().c_str()); 
+		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_set_promisc failed", this->getInterfaceAlias().c_str()); 
 		goto failed;
 	}
 	if((status = pcap_set_timeout(this->pcapHandle, this->pcap_timeout)) != 0) {
-		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_set_timeout failed", this->getInterfaceName().c_str()); 
+		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_set_timeout failed", this->getInterfaceAlias().c_str()); 
 		goto failed;
 	}
 	if((status = pcap_set_buffer_size(this->pcapHandle, this->pcap_buffer_size)) != 0) {
-		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_set_buffer_size failed", this->getInterfaceName().c_str()); 
+		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_set_buffer_size failed", this->getInterfaceAlias().c_str()); 
 		goto failed;
 	}
 	rssBeforeActivate = getRss() / 1024 / 1024;
 	if((status = pcap_activate(this->pcapHandle)) != 0) {
-		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: libpcap error: %s", this->getInterfaceName().c_str(), pcap_geterr(this->pcapHandle)); 
+		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: libpcap error: %s", this->getInterfaceAlias().c_str(), pcap_geterr(this->pcapHandle)); 
 		cLogSensor::log(cLogSensor::error, errorstr);
 		if(opt_fork) {
 			ostringstream outStr;
-			outStr << this->getInterfaceName() << ": libpcap error: " << pcap_geterr(this->pcapHandle);
+			outStr << this->getInterfaceAlias() << ": libpcap error: " << pcap_geterr(this->pcapHandle);
 			daemonizeOutput(outStr.str());
 		}
 		goto failed;
@@ -4013,10 +4009,10 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 		}
 		if(rssAfterActivate && rssAfterActivate > rssBeforeActivate &&
 		   rssAfterActivate < rssBeforeActivate + this->pcap_buffer_size * 0.9 / 1024 / 1024) {
-			syslog(LOG_NOTICE, "packetbuffer - %s: ringbuffer has only %lu MB which means that your kernel does not support ringbuffer (<2.6.32) or you have invalid ringbuffer setting", this->getInterfaceName().c_str(), rssAfterActivate - rssBeforeActivate); 
+			syslog(LOG_NOTICE, "packetbuffer - %s: ringbuffer has only %lu MB which means that your kernel does not support ringbuffer (<2.6.32) or you have invalid ringbuffer setting", this->getInterfaceAlias().c_str(), rssAfterActivate - rssBeforeActivate); 
 			if(opt_fork) {
 				ostringstream outStr;
-				outStr << this->getInterfaceName() << ": ringbuffer has only " << (rssAfterActivate - rssBeforeActivate) << " MB which means that your kernel does not support ringbuffer (<2.6.32) or you have invalid ringbuffer setting";
+				outStr << this->getInterfaceAlias() << ": ringbuffer has only " << (rssAfterActivate - rssBeforeActivate) << " MB which means that your kernel does not support ringbuffer (<2.6.32) or you have invalid ringbuffer setting";
 				daemonizeOutput(outStr.str());
 			}
 		}
@@ -4026,34 +4022,45 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 	}
 	if(opt_mirrorip) {
 		if(opt_mirrorip_dst[0] == '\0') {
-			syslog(LOG_ERR, "packetbuffer - %s: mirroring packets was disabled because mirroripdst is not set", this->getInterfaceName().c_str());
+			syslog(LOG_ERR, "packetbuffer - %s: mirroring packets was disabled because mirroripdst is not set", this->getInterfaceAlias().c_str());
 			opt_mirrorip = 0;
 		} else {
-			syslog(LOG_NOTICE, "packetbuffer - %s: starting mirroring [%s]->[%s]", opt_mirrorip_src, opt_mirrorip_dst, this->getInterfaceName().c_str());
+			syslog(LOG_NOTICE, "packetbuffer - %s: starting mirroring [%s]->[%s]", opt_mirrorip_src, opt_mirrorip_dst, this->getInterfaceAlias().c_str());
 			mirrorip = new FILE_LINE(15024) MirrorIP(opt_mirrorip_src, opt_mirrorip_dst);
 		}
 	}
-	if(*user_filter != '\0') {
+	if(*user_filter != '\0' || !this->interface.filter.empty()) {
+		vector<string> filters_v;
+		if(*user_filter != '\0') {
+			filters_v.push_back(user_filter);
+		}
+		if(!this->interface.filter.empty()) {
+			filters_v.push_back(this->interface.filter);
+		}
+		string filters = filters_v.size() == 1 ?
+				  filters_v[0] :
+				  "(" + implode(filters_v, ") and (") + ")";
+		syslog(LOG_ERR, "packetbuffer - %s: set filter: %s", this->getInterfaceAlias().c_str(), filters.c_str());
 		// Compile and apply the filter
 		struct bpf_program fp;
-		if (pcap_compile(this->pcapHandle, &fp, user_filter, 0, this->interfaceMask) == -1) {
+		if (pcap_compile(this->pcapHandle, &fp, filters.c_str(), 0, this->interfaceMask) == -1) {
 			char user_filter_err[2048];
-			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", user_filter, strlen(user_filter) > 2000 ? "..." : "");
-			snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: can not parse filter %s: %s", this->getInterfaceName().c_str(), user_filter_err, pcap_geterr(this->pcapHandle));
+			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", filters.c_str(), filters.length() > 2000 ? "..." : "");
+			snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: can not parse filter %s: %s", this->getInterfaceAlias().c_str(), user_filter_err, pcap_geterr(this->pcapHandle));
 			if(opt_fork) {
 				ostringstream outStr;
-				outStr << this->getInterfaceName() << ": can not parse filter " << user_filter_err << ": " << pcap_geterr(this->pcapHandle);
+				outStr << this->getInterfaceAlias() << ": can not parse filter " << user_filter_err << ": " << pcap_geterr(this->pcapHandle);
 				daemonizeOutput(outStr.str());
 			}
 			goto failed;
 		}
 		if (pcap_setfilter(this->pcapHandle, &fp) == -1) {
 			char user_filter_err[2048];
-			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", user_filter, strlen(user_filter) > 2000 ? "..." : "");
-			snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: can not install filter %s: %s", this->getInterfaceName().c_str(), user_filter_err, pcap_geterr(this->pcapHandle));
+			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", filters.c_str(), filters.length() > 2000 ? "..." : "");
+			snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: can not install filter %s: %s", this->getInterfaceAlias().c_str(), user_filter_err, pcap_geterr(this->pcapHandle));
 			if(opt_fork) {
 				ostringstream outStr;
-				outStr << this->getInterfaceName() << ": can not install filter " << user_filter_err << ": " << pcap_geterr(this->pcapHandle);
+				outStr << this->getInterfaceAlias() << ": can not install filter " << user_filter_err << ": " << pcap_geterr(this->pcapHandle);
 				daemonizeOutput(outStr.str());
 			}
 			goto failed;
@@ -4061,16 +4068,16 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 	}
 	this->pcapLinklayerHeaderType = pcap_datalink(this->pcapHandle);
 	if(!this->pcapLinklayerHeaderType) {
-		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_datalink failed", this->getInterfaceName().c_str()); 
+		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_datalink failed", this->getInterfaceAlias().c_str()); 
 		goto failed;
 	}
 	global_pcap_dlink = this->pcapLinklayerHeaderType;
-//	syslog(LOG_NOTICE, "DLT - %s: %i", this->getInterfaceName().c_str(), this->pcapLinklayerHeaderType);
+//	syslog(LOG_NOTICE, "DLT - %s: %i", this->getInterfaceAlias().c_str(), this->pcapLinklayerHeaderType);
 	if(opt_pcapdump) {
 		char pname[2048];
 		snprintf(pname, sizeof(pname), "%s/dump-%s-%u.pcap", 
 			 getPcapdumpDir(),
-			 this->interfaceName.c_str(), (unsigned int)time(NULL));
+			 this->getInterfaceAlias().c_str(), (unsigned int)time(NULL));
 		this->pcapDumpHandle = pcap_dump_open(this->pcapHandle, pname);
 	}
 	__SYNC_UNLOCK(_sync_start_capture);
@@ -4116,7 +4123,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 		if(VERBOSE) {
 			u_int64_t actTime = getTimeMS();
 			if(actTime - 1000 > this->lastTimeLogErrPcapNextExNullPacket) {
-				syslog(LOG_NOTICE,"packetbuffer - %s: NULL PACKET, pcap response is %d", this->getInterfaceName().c_str(), res);
+				syslog(LOG_NOTICE,"packetbuffer - %s: NULL PACKET, pcap response is %d", this->getInterfaceAlias().c_str(), res);
 				this->lastTimeLogErrPcapNextExNullPacket = actTime;
 			}
 		}
@@ -4125,14 +4132,14 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 		if(VERBOSE) {
 			u_int64_t actTime = getTimeMS();
 			if(actTime - 1000 > this->lastTimeLogErrPcapNextExErrorReading) {
-				syslog(LOG_NOTICE,"packetbuffer - %s: error reading packets: %s", this->getInterfaceName().c_str(), pcap_geterr(this->pcapHandle));
+				syslog(LOG_NOTICE,"packetbuffer - %s: error reading packets: %s", this->getInterfaceAlias().c_str(), pcap_geterr(this->pcapHandle));
 				this->lastTimeLogErrPcapNextExErrorReading = actTime;
 			}
 		}
 		return(0);
 	} else if(res == -2) {
 		if(VERBOSE && opt_pb_read_from_file[0]) {
-			syslog(LOG_NOTICE,"packetbuffer - %s: end of pcap file", this->getInterfaceName().c_str());
+			syslog(LOG_NOTICE,"packetbuffer - %s: end of pcap file", this->getInterfaceAlias().c_str());
 			vector<string> _files = split(opt_pb_read_from_file, "@@");
 			string _file;
 			bool _next_read = false;
@@ -4399,7 +4406,7 @@ bool PcapQueue_readFromInterface_base::check_protocol(pcap_pkthdr* header, u_cha
 				if(actTime_ms < this->firstTimeErrorLogEtherTypeFFFF_ms + 70000 &&
 				   this->counterErrorLogEtherTypeFFFF_ms > 100) {
 					ostringstream outStr;
-					outStr << "A bad packet with ether_type 0xFFFF was detected on interface " << interfaceName << ". Contact support!";
+					outStr << "A bad packet with ether_type 0xFFFF was detected on interface " << getInterfaceAlias() << ". Contact support!";
 					cLogSensor::log(cLogSensor::error, outStr.str().c_str());
 				}
 				this->firstTimeErrorLogEtherTypeFFFF_ms = 0;
@@ -4462,12 +4469,12 @@ inline int PcapQueue_readFromInterface_base::pcap_dispatch(pcap_t *pcapHandle) {
 	int res = ::pcap_dispatch(pcapHandle, 1, __pcap_dispatch_handler, ((u_char*)this));
 	if(res == -1) {
 		if(VERBOSE) {
-			syslog (LOG_NOTICE,"packetbuffer dispatch - %s: error reading packets", this->getInterfaceName().c_str());
+			syslog (LOG_NOTICE,"packetbuffer dispatch - %s: error reading packets", this->getInterfaceAlias().c_str());
 		}
 		return(0);
 	} else if(res == -2) {
 		if(VERBOSE) {
-			syslog(LOG_NOTICE,"packetbuffer dispatch - %s: end of pcap file, exiting", this->getInterfaceName().c_str());
+			syslog(LOG_NOTICE,"packetbuffer dispatch - %s: end of pcap file, exiting", this->getInterfaceAlias().c_str());
 		}
 		return(-1);
 	} else if(res == 0) {
@@ -4483,7 +4490,7 @@ inline int PcapQueue_readFromInterface_base::pcapProcess(sHeaderPacket **header_
 	return(::pcapProcess(header_packet, pushToStack_queue_index,
 			     block_store, block_store_index,
 			     ppf,
-			     &ppd, pcapLinklayerHeaderType, pcapDumpHandle, getInterfaceName().c_str()));
+			     &ppd, pcapLinklayerHeaderType, pcapDumpHandle, getInterfaceAlias().c_str()));
 }
 
 string PcapQueue_readFromInterface_base::pcapStatString_interface(int /*statPeriod*/) {
@@ -4509,7 +4516,7 @@ string PcapQueue_readFromInterface_base::pcapStatString_interface(int /*statPeri
 				}
 				if(pcapdrop || ifdrop) {
 					outStr << fixed
-					       << "DROPPED PACKETS - " << this->getInterfaceName() << ": "
+					       << "DROPPED PACKETS - " << this->getInterfaceAlias() << ": "
 					       << "libpcap or interface dropped some packets!"
 					       << " rx:" << (ps.ps_recv - this->last_ps.ps_recv);
 					if(pcapdrop) {
@@ -4550,7 +4557,7 @@ string PcapQueue_readFromInterface_base::pcapStatString_interface(int /*statPeri
 				}
 				if(pcapdrop || ifdrop) {
 					outStr << fixed
-					       << "DROPPED PACKETS - " << this->getInterfaceName() << ": "
+					       << "DROPPED PACKETS - " << this->getInterfaceAlias() << ": "
 					       << "libdpdk or interface dropped some packets!"
 					       << " rx:" << (ps.ps_recv - this->last_ps.ps_recv);
 					if(pcapdrop) {
@@ -4574,7 +4581,7 @@ string PcapQueue_readFromInterface_base::pcapStatString_interface(int /*statPeri
 string PcapQueue_readFromInterface_base::pcapDropCountStat_interface() {
 	ostringstream outStr;
 	if(this->pcapHandle || this->dpdkHandle) {
-		outStr << this->getInterfaceName(true) << " : " << "pdropsCount [" << this->countPacketDrop << "]";
+		outStr << this->getInterfaceAlias() << " : " << "pdropsCount [" << this->countPacketDrop << "]";
 		pcap_stat ps;
 		int pcapstatres = 1;
 		if(this->pcapHandle) {
@@ -4597,7 +4604,7 @@ ulong PcapQueue_readFromInterface_base::getCountPacketDrop() {
 string PcapQueue_readFromInterface_base::getStatPacketDrop() {
 	if(this->countPacketDrop) {
 		ostringstream outStr;
-		outStr << "I-" << this->getInterfaceName(true) << ":" << this->countPacketDrop;
+		outStr << "I-" << this->getInterfaceAlias() << ":" << this->countPacketDrop;
 		return(outStr.str());
 	}
 	return("");
@@ -4614,8 +4621,12 @@ void PcapQueue_readFromInterface_base::initStat_interface() {
 	}
 }
 
-string PcapQueue_readFromInterface_base::getInterfaceName(bool simple) {
-	return((simple ? "" : "interface ") + this->interfaceName);
+string PcapQueue_readFromInterface_base::getInterface() {
+	return(this->interface.interface);
+}
+
+string PcapQueue_readFromInterface_base::getInterfaceAlias() {
+	return(this->interface.alias.empty() ? this->interface.interface : this->interface.alias);
 }
 
 void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
@@ -4721,11 +4732,11 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 }
 
 
-PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char *interfaceName, eTypeInterfaceThread typeThread,
+PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(sInterface interface, eTypeInterfaceThread typeThread,
 								     PcapQueue_readFromInterfaceThread *readThread,
 								     PcapQueue_readFromInterfaceThread *prevThread,
 								     PcapQueue_readFromInterface *parent)
- : PcapQueue_readFromInterface_base(interfaceName) {
+ : PcapQueue_readFromInterface_base(&interface) {
 	this->threadHandle = 0;
 	this->threadId = 0;
 	this->threadInitOk = 0;
@@ -4820,7 +4831,7 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 		sumPacketsSize[i] = 0;
 	}
 	prepareHeaderPacketPool = false; // experimental option
-	vm_pthread_create(("pb - read thread " + getInterfaceName() + " " + getTypeThreadName()).c_str(),
+	vm_pthread_create(("pb - read thread " + getInterfaceAlias() + " " + getTypeThreadName()).c_str(),
 			  &this->threadHandle, NULL, _PcapQueue_readFromInterfaceThread_threadFunction, this, __FILE__, __LINE__);
 }
 
@@ -5150,7 +5161,7 @@ inline pcap_block_store *PcapQueue_readFromInterfaceThread::POP_BLOCK() {
 }
 
 void PcapQueue_readFromInterfaceThread::cancelThread() {
-	syslog(LOG_NOTICE, "cancel read thread (%s)", interfaceName.c_str());
+	syslog(LOG_NOTICE, "cancel read thread (%s)", getInterfaceAlias().c_str());
 	pthread_cancel(this->threadHandle);
 }
 
@@ -5182,7 +5193,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 		ostringstream outStr;
 		outStr << "start thread t0i_" 
 		       << getTypeThreadName()
-		       << " (" << this->getInterfaceName() << ") /" << this->threadId << endl;
+		       << " (" << this->getInterfaceAlias() << ") /" << this->threadId << endl;
 		syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 	}
 	if(this->typeThread == read) {
@@ -5191,23 +5202,23 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 			if(opt_pcap_queue_iface_dedup_separate_threads) {
 				if(opt_pcap_queue_iface_dedup_separate_threads_extend) {
 					if(opt_pcap_queue_iface_dedup_separate_threads_extend == 2) {
-						this->detachThread = new FILE_LINE(15033) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), detach, this, this, this->parent);
-						this->defragThread = new FILE_LINE(15034) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), defrag, this, this->detachThread, this->parent);
+						this->detachThread = new FILE_LINE(15033) PcapQueue_readFromInterfaceThread(this->interface, detach, this, this, this->parent);
+						this->defragThread = new FILE_LINE(15034) PcapQueue_readFromInterfaceThread(this->interface, defrag, this, this->detachThread, this->parent);
 					} else {
-						this->defragThread = new FILE_LINE(15035) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), defrag, this, this, this->parent);
+						this->defragThread = new FILE_LINE(15035) PcapQueue_readFromInterfaceThread(this->interface, defrag, this, this, this->parent);
 					}
-					this->md1Thread = new FILE_LINE(15036) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md1, this, this->defragThread, this->parent);
-					this->md2Thread = new FILE_LINE(15037) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md2, this, this->md1Thread, this->parent);
-					this->dedupThread = new FILE_LINE(15038) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this->md2Thread, this->parent);
+					this->md1Thread = new FILE_LINE(15036) PcapQueue_readFromInterfaceThread(this->interface, md1, this, this->defragThread, this->parent);
+					this->md2Thread = new FILE_LINE(15037) PcapQueue_readFromInterfaceThread(this->interface, md2, this, this->md1Thread, this->parent);
+					this->dedupThread = new FILE_LINE(15038) PcapQueue_readFromInterfaceThread(this->interface, dedup, this, this->md2Thread, this->parent);
 					if(this->prepareHeaderPacketPool) {
-						this->serviceThread = new FILE_LINE(15039) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), service, this, this, this->parent);
+						this->serviceThread = new FILE_LINE(15039) PcapQueue_readFromInterfaceThread(this->interface, service, this, this, this->parent);
 					}
 				} else {
-					this->dedupThread = new FILE_LINE(15040) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this, this->parent);
+					this->dedupThread = new FILE_LINE(15040) PcapQueue_readFromInterfaceThread(this->interface, dedup, this, this, this->parent);
 				}
 			}
 		} else {
-			strcpy_null_term(dpdkConfig.device, this->interfaceName.c_str());
+			strcpy_null_term(dpdkConfig.device, this->getInterface().c_str());
 			dpdkConfig.snapshot = this->pcap_snaplen;
 			dpdkConfig.promisc = this->pcap_promisc;
 			dpdkConfig.type_read_thread = opt_dpdk_read_thread == 1 ? _dpdk_trt_std :
@@ -5239,17 +5250,17 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 			dpdkConfig.callback.packet_process__mbufs_in_packetbuffer = _dpdk_packet_process__mbufs_in_packetbuffer;
 			dpdkConfig.callback.check_block = _dpdk_check_block;
 			if(opt_dup_check_type != _dedup_na) {
-				this->md1Thread = new FILE_LINE(15041) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md1, this, this, this->parent);
-				this->md2Thread = new FILE_LINE(15042) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md2, this, this->md1Thread, this->parent);
-				this->dedupThread = new FILE_LINE(15043) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this->md2Thread, this->parent);
+				this->md1Thread = new FILE_LINE(15041) PcapQueue_readFromInterfaceThread(this->interface, md1, this, this, this->parent);
+				this->md2Thread = new FILE_LINE(15042) PcapQueue_readFromInterfaceThread(this->interface, md2, this, this->md1Thread, this->parent);
+				this->dedupThread = new FILE_LINE(15043) PcapQueue_readFromInterfaceThread(this->interface, dedup, this, this->md2Thread, this->parent);
 			} else {
-				this->pcapProcessThread = new FILE_LINE(15044) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), pcap_process, this, this, this->parent);
+				this->pcapProcessThread = new FILE_LINE(15044) PcapQueue_readFromInterfaceThread(this->interface, pcap_process, this, this, this->parent);
 			}
 		}
 		string error;
 		if(this->startCapture(&error, &dpdkConfig)) {
 			if(this->dpdkHandle && dpdk_config(this->dpdkHandle)->type_worker_thread == _dpdk_twt_std) {
-				this->dpdkWorkerThread = new FILE_LINE(0) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dpdk_worker, this, this, this->parent);
+				this->dpdkWorkerThread = new FILE_LINE(0) PcapQueue_readFromInterfaceThread(this->interface, dpdk_worker, this, this, this->parent);
 			}
 		} else {
 			this->threadTerminated = true;
@@ -5341,7 +5352,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 			ostringstream outStr;
 			outStr << "stop thread t0i_" 
 			       << getTypeThreadName()
-			       << " (" << this->getInterfaceName() << ") /" << this->threadId << endl;
+			       << " (" << this->getInterfaceAlias() << ") /" << this->threadId << endl;
 			syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 		}
 		return(NULL);
@@ -5772,7 +5783,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 		ostringstream outStr;
 		outStr << "stop thread t0i_" 
 		       << getTypeThreadName()
-		       << " (" << this->getInterfaceName() << ") /" << this->threadId << endl;
+		       << " (" << this->getInterfaceAlias() << ") /" << this->threadId << endl;
 		syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 	}
 	return(NULL);
@@ -6303,7 +6314,8 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 				if(block) {
 					this->push_block(block);
 				}
-				block = new FILE_LINE(15045) pcap_block_store(pcap_block_store::plus2);
+				block = new FILE_LINE(0) pcap_block_store(pcap_block_store::plus2);
+				strncpy(block->ifname, this->getInterfaceAlias().c_str(), sizeof(block->ifname) - 1);
 				force_push = false;
 				//cout << 'X' << flush;
 			}
@@ -6648,7 +6660,7 @@ PcapQueue_readFromInterface::~PcapQueue_readFromInterface() {
 		++counter;
 	}
 	if(!this->threadTerminated) {
-		syslog(LOG_NOTICE, "cancel read thread (%s)", interfaceName.c_str());
+		syslog(LOG_NOTICE, "cancel read thread (%s)", getInterfaceAlias().c_str());
 		pthread_cancel(this->threadHandle);
 	}
 	pthread_join(this->threadHandle, NULL);
@@ -6669,8 +6681,12 @@ PcapQueue_readFromInterface::~PcapQueue_readFromInterface() {
 	}
 }
 
-void PcapQueue_readFromInterface::setInterfaceName(const char* interfaceName) {
-	this->interfaceName = interfaceName;
+void PcapQueue_readFromInterface::setInterfaces(const char* interfaces) {
+	this->interfaces = interfaces;
+}
+
+void PcapQueue_readFromInterface::setFiltersByInterface(vector<dstring> filters) {
+	this->filtersByInterface = filters;
 }
 
 void PcapQueue_readFromInterface::terminate() {
@@ -6685,14 +6701,48 @@ bool PcapQueue_readFromInterface::init() {
 	   !opt_pcap_queue_iface_separate_threads) {
 		return(true);
 	}
-	vector<string> interfaces = split(this->interfaceName.c_str(), split(",|;| |\t|\r|\n", "|"), true);
+	vector<sInterface> interfaces;
+	parseInterfaces(&interfaces);
 	for(size_t i = 0; i < interfaces.size(); i++) {
 		if(this->readThreadsCount < READ_THREADS_MAX - 1) {
-			this->readThreads[this->readThreadsCount] = new FILE_LINE(15047) PcapQueue_readFromInterfaceThread(interfaces[i].c_str(), PcapQueue_readFromInterfaceThread::read, NULL, NULL, this);
+			this->readThreads[this->readThreadsCount] = new FILE_LINE(15047) PcapQueue_readFromInterfaceThread(interfaces[i], PcapQueue_readFromInterfaceThread::read, NULL, NULL, this);
 			++this->readThreadsCount;
 		}
 	}
 	return(this->readThreadsCount > 0);
+}
+
+void PcapQueue_readFromInterface::parseInterfaces(vector<sInterface> *interfaces) {
+	vector<string> interfaces_v = split(this->interfaces.c_str(), split(",|;| |\t|\r|\n", "|"), true);
+	for(unsigned i = 0; i < interfaces_v.size(); i++) {
+		sInterface interface;
+		interface.interface = interfaces_v[i];
+		if(filtersByInterface.size()) {
+			list<string> filters;
+			for(vector<dstring>::iterator iter = filtersByInterface.begin(); iter != filtersByInterface.end(); iter++) {
+				if(iter->str[0] == interface.interface && !iter->str[1].empty()) {
+					filters.push_back(iter->str[1]);
+				}
+			}
+			if(filters.size()) {
+				unsigned c = 0;
+				for(list<string>::iterator iter = filters.begin(); iter != filters.end(); iter++) {
+					if(filters.size() > 1) {
+						interface.alias = interface.interface + '_' + intToString(c);
+					} else {
+						interface.alias = "";
+					}
+					interface.filter = *iter;
+					++c;
+					interfaces->push_back(interface);
+				}
+			} else {
+				interfaces->push_back(interface);
+			}
+		} else {
+			interfaces->push_back(interface);
+		}
+	}
 }
 
 bool PcapQueue_readFromInterface::initThread(void *arg, unsigned int arg2, string *error) {
@@ -6785,8 +6835,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 		blockStore[i] = new FILE_LINE(15048) pcap_block_store;
 		strncpy(blockStore[i]->ifname, 
 			this->readThreadsCount ? 
-				this->readThreads[i]->getInterfaceName(true).c_str() :
-				this->getInterfaceName(true).c_str(), 
+				this->readThreads[i]->getInterfaceAlias().c_str() :
+				this->getInterfaceAlias().c_str(),
 			sizeof(blockStore[i]->ifname) - 1);
 	}
 	unsigned long counter = 0;
@@ -7360,7 +7410,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 		double ti_cpu = this->readThreads[i]->getCpuUsagePerc(pstatDataIndex);
 		if(ti_cpu >= 0) {
 			sum += ti_cpu;
-			outStrStat << "t0i_" << this->readThreads[i]->interfaceName << "_CPU[";
+			outStrStat << "t0i_" << this->readThreads[i]->getInterfaceAlias() << "_CPU[";
 			outStrStat << setprecision(1) << this->readThreads[i]->getTraffic(divide) << "Mb/s";
 			outStrStat << ";main:" << setprecision(1) << ti_cpu;
 			if(sverb.qring_stat) {
@@ -7544,13 +7594,23 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 	return(outStrStat.str());
 }
 
-string PcapQueue_readFromInterface::getInterfaceName(bool simple) {
+string PcapQueue_readFromInterface::getInterface() {
 	if(opt_scanpcapdir[0]) {
 		return(string("dir ") + opt_scanpcapdir);
 	} else if(opt_pb_read_from_file[0]) {
 		return(string("file ") + opt_pb_read_from_file);
 	} else {
-		return(this->PcapQueue_readFromInterface_base::getInterfaceName(simple));
+		return(this->PcapQueue_readFromInterface_base::getInterface());
+	}
+}
+
+string PcapQueue_readFromInterface::getInterfaceAlias() {
+	if(opt_scanpcapdir[0]) {
+		return(string("dir ") + opt_scanpcapdir);
+	} else if(opt_pb_read_from_file[0]) {
+		return(string("file ") + opt_pb_read_from_file);
+	} else {
+		return(this->PcapQueue_readFromInterface_base::getInterfaceAlias());
 	}
 }
 
@@ -7615,8 +7675,8 @@ pcap_block_store *PcapQueue_readFromInterface::new_blockstore(int index_read_thr
 	pcap_block_store *blockStore = new FILE_LINE(15050) pcap_block_store;
 	strncpy(blockStore->ifname, 
 		this->readThreadsCount ? 
-			this->readThreads[index_read_thread]->getInterfaceName(true).c_str() :
-			this->getInterfaceName(true).c_str(), 
+			this->readThreads[index_read_thread]->getInterfaceAlias().c_str() :
+			this->getInterfaceAlias().c_str(), 
 		sizeof(blockStore->ifname) - 1);
 	return(blockStore);
 }

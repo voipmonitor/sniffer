@@ -436,12 +436,20 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 	if(dev_info.tx_offload_capa & RTE_ETH_TX_OFFLOAD_MBUF_FAST_FREE) {
 		local_port_conf.txmode.offloads |= RTE_ETH_TX_OFFLOAD_MBUF_FAST_FREE;
 	}
-	// only support 1 queue
-	ret = rte_eth_dev_configure(portid, 1, 1, &local_port_conf);
+	extern int opt_dpdk_nb_rxq;
+	uint16_t nb_rxq = opt_dpdk_nb_rxq > 0 ? opt_dpdk_nb_rxq : 1;
+	if(nb_rxq > 1) {
+		extern bool opt_dpdk_nb_rxq_rss;
+		if(opt_dpdk_nb_rxq_rss) {
+			local_port_conf.rxmode.mq_mode = RTE_ETH_MQ_RX_RSS;
+			local_port_conf.rx_adv_conf.rss_conf.rss_hf = dev_info.flow_type_rss_offloads & RTE_ETH_RSS_IP;
+		}
+	}
+	ret = rte_eth_dev_configure(portid, nb_rxq, 1, &local_port_conf);
 	dpdk_eval_res(ret, NULL, 2, error,
-		      "dpdk_activate(%s) - rte_eth_dev_configure(%i)",
+		      "dpdk_activate(%s) - rte_eth_dev_configure(portid:%i, nb_rxq:%i, nb_txq:%i)",
 		      config->device,
-		      portid);
+		      portid, nb_rxq, 1);
 	if(ret < 0) {
 		return(PCAP_ERROR);
 	}
@@ -461,20 +469,21 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 	// get MAC addr
 	rte_eth_macaddr_get(portid, &(dpdk->eth_addr));
 	eth_addr_str(&(dpdk->eth_addr), dpdk->mac_addr, DPDK_MAC_ADDR_SIZE-1);
-	// init one RX queue
-	rxq_conf = dev_info.default_rxconf;
-	rxq_conf.offloads = local_port_conf.rxmode.offloads;
-	rxq_conf.rx_free_thresh = MAX_PKT_BURST;
-	ret = rte_eth_rx_queue_setup(portid, 0, nb_rx,
-				     rte_eth_dev_socket_id(portid),
-				     &rxq_conf,
-				     dpdk->pktmbuf_pool);
-	dpdk_eval_res(ret, NULL, 2, error,
-		      "dpdk_activate(%s) - rte_eth_rx_queue_setup(%i)",
-		      config->device,
-		      portid);
-	if(ret < 0) {
-		return(PCAP_ERROR);
+	// init RX queues
+	for(uint16_t q = 0; q < nb_rxq; q++) {
+		rxq_conf = dev_info.default_rxconf;
+		rxq_conf.offloads = local_port_conf.rxmode.offloads;
+		rxq_conf.rx_free_thresh = MAX_PKT_BURST;
+		ret = rte_eth_rx_queue_setup(portid, q, nb_rx,
+					     rte_eth_dev_socket_id(portid),
+					     &rxq_conf,
+					     dpdk->pktmbuf_pool);
+		dpdk_eval_res(ret, NULL, 2, error,
+			      "dpdk_activate(%s) - rte_eth_rx_queue_setup(queue:%i)",
+			      config->device, q);
+		if(ret < 0) {
+			return(PCAP_ERROR);
+		}
 	}
 	// init one TX queue
 	txq_conf = dev_info.default_txconf;
@@ -1191,51 +1200,55 @@ static int rte_read_thread(void *arg) {
 		uint16_t nb_rx, nb_rx_enqueue;
 		u_int64_t timestamp_us;
 		if(dpdk->rx_to_worker_ring) {
+			extern int opt_dpdk_nb_rxq;
+			uint16_t nb_rxq = opt_dpdk_nb_rxq > 0 ? opt_dpdk_nb_rxq : 1;
 			while(!dpdk->terminating) {
 				#if DEBUG_CYCLES
 				dpdk->cycles[0].setBegin();
 				dpdk->cycles[1].setBegin();
 				#endif
-				nb_rx = rte_eth_rx_burst(dpdk->portid, 0, pkts_burst, MAX_PKT_BURST);
-				#if DEBUG_CYCLES
-				dpdk->cycles[1].setEnd();
-				dpdk->cycles[2].setBegin();
-				#endif
-				if(likely(nb_rx)) {
-					#if LOG_PACKETS_SUM
-					dpdk->count_packets[0] += nb_rx;
+				for(uint16_t q = 0; q < nb_rxq; q++) {
+					nb_rx = rte_eth_rx_burst(dpdk->portid, q, pkts_burst, MAX_PKT_BURST);
+					#if DEBUG_CYCLES
+					dpdk->cycles[1].setEnd();
+					dpdk->cycles[2].setBegin();
 					#endif
-					#if DPDK_TIMESTAMP_IN_MBUF
-					timestamp_us = get_timestamp_us(dpdk);
-					for(u_int16_t i = 0; i < nb_rx; i++) {
-						#if DPDK_TIMESTAMP_IN_MBUF == 1
-						*RTE_MBUF_DYNFIELD(pkts_burst[i], timestamp_dynfield_offset, u_int64_t*) = timestamp_us;
-						#elif DPDK_TIMESTAMP_IN_MBUF == 2
-						*(u_int64_t*)&pkts_burst[i]->dynfield1[0] = timestamp_us;
+					if(likely(nb_rx)) {
+						#if LOG_PACKETS_SUM
+						dpdk->count_packets[0] += nb_rx;
 						#endif
-					}
-					#endif
-					nb_rx_enqueue = rte_ring_enqueue_burst(dpdk->rx_to_worker_ring, (void *const *)pkts_burst, nb_rx, NULL);
-					if(unlikely(nb_rx_enqueue < nb_rx)) {
-						for(u_int16_t i = nb_rx_enqueue; i < nb_rx; i++) {
-							rte_pktmbuf_free(pkts_burst[i]);
+						#if DPDK_TIMESTAMP_IN_MBUF
+						timestamp_us = get_timestamp_us(dpdk);
+						for(u_int16_t i = 0; i < nb_rx; i++) {
+							#if DPDK_TIMESTAMP_IN_MBUF == 1
+							*RTE_MBUF_DYNFIELD(pkts_burst[i], timestamp_dynfield_offset, u_int64_t*) = timestamp_us;
+							#elif DPDK_TIMESTAMP_IN_MBUF == 2
+							*(u_int64_t*)&pkts_burst[i]->dynfield1[0] = timestamp_us;
+							#endif
 						}
-						dpdk->ring_full_drop += nb_rx - nb_rx_enqueue;
-						#if DPDK_WAIT_FOR_EMPTY_RING_IF_FULL
-						if(unlikely(!nb_rx_enqueue)) {
-							while(!rte_ring_empty(dpdk->rx_to_worker_ring) && !dpdk->terminating) {
-								USLEEP(1000);
+						#endif
+						nb_rx_enqueue = rte_ring_enqueue_burst(dpdk->rx_to_worker_ring, (void *const *)pkts_burst, nb_rx, NULL);
+						if(unlikely(nb_rx_enqueue < nb_rx)) {
+							for(u_int16_t i = nb_rx_enqueue; i < nb_rx; i++) {
+								rte_pktmbuf_free(pkts_burst[i]);
 							}
+							dpdk->ring_full_drop += nb_rx - nb_rx_enqueue;
+							#if DPDK_WAIT_FOR_EMPTY_RING_IF_FULL
+							if(unlikely(!nb_rx_enqueue)) {
+								while(!rte_ring_empty(dpdk->rx_to_worker_ring) && !dpdk->terminating) {
+									USLEEP(1000);
+								}
+							}
+							#endif
 						}
-						#endif
-					}
-				} else if(dpdk->config.read_usleep_if_no_packet) {
-					if(dpdk->config.read_usleep_type == _dpdk_usleep_type_rte) {
-						rte_delay_us_block(dpdk->config.read_usleep_if_no_packet);
-					} else if(dpdk->config.read_usleep_type == _dpdk_usleep_type_rte_pause) {
-						rte_pause();
-					} else {
-						USLEEP(dpdk->config.read_usleep_if_no_packet);
+					} else if(dpdk->config.read_usleep_if_no_packet) {
+						if(dpdk->config.read_usleep_type == _dpdk_usleep_type_rte) {
+							rte_delay_us_block(dpdk->config.read_usleep_if_no_packet);
+						} else if(dpdk->config.read_usleep_type == _dpdk_usleep_type_rte_pause) {
+							rte_pause();
+						} else {
+							USLEEP(dpdk->config.read_usleep_if_no_packet);
+						}
 					}
 				}
 				#if DEBUG_CYCLES
