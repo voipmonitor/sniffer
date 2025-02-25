@@ -7630,12 +7630,10 @@ inline Call *process_packet__merge(packet_s_process *packetS, char *callidstr, i
 		long unsigned int l2 = 0;
 		unsigned char buf[1024];
 		s2 = gettag_sip(packetS, opt_callidmerge_header, &l2);
-		if(l2 && l2 < 128) {
-			// header exists
+		if(l2 && l2 < 1024) { // header exists
 			if(opt_callidmerge_secret[0] != '\0') {
 				// header is encoded - decode it 
-				char c;
-				c = s2[l2];
+				char c = s2[l2];
 				s2[l2] = '\0';
 				int enclen = base64decode(buf, (const char*)s2, l2);
 				static int keysize = strlen(opt_callidmerge_secret);
@@ -7647,19 +7645,20 @@ inline Call *process_packet__merge(packet_s_process *packetS, char *callidstr, i
 				s2 = (char*)buf;
 				l2 = enclen;
 			}
-			// check if the sniffer know about this call-id in mergeheader 
-			call = calltable->find_by_call_id(s2, l2, NULL, preprocess ? packetS->getTime_s() : 0);
-			if(!call) {
-				// there is no call with the call-id in merge header - this call will be created as new
-			} else {
-				*merged = 1;
-				calltable->lock_calls_mergeMAP();
-				call->has_second_merged_leg = true;
-				calltable->calls_mergeMAP[callidstr] = call;
-				calltable->unlock_calls_mergeMAP();
-				call->mergecalls_lock();
-				call->mergecalls[callidstr] = Call::sMergeLegInfo();
-				call->mergecalls_unlock();
+			if(l2 < 128) {
+				call = calltable->find_by_call_id(s2, l2, NULL, preprocess ? packetS->getTime_s() : 0);
+				if(!call) {
+					// there is no call with the call-id in merge header - this call will be created as new
+				} else {
+					*merged = 1;
+					calltable->lock_calls_mergeMAP();
+					call->has_second_merged_leg = true;
+					calltable->calls_mergeMAP[callidstr] = call;
+					calltable->unlock_calls_mergeMAP();
+					call->mergecalls_lock();
+					call->mergecalls[callidstr] = Call::sMergeLegInfo();
+					call->mergecalls_unlock();
+				}
 			}
 		}
 	} else {
