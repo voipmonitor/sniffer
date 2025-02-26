@@ -2662,7 +2662,8 @@ unsigned cGlobalDpdkTools::get_planned_memory_consumption_mb(string *log) {
 	// rx & tx queue
 	extern int opt_dpdk_nb_rx;
 	extern int opt_dpdk_nb_tx;
-	u_int64_t memory_consumption_rx_tx_queue = (opt_dpdk_nb_rx + opt_dpdk_nb_tx) * 64;
+	extern int opt_dpdk_nb_rxq;
+	u_int64_t memory_consumption_rx_tx_queue = (opt_dpdk_nb_rx * max(opt_dpdk_nb_rxq, 1) + opt_dpdk_nb_tx) * 64;
 	memory_consumption_sum += memory_consumption_rx_tx_queue;
 	if(log) {
 		*log += "rx & tx queue: " + intToString(memory_consumption_rx_tx_queue / 1024 / 1024) + "MB; ";
