@@ -6713,13 +6713,18 @@ bool PcapQueue_readFromInterface::init() {
 }
 
 void PcapQueue_readFromInterface::parseInterfaces(vector<sInterface> *interfaces) {
-	vector<string> interfaces_v = split(this->interfaces.c_str(), split(",|;| |\t|\r|\n", "|"), true);
+	parseInterfaces(this->interfaces.c_str(), &filtersByInterface, interfaces);
+}
+
+void PcapQueue_readFromInterface::parseInterfaces(const char *interfaces_str, vector<dstring> *filters_by_interface,
+						  vector<sInterface> *interfaces) {
+	vector<string> interfaces_v = split(interfaces_str, split(",|;| |\t|\r|\n", "|"), true);
 	for(unsigned i = 0; i < interfaces_v.size(); i++) {
 		sInterface interface;
 		interface.interface = interfaces_v[i];
-		if(filtersByInterface.size()) {
+		if(filters_by_interface->size()) {
 			list<string> filters;
-			for(vector<dstring>::iterator iter = filtersByInterface.begin(); iter != filtersByInterface.end(); iter++) {
+			for(vector<dstring>::iterator iter = filters_by_interface->begin(); iter != filters_by_interface->end(); iter++) {
 				if(iter->str[0] == interface.interface && !iter->str[1].empty()) {
 					filters.push_back(iter->str[1]);
 				}

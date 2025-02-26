@@ -904,6 +904,8 @@ public:
 	bool isPcapEnd() {
 		return(this->pcapEnd);
 	}
+	static void parseInterfaces(const char *interfaces_str, vector<dstring> *filters_by_interface,
+				    vector<sInterface> *interfaces);
 protected:
 	bool init();
 	void parseInterfaces(vector<sInterface> *interfaces);

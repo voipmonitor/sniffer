@@ -9046,9 +9046,13 @@ void set_context_config() {
 	
 	if(opt_pcap_queue_dequeu_window_length < 0) {
 		if(is_receiver() || is_server()) {
-			 opt_pcap_queue_dequeu_window_length = 2000;
-		} else if(ifnamev.size() > 1) {
-			 opt_pcap_queue_dequeu_window_length = 1000;
+			opt_pcap_queue_dequeu_window_length = 2000;
+		} else {
+			vector<PcapQueue_readFromInterface_base::sInterface> interfaces;
+			PcapQueue_readFromInterface::parseInterfaces(ifname, &ifname_libpcap_filter, &interfaces);
+			if(interfaces.size() > 1) {
+				opt_pcap_queue_dequeu_window_length = 1000;
+			}
 		}
 	}
 
