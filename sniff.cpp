@@ -7645,20 +7645,18 @@ inline Call *process_packet__merge(packet_s_process *packetS, char *callidstr, i
 				s2 = (char*)buf;
 				l2 = enclen;
 			}
-			if(l2 < 128) {
-				call = calltable->find_by_call_id(s2, l2, NULL, preprocess ? packetS->getTime_s() : 0);
-				if(!call) {
-					// there is no call with the call-id in merge header - this call will be created as new
-				} else {
-					*merged = 1;
-					calltable->lock_calls_mergeMAP();
-					call->has_second_merged_leg = true;
-					calltable->calls_mergeMAP[callidstr] = call;
-					calltable->unlock_calls_mergeMAP();
-					call->mergecalls_lock();
-					call->mergecalls[callidstr] = Call::sMergeLegInfo();
-					call->mergecalls_unlock();
-				}
+			call = calltable->find_by_call_id(s2, l2, NULL, preprocess ? packetS->getTime_s() : 0);
+			if(!call) {
+				// there is no call with the call-id in merge header - this call will be created as new
+			} else {
+				*merged = 1;
+				calltable->lock_calls_mergeMAP();
+				call->has_second_merged_leg = true;
+				calltable->calls_mergeMAP[callidstr] = call;
+				calltable->unlock_calls_mergeMAP();
+				call->mergecalls_lock();
+				call->mergecalls[callidstr] = Call::sMergeLegInfo();
+				call->mergecalls_unlock();
 			}
 		}
 	} else {
