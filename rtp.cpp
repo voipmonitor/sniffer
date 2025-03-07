@@ -85,6 +85,7 @@ extern bool opt_check_diff_ssrc_on_same_ip_port;
 extern int opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap;
 extern bool opt_disable_rtp_seq_probation;
 extern bool opt_disable_rtp_seq_check;
+extern bool opt_rtp_seq_dupl_skip_ext;
 
 extern sStreamAnalysisData *rtp_stream_analysis_data;
 
@@ -1402,8 +1403,12 @@ bool RTP::read(CallBranch *c_branch,
 	}
 
 	seq = getSeqNum();
-	if(!dupl_check_seq.exists_dupl && last_seq != -1 && seq != ROT_SEQ(last_seq + 1) && dupl_check_seq.check(seq)) {
+	if((!dupl_check_seq.exists_dupl || opt_rtp_seq_dupl_skip_ext) && 
+	   last_seq != -1 && seq != ROT_SEQ(last_seq + 1) && dupl_check_seq.check(seq)) {
 		dupl_check_seq.exists_dupl = true;
+		if(opt_rtp_seq_dupl_skip_ext) {
+			return(false);
+		}
 	}
 	dupl_check_seq.push(seq);
 

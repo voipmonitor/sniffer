@@ -783,6 +783,7 @@ int opt_jitter_forcemark_delta_threshold = 500;
 bool opt_disable_rtp_warning = false;
 bool opt_disable_rtp_seq_probation = false;
 bool opt_disable_rtp_seq_check = false;
+bool opt_rtp_seq_dupl_skip_ext = false;
 int opt_hash_modify_queue_length_ms = 0;
 int opt_hash_modify_queue_length_ms_high_traffic = 100;
 int hash_modify_queue_length_ms;
@@ -7073,6 +7074,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42327) cConfigItem_yesno("disable_rtp_warning", &opt_disable_rtp_warning));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_rtp_seq_probation", &opt_disable_rtp_seq_probation));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_rtp_seq_check", &opt_disable_rtp_seq_check));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("rtp_seq_dupl_skip_ext", &opt_rtp_seq_dupl_skip_ext));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sdp_check_direction_ext", &opt_sdp_check_direction_ext));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("rtp_count_all_sequencegap_as_loss", &opt_rtp_count_all_sequencegap_as_loss));
