@@ -12,6 +12,8 @@
 #define IPFIX_VERSION_DEFAULT 10
 
 
+extern bool opt_ipfix_counter_log;
+
 cIpFixCounter ipfix_counter;
 
 
@@ -94,7 +96,7 @@ int cIPFixConnection::process(SimpleBuffer *data) {
 
 void cIPFixConnection::process_ipfix(sIPFixHeader *header) {
 	// cout << htons(header->SetID) << endl;
-	if(sverb.ipfix_counter) {
+	if(opt_ipfix_counter_log) {
 		 ipfix_counter.inc(socket->getIPL());
 	}
 	switch(htons(header->SetID)) {

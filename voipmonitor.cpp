@@ -1473,11 +1473,13 @@ bool opt_ipfix;
 string opt_ipfix_bind_ip;
 unsigned opt_ipfix_bind_port;
 vector<int> opt_ipfix_version;
+bool opt_ipfix_counter_log;
 
 bool opt_hep;
 string opt_hep_bind_ip;
 unsigned opt_hep_bind_port;
 bool opt_hep_bind_udp;
+bool opt_hep_counter_log;
 bool opt_hep_kamailio_protocol_id_fix = true;
 
 bool opt_kamailio;
@@ -7391,10 +7393,12 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("ipfix_bind_ip",  &opt_ipfix_bind_ip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("ipfix_bind_port",  &opt_ipfix_bind_port));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("ipfix_version",  &opt_ipfix_version));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix_counter_log",  &opt_ipfix_counter_log));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep",  &opt_hep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("hep_bind_ip",  &opt_hep_bind_ip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hep_bind_port",  &opt_hep_bind_port));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_bind_udp",  &opt_hep_bind_udp));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_counter_log",  &opt_hep_counter_log));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_kamailio_protocol_id_fix", &opt_hep_kamailio_protocol_id_fix));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audiocodes",  &opt_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_audiocodes",  &opt_udp_port_audiocodes));
@@ -8042,7 +8046,6 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "heap_use_time")			sverb.heap_use_time = 1;
 	else if(verbParam == "dtmf")				sverb.dtmf = 1;
 	else if(verbParam == "dtls")				sverb.dtls = 1;
-	else if(verbParam == "ipfix_counter")			sverb.ipfix_counter = 1;
 	else if(verbParam == "hep3")				sverb.hep3 = 1;
 	else if(verbParam == "cleanspool")			sverb.cleanspool = 1;
 	else if(verbParam == "cleanspool_disable_rm")		sverb.cleanspool_disable_rm = 1;

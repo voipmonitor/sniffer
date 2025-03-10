@@ -1405,12 +1405,9 @@ void cServer::listen_process(int index) {
 			}
 		}
 	} else {
-		u_char *data = NULL;
 		size_t dataLen;
 		size_t dataLen_max = 0xFFFF;
-		if(simple_read) {
-			data = new FILE_LINE(0) u_char[dataLen_max];
-		}
+		u_char *data = new FILE_LINE(0) u_char[dataLen_max];
 		while(!((listen_socket[index] && listen_socket[index]->isTerminate()) || CR_TERMINATE())) {
 			dataLen = dataLen_max;
 			if(!listen_socket[index]->read(data, &dataLen) && listen_socket[index]->isError()) {

@@ -118,13 +118,13 @@ struct sHEP_Data {
 class cHEP_ProcessData {
 public:
 	cHEP_ProcessData();
-	void processData(u_char *data, size_t dataLen);
+	void processData(u_char *data, size_t dataLen, vmIP ip = 0);
 protected:
 	bool isCompleteHep(u_char *data, size_t dataLen);
 	bool isBeginHep(u_char *data, size_t dataLen);
 	u_int16_t hepLength(u_char *data, size_t dataLen);
-	unsigned processHeps(u_char *data, size_t dataLen);
-	void processHep(u_char *data, size_t dataLen);
+	unsigned processHeps(u_char *data, size_t dataLen, vmIP ip);
+	void processHep(u_char *data, size_t dataLen, vmIP ip);
 	u_int16_t chunkVendor(u_char *data, size_t dataLen);
 	u_int16_t chunkType(u_char *data, size_t dataLen);
 	u_int16_t chunkLength(u_char *data, size_t dataLen);
@@ -148,6 +148,33 @@ public:
 	virtual ~cHEP_Connection();
 	void evData(u_char *data, size_t dataLen);
 	void connection_process();
+};
+
+
+class cHepCounter {
+public:
+	void inc(vmIP ip) {
+		lock();
+		ip_counter[ip]++;
+		unlock();
+	}
+	void reset() {
+		lock();
+		ip_counter.clear();
+		unlock();
+	}
+	string get_ip_counter();
+	u_int64_t get_sum_counter();
+private:
+	void lock() {
+		__SYNC_LOCK(sync);
+	}
+	void unlock() {
+		__SYNC_UNLOCK(sync);
+	}
+private:
+	map<vmIP, u_int64_t> ip_counter;
+	volatile int sync;
 };
 
 

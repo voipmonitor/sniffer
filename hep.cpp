@@ -10,6 +10,9 @@
 
 
 extern bool opt_hep_kamailio_protocol_id_fix;
+extern bool opt_hep_counter_log;
+
+cHepCounter hep_counter;
 
 static cHEP_Server *HEP_Server;
 
@@ -17,7 +20,7 @@ static cHEP_Server *HEP_Server;
 cHEP_ProcessData::cHEP_ProcessData() {
 }
 
-void cHEP_ProcessData::processData(u_char *data, size_t dataLen) {
+void cHEP_ProcessData::processData(u_char *data, size_t dataLen, vmIP ip) {
 	/*
 	cout << " *** " << (isBeginHep(data, dataLen) ? "BEGIN" : "not begin") << endl;
 	cout << " *** " << dataLen << endl;
@@ -29,7 +32,7 @@ void cHEP_ProcessData::processData(u_char *data, size_t dataLen) {
 	if(isBeginHep(data, dataLen)) {
 		hep_buffer.clear();
 		if(isCompleteHep(data, dataLen)) {
-			unsigned processed = processHeps(data, dataLen);
+			unsigned processed = processHeps(data, dataLen, ip);
 			if(processed < dataLen) {
 				hep_buffer.add(data + processed, dataLen - processed);
 			}
@@ -39,7 +42,7 @@ void cHEP_ProcessData::processData(u_char *data, size_t dataLen) {
 	} else if(!hep_buffer.empty()) {
 		hep_buffer.add(data, dataLen);
 		if(isCompleteHep(hep_buffer.data(), hep_buffer.data_len())) {
-			unsigned processed = processHeps(hep_buffer.data(), hep_buffer.data_len());
+			unsigned processed = processHeps(hep_buffer.data(), hep_buffer.data_len(), ip);
 			if(processed == hep_buffer.data_len()) {
 				hep_buffer.clear();
 			} else if(processed < dataLen) {
@@ -67,7 +70,7 @@ u_int16_t cHEP_ProcessData::hepLength(u_char *data, size_t dataLen) {
 	return(dataLen >= 6 ? ntohs(*(u_int32_t*)(data + 4)) : 0);
 }
 
-unsigned cHEP_ProcessData::processHeps(u_char *data, size_t dataLen) {
+unsigned cHEP_ProcessData::processHeps(u_char *data, size_t dataLen, vmIP ip) {
 	unsigned processed = 0;
 	while(processed < dataLen - 6) {
 		if(!isBeginHep(data + processed, dataLen - processed)) {
@@ -77,13 +80,16 @@ unsigned cHEP_ProcessData::processHeps(u_char *data, size_t dataLen) {
 		if(hep_length > dataLen - processed) {
 			break;
 		}
-		processHep(data + processed, hep_length);
+		processHep(data + processed, hep_length, ip);
 		processed += hep_length;
 	}
 	return(processed);
 }
 
-void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
+void cHEP_ProcessData::processHep(u_char *data, size_t dataLen, vmIP ip) {
+	if(opt_hep_counter_log && ip.isSet()) {
+		 hep_counter.inc(ip);
+	}
 	sHEP_Data hepData;
 	processChunks(data + 6, dataLen - 6, &hepData);
 	if(sverb.hep3) {
@@ -549,12 +555,36 @@ cHEP_Connection::~cHEP_Connection() {
 }
 
 void cHEP_Connection::evData(u_char *data, size_t dataLen) {
-	processData(data, dataLen);
+	processData(data, dataLen, socket->getIPL());
 }
 
 void cHEP_Connection::connection_process() {
 	cServerConnection::connection_process();
 	delete this;
+}
+
+
+string cHepCounter::get_ip_counter() {
+	string rslt;
+	lock();
+	for(map<vmIP, u_int64_t>::iterator iter = ip_counter.begin(); iter != ip_counter.end(); iter++) {
+		if(!rslt.empty()) {
+			rslt += ";";
+		}
+		rslt += iter->first.getString() + ":" + intToString(iter->second);
+	}
+	unlock();
+	return(rslt);
+}
+
+u_int64_t cHepCounter::get_sum_counter() {
+	u_int64_t sum = 0;
+	lock();
+	for(map<vmIP, u_int64_t>::iterator iter = ip_counter.begin(); iter != ip_counter.end(); iter++) {
+		sum += iter->second;
+	}
+	unlock();
+	return(sum);
 }
 
 

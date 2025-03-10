@@ -42,6 +42,7 @@
 #include "heap_chunk.h"
 #include "transcribe.h"
 #include "ipfix.h"
+#include "hep.h"
 
 #ifndef FREEBSD
 #include <malloc.h>
@@ -3004,15 +3005,24 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 					lapTimeDescr.push_back("tsip");
 				}
 			}
-			if(sverb.ipfix_counter) {
-				extern bool opt_ipfix;
-				if(opt_ipfix) {
-					extern cIpFixCounter ipfix_counter;
-					string ipfix_counter_rslt = ipfix_counter.get_ip_counter();
-					if(!ipfix_counter_rslt.empty()) {
-						ipfix_counter.reset();
-						outStrStat << "ipfix[" << ipfix_counter_rslt << "] ";
-					}
+			extern bool opt_ipfix;
+			extern bool opt_ipfix_counter_log;
+			if(opt_ipfix && opt_ipfix_counter_log) {
+				extern cIpFixCounter ipfix_counter;
+				string ipfix_counter_rslt = ipfix_counter.get_ip_counter();
+				if(!ipfix_counter_rslt.empty()) {
+					ipfix_counter.reset();
+					outStrStat << "ipfix[" << ipfix_counter_rslt << "] ";
+				}
+			}
+			extern bool opt_hep;
+			extern bool opt_hep_counter_log;
+			if(opt_hep && opt_hep_counter_log) {
+				extern cHepCounter hep_counter;
+				string hep_counter_rslt = hep_counter.get_ip_counter();
+				if(!hep_counter_rslt.empty()) {
+					hep_counter.reset();
+					outStrStat << "hep[" << hep_counter_rslt << "] ";
 				}
 			}
 		}
