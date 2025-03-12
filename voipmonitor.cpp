@@ -4222,7 +4222,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		if(useChartsCacheOrCdrStatInStore() &&
-		   !snifferClientOptions_charts_cache.host.empty()) {
+		   snifferClientOptions_charts_cache.hosts.isSet()) {
 			snifferClientService_charts_cache = snifferClientStart(&snifferClientOptions_charts_cache, NULL, snifferClientService_charts_cache);
 		}
 	} else if(is_server() && !is_read_from_file_simple()) {
@@ -7326,9 +7326,9 @@ void cConfig::addConfigItems() {
 		subgroup("server / client");
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("server_bind", &snifferServerOptions.host));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_bind_port", &snifferServerOptions.port));
-			addConfigItem(new FILE_LINE(0) cConfigItem_string("server_destination", &snifferClientOptions.host));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("server_destination", &snifferClientOptions.hosts.hosts_str));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_destination_port", &snifferClientOptions.port));
-			addConfigItem(new FILE_LINE(0) cConfigItem_string("server_destination_charts_cache", &snifferClientOptions_charts_cache.host));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("server_destination_charts_cache", &snifferClientOptions_charts_cache.hosts.hosts_str));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_destination_port_charts_cache", &snifferClientOptions_charts_cache.port));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("remote_query", &snifferClientOptions.remote_query));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("remote_store", &snifferClientOptions.remote_store));
@@ -8483,7 +8483,7 @@ void get_command_line_arguments() {
 				cloud_router_port = atoi(optarg);
 				break;
 			case _param_server_host:
-				snifferClientOptions.host = optarg;
+				snifferClientOptions.hosts.hosts_str = optarg;
 				break;
 			case _param_server_port:
 				snifferClientOptions.port = atoi(optarg);
@@ -9407,6 +9407,9 @@ void set_context_config() {
 		snifferServerOptions.type_compress = _cs_compress_gzip;
 	}
 	#endif
+	
+	snifferClientOptions.hosts.parse();
+	snifferClientOptions_charts_cache.hosts.parse();
 }
 
 void check_context_config() {
@@ -9902,8 +9905,8 @@ void dns_lookup_common_hostnames() {
 	for(unsigned int i = 0; i < sizeof(hostnames) / sizeof(hostnames[0]) && !terminating; i++) {
 		resolver.resolve(hostnames[i], &ips);
 	}
-	if(!terminating && !snifferClientOptions.host.empty()) {
-		resolver.resolve(snifferClientOptions.host.c_str(), &ips);
+	if(!terminating && snifferClientOptions.hosts.isSet()) {
+		snifferClientOptions.hosts.resolve();
 	}
 }
 

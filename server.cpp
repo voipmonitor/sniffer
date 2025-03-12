@@ -1344,7 +1344,7 @@ void cSnifferClientService::setClientOptions(sSnifferClientOptions *client_optio
 
 void cSnifferClientService::createResponseSender() {
 	response_sender = new FILE_LINE(0) cSnifferClientResponseSender();
-	response_sender->start(client_options->host, client_options->port);
+	response_sender->start(client_options->hosts, client_options->port);
 }
 
 void cSnifferClientService::stopResponseSender() {
@@ -1353,8 +1353,8 @@ void cSnifferClientService::stopResponseSender() {
 	}
 }
 
-bool cSnifferClientService::start(string host, u_int16_t port) {
-	this->host = host;
+bool cSnifferClientService::start(sHosts hosts, u_int16_t port) {
+	this->hosts = hosts;
 	this->port = port;
 	_receive_start();
 	return(true);
@@ -1370,7 +1370,7 @@ int cSnifferClientService::receive_process_loop_begin() {
 		}
 	}
 	if(!receive_socket) {
-		_connect(host, port, 5);
+		_connect(hosts, port, 5);
 	}
 	if(!receive_socket) {
 		return(false);
@@ -1712,8 +1712,8 @@ void cSnifferClientResponseSender::add(string task_id, SimpleBuffer *buffer) {
 	unlock_data();
 }
 
-void cSnifferClientResponseSender::start(string host, u_int16_t port) {
-	this->host = host;
+void cSnifferClientResponseSender::start(sHosts hosts, u_int16_t port) {
+	this->hosts = hosts;
 	this->port = port;
 	vm_pthread_create("cSnifferClientResponseSender::start", &send_process_thread, NULL, cSnifferClientResponseSender::sendProcess, this, __FILE__, __LINE__);
 }
@@ -1742,7 +1742,7 @@ void cSnifferClientResponseSender::sendProcess() {
 		}
 		if(!socket) {
 			socket = new FILE_LINE(0) cSocketBlock("responses", true);
-			socket->setHostPort(host, port);
+			socket->setHostsPort(hosts, port);
 			if(!socket->connect()) {
 				delete socket;
 				socket = NULL;
@@ -1887,7 +1887,7 @@ cSnifferClientService *snifferClientStart(sSnifferClientOptions *clientOptions,
 	//snifferClientService->setMaxFirstConnectAttempts(10); // 0 (default) is infinite number of attempts
 	snifferClientService->createResponseSender();
 	snifferClientService->setErrorTypeString(cSocket::_se_loss_connection, "connection to the server has been lost - trying again");
-	snifferClientService->start(clientOptions->host, clientOptions->port);
+	snifferClientService->start(clientOptions->hosts, clientOptions->port);
 	while(!snifferClientService->isStartOk() && !is_terminating()) {
 		USLEEP(100000);
 	}

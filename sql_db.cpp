@@ -614,7 +614,7 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 				extern unsigned cloud_router_port;
 				this->remote_socket->setHostPort(cloud_host, cloud_router_port);
 			} else {
-				this->remote_socket->setHostPort(snifferClientOptions.host, snifferClientOptions.port);
+				this->remote_socket->setHostsPort(snifferClientOptions.hosts, snifferClientOptions.port);
 			}
 			if(!this->remote_socket->connect()) {
 				setLastError(0, string("failed connect to ") + (isCloud() ? "cloud router" : "server"), true);
@@ -3488,7 +3488,7 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 		}
 		if(!this->remote_socket) {
 			this->remote_socket = new FILE_LINE(0) cSocketBlock("sql store", true);
-			this->remote_socket->setHostPort(_snifferClientOptions->host, _snifferClientOptions->port);
+			this->remote_socket->setHostsPort(_snifferClientOptions->hosts, _snifferClientOptions->port);
 			if(!this->remote_socket->connect()) {
 				syslog(LOG_ERR, "send store query error: %s", (string("failed connect to ") + (isCloud() ? "cloud router" : "server")).c_str());
 				continue;

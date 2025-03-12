@@ -296,6 +296,50 @@ private:
         volatile int _sync_lock;};
 
 
+struct sHost {
+	string host;
+	vector<vmIP> ips;
+};
+
+struct sHosts {
+	sHosts() {
+		active_host_index = 0;
+	}
+	string getHost() {
+		sHost *host = _getHost();
+		if(!host) {
+			return("");
+		}
+		return(host->host);
+	}
+	sHost *_getHost() {
+		if(!isSet()) {
+			return(NULL);
+		}
+		if(!hosts.size()) {
+			parse();
+		}
+		if(!hosts.size()) {
+			return(NULL);
+		}
+		if(active_host_index >= hosts.size()) {
+			active_host_index = 0;
+		}
+		return(&hosts[active_host_index]);
+	}
+	bool isSet() {
+		return(!hosts_str.empty());
+	}
+	void parse(bool ifEmptyHosts = false);
+	void resolve();
+	unsigned size() {
+		return(hosts.size());
+	}
+	string hosts_str;
+	vector<sHost> hosts;
+	unsigned active_host_index;
+};
+
 class cSocket {
 public:
 	enum eTypeEncode {
@@ -326,6 +370,7 @@ public:
 	cSocket(const char *name, bool autoClose = false);
 	virtual ~cSocket();
 	void setHostPort(string host, u_int16_t port);
+	void setHostsPort(sHosts hosts, u_int16_t port);
 	void setUdp(bool udp);
 	void setXorKey(string xor_key);
 	bool connect(unsigned loopSleepS = 0);
@@ -364,7 +409,20 @@ public:
 		        "unknown error");
 	}
 	string getHost() {
-		return(host.empty() ? getIP() : host);
+		hosts.parse(true);
+		return(hosts.isSet() && hosts.size() ? hosts.getHost() :
+		       !host.empty() ? host : getIP());
+	}
+	string getHosts() {
+		return(hosts.isSet() ? hosts.hosts_str : host);
+	}
+	unsigned getHostsNumber() {
+		if(hosts.isSet()) {
+			hosts.parse(true);
+			return(hosts.size());
+		} else {
+			return(1);
+		}
 	}
 	string getIP() {
 		return(ip.getString());
@@ -415,6 +473,7 @@ protected:
 	string name;
 	bool autoClose;
 	string host;
+	sHosts hosts;
 	u_int16_t port;
 	bool udp;
 	vmIP ip;
@@ -641,6 +700,7 @@ public:
 	bool receive_start(string host, u_int16_t port);
 	void receive_stop();
 	bool _connect(string host, u_int16_t port, unsigned loopSleepS);
+	bool _connect(sHosts hosts, u_int16_t port, unsigned loopSleepS);
 	void _close();
 	void _receive_start();
 	static void *receive_process(void *arg);

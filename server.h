@@ -83,7 +83,7 @@ struct sSnifferClientOptions {
 		remote_chart_server = false;
 	}
 	bool isEnable() {
-		return(!host.empty() && port);
+		return(hosts.isSet() && port);
 	}
 	bool isEnableRemoteQuery() {
 		return(isEnable() && remote_query);
@@ -98,9 +98,9 @@ struct sSnifferClientOptions {
 		return(isEnable() && remote_chart_server);
 	}
 	bool isSetHostPort() {
-		return(!host.empty() && port);
+		return(hosts.isSet() && port);
 	}
-	string host;
+	sHosts hosts;
 	vmIP host_ip;
 	unsigned port;
 	bool remote_query;
@@ -345,7 +345,7 @@ public:
 	void setClientOptions(sSnifferClientOptions *client_options);
 	void createResponseSender();
 	void stopResponseSender();
-	bool start(string host, u_int16_t port);
+	bool start(sHosts hosts, u_int16_t port);
 	virtual int receive_process_loop_begin();
 	virtual void evSetTerminating();
 	virtual bool isSetTerminating();
@@ -354,7 +354,7 @@ protected:
 	int32_t sensor_id;
 	string sensor_string;
 	unsigned sensor_version;
-	string host;
+	sHosts hosts;
 	u_int16_t port;
 	bool connection_ok;
 	string connect_from;
@@ -385,7 +385,7 @@ public:
 	cSnifferClientResponseSender();
 	~cSnifferClientResponseSender();
 	void add(string task_id, SimpleBuffer *buffer);
-	void start(string host, u_int16_t port);
+	void start(sHosts hosts, u_int16_t port);
 	void stop();
 	static void *sendProcess(void*);
 	void sendProcess();
@@ -397,7 +397,7 @@ private:
 		__SYNC_UNLOCK(_sync_data);
 	}
 private:
-	string host;
+	sHosts hosts;
 	u_int16_t port;
 	volatile bool terminate;
 	cSocketBlock *socket;

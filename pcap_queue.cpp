@@ -9053,7 +9053,7 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 		}
 		if(!this->clientSocket) {
 			this->clientSocket = new FILE_LINE(0) cSocketBlock("packetbuffer block", true);
-			this->clientSocket->setHostPort(snifferClientOptions.host, snifferClientOptions.port);
+			this->clientSocket->setHostsPort(snifferClientOptions.hosts, snifferClientOptions.port);
 			if(!this->clientSocket->connect()) {
 				syslog(LOG_ERR, "send packetbuffer block error: %s", "failed connect to server");
 				pcapQueueQ->externalError = "send packetbuffer block error: failed connect to server";

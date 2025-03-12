@@ -51,6 +51,28 @@ void cRsa::generate_keys(unsigned keylen) {
 	#if __GNUC__ >= 8
 	#pragma GCC diagnostic pop
 	#endif
+	/* newer versions of rsa creation
+	RSA *rsa = RSA_new();
+	if(!rsa) {
+		return;
+	}
+	BIGNUM *bn = BN_new();
+	if(!bn) {
+		RSA_free(rsa);
+		return;
+	}
+	if(!BN_set_word(bn, RSA_F4)) {
+		BN_free(bn);
+		RSA_free(rsa);
+		return;
+	}
+	if(RSA_generate_key_ex(rsa, keylen, bn, NULL) != 1) {
+		BN_free(bn);
+		RSA_free(rsa);
+		return;
+	}
+	BN_free(bn);
+	*/
 	// priv key
 	BIO *priv_key_bio = BIO_new(BIO_s_mem());
 	PEM_write_bio_RSAPrivateKey(priv_key_bio, rsa, NULL, NULL, 0, NULL, NULL);
@@ -391,6 +413,29 @@ void cAes::destroyCtxDec() {
 }
 
 
+void sHosts::parse(bool ifEmptyHosts) {
+	if(!isSet()) {
+		return;
+	}
+	if(ifEmptyHosts && size() > 0) {
+		return;
+	}
+	vector<string> hosts_v = split(hosts_str.c_str(), split(",|;", "|"), true);
+	hosts.clear();
+	for(unsigned i = 0; i < hosts_v.size(); i++) {
+		sHost host;
+		host.host = hosts_v[i].find('/') != string::npos ? hosts_v[i].substr(0, hosts_v[i].find('/')) : hosts_v[i];
+		hosts.push_back(host);
+	}
+}
+
+void sHosts::resolve() {
+	for(unsigned i = 0; i < hosts.size(); i++) {
+		resolver.resolve(hosts[i].host.c_str(), &hosts[i].ips);
+	}
+}
+
+
 cSocket::cSocket(const char *name, bool autoClose) {
 	if(name) {
 		this->name = name;
@@ -420,6 +465,11 @@ void cSocket::setHostPort(string host, u_int16_t port) {
 	this->port = port;
 }
 
+void cSocket::setHostsPort(sHosts hosts, u_int16_t port) {
+	this->hosts = hosts;
+	this->port = port;
+}
+
 void cSocket::setUdp(bool udp) {
 	this->udp = udp;
 }
@@ -435,6 +485,7 @@ bool cSocket::connect(unsigned loopSleepS) {
 			<< " - " << getHostPort();
 		syslog(LOG_INFO, "%s", verbstr.str().c_str());
 	}
+	hosts.parse(true);
 	bool rslt = true;
 	unsigned passCounter = 0;
 	do {
@@ -442,39 +493,55 @@ bool cSocket::connect(unsigned loopSleepS) {
 		if(passCounter > 1 && loopSleepS) {
 			sleep(loopSleepS);
 		}
-		std::vector<vmIP> ips;
-		resolver.resolve(host.c_str(), &ips);
-		if(!ips.size()) {
-			setError("failed resolve host name %s", host.c_str());
+		vector<vmIP> ips_failed;
+		bool ok_connect = false;
+		bool ok_resolve = false;
+		for(uint host_i = 0; host_i < (hosts.isSet() ? hosts.size() : 1) && !ok_connect; host_i++) {
+			string _host = hosts.isSet() ? hosts.hosts[host_i].host : host;
+			std::vector<vmIP> ips;
+			resolver.resolve(_host.c_str(), &ips);
+			if(ips.size()) {
+				ok_resolve = true;
+			} else {
+				continue;
+			}
+			for(uint ip_i = 0; ip_i < ips.size() && !ok_connect; ip_i++) {
+				clearError();
+				ip = ips[ip_i];
+				int pass_call_socket_create = 0;
+				do {
+					handle = socket_create(ip, !udp ? SOCK_STREAM : SOCK_DGRAM, !udp ? IPPROTO_TCP : IPPROTO_UDP);
+					++pass_call_socket_create;
+				} while(handle == 0 && pass_call_socket_create < 5);
+				if(handle == -1) {
+					if(CR_VERBOSE().socket_connect) {
+						ostringstream verbstr;
+						verbstr << "cannot create socket (" << name << ")";
+						syslog(LOG_ERR, "%s", verbstr.str().c_str());
+					}
+				} else if(socket_connect(handle, ip, port) == -1) {
+					if(CR_VERBOSE().socket_connect) {
+						ostringstream verbstr;
+						verbstr << "failed to connect to server [" << _host << "] resolved to ip "
+							<< ip.getString() << " error:[" << strerror(errno) << "] (" << name << ")";
+						syslog(LOG_ERR, "%s", verbstr.str().c_str());
+					}
+					ips_failed.push_back(ip);
+					close();
+				} else {
+					ok_connect = true;
+					if(hosts.isSet()) {
+						hosts.active_host_index = host_i;
+					}
+				}
+			}
+		}
+		if(!ok_resolve) {
+			setError("failed resolve %s %s", 
+				 getHostsNumber() > 1 ? "hosts" : "host",
+				 getHosts().c_str());
 			rslt = false;
 			continue;
-		}
-		bool ok_connect = false;
-		for(uint i = 0; i < ips.size() && !ok_connect; i++) {
-			clearError();
-			ip = ips[i];
-			int pass_call_socket_create = 0;
-			do {
-				handle = socket_create(ip, !udp ? SOCK_STREAM : SOCK_DGRAM, !udp ? IPPROTO_TCP : IPPROTO_UDP);
-				++pass_call_socket_create;
-			} while(handle == 0 && pass_call_socket_create < 5);
-			if(handle == -1) {
-				if(CR_VERBOSE().socket_connect) {
-					ostringstream verbstr;
-					verbstr << "cannot create socket (" << name << ")";
-					syslog(LOG_ERR, "%s", verbstr.str().c_str());
-				}
-			} else if(socket_connect(handle, ip, port) == -1) {
-				if(CR_VERBOSE().socket_connect) {
-					ostringstream verbstr;
-					verbstr << "failed to connect to server [" << host << "] resolved to ip "
-						<< ip.getString() << " error:[" << strerror(errno) << "] (" << name << ")";
-					syslog(LOG_ERR, "%s", verbstr.str().c_str());
-				}
-				close();
-			} else {
-				ok_connect = true;
-			}
 		}
 		if(ok_connect) {
 			if(!udp) {
@@ -499,21 +566,24 @@ bool cSocket::connect(unsigned loopSleepS) {
 			}
 			rslt = true;
 		} else {
-			string ips_str;
-			for(uint i = 0; i < ips.size(); i++) {
+			string ips_failed_str;
+			for(uint i = 0; i < ips_failed.size(); i++) {
 				if(i > 0) {
-					ips_str += ",";
+					ips_failed_str += ",";
 				}
-				ips_str += ips[i].getString();
+				ips_failed_str += ips_failed[i].getString();
 			}
-			setError("failed connection to %s (%s) of the server %s : last error:[%s]", 
-				 ips.size() > 1 ? "all possible ips" : "ip",
-				 ips_str.c_str(), host.c_str(), 
+			setError("failed connection to %s (%s) of the %s %s : last error:[%s]", 
+				 ips_failed.size() > 1 ? "all possible ips" : "ip",
+				 ips_failed_str.c_str(), 
+				 getHostsNumber() > 1 ? "servers" : "server",
+				 getHosts().c_str(),
 				 strerror(errno));
 			rslt = false;
 		}
 	} while(!rslt && loopSleepS && !(terminate || CR_TERMINATE()));
 	return(rslt);
+	return(false);
 }
 
 bool cSocket::listen() {
@@ -1545,6 +1615,21 @@ bool cReceiver::_connect(string host, u_int16_t port, unsigned loopSleepS) {
 			receive_socket->setErrorTypeString(iter->first, iter->second.c_str());
 		}
 		receive_socket->setHostPort(host, port);
+		if(!receive_socket->connect(loopSleepS)) {
+			_close();
+			return(false);
+		}
+	}
+	return(true);
+}
+
+bool cReceiver::_connect(sHosts hosts, u_int16_t port, unsigned loopSleepS) {
+	if(!receive_socket) {
+		receive_socket = new FILE_LINE(0) cSocketBlock("receiver");
+		for(map<cSocket::eSocketError, string>::iterator iter = errorTypeStrings.begin(); iter != errorTypeStrings.end(); iter++) {
+			receive_socket->setErrorTypeString(iter->first, iter->second.c_str());
+		}
+		receive_socket->setHostsPort(hosts, port);
 		if(!receive_socket->connect(loopSleepS)) {
 			_close();
 			return(false);

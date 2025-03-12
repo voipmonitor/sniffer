@@ -16719,7 +16719,7 @@ bool remote_keycheck(string input, string *output, string *error) {
 					extern unsigned cloud_router_port;
 					remote_socket->setHostPort(cloud_host, cloud_router_port);
 				} else {
-					remote_socket->setHostPort(snifferClientOptions.host, snifferClientOptions.port);
+					remote_socket->setHostsPort(snifferClientOptions.hosts, snifferClientOptions.port);
 				}
 				if(!remote_socket->connect()) {
 					last_error = "failed connect to server";
