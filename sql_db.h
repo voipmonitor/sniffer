@@ -515,6 +515,7 @@ public:
 		this->lastErrorString = "";
 	}
 	bool ignoreLastError();
+	bool isSkipError();
 	void setMaxQueryPass(unsigned int maxQueryPass) {
 		this->maxQueryPass = maxQueryPass;
 	}

@@ -130,6 +130,8 @@ extern bool srvcc_set;
 extern int opt_separate_storage_ipv6_ipv4_address;
 
 extern bool opt_sql_log_all_errors;
+extern string opt_sql_errors_log_file;
+extern char opt_sql_errors_skip[1024];
 
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
@@ -1411,6 +1413,23 @@ bool SqlDb::ignoreLastError() {
 	       getLastError() == ER_SP_DOES_NOT_EXIST);
 }
 
+bool SqlDb::isSkipError() {
+	if(!opt_sql_errors_skip[0]) {
+		return(false);
+	}
+	int error = getLastError();
+	if(!error) {
+		return(false);
+	}
+	vector<string> skip_errors = split(opt_sql_errors_skip, split(",|;", '|'), true);
+	for(unsigned i = 0; i < skip_errors.size(); i++) {
+		if(atoi(skip_errors[i].c_str()) == error) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
 string SqlDb::getDatadirTab(const char *datadir, const char *database) {
 	string datadir_tab;
 	if(datadir && *datadir) {
@@ -2277,8 +2296,11 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 						cout << endl << "ERROR IN QUERY {" << this->getLastErrorString() << "}:"<< endl
 						     << preparedQuery << endl;
 					}
-					if(sverb.query_error_log[0]) {
-						FILE *error_log = fopen(sverb.query_error_log, "a");
+					if(!pass && (!opt_sql_errors_log_file.empty() || sverb.query_error_log[0])) {
+						const char *error_log_file = !opt_sql_errors_log_file.empty() ?
+									      opt_sql_errors_log_file.c_str() :
+									      sverb.query_error_log;
+						FILE *error_log = fopen(error_log_file, "a");
 						if(error_log) {
 							string dateTime = sqlDateTimeString(time(NULL));
 							fprintf(error_log, "ERROR IN QUERY at %s {%s}:\n%s\n\n", 
@@ -2325,6 +2347,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 					} else if(sql_disable_next_attempt_if_error || 
 						  this->disableNextAttemptIfError ||
 						  this->ignoreLastError() ||
+						  this->isSkipError() ||
 						  (callFromStoreProcessWithFixDeadlock && this->getLastError() == ER_LOCK_DEADLOCK)) {
 						break;
 					} else if(useNewStore() == 2 && useSetId() && this->getLastError() == ER_DUP_ENTRY) {

@@ -976,6 +976,8 @@ char odbc_password[256];
 char odbc_driver[256];
 
 bool opt_sql_log_all_errors = false;
+string opt_sql_errors_log_file;
+char opt_sql_errors_skip[1024];
 
 int opt_cloud_activecheck_period = 60;				//0 = disable, how often to check if cloud tunnel is passable in [sec.]
 int cloud_activecheck_timeout = 5;				//2sec by default, how long to wait for response until restart of a cloud tunnel
@@ -6110,6 +6112,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("alter_rows_limit", &opt_alter_rows_limit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_security_invoker_routines", &opt_mysql_security_invoker_routines));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sql_log_all_errors", &opt_sql_log_all_errors));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("sql_errors_log_file", &opt_sql_errors_log_file));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("sql_errors_skip", opt_sql_errors_skip, sizeof(opt_sql_errors_skip)));
 		subgroup("main");
 			addConfigItem((new FILE_LINE(42078) cConfigItem_yesno("query_cache"))
 				->setDefaultValueStr("yes"));
