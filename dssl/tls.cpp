@@ -2081,17 +2081,22 @@ u_int8_t tls_13_generate_keys(void* dssl_sess, u_int8_t restore_session) {
        !isSetKey(&((DSSL_Session*)dssl_sess)->get_keys_rslt_data.server_traffic_secret_0)) {
 	return(0);
     }
+    const SslCipherSuite *cipher_suite = NULL;
+    for(const SslCipherSuite *c = cipher_suites; c->number != -1; c++) {
+        if(c->number == ((DSSL_Session*)dssl_sess)->cipher_suite) {
+            cipher_suite = c;
+	    break;
+        }
+    }
+    if(!cipher_suite) {
+        return(0);
+    }
     SslDecryptSession *ssl_ds;
     ssl_ds = new SslDecryptSession;
     ssl_ds->session.version = TLSV1DOT3_VERSION;
     ssl_ds->session.cipher = ((DSSL_Session*)dssl_sess)->cipher_suite;
+    ssl_ds->cipher_suite = cipher_suite;
     ((DSSL_Session*)dssl_sess)->tls_session = ssl_ds;
-    for(const SslCipherSuite *c = cipher_suites; c->number != -1; c++) {
-        if(c->number == ssl_ds->session.cipher) {
-            ssl_ds->cipher_suite = c;
-	    break;
-        }
-    }
     StringInfo secret_client, secret_server;
     secret_client.set(((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_traffic_secret_0.key,
 		      ((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_traffic_secret_0.length);
@@ -2111,17 +2116,22 @@ u_int8_t tls_12_generate_keys(void* dssl_sess, u_int8_t restore_session) {
        !isSetMasterSecret(((DSSL_Session*)dssl_sess)->master_secret)) {
 	return(0);
     }
+    const SslCipherSuite *cipher_suite = NULL;
+    for(const SslCipherSuite *c = cipher_suites; c->number != -1; c++) {
+        if(c->number == ((DSSL_Session*)dssl_sess)->cipher_suite) {
+            cipher_suite = c;
+	    break;
+        }
+    }
+    if(!cipher_suite) {
+        return(0);
+    }
     SslDecryptSession *ssl_ds;
     ssl_ds = new SslDecryptSession;
     ssl_ds->session.version = ((DSSL_Session*)dssl_sess)->version ? ((DSSL_Session*)dssl_sess)->version : TLSV1DOT2_VERSION;
     ssl_ds->session.cipher = ((DSSL_Session*)dssl_sess)->cipher_suite;
+    ssl_ds->cipher_suite = cipher_suite;
     ((DSSL_Session*)dssl_sess)->tls_session = ssl_ds;
-    for(const SslCipherSuite *c = cipher_suites; c->number != -1; c++) {
-        if(c->number == ssl_ds->session.cipher) {
-            ssl_ds->cipher_suite = c;
-	    break;
-        }
-    }
     ssl_ds->client_random.set(((DSSL_Session*)dssl_sess)->client_random, SSL3_RANDOM_SIZE);
     ssl_ds->server_random.set(((DSSL_Session*)dssl_sess)->server_random, SSL3_RANDOM_SIZE);
     if(isSetKey(&((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_random)) {
