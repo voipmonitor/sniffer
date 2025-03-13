@@ -512,6 +512,7 @@ int Mgmt_diameter_packets_stack(Mgmt_params *params);
 int Mgmt_aes(Mgmt_params *params);
 int Mgmt_manager_file(Mgmt_params *params);
 int Mgmt_ssl_ipport(Mgmt_params *params);
+int Mgmt_sql_errors_skip(Mgmt_params *params);
 
 int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_help,
@@ -627,7 +628,8 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_diameter_packets_stack,
 	Mgmt_aes,
 	Mgmt_manager_file,
-	Mgmt_ssl_ipport
+	Mgmt_ssl_ipport,
+	Mgmt_sql_errors_skip
 };
 
 struct listening_worker_arg {
@@ -5930,6 +5932,22 @@ int Mgmt_ssl_ipport(Mgmt_params *params) {
 	} else {
 		params->sendString("missing command - commands: list, set, add, del\n");
 	}
+	return(0);
+}
+
+int Mgmt_sql_errors_skip(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("sql_errors_skip", "set parameter sql_errors_skip", true);
+		return(0);
+	}
+	extern char opt_sql_errors_skip[1024];
+	unsigned command_length = 15;
+	if(strlen(params->buf + command_length) > 1) {
+		strcpy_null_term(opt_sql_errors_skip, params->buf + command_length + 1);
+	} else {
+		opt_sql_errors_skip[0] = 0;
+	}
+	params->sendString(string("sql_errors_skip: ") + opt_sql_errors_skip + "\n");
 	return(0);
 }
 
