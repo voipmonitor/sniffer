@@ -51,6 +51,12 @@ extern bool opt_srtp_rtp_dtmf_decrypt;
 extern int opt_jitterbuffer_f1;            // turns off/on jitterbuffer simulator to compute MOS score mos_f1
 extern int opt_jitterbuffer_f2;            // turns off/on jitterbuffer simulator to compute MOS score mos_f2
 extern int opt_jitterbuffer_adapt;         // turns off/on jitterbuffer simulator to compute MOS score mos_adapt
+extern int opt_jitterbuffer_f1_jbsize;
+extern int opt_jitterbuffer_f1_resync_threshold;
+extern int opt_jitterbuffer_f2_jbsize;
+extern int opt_jitterbuffer_f2_resync_threshold;
+extern int opt_jitterbuffer_adapt_jbsize;
+extern int opt_jitterbuffer_adapt_resync_threshold;
 extern char opt_cachedir[1024];
 extern int opt_savewav_force;
 extern int opt_rtp_check_timestamp;
@@ -72,6 +78,8 @@ extern int opt_id_sensor;
 extern bool opt_saveaudio_answeronly;
 extern bool opt_saveaudio_resync_jitterbuffer;
 extern bool opt_saveaudio_adaptive_jitterbuffer;
+extern int opt_saveaudio_jitterbuffer_jbsize;
+extern int opt_saveaudio_jitterbuffer_resync_threshold;
 extern int opt_mysql_enable_multiple_rows_insert;
 extern int opt_mysql_max_multiple_rows_insert;
 extern int opt_jitter_forcemark_transit_threshold;
@@ -290,8 +298,8 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	channel_fix1 = new FILE_LINE(24002) ast_channel;
 	memset(channel_fix1, 0, sizeof(ast_channel));
 	channel_fix1->jitter_impl = 0; // fixed
-	channel_fix1->jitter_max = 50; 
-	channel_fix1->jitter_resync_threshold = 100;
+	channel_fix1->jitter_max = opt_jitterbuffer_f1_jbsize > 0 ? opt_jitterbuffer_f1_jbsize : 50; 
+	channel_fix1->jitter_resync_threshold = opt_jitterbuffer_f1_resync_threshold > 0 ? opt_jitterbuffer_f1_resync_threshold : 100;
 	channel_fix1->last_datalen = 0;
 	channel_fix1->lastbuflen = 0;
 	channel_fix1->resync = 1;
@@ -301,8 +309,8 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	channel_fix2  = new FILE_LINE(24003) ast_channel;
 	memset(channel_fix2, 0, sizeof(ast_channel));
 	channel_fix2->jitter_impl = 0; // fixed
-	channel_fix2->jitter_max = 200; 
-	channel_fix2->jitter_resync_threshold = 200; 
+	channel_fix2->jitter_max = opt_jitterbuffer_f2_jbsize > 0 ? opt_jitterbuffer_f2_jbsize : 200; 
+	channel_fix2->jitter_resync_threshold = opt_jitterbuffer_f2_resync_threshold > 0 ? opt_jitterbuffer_f2_resync_threshold : 200; 
 	channel_fix2->last_datalen = 0;
 	channel_fix2->lastbuflen = 0;
 	channel_fix2->resync = 1;
@@ -312,8 +320,8 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	channel_adapt = new FILE_LINE(24004) ast_channel;
 	memset(channel_adapt, 0, sizeof(ast_channel));
 	channel_adapt->jitter_impl = 1; // adaptive
-	channel_adapt->jitter_max = 500; 
-	channel_adapt->jitter_resync_threshold = 500; 
+	channel_adapt->jitter_max = opt_jitterbuffer_adapt_jbsize > 0 ? opt_jitterbuffer_adapt_jbsize : 500; 
+	channel_adapt->jitter_resync_threshold = opt_jitterbuffer_adapt_resync_threshold > 0 ? opt_jitterbuffer_adapt_resync_threshold : 500; 
 	channel_adapt->last_datalen = 0;
 	channel_adapt->lastbuflen = 0;
 	channel_adapt->resync = 1;
@@ -324,12 +332,12 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	memset(channel_record, 0, sizeof(ast_channel));
 	if(opt_saveaudio_adaptive_jitterbuffer) {
 		channel_record->jitter_impl = 1;
-		channel_record->jitter_max = 500; 
+		channel_record->jitter_max = opt_saveaudio_jitterbuffer_jbsize > 0 ? opt_saveaudio_jitterbuffer_jbsize : 500; 
 	} else {
 		channel_record->jitter_impl = 0;
-		channel_record->jitter_max = 60; 
+		channel_record->jitter_max = opt_saveaudio_jitterbuffer_jbsize > 0 ? opt_saveaudio_jitterbuffer_jbsize : 60; 
 	}
-	channel_record->jitter_resync_threshold = 1000;
+	channel_record->jitter_resync_threshold = opt_saveaudio_jitterbuffer_resync_threshold > 0 ? opt_saveaudio_jitterbuffer_resync_threshold : 1000;
 	channel_record->last_datalen = 0;
 	channel_record->lastbuflen = 0;
 	channel_record->resync = opt_saveaudio_resync_jitterbuffer;

@@ -290,9 +290,17 @@ int verbosityE = 0;		// debug extended level
 int opt_rtp_firstleg = 0;	// if == 1 then save RTP stream only for first INVITE leg in case you are 
 				// sniffing on SIP proxy where voipmonitor see both SIP leg. 
 int opt_rtp_check_timestamp = 0;
+
 int opt_jitterbuffer_f1 = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_f1
 int opt_jitterbuffer_f2 = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_f2
 int opt_jitterbuffer_adapt = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_adapt
+int opt_jitterbuffer_f1_jbsize = 0;
+int opt_jitterbuffer_f1_resync_threshold = 0;
+int opt_jitterbuffer_f2_jbsize = 0;
+int opt_jitterbuffer_f2_resync_threshold = 0;
+int opt_jitterbuffer_adapt_jbsize = 0;
+int opt_jitterbuffer_adapt_resync_threshold = 0;
+
 int opt_max_buffer_mem = 0;
 int opt_ringbuffer = 50;	// ring buffer in MB 
 bool opt_sip_message = true;
@@ -600,6 +608,8 @@ vector<int> opt_ignore_rtp_after_response_list;
 int opt_saveaudio_reversestereo = 0;
 bool opt_saveaudio_adaptive_jitterbuffer = false;
 bool opt_saveaudio_resync_jitterbuffer = false;
+int opt_saveaudio_jitterbuffer_jbsize = 0;
+int opt_saveaudio_jitterbuffer_resync_threshold = 0;
 float opt_saveaudio_oggquality = 0.4;
 int opt_audioqueue_threads_max = 10;
 bool opt_saveaudio_answeronly = false;
@@ -6669,6 +6679,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42227) cConfigItem_yesno("saveaudio_reversestereo", &opt_saveaudio_reversestereo));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_adaptive_jitterbuffer", &opt_saveaudio_adaptive_jitterbuffer));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_resync_jitterbuffer", &opt_saveaudio_resync_jitterbuffer));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("saveaudio_jitterbuffer_jbsize", &opt_saveaudio_jitterbuffer_jbsize));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("saveaudio_jitterbuffer_resync_threshold", &opt_saveaudio_jitterbuffer_resync_threshold));
 				addConfigItem(new FILE_LINE(42228) cConfigItem_float("ogg_quality", &opt_saveaudio_oggquality));
 				addConfigItem(new FILE_LINE(42229) cConfigItem_integer("audioqueue_threads_max", &opt_audioqueue_threads_max));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("audio_transcribe_connect_duration_min", &opt_audio_transcribe_connect_duration_min));
@@ -7105,6 +7117,13 @@ void cConfig::addConfigItems() {
 			addConfigItem((new FILE_LINE(42338) cConfigItem_yesno("jitterbuffer_adapt", &opt_jitterbuffer_adapt))
 				->addValues("null:-1"));
 			addConfigItem(new FILE_LINE(42339) cConfigItem_yesno("enable_jitterbuffer_asserts", &opt_enable_jitterbuffer_asserts));
+				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("jitterbuffer_f1_jbsize", &opt_jitterbuffer_f1_jbsize));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("jitterbuffer_f1_resync_threshold", &opt_jitterbuffer_f1_resync_threshold));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("jitterbuffer_f2_jbsize", &opt_jitterbuffer_f2_jbsize));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("jitterbuffer_f2_resync_threshold", &opt_jitterbuffer_f2_resync_threshold));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("jitterbuffer_adapt_jbsize", &opt_jitterbuffer_adapt_jbsize));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("jitterbuffer_adapt_resync_threshold", &opt_jitterbuffer_adapt_resync_threshold));
 		setDisableIfEnd();
 	group("system");
 		addConfigItem(new FILE_LINE(42340) cConfigItem_string("pcapcommand", pcapcommand, sizeof(pcapcommand)));
