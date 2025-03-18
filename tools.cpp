@@ -2010,23 +2010,30 @@ void AsyncClose::processTask(int threadIndex) {
 }
 
 void AsyncClose::processAll(int threadIndex) {
+	extern unsigned opt_pcap_dump_asyncwrite_batch_limit;
 	while(true) {
 		lock(threadIndex);
 		if(q[threadIndex].size()) {
-			AsyncCloseItem *item = q[threadIndex].front();
-			if(is_terminating() || item->process_ready()) {
+			AsyncCloseItem *front_item = q[threadIndex].front();
+			if(is_terminating() || front_item->process_ready()) {
 				q[threadIndex].pop_front();
-				sub_sizeOfDataInMemory(item->dataLength);
+				sub_sizeOfDataInMemory(front_item->dataLength);
 				unlock(threadIndex);
-				item->process();
-				delete item;
+				front_item->process();
+				delete front_item;
 			} else {
 				AsyncCloseItem *readyItem = NULL;
 				FileZipHandler *readyHandler = NULL;
+				unsigned counter = 0;
+				bool batch_limit_stop = false;
 				deque<AsyncCloseItem*>::iterator iter;
 				for(iter = q[threadIndex].begin(); iter != q[threadIndex].end(); iter++) {
-					if((*iter)->process_ready() && (*iter)->getHandler() != item->getHandler()) {
+					if((*iter)->process_ready() && (*iter)->getHandler() != front_item->getHandler()) {
 						readyHandler = (*iter)->getHandler();
+						break;
+					}
+					if(opt_pcap_dump_asyncwrite_batch_limit && ++counter >= opt_pcap_dump_asyncwrite_batch_limit) {
+						batch_limit_stop = true;
 						break;
 					}
 				}
@@ -2047,7 +2054,7 @@ void AsyncClose::processAll(int threadIndex) {
 					readyItem->process();
 					delete readyItem;
 				} else {
-					USLEEP(100000);
+					USLEEP(batch_limit_stop ? 1000 : 100000);
 				}
 			}
 		} else {
@@ -2098,6 +2105,14 @@ double AsyncClose::getCpuUsagePerc(int threadIndex, int pstatDataIndex, bool pre
 		}
 	}
 	return(-1);
+}
+
+void AsyncClose::getQueueSize(vector<unsigned> *size) {
+	for(int i = 0; i < this->countPcapThreads; i++) {
+		lock(i);
+		size->push_back(q[i].size());
+		unlock(i);
+	}
 }
 
 RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *build, const char *url, const char *md5_32, const char *md5_64, const char *md5_arm, const char *md5_64_ws) {

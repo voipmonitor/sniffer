@@ -3059,6 +3059,18 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 					}
 				}
 				outStrStat << "%] ";
+				vector<unsigned> queue_size;
+				asyncClose->getQueueSize(&queue_size);
+				if(queue_size.size()) {
+					outStrStat << "tacQ[";
+					for(size_t i = 0; i < queue_size.size(); i++) {
+						if(i) {
+							outStrStat << '|';
+						}
+						outStrStat << queue_size[i];
+					}
+					outStrStat << "] ";
+				}
 			}
 			if(task == pcapStatCpuCheck) {
 				static int do_add_thread_counter = 0;

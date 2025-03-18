@@ -1322,6 +1322,7 @@ public:
 	int getCountThreads() {
 		return(countPcapThreads);
 	}
+	void getQueueSize(vector<unsigned> *size);
 private:
 	void lock(int threadIndex) {
 		__SYNC_LOCK_USLEEP(this->_sync[threadIndex], 10);

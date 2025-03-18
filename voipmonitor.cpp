@@ -684,6 +684,7 @@ int opt_mysqlloadconfig = 1;
 bool opt_last_rtp_from_end = true;
 int opt_pcap_dump_bufflength = 8192;
 int opt_pcap_dump_asyncwrite = 1;
+unsigned opt_pcap_dump_asyncwrite_batch_limit = 0;
 FileZipHandler::eTypeCompress opt_pcap_dump_zip_sip = FileZipHandler::compress_na;
 FileZipHandler::eTypeCompress opt_pcap_dump_zip_rtp = 
 	#ifdef HAVE_LIBLZO
@@ -6584,6 +6585,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42198) cConfigItem_integer("pcap_dump_bufflength", &opt_pcap_dump_bufflength));
 					addConfigItem(new FILE_LINE(42199) cConfigItem_integer("pcap_dump_writethreads", &opt_pcap_dump_writethreads));
 					addConfigItem(new FILE_LINE(42200) cConfigItem_yesno("pcap_dump_asyncwrite", &opt_pcap_dump_asyncwrite));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_dump_asyncwrite_batch_limit", &opt_pcap_dump_asyncwrite_batch_limit));
 					addConfigItem(new FILE_LINE(42201) cConfigItem_integer("pcap_ifdrop_limit", &opt_pcap_ifdrop_limit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_dpdk_ifdrop_limit", &opt_pcap_dpdk_ifdrop_limit));
 		subgroup("SIP");
