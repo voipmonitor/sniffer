@@ -3060,7 +3060,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				}
 				outStrStat << "%] ";
 				vector<unsigned> queue_size;
-				asyncClose->getQueueSize(&queue_size);
+				asyncClose->getQueueSize(&queue_size, true);
 				if(queue_size.size()) {
 					outStrStat << "tacQ[";
 					for(size_t i = 0; i < queue_size.size(); i++) {

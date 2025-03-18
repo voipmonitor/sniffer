@@ -2107,10 +2107,13 @@ double AsyncClose::getCpuUsagePerc(int threadIndex, int pstatDataIndex, bool pre
 	return(-1);
 }
 
-void AsyncClose::getQueueSize(vector<unsigned> *size) {
+void AsyncClose::getQueueSize(vector<unsigned> *size, bool only_non_empty) {
 	for(int i = 0; i < this->countPcapThreads; i++) {
 		lock(i);
-		size->push_back(q[i].size());
+		unsigned i_size = q[i].size();
+		if(!only_non_empty || i_size > 0) {
+			size->push_back(i_size);
+		}
 		unlock(i);
 	}
 }
