@@ -1405,10 +1405,16 @@ uint64_t pcap_store_queue::getFileStoreUseSize(bool lock) {
 }
 
 void pcap_store_queue::memoryBufferIsFull_log() {
+	static volatile int _sync = 0;
+	static volatile u_int64_t lastTimeLogErrMemoryIsFull_s = 0;
 	u_int64_t actTime = getTimeMS();
-	if(actTime - 1000 > this->lastTimeLogErrMemoryIsFull) {
-		syslog(LOG_ERR, "packetbuffer: MEMORY IS FULL");
+	__SYNC_LOCK(_sync);
+	if(actTime - 5000 > this->lastTimeLogErrMemoryIsFull &&
+	   actTime - 5000 > lastTimeLogErrMemoryIsFull_s) {
 		this->lastTimeLogErrMemoryIsFull = actTime;
+		lastTimeLogErrMemoryIsFull_s = actTime;
+		__SYNC_UNLOCK(_sync);
+		syslog(LOG_ERR, "packetbuffer: MEMORY IS FULL");
 		if(!this->firstTimeLogErrMemoryIsFull) {
 			this->firstTimeLogErrMemoryIsFull = actTime;
 		} else if(this->lastTimeLogErrMemoryIsFull > this->firstTimeLogErrMemoryIsFull &&
@@ -1420,6 +1426,8 @@ void pcap_store_queue::memoryBufferIsFull_log() {
 				abort();
 			}
 		}
+	} else {
+		__SYNC_UNLOCK(_sync);
 	}
 }
 
