@@ -480,6 +480,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_br
 				     << (reportblock.frac_lost ? intToString(reportblock.frac_lost) : "") << ","
 				     << (srtcp ? "1" : "")
 				     << endl;
+				cout << "ipsrtcp," << stream_index << "," << ip_src.getString() << "," << ip_dst.getString() << endl;
 			}
 		}
 
@@ -608,6 +609,7 @@ char *dump_rtcp_rr(char *data, int datalen, int count, CallBranch *c_branch, str
 				     << (reportblock.frac_lost ? intToString(reportblock.frac_lost) : "") << ","
 				     << (srtcp ? "1" : "")
 				     << endl;
+				cout << "ipsrtcp," << stream_index << "," << ip_src.getString() << "," << ip_dst.getString() << endl;
 			}
 		}
 
