@@ -63,7 +63,7 @@ AC_CHECK_LIB([m], [main])
 AC_CHECK_LIB([odbc], [main], , AC_MSG_ERROR([Unable to find odbc library. Debian: apt-get install unixodbc-dev. Centos/Redhat: yum install unixODBC-devel]))
 # FIXME: Replace `main' with a function in `-logg':
 AC_CHECK_LIB([ogg], [main], , AC_MSG_ERROR([Unable to find OGG library. Debian: apt-get install libvorbis-dev. Centos/Redhat: yum install libogg-devel libvorbis-devel]))
-AC_CHECK_LIB([mp3lame], [main], HAVE_LIBLAME=1, AC_MSG_NOTICE([Unable to find mp3-lame library. apt-get install liblame-dev | yum install lame-devel]))
+AC_CHECK_LIB([mp3lame], [main], HAVE_LIBLAME=1, AC_MSG_NOTICE([Unable to find mp3-lame library. apt-get install libmp3lame-dev | yum install lame-devel]))
 AC_CHECK_LIB([mpg123], [main], HAVE_LIBMPG123=1, AC_MSG_NOTICE([Unable to find mpeg123 library. apt-get install libmpg123-dev | yum install mpg123-devel]))
 # FIXME: Replace `main' with a function in `-lpcap':
 AC_CHECK_LIB([pcap], [main], ,AC_MSG_ERROR([Unable to find libpcap library. Debian: apt-get install libpcap-dev. Centos/Redhat: yum install libpcap-devel]))

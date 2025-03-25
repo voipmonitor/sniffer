@@ -9,7 +9,7 @@
 #include <vorbis/vorbisenc.h>
 
 #if HAVE_LIBLAME
-#include <lame.h>
+#include <lame/lame.h>
 #endif
 
 #if HAVE_LIBMPG123

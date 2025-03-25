@@ -3658,8 +3658,8 @@ $as_echo "$ac_cv_lib_mp3lame_main" >&6; }
 if test "x$ac_cv_lib_mp3lame_main" = xyes; then :
   HAVE_LIBLAME=1
 else
-  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find mp3-lame library. apt-get install liblame-dev | yum install lame-devel" >&5
-$as_echo "$as_me: Unable to find mp3-lame library. apt-get install liblame-dev | yum install lame-devel" >&6;}
+  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find mp3-lame library. apt-get install libmp3lame-dev | yum install lame-devel" >&5
+$as_echo "$as_me: Unable to find mp3-lame library. apt-get install libmp3lame-dev | yum install lame-devel" >&6;}
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lmpg123" >&5
