@@ -27,12 +27,10 @@
 #include "voipmonitor.h"
 #include "calltable.h"
 #include "sniff.h"
-#include "format_slinear.h"
 #include "codec_alaw.h"
 #include "codec_ulaw.h"
 #include "tools.h"
 #include "calltable.h"
-#include "format_ogg.h"
 #include "cleanspool.h"
 #include "pcap_queue.h"
 #include "manager.h"
@@ -52,6 +50,7 @@
 #include "charts.h"
 #include "diameter.h"
 #include "ssldata.h"
+#include "audio_convert.h"
 
 #ifndef FREEBSD
 #include <malloc.h>

@@ -36,8 +36,6 @@
 
 #include "voipmonitor.h"
 #include "calltable.h"
-#include "format_wav.h"
-#include "format_ogg.h"
 #include "codecs.h"
 #include "codec_alaw.h"
 #include "codec_ulaw.h"
@@ -68,6 +66,7 @@
 #include "diameter.h"
 #include "transcribe.h"
 #include "heap_chunk.h"
+#include "audio_convert.h"
 
 #if HAVE_LIBJEMALLOC
 #include <jemalloc/jemalloc.h>
@@ -217,6 +216,7 @@ extern int opt_saveaudio_reversestereo;
 extern int opt_saveaudio_stereo;
 extern int opt_saveaudio_reversestereo;
 extern float opt_saveaudio_oggquality;
+extern int opt_saveaudio_mp3quality;
 extern bool opt_saveaudio_filteripbysipip;
 extern bool opt_saveaudio_filter_ext;
 extern bool opt_saveaudio_wav_mix;
@@ -3513,12 +3513,16 @@ Call::convertRawToWav(void **transcribe_call, int thread_index) {
 			closedir(dp);
 		}
 	}
-
-	if(!(flags & FLAG_FORMATAUDIO_OGG)) {
-		strcpy_null_term(out, get_pathfilename(tsf_audio, "wav").c_str());
-	} else {
-		strcpy_null_term(out, get_pathfilename(tsf_audio, "ogg").c_str());
-	}
+	
+	cAudioConvert::eFormatType audio_format = (flags & FLAG_FORMATAUDIO_OGG) ? cAudioConvert::_format_ogg :
+						  (flags & FLAG_FORMATAUDIO_MP3) ? 
+										   #if HAVE_LIBLAME && HAVE_LIBLAME
+										   cAudioConvert::_format_mp3
+										   #else
+										   cAudioConvert::_format_ogg
+										   #endif
+						  : cAudioConvert::_format_wav;
+	strcpy_null_term(out, get_pathfilename(tsf_audio, cAudioConvert::getExtension(audio_format)).c_str());
 
 	/* caller direction */
 	strcpy_null_term(rawInfo, get_pathfilename(tsf_audio, "i0.rawInfo").c_str());
@@ -4308,40 +4312,34 @@ Call::convertRawToWav(void **transcribe_call, int thread_index) {
 					 this->connect_duration_s() >= (unsigned)opt_audio_transcribe_connect_duration_min);
 	
 	if(_enable_save_audio) {
+		double audio_quality = audio_format == cAudioConvert::_format_ogg ? opt_saveaudio_oggquality :
+				       #if HAVE_LIBLAME && HAVE_LIBLAME
+				       audio_format == cAudioConvert::_format_mp3 ? opt_saveaudio_mp3quality :
+				       #endif
+				       0;
 		if(adir == 1 && bdir == 1) {
-			// merge caller and called 
-			if(!(flags & FLAG_FORMATAUDIO_OGG)) {
-				if(!opt_saveaudio_reversestereo) {
-					wav_mix(wav0, wav1, out, maxsamplerate, 0, opt_saveaudio_stereo);
-				} else {
-					wav_mix(wav1, wav0, out, maxsamplerate, 0, opt_saveaudio_stereo);
-				}
-			} else {
-				if(!opt_saveaudio_reversestereo) {
-					ogg_mix(wav0, wav1, out, opt_saveaudio_stereo, maxsamplerate, opt_saveaudio_oggquality, 0);
-				} else {
-					ogg_mix(wav1, wav0, out, opt_saveaudio_stereo, maxsamplerate, opt_saveaudio_oggquality, 0);
-				}
-			}
+			// merge caller and called
+			ac_file_mix(opt_saveaudio_reversestereo ? wav1 : wav0, 
+				    opt_saveaudio_reversestereo ? wav0 : wav1,
+				    out, audio_format,
+				    maxsamplerate, opt_saveaudio_stereo, false,
+				    audio_quality, true);
 			if(!sverb.noaudiounlink && !_enable_audio_transcribe) unlink(wav0);
 			if(!sverb.noaudiounlink && !_enable_audio_transcribe) unlink(wav1);
 		} else if(adir == 1) {
 			// there is only caller sound
-			if(!(flags & FLAG_FORMATAUDIO_OGG)) {
-				wav_mix(wav0, NULL, out, maxsamplerate, 0, opt_saveaudio_stereo);
-			} else {
-				ogg_mix(wav0, NULL, out, opt_saveaudio_stereo, maxsamplerate, opt_saveaudio_oggquality, 0);
-			}
+			ac_file_mix(wav0, NULL,out, audio_format,
+				    maxsamplerate, opt_saveaudio_stereo, false,
+				    audio_quality, true);
 			if(!sverb.noaudiounlink && !_enable_audio_transcribe) unlink(wav0);
 		} else if(bdir == 1) {
 			// there is only called sound
-			if(!(flags & FLAG_FORMATAUDIO_OGG)) {
-				wav_mix(wav1, NULL, out, maxsamplerate, 1, opt_saveaudio_stereo);
-			} else {
-				ogg_mix(wav1, NULL, out, opt_saveaudio_stereo, maxsamplerate, opt_saveaudio_oggquality, 1);
-			}
+			ac_file_mix(wav1, NULL,out, audio_format,
+				    maxsamplerate, opt_saveaudio_stereo, true,
+				    audio_quality, true);
 			if(!sverb.noaudiounlink && !_enable_audio_transcribe) unlink(wav1);
 		}
+		
 		string tmp;
 		tmp.append(out);
 		addtofilesqueue(tsf_audio, tmp, 0);
@@ -16573,6 +16571,7 @@ string printCallFlags(unsigned long int flags) {
 	if(flags & FLAG_SAVEAUDIO)			outStr << "saveaudio ";
 	if(flags & FLAG_FORMATAUDIO_WAV)		outStr << "format_wav ";
 	if(flags & FLAG_FORMATAUDIO_OGG)		outStr << "format_ogg ";
+	if(flags & FLAG_FORMATAUDIO_MP3)		outStr << "format_mp3 ";
 	if(flags & FLAG_SAVEAUDIOGRAPH)			outStr << "save_audio_graph";
 	if(flags & FLAG_AUDIOTRANSCRIBE)		outStr << "audio_transcribe ";
 	if(flags & FLAG_SAVEGRAPH)			outStr << "savegraph ";

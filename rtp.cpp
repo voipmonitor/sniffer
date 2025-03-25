@@ -26,7 +26,6 @@ Each Call class contains two RTP classes.
 #include "calltable.h"
 #include "codecs.h"
 #include "sniff.h"
-#include "format_slinear.h"
 #include "codec_alaw.h"
 #include "codec_ulaw.h"
 #include "mos_g729.h"   

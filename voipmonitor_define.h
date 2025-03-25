@@ -8,6 +8,7 @@
 
 #define FORMAT_WAV	1
 #define FORMAT_OGG	2
+#define FORMAT_MP3	3
 #define REGISTER_CLEAN_PERIOD 60	// clean register table for expired items every 60 seconds
 
 #define STORE_PROC_ID_CDR 10

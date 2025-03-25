@@ -55,6 +55,12 @@
 /* Define to 1 if you have the `ogg' library (-logg). */
 #undef HAVE_LIBOGG
 
+/* Define to 1 if you have the `lame' library (-lmp3lame). */
+#undef HAVE_LIBLAME
+
+/* Define to 1 if you have the `mpg123' library (-lmpg123). */
+#undef HAVE_LIBMPG123
+
 /* Define to 1 if you have the `pcap' library (-lpcap). */
 #undef HAVE_LIBPCAP
 

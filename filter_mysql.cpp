@@ -110,6 +110,13 @@ u_int64_t filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow, u_int32
 	if(baseRow->wav == 1)			flags |= CAPT_FLAG(_CAPT_BIT_AUDIO);
 	else if(baseRow->wav == 2)		flags |= CAPT_FLAG(_CAPT_BIT_AUDIO_WAV);
 	else if(baseRow->wav == 3)		flags |= CAPT_FLAG(_CAPT_BIT_AUDIO_OGG);
+	else if(baseRow->wav == 4)		flags |= CAPT_FLAG(
+								   #if HAVE_LIBLAME && HAVE_LIBLAME
+								   _CAPT_BIT_AUDIO_MP3
+								   #else
+								   _CAPT_BIT_AUDIO_OGG
+								   #endif
+								   );
 	else if(baseRow->wav == 0)		flags |= CAPT_FLAG(_CAPT_BIT_NOWAV);
 	
 	if(baseRow->audio_transcribe == 1)	flags |= CAPT_FLAG(_CAPT_BIT_AUDIO_TRANSCRIBE);
@@ -206,8 +213,9 @@ void filter_base::setCallFlagsFromFilterFlags(volatile unsigned long int *callFl
 	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NODTMF_PCAP))		*callFlags &= ~FLAG_SAVEDTMFPCAP;
 	
 	if(filterFlags & CAPT_FLAG(_CAPT_BIT_AUDIO))			*callFlags |= FLAG_SAVEAUDIO;
-	if(filterFlags & CAPT_FLAG(_CAPT_BIT_AUDIO_WAV))		{*callFlags |= FLAG_SAVEAUDIO_WAV; *callFlags &= ~FLAG_FORMATAUDIO_OGG;}
-	if(filterFlags & CAPT_FLAG(_CAPT_BIT_AUDIO_OGG))		{*callFlags |= FLAG_SAVEAUDIO_OGG; *callFlags &= ~FLAG_FORMATAUDIO_WAV;}
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_AUDIO_WAV))		{*callFlags |= FLAG_SAVEAUDIO_WAV; *callFlags &= ~(FLAG_FORMATAUDIO_OGG|FLAG_SAVEAUDIO_MP3);}
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_AUDIO_OGG))		{*callFlags |= FLAG_SAVEAUDIO_OGG; *callFlags &= ~(FLAG_FORMATAUDIO_WAV|FLAG_SAVEAUDIO_MP3);}
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_AUDIO_MP3))		{*callFlags |= FLAG_SAVEAUDIO_MP3; *callFlags &= ~(FLAG_FORMATAUDIO_WAV|FLAG_SAVEAUDIO_OGG);}
 	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NOWAV))			*callFlags &= ~FLAG_SAVEAUDIO;
 	
 	if(filterFlags & CAPT_FLAG(_CAPT_BIT_AUDIO_TRANSCRIBE))		*callFlags |= FLAG_AUDIOTRANSCRIBE;

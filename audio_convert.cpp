@@ -7,6 +7,7 @@
 
 #include "audio_convert.h"
 #include "tools_global.h"
+#include "tools.h"
 
 
 using namespace std;
@@ -27,20 +28,58 @@ void cAudioConvert::sWavHeader::prepareEndian() {
 }
 
 
+#if HAVE_LIBLAME && HAVE_LIBLAME
+void cAudioConvert::sMp3::set_buffer(unsigned pcm_buffer_size, sAudioInfo *audioInfo) {
+	unsigned need_buffer_size = pcm_buffer_size / (audioInfo->bitsPerSample / 8) * 1.25 + 7200;
+	if(!buffer || buffer_size < need_buffer_size) {
+		if(buffer) {
+			delete [] buffer;
+		}
+		buffer_size = need_buffer_size;
+		buffer = new FILE_LINE(0) u_char[buffer_size];
+	}
+}
+
+void cAudioConvert::sMp3::destroy() {
+	if(lame) {
+		lame_close(lame);
+		lame = NULL;
+	}
+	if(mpg123) {
+		mpg123_close(mpg123);
+		mpg123_delete(mpg123);
+		mpg123_exit();
+		mpg123 = NULL;
+	}
+	if(buffer) {
+		delete [] buffer;
+		buffer = 0;
+		buffer_size = 0;
+	}
+}
+#endif
+
+
 cAudioConvert::cAudioConvert() {
 	srcDstType = _src;
 	formatType = _format_raw;
 	fileHandle = NULL;
 	destAudio = NULL;
 	oggQuality = 0.4;
+	mp3Quality = 5;
 	headerIsWrited = false;
 	onlyGetAudioInfo = false;
 	resample_chunk_length = 100 * 1024;
+	destInSpool = false;
+	write_buffer = NULL;
 }
 
 cAudioConvert::~cAudioConvert() {
 	if(fileHandle) {
 		fclose(fileHandle);
+	}
+	if(write_buffer) {
+		delete [] write_buffer;
 	}
 }
 
@@ -60,6 +99,13 @@ cAudioConvert::eResult cAudioConvert::getAudioInfo() {
 		 onlyGetAudioInfo = false;
 		 return(_rslt_ok);
 	}
+	#if HAVE_LIBLAME && HAVE_LIBLAME
+	if(readMp3() == _rslt_ok) {
+		 formatType = _format_mp3;
+		 onlyGetAudioInfo = false;
+		 return(_rslt_ok);
+	}
+	#endif
 	onlyGetAudioInfo = false;
 	return(_rslt_unknown_format);
 }
@@ -68,7 +114,11 @@ string cAudioConvert::jsonAudioInfo() {
 	JsonExport json_export;
 	json_export.add("format", formatType == _format_raw ? "raw" :
 				  formatType == _format_wav ? "wav" :
-				  formatType == _format_ogg ? "ogg" : "unknown");
+				  formatType == _format_ogg ? "ogg" :
+				  #if HAVE_LIBLAME && HAVE_LIBLAME
+				  formatType == _format_mp3 ? "mp3" :
+				  #endif
+				  "unknown");
 	json_export.add("sample_rate", audioInfo.sampleRate);
 	json_export.add("channels", audioInfo.channels);
 	json_export.add("bits_per_sample", audioInfo.bitsPerSample);
@@ -691,6 +741,89 @@ cAudioConvert::eResult cAudioConvert::_writeOgg() {
 	return(_rslt_ok);
 }
 
+#if HAVE_LIBLAME && HAVE_LIBLAME
+cAudioConvert::eResult cAudioConvert::readMp3() {
+	if(mpg123_init() != MPG123_OK) {
+		return(_rslt_mpg123_failed_init);
+	}
+	int error;
+	mp3.mpg123 = mpg123_new(NULL, &error);
+	if(mp3.mpg123 == NULL) {
+		return(_rslt_mpg123_failed_create_handle);
+	}
+	if(mpg123_open(mp3.mpg123, fileName.c_str()) != MPG123_OK) {
+		return(_rslt_mpg123_failed_open);
+	}
+	long sampleRate;
+	int channels, encoding;
+	if(mpg123_getformat(mp3.mpg123, &sampleRate, &channels, &encoding) != MPG123_OK) {
+		return(_rslt_mpg123_failed_get_audioinfo);
+	}
+	audioInfo.channels = channels;
+	audioInfo.sampleRate = sampleRate;
+	audioInfo.bitsPerSample = 16;
+	if(onlyGetAudioInfo) {
+		return(_rslt_ok);
+	}
+	mp3.buffer_size = mpg123_outblock(mp3.mpg123);
+	mp3.buffer = new FILE_LINE(0) u_char[mp3.buffer_size];
+	size_t size = 0;
+	while(mpg123_read(mp3.mpg123, mp3.buffer, mp3.buffer_size, &size) == MPG123_OK) {
+		write(mp3.buffer, size);
+	}
+	eResult rslt_write = write(NULL, 0);
+	if(rslt_write != _rslt_ok) {
+		return(rslt_write);
+	}
+	return(_rslt_ok);
+}
+
+cAudioConvert::eResult cAudioConvert::initMp3() {
+	mp3.lame = lame_init();
+	if(!mp3.lame) {
+		return(_rslt_mp3_failed_create_lame);
+	}
+	lame_set_in_samplerate(mp3.lame, audioInfo.sampleRate);
+	lame_set_num_channels(mp3.lame, audioInfo.channels);
+	lame_set_VBR(mp3.lame, vbr_default);
+	lame_set_quality(mp3.lame, mp3Quality);
+	if(lame_init_params(mp3.lame) < 0) {
+		mp3.destroy();
+		return(_rslt_mp3_failed_init_params);
+	}
+        return(_rslt_ok);
+}
+
+cAudioConvert::eResult cAudioConvert::writeMp3Data(u_char *data, unsigned datalen) {
+	int size;
+	unsigned samples = datalen / (audioInfo.bitsPerSample / 8) / audioInfo.channels;
+	mp3.set_buffer(datalen, &audioInfo);
+	if(audioInfo.channels == 2) {
+		size = lame_encode_buffer_interleaved(mp3.lame, (short int*)data, samples, mp3.buffer, mp3.buffer_size);
+        } else {
+                size = lame_encode_buffer(mp3.lame, (short int*)data, NULL, samples, mp3.buffer, mp3.buffer_size);
+        }
+        if(size < 0) {
+		return(_rslt_mp3_failed_encode);
+	}
+	if(size > 0) {
+		write(mp3.buffer, size);
+	}
+	return(_rslt_ok);
+}
+
+cAudioConvert::eResult cAudioConvert::writeMp3End() {
+	int size = lame_encode_flush(mp3.lame, mp3.buffer, mp3.buffer_size);
+	if(size < 0) {
+		return(_rslt_mp3_failed_encode);
+	}
+	if(size > 0) {
+		write(mp3.buffer, size);
+	}
+	return(_rslt_ok);
+}
+#endif
+
 cAudioConvert::eResult cAudioConvert::write(u_char *data, unsigned datalen) {
 	if(destAudio) {
 		eResult rslt = _rslt_ok;
@@ -706,6 +839,11 @@ cAudioConvert::eResult cAudioConvert::write(u_char *data, unsigned datalen) {
 				case _format_ogg:
 					rslt = destAudio->writeOggHeader();
 					break;
+				#if HAVE_LIBLAME && HAVE_LIBLAME
+				case _format_mp3:
+					rslt = destAudio->initMp3();
+					break;
+				#endif
 				}
 				headerIsWrited = true;
 			}
@@ -720,6 +858,11 @@ cAudioConvert::eResult cAudioConvert::write(u_char *data, unsigned datalen) {
 				case _format_ogg:
 					rslt = destAudio->writeOggData(data, datalen);
 					break;
+				#if HAVE_LIBLAME && HAVE_LIBLAME
+				case _format_mp3:
+					rslt = destAudio->writeMp3Data(data, datalen);
+					break;
+				#endif
 				}
 				headerIsWrited = true;
 			}
@@ -733,6 +876,11 @@ cAudioConvert::eResult cAudioConvert::write(u_char *data, unsigned datalen) {
 			case _format_ogg:
 				rslt = destAudio->writeOggEnd();
 				break;
+			#if HAVE_LIBLAME && HAVE_LIBLAME
+			case _format_mp3:
+				rslt = destAudio->writeMp3End();
+				break;
+			#endif
 			}
 		}
 	}
@@ -763,9 +911,35 @@ bool cAudioConvert::open() {
 
 bool cAudioConvert::open_for_write() {
 	if(!fileHandle) {
-		fileHandle = fopen(fileName.c_str(), "w");
-		if(!fileHandle) {
-			return(false);
+		if(!destInSpool) {
+			fileHandle = fopen(fileName.c_str(), "w");
+			if(!fileHandle) {
+				return(false);
+			}
+		} else {
+			for(int passOpen = 0; passOpen < 2; passOpen++) {
+				if(passOpen == 1) {
+					char *pointToLastDirSeparator = (char*)strrchr(fileName.c_str(), '/');
+					if(pointToLastDirSeparator) {
+						*pointToLastDirSeparator = 0;
+						spooldir_mkdir(fileName.c_str());
+						*pointToLastDirSeparator = '/';
+					} else {
+						break;
+					}
+				}
+				fileHandle = fopen(fileName.c_str(), "w");
+				if(fileHandle) {
+					spooldir_file_chmod_own(fileHandle);
+					break;
+				}
+				if(write_buffer) {
+					delete write_buffer;
+				}
+				unsigned write_buffer_size = 32768;
+				write_buffer = new u_char[write_buffer_size];
+				setvbuf(fileHandle, (char*)write_buffer, _IOFBF, write_buffer_size);
+			}
 		}
 	}
 	return(true);
@@ -815,6 +989,16 @@ void cAudioConvert::linear_resample(int16_t* input, int16_t* output, int input_l
 	}
 }
 
+const char *cAudioConvert::getExtension(eFormatType format) {
+	return(format == _format_raw ? "raw" :
+	       format == _format_wav ? "wav" :
+	       format == _format_ogg ? "ogg" :
+	       #if HAVE_LIBLAME && HAVE_LIBLAME
+	       format == _format_mp3 ? "mp3" :
+	       #endif
+	       "unknow");
+}
+
 string cAudioConvert::getRsltStr(eResult rslt) {
 	switch(rslt) {
 	case _rslt_ok: return("ok");
@@ -831,6 +1015,13 @@ string cAudioConvert::getRsltStr(eResult rslt) {
 	case _rslt_ogg_corrupt_secondary_header: return("corrupt ogg secondary header");
 	case _rslt_ogg_missing_vorbis_headers: return("missing vorbis header");
 	case _rslt_ogg_failed_encode_initialization: return("failed ogg encode initialization");
+	case _rslt_mp3_failed_create_lame: return("failed mp3 create lame");
+	case _rslt_mp3_failed_init_params: return("failed mp3 init params");
+	case _rslt_mp3_failed_encode: return("failed mp3 encode");
+	case _rslt_mpg123_failed_init: return("failed mpg123 init");
+	case _rslt_mpg123_failed_create_handle: return("failed mpg123 create handle");
+	case _rslt_mpg123_failed_open: return("failed mpg123 create open");
+	case _rslt_mpg123_failed_get_audioinfo: return("failed mpg123 get audio info");
 	case _rslt_failed_libsamplerate_init: return("failed libsamplerate init");
 	case _rslt_failed_libsamplerate_process: return("failed libsamplerate process");
 	case _rslt_unknown_format: return("unknown format");
@@ -841,6 +1032,7 @@ string cAudioConvert::getRsltStr(eResult rslt) {
 
 void cAudioConvert::test() {
  
+	/*
 	{
 	cAudioConvert info;
 	info.fileName = "/home/jumbox/Plocha/ac/1781060762.ogg";
@@ -932,4 +1124,215 @@ void cAudioConvert::test() {
 	ai.bitsPerSample = 16;
 	cout << "6: " << src.readRaw(&ai) << endl;
 	}
+	*/
+	
+	{
+	cAudioConvert src;
+	src.fileName = "/home/jumbox/Plocha/ac/1781060762.wav";
+	cAudioConvert dst;
+	dst.formatType = _format_ogg;
+	dst.srcDstType = _dst;
+	dst.fileName = "/home/jumbox/Plocha/ac/1781060762.ogg";
+	src.destAudio = &dst;
+	cout << "1: " << src.readWav() << endl;
+	}
+	
+	#if HAVE_LIBLAME && HAVE_LIBLAME
+	{
+	cAudioConvert src;
+	src.fileName = "/home/jumbox/Plocha/ac/1781060762.wav";
+	cAudioConvert dst;
+	dst.formatType = _format_mp3;
+	dst.srcDstType = _dst;
+	dst.fileName = "/home/jumbox/Plocha/ac/1781060762.mp3";
+	src.destAudio = &dst;
+	cout << "2: " << src.readWav() << endl;
+	}
+	#endif
+	
+	#if HAVE_LIBLAME && HAVE_LIBLAME
+	{
+	cAudioConvert src;
+	src.fileName = "/home/jumbox/Plocha/ac/1781060762.mp3";
+	cAudioConvert dst;
+	dst.formatType = _format_wav;
+	dst.srcDstType = _dst;
+	dst.fileName = "/home/jumbox/Plocha/ac/1781060762-2.wav";
+	src.destAudio = &dst;
+	cout << "2: " << src.readMp3() << endl;
+	}
+	#endif
+	
+	{
+	cAudioConvert info;
+	info.fileName = "/home/jumbox/Plocha/ac/1781060762.wav";
+	info.getAudioInfo();
+	cout << info.jsonAudioInfo() <<  endl;
+	}
+	
+	{
+	cAudioConvert info;
+	info.fileName = "/home/jumbox/Plocha/ac/1781060762.ogg";
+	info.getAudioInfo();
+	cout << info.jsonAudioInfo() <<  endl;
+	}
+	
+	{
+	cAudioConvert info;
+	info.fileName = "/home/jumbox/Plocha/ac/1781060762.mp3";
+	info.getAudioInfo();
+	cout << info.jsonAudioInfo() <<  endl;
+	}
+}
+
+bool ac_file_mix(char *src1, char *src2, char *dest, cAudioConvert::eFormatType format,
+		 unsigned sampleRate, bool stereo,  bool swap,
+		 double quality, bool destInSpool) {
+	FILE *f_src[2] = { NULL, NULL };
+	f_src[0] = fopen(src1, "r");
+	if(!f_src[0]) {
+		syslog(LOG_ERR,"File [%s] cannot be opened for read.\n", src1);
+		return(false);
+	}
+	if(src2 != NULL) {
+		f_src[1] = fopen(src2, "r");
+		if(!f_src[1]) {
+			fclose(f_src[0]);
+			syslog(LOG_ERR,"File [%s] cannot be opened for read.\n", src2);
+			return(false);
+		}
+	}
+	
+	cAudioConvert ac;
+	ac.audioInfo.sampleRate = sampleRate;
+	ac.audioInfo.channels = stereo ? 2 : 1;
+	ac.audioInfo.bitsPerSample = 16;
+	cAudioConvert ac_dest;
+	ac_dest.formatType = format;
+	ac_dest.srcDstType = cAudioConvert::_dst;
+	ac_dest.fileName = dest;
+	ac_dest.destInSpool = destInSpool;
+	if(format == cAudioConvert::_format_ogg) {
+		ac_dest.oggQuality = quality;
+	}
+	#if HAVE_LIBLAME && HAVE_LIBLAME
+	else if(format == cAudioConvert::_format_mp3) {
+		ac_dest.mp3Quality = quality;
+	}
+	#endif
+	ac.destAudio = &ac_dest;
+	
+	unsigned buff_length = 1024 * 1024;
+	char *buff[2] = { NULL, NULL };
+	unsigned read_length[2] = { 0, 0 };
+	unsigned buff_pos[2] = { 0, 0 };
+	char *p[2] = { NULL, NULL };
+	for(unsigned i = 0; i < 2; i++) {
+		if(f_src[i]) {
+			buff[i] = new FILE_LINE(0) char[buff_length];
+			read_length[i] = fread(buff[i], 1, buff_length, f_src[i]);
+			if(read_length[i]) {
+				p[i] = buff[i]; 
+			}
+		}
+	}
+	unsigned write_buffer_size = 1024 * 10;
+	unsigned write_buffer_pos = 0;
+	u_char *write_buffer = new FILE_LINE(0) u_char[write_buffer_size + 128];
+	short int zero = 0;
+	cAudioConvert::eResult write_rslt = cAudioConvert::_rslt_ok;
+	while((p[0] || p[1]) && write_rslt == cAudioConvert::_rslt_ok) {
+		if(p[0] && p[1]) {
+			if(stereo) {
+				if(swap) {
+					memcpy(write_buffer + write_buffer_pos, p[1], 2); write_buffer_pos += 2;
+					memcpy(write_buffer + write_buffer_pos, p[0], 2); write_buffer_pos += 2;
+				} else {
+					memcpy(write_buffer + write_buffer_pos, p[0], 2); write_buffer_pos += 2;
+					memcpy(write_buffer + write_buffer_pos, p[1], 2); write_buffer_pos += 2;
+				}
+			} else {
+				slinear_saturated_add((short int*)p[0], (short int*)p[1]);
+				memcpy(write_buffer + write_buffer_pos, p[0], 2); write_buffer_pos += 2;
+			}
+			buff_pos[0] += 2;
+			buff_pos[1] += 2;
+		} else if(p[0]) {
+			if(swap) {
+				if(stereo) {
+					memcpy(write_buffer + write_buffer_pos, &zero, 2); write_buffer_pos += 2;
+				}
+				memcpy(write_buffer + write_buffer_pos, p[0], 2); write_buffer_pos += 2;
+			} else {
+				memcpy(write_buffer + write_buffer_pos, p[0], 2); write_buffer_pos += 2;
+				if(stereo) {
+					memcpy(write_buffer + write_buffer_pos, &zero, 2); write_buffer_pos += 2;
+				}
+			}
+			buff_pos[0] += 2;
+		} else if(p[1]) {
+			if(swap) {
+				memcpy(write_buffer + write_buffer_pos, p[1], 2); write_buffer_pos += 2;
+				if(stereo) {
+					memcpy(write_buffer + write_buffer_pos, &zero, 2); write_buffer_pos += 2;
+				}
+			} else {
+				if(stereo) {
+					memcpy(write_buffer + write_buffer_pos, &zero, 2); write_buffer_pos += 2;
+				}
+				memcpy(write_buffer + write_buffer_pos, p[1], 2); write_buffer_pos += 2;
+			}
+			buff_pos[1] += 2;
+		}
+		for(unsigned i = 0; i < 2; i++) {
+			if(read_length[i] > 0 && buff_pos[i] >= read_length[i]) {
+				read_length[i] = fread(buff[i], 1, buff_length, f_src[i]);
+				buff_pos[i] = 0;
+			}
+			if(read_length[i] > 0) {
+				p[i] = buff[i] + buff_pos[i];
+			} else {
+				p[i] = NULL;
+			}
+		}
+		if(write_buffer_pos >= write_buffer_size) {
+			write_rslt = ac.write(write_buffer, write_buffer_pos);
+			write_buffer_pos = 0;
+		}
+	}
+	if(write_buffer_pos > 0 && write_rslt == cAudioConvert::_rslt_ok) {
+		write_rslt = ac.write(write_buffer, write_buffer_pos);
+		write_buffer_pos = 0;
+	}
+	if(write_rslt == cAudioConvert::_rslt_ok) {
+		write_rslt = ac.write(NULL, 0);
+	}
+	
+	if(write_rslt != cAudioConvert::_rslt_ok) {
+		syslog(LOG_ERR, "Failed create audio file [%s] : %s\n", dest, cAudioConvert::getRsltStr(write_rslt).c_str());
+	}
+	
+	delete [] write_buffer;
+	for(unsigned i = 0; i < 2; i++) {
+		if(f_src[i]) {
+			fclose(f_src[i]);
+		}
+		if(buff[i]) {
+			delete [] buff[i];
+		}
+	}
+
+	return(write_rslt == cAudioConvert::_rslt_ok);
+}
+
+void slinear_saturated_add(short *input, short *value) {
+	int res;
+
+        res = (int) *input + *value;
+        if (res > 32767)
+                *input = 32767;
+        else if (res < -32767)
+                *input = -32767;
+        else
+                *input = (short) res;
 }

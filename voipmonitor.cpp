@@ -611,6 +611,7 @@ bool opt_saveaudio_resync_jitterbuffer = false;
 int opt_saveaudio_jitterbuffer_jbsize = 0;
 int opt_saveaudio_jitterbuffer_resync_threshold = 0;
 float opt_saveaudio_oggquality = 0.4;
+int opt_saveaudio_mp3quality = 5;
 int opt_audioqueue_threads_max = 10;
 bool opt_saveaudio_answeronly = false;
 bool opt_saveaudio_filteripbysipip = false;
@@ -3881,6 +3882,12 @@ int main(int argc, char *argv[]) {
 				cerr << "audio-convert: bad arguments" << endl;
 				return(1);
 			}
+			#if not (HAVE_LIBLAME && HAVE_LIBLAME)
+			if(!strcmp(outputFormat, "mp3")) {
+				cerr << "audio-convert: mp3 support requires building with lame and mpg123 libraries" << endl;
+				return(1);
+			}
+			#endif
 			delete [] opt_audioconvert_params;
 			cAudioConvert info;
 			info.fileName = inputFileName;
@@ -3891,6 +3898,9 @@ int main(int argc, char *argv[]) {
 				cAudioConvert dst;
 				dst.formatType = !strcmp(outputFormat, "wav") ? cAudioConvert::_format_wav :
 						 !strcmp(outputFormat, "ogg") ? cAudioConvert::_format_ogg :
+						 #if HAVE_LIBLAME && HAVE_LIBLAME
+						 !strcmp(outputFormat, "mp3") ? cAudioConvert::_format_mp3 :
+						 #endif
 										cAudioConvert::_format_raw;
 				dst.srcDstType = cAudioConvert::_dst;
 				dst.fileName = outputFileName;
@@ -3900,6 +3910,10 @@ int main(int argc, char *argv[]) {
 					rslt = src.readWav();
 				} else if(info.formatType == cAudioConvert::_format_ogg) {
 					rslt = src.readOgg();
+				#if HAVE_LIBLAME && HAVE_LIBLAME
+				} else if(info.formatType == cAudioConvert::_format_mp3) {
+					rslt = src.readMp3();
+				#endif
 				} else {
 					cAudioConvert::sAudioInfo audioInfo;
 					audioInfo.sampleRate = sampleRate;
@@ -6666,7 +6680,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42224) cConfigItem_integer("tar_internal_graph_level", &opt_pcap_dump_tar_internal_gzip_graph_level));
 		subgroup("AUDIO");
 			addConfigItem((new FILE_LINE(42225) cConfigItem_yesno("saveaudio"))
-				->addValues("wav:1|w:1|ogg:2|o:2")
+				->addValues("wav:1|w:1|ogg:2|o:2|mp3:3|m:3")
 				->setDefaultValueStr("no"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audio_transcribe", &opt_audio_transcribe));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("liveaudio", &opt_liveaudio));
@@ -6684,6 +6698,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("saveaudio_jitterbuffer_jbsize", &opt_saveaudio_jitterbuffer_jbsize));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("saveaudio_jitterbuffer_resync_threshold", &opt_saveaudio_jitterbuffer_resync_threshold));
 				addConfigItem(new FILE_LINE(42228) cConfigItem_float("ogg_quality", &opt_saveaudio_oggquality));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("mp3_quality", &opt_saveaudio_mp3quality));
 				addConfigItem(new FILE_LINE(42229) cConfigItem_integer("audioqueue_threads_max", &opt_audioqueue_threads_max));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("audio_transcribe_connect_duration_min", &opt_audio_transcribe_connect_duration_min));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("audio_transcribe_threads", &opt_audio_transcribe_threads));
@@ -7608,6 +7623,10 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 			opt_saveWAV = 1;
 			opt_audio_format = FORMAT_OGG;
 			break;
+		case 3:
+			opt_saveWAV = 1;
+			opt_audio_format = FORMAT_MP3;
+			break;
 		}
 	}
 	if(configItem->config_name == "savegraph") {
@@ -8332,6 +8351,8 @@ void get_command_line_arguments() {
 			case '5':
 				if(optarg[0] == 'o') {
 					opt_audio_format = FORMAT_OGG;
+				} else if(optarg[0] == 'm') {
+					opt_audio_format = FORMAT_MP3;
 				} else {
 					opt_audio_format = FORMAT_WAV;
 				}
@@ -9435,6 +9456,13 @@ void set_context_config() {
 	
 	snifferClientOptions.hosts.parse();
 	snifferClientOptions_charts_cache.hosts.parse();
+	
+	#if not (HAVE_LIBLAME && HAVE_LIBLAME)
+	if(opt_audio_format == FORMAT_MP3) {
+		syslog(LOG_ERR, "MP3 support requires building with lame and mpg123 libraries. OGG format will be used.");
+		opt_audio_format = FORMAT_OGG;
+	}
+	#endif
 }
 
 void check_context_config() {
@@ -9659,8 +9687,8 @@ bool check_complete_parameters() {
                         " -Y, --sipports=<ports>\n"
                         "      Listen to SIP protocol on entered ports. Separated by commas.\n"
                         "\n"
-                        " --audio-format=<wav|ogg>\n"
-                        "      Save to WAV or OGG audio format. Default is WAV.\n"
+                        " --audio-format=<wav|ogg|mp3>\n"
+                        "      Save to WAV or OGG or MP3 audio format. Default is WAV.\n"
                         "\n"
                         " --config-file=<filename>\n"
                         "      Specify configuration file full path.  Suggest /etc/voipmonitor.conf\n"

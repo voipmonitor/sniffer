@@ -8,6 +8,14 @@
 #include <vorbis/codec.h>
 #include <vorbis/vorbisenc.h>
 
+#if HAVE_LIBLAME
+#include <lame.h>
+#endif
+
+#if HAVE_LIBMPG123
+#include <mpg123.h>
+#endif
+
 #if HAVE_LIBSAMPLERATE
 #include <samplerate.h>
 #endif
@@ -26,6 +34,9 @@ public:
 		_format_raw,
 		_format_wav,
 		_format_ogg
+		#if HAVE_LIBLAME && HAVE_LIBLAME
+		,_format_mp3
+		#endif
 	};
 	enum eResult {
 		_rslt_ok,
@@ -42,6 +53,13 @@ public:
 		_rslt_ogg_corrupt_secondary_header,
 		_rslt_ogg_missing_vorbis_headers,
 		_rslt_ogg_failed_encode_initialization,
+		_rslt_mp3_failed_create_lame,
+		_rslt_mp3_failed_init_params,
+		_rslt_mp3_failed_encode,
+		_rslt_mpg123_failed_init,
+		_rslt_mpg123_failed_create_handle,
+		_rslt_mpg123_failed_open,
+		_rslt_mpg123_failed_get_audioinfo,
 		_rslt_failed_libsamplerate_init,
 		_rslt_failed_libsamplerate_process,
 		_rslt_unknown_format,
@@ -119,6 +137,7 @@ public:
 			memset(this, 0, sizeof(*this));
 		}
 		~sOgg() {
+			ogg_sync_clear(&oy);
 			ogg_stream_clear(&os);
 			vorbis_block_clear(&vb);
 			vorbis_dsp_clear(&vd);
@@ -149,6 +168,25 @@ public:
 		char *sync_buffer;
 		ogg_int16_t *conv_buffer;
 	};
+	#if HAVE_LIBLAME && HAVE_LIBLAME
+	struct sMp3 {
+		sMp3() {
+			lame = NULL;
+			mpg123 = NULL;
+			buffer = NULL;
+			buffer_size = 0;
+		}
+		~sMp3() {
+			destroy();
+		}
+		void set_buffer(unsigned pcm_buffer_size, sAudioInfo *audioInfo);
+		void destroy();
+		lame_t lame;
+		mpg123_handle *mpg123;
+		u_char *buffer;
+		unsigned buffer_size;
+	};
+	#endif
 public:
 	cAudioConvert();
 	~cAudioConvert();
@@ -167,13 +205,20 @@ public:
 	eResult writeOggData(u_char *data, unsigned datalen);
 	eResult writeOggEnd();
 	eResult _writeOgg();
+	#if HAVE_LIBLAME && HAVE_LIBLAME
+	eResult readMp3();
+	eResult initMp3();
+	eResult writeMp3Data(u_char *data, unsigned datalen);
+	eResult writeMp3End();
+	#endif
 	eResult write(u_char *data, unsigned datalen);
 	bool open();
 	bool open_for_write();
 	void close();
 	void linear_resample(int16_t* input, int16_t* output, int input_len, double ratio, int channels);
+	static const char *getExtension(eFormatType format);
 	static std::string getRsltStr(eResult rslt);
-	void test();
+	static void test();
 public:
 	eSrcDstType srcDstType;
 	eFormatType formatType;
@@ -182,12 +227,23 @@ public:
 	cAudioConvert *destAudio;
 	sAudioInfo audioInfo;
 	float oggQuality;
+	int mp3Quality;
 	std::string comment;
 	sOgg ogg;
+	#if HAVE_LIBLAME && HAVE_LIBLAME
+	sMp3 mp3;
+	#endif
 	bool headerIsWrited;
 	bool onlyGetAudioInfo;
 	unsigned resample_chunk_length;
+	bool destInSpool;
+	u_char *write_buffer;
 };
 
+
+bool ac_file_mix(char *src1, char *src2, char *dest, cAudioConvert::eFormatType format,
+		 unsigned sampleRate, bool stereo,  bool swap,
+		 double quality, bool destInSpool);
+void slinear_saturated_add(short *input, short *value);
 
 #endif //AUDIO_CONVERT_H

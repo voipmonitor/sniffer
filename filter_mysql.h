@@ -37,6 +37,7 @@ enum eCaptBitFlag {
 	_CAPT_BIT_AUDIO,
 	_CAPT_BIT_AUDIO_WAV,
 	_CAPT_BIT_AUDIO_OGG,
+	_CAPT_BIT_AUDIO_MP3,
 	_CAPT_BIT_NOWAV,
 	_CAPT_BIT_AUDIO_TRANSCRIBE,
 	_CAPT_BIT_NO_AUDIO_TRANSCRIBE,
@@ -487,7 +488,14 @@ inline void set_global_flags(volatile unsigned long int &flags) {
 		flags |= FLAG_SAVERTCP;
 	}
 	if(opt_saveWAV) {
-		flags |= (opt_audio_format == FORMAT_OGG ? FLAG_SAVEAUDIO_OGG : FLAG_SAVEAUDIO_WAV);
+		flags |= (opt_audio_format == FORMAT_OGG ? FLAG_SAVEAUDIO_OGG : 
+			  opt_audio_format == FORMAT_MP3 ? 
+							   #if HAVE_LIBLAME && HAVE_LIBLAME
+							   FLAG_SAVEAUDIO_MP3
+							   #else
+							   FLAG_SAVEAUDIO_OGG
+							   #endif
+			  : FLAG_SAVEAUDIO_WAV);
 	}
 	if(opt_save_audiograph) {
 		flags |= FLAG_SAVEAUDIOGRAPH;
