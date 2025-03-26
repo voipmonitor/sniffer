@@ -524,7 +524,7 @@ bool opt_ssl_dtls_queue_keep = false;
 int opt_ssl_dtls_handshake_safe = false;
 bool opt_ssl_dtls_find_by_server_side = true;
 bool opt_ssl_dtls_find_by_client_side = false;
-int opt_ssl_dtls_boost = false;
+int opt_ssl_dtls_boost = true;
 bool opt_ssl_reassymbly_all_complete_after_zerodata_ack = false;
 bool opt_ssl_enable_redirection_unencrypted_sip_content = false;
 int opt_tcpreassembly_thread = 1;
@@ -1261,7 +1261,7 @@ string ssl_client_random_tcp_host;
 int ssl_client_random_tcp_port;
 int ssl_client_random_maxwait_ms = 0;
 char ssl_master_secret_file[1024];
-bool ssl_client_random_keep = false;
+bool ssl_client_random_keep = true;
 bool ssl_client_random_use = false;
 
 int opt_sdp_reverse_ipport = 0;
@@ -2064,6 +2064,9 @@ int SqlInitSchema(string *rsltConnectErrorString = NULL) {
 					set_context_config_after_check_db_schema();
 				}
 				sensorsMap.fillSensors(sqlDb);
+				if(enable_register_engine) {
+					initRegistersDb(sqlDb);
+				}
 			}
 		} else {
 			connectOk = 0;

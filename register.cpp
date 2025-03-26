@@ -1261,6 +1261,12 @@ void Registers::getCountActiveBySensors(map<int, u_int32_t> *count) {
 	unlock_registers_erase();
 }
 
+void Registers::init_db(SqlDb *sqlDb) {
+	extern int opt_id_sensor;
+	getNewRegisterId(opt_id_sensor, false, sqlDb);
+	getNewRegisterId(opt_id_sensor, true, sqlDb);
+}
+
 void Registers::add(Call *call) {
  
 	/*
@@ -1439,31 +1445,43 @@ void Registers::clean_all() {
 	unlock_registers();
 }
 
-u_int64_t Registers::getNewRegisterId(int sensorId, bool failed) {
+u_int64_t Registers::getNewRegisterId(int sensorId, bool failed, SqlDb *sqlDb) {
 	u_int64_t id = 0;
 	if(failed) {
 		lock_register_failed_id();
 		if(!register_failed_id) {
-			SqlDb *db = createSqlObject();
-			db->query("select max(id) as id from register_failed");
-			SqlDb_row row = db->fetchRow();
+			bool _createSqlObject = false;
+			if(!sqlDb) {
+				sqlDb = createSqlObject();
+				_createSqlObject = true;
+			}
+			sqlDb->query("select max(id) as id from register_failed");
+			SqlDb_row row = sqlDb->fetchRow();
 			if(row) {
 				register_failed_id = atoll(row["id"].c_str());
 			}
-			delete db;
+			if(_createSqlObject) {
+				delete sqlDb;
+			}
 		}
 		id = register_failed_id = ((register_failed_id / 100000 + 1) * 100000) + (sensorId >= 0 ? sensorId : 99999);
 		unlock_register_failed_id();
 	} else {
 		lock_register_state_id();
 		if(!register_state_id) {
-			SqlDb *db = createSqlObject();
-			db->query("select max(id) as id from register_state");
-			SqlDb_row row = db->fetchRow();
+			bool _createSqlObject = false;
+			if(!sqlDb) {
+				sqlDb = createSqlObject();
+				_createSqlObject = true;
+			}
+			sqlDb->query("select max(id) as id from register_state");
+			SqlDb_row row = sqlDb->fetchRow();
 			if(row) {
 				register_state_id = atoll(row["id"].c_str());
 			}
-			delete db;
+			if(_createSqlObject) {
+				delete sqlDb;
+			}
 		}
 		id = register_state_id = ((register_state_id / 100000 + 1) * 100000) + (sensorId >= 0 ? sensorId : 99999);
 		unlock_register_state_id();
@@ -1771,6 +1789,10 @@ eRegisterField convRegisterFieldToFieldId(const char *field) {
 
 void initRegisters() {
 	registers.startTimer();
+}
+
+void initRegistersDb(SqlDb *sqlDb) {
+	registers.init_db(sqlDb);
 }
 
 void termRegisters() {
