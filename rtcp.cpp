@@ -478,9 +478,11 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_br
 				     << TIME_US_TO_SF(c_branch->call->getRelTime(ts)) << ","
 				     <<	(opt_ignoreRTCPjitter == 0 || reportblock.jitter < opt_ignoreRTCPjitter ? intToString(reportblock.jitter) : "") << ","
 				     << (reportblock.frac_lost ? intToString(reportblock.frac_lost) : "") << ","
-				     << (srtcp ? "1" : "")
+				     << (srtcp ? "1" : "") << ","
+					 << ip_src.getString() << ","
+					 << ip_dst.getString() << ","
+					 << "Sender Report"
 				     << endl;
-				cout << "ipsrtcp," << stream_index << "," << ip_src.getString() << "," << ip_dst.getString() << endl;
 			}
 		}
 
@@ -607,9 +609,11 @@ char *dump_rtcp_rr(char *data, int datalen, int count, CallBranch *c_branch, str
 				     << TIME_US_TO_SF(c_branch->call->getRelTime(ts)) << ","
 				     <<	(opt_ignoreRTCPjitter == 0 || reportblock.jitter < opt_ignoreRTCPjitter ? intToString(reportblock.jitter) : "") << ","
 				     << (reportblock.frac_lost ? intToString(reportblock.frac_lost) : "") << ","
-				     << (srtcp ? "1" : "")
+				     << (srtcp ? "1" : "") << ","
+					 << ip_src.getString() << ","
+					 << ip_dst.getString() << ","
+					 << "Receiver Report"
 				     << endl;
-				cout << "ipsrtcp," << stream_index << "," << ip_src.getString() << "," << ip_dst.getString() << endl;
 			}
 		}
 
