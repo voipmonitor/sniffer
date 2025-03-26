@@ -320,12 +320,13 @@ class Registers {
 public: 
 	Registers();
 	~Registers();
+	void init_db(SqlDb *db = NULL);
 	void add(Call *call);
 	bool existsDuplTcpSeqInRegOK(Call *call, u_int32_t seq);
 	void cleanup(bool force = false, int expires_add = 0);
 	void cleanup_from_timer(u_int32_t time_s);
 	void clean_all();
-	inline u_int64_t getNewRegisterId(int sensorId, bool failed);
+	inline u_int64_t getNewRegisterId(int sensorId, bool failed, SqlDb *db = NULL);
 	inline u_int64_t getNewRegisterStateId(int sensorId);
 	inline u_int64_t getNewRegisterFailedId(int sensorId);
 	string getDataTableJson(char *params, bool *zip = NULL);
@@ -411,6 +412,7 @@ eRegisterState convRegisterState(Call *call);
 eRegisterField convRegisterFieldToFieldId(const char *field);
 
 void initRegisters();
+void initRegistersDb(SqlDb *sqlDb);
 void termRegisters();
 
 

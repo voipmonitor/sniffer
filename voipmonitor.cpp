@@ -2064,6 +2064,9 @@ int SqlInitSchema(string *rsltConnectErrorString = NULL) {
 					set_context_config_after_check_db_schema();
 				}
 				sensorsMap.fillSensors(sqlDb);
+				if(enable_register_engine) {
+					initRegistersDb(sqlDb);
+				}
 			}
 		} else {
 			connectOk = 0;
