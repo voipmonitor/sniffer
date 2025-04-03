@@ -5005,7 +5005,7 @@ int Mgmt_list_active_clients(Mgmt_params *params) {
 
 int Mgmt_jemalloc_stat(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("jemalloc_stat", "return jemalloc statistics");
+		params->registerCommand("jemalloc_stat", "return jemalloc statistics", true);
 		return(0);
 	}
 	string rsltMemoryStat = jeMallocStat(strstr(params->buf, "full"));
@@ -5016,9 +5016,9 @@ int Mgmt_heapprof(Mgmt_params *params) {
 	const char *startCmd = "heapprof_start";
 	if (params->task == params->mgmt_task_DoInit) {
 		commandAndHelp ch[] = {
-			{startCmd, "heapprof_start"},
-			{"heapprof_stop", "heapprof_stop"},
-			{"heapprof_dump", "heapprof_dump"},
+			{startCmd, "heapprof_start", true},
+			{"heapprof_stop", "heapprof_stop", true},
+			{"heapprof_dump", "heapprof_dump", true},
 			{NULL, NULL}
 		};
 		params->registerCommand(ch);
