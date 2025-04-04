@@ -363,6 +363,8 @@ public:
 };
 
 
+extern "C" {
+
 char *strnstr(const char *haystack, const char *needle, size_t len);
 char *strncasestr(const char *haystack, const char *needle, size_t len);
 char *strnchr(const char *haystack, char needle, size_t len);
@@ -372,6 +374,8 @@ int strcasecmp_wildcard(const char *str, const char *pattern, const char *wildca
 int strncasecmp_wildcard(const char *str, const char *pattern, size_t len, const char *wildcard);
 size_t strCaseEqLengthR(const char *str1, const char *str2, bool *eqMinLength);
 const char *strrstr(const char *haystack, const char *needle);
+
+}
 
 
 void base64_init(void);
