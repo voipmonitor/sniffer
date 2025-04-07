@@ -1,3 +1,22 @@
+2025.04.0 07.04.2025
+====================
+- Added support for applying multiple filters on individual interfaces - interface_libpcap_filter. See doc/voipmonitor.conf for detailed explanation. This option allows to overcome ~2.2M PPS on AWS or other virtualisations without using DPDK where software interrupts is the bottleneck [VS-1683]
+- DPDK: Added support for multiple RX queues. Parameter dpdk_nb_rxq now defaults to 2 - set it to 1 in case of issues.
+- server_destination parameter now accepts multiple IP addresses for failover (e.g., server_destination = 1.2.3.4, 5.6.7.8) [VS-1686].
+- Added support for MP3 audio format [VS-653].
+- Added parameters to configure jitter buffer properties: jitterbuffer_f1_jbsize, jitterbuffer_f1_resync_threshold, jitterbuffer_f2_jbsize, jitterbuffer_f2_resync_threshold, jitterbuffer_adapt_jbsize, jitterbuffer_adapt_resync_threshold, saveaudio_jitterbuffer_jbsize, saveaudio_jitterbuffer_resync_threshold [VS-1634]
+- Reduced frequency of logging the message: "packetbuffer: MEMORY IS FULL".
+- Added logging for asynchronous write queue length (tacQ).
+- Added source and destination IP addresses into RTCP graphs [VG-2957].
+- Removed length limitation for callid during merging [VS-1684].
+- Ensured maximum ID values from registration tables are read before starting interface data processing.
+- new options: sql_errors_log_file and sql_errors_skip.
+- Fixed potential crash in TLS when the cipher suite is not found.
+- Fixed potential conflict in the declaration of the strstr function [VS-1692].
+- Fixed memory leak occurring when the packet buffer block contains no valid packets (up to 20GB per week on some installations, present since version 2024.12) [VS-1691].
+- Fixed string limitation when opt_callidmerge_header is encrypted and exceeds 128 bytes.
+
+
 2025.02.2 17.02.2025
 ====================
 - fix crash when creating audiograph - adding an error message handler to jpeg creation so that exit cannot be called [VS-1654]
