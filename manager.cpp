@@ -4986,7 +4986,7 @@ int Mgmt_sqlexport(Mgmt_params *params) {
 
 int Mgmt_memory_stat(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("memory_stat", "return a memory statistics");
+		params->registerCommand("memory_stat", "return a memory statistics", true);
 		return(0);
 	}
 	string rsltMemoryStat = getMemoryStat();

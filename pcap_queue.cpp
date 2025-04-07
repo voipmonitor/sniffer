@@ -8581,6 +8581,9 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							++blockInfoCount;
 							buffersControl.set_dequeu_time(blockInfo_utime_last > blockInfo_utime_first ?
 											(blockInfo_utime_last - blockInfo_utime_first) / 1000 : 0);
+						} else {
+							this->blockStoreTrashPush(blockStore);
+							buffersControl.sub__pb_used_dequeu_size(blockStore->getUseAllSize());
 						}
 					}
 					while(blockInfoCount &&
@@ -8670,6 +8673,9 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							blocksInfo.minHeap->insert(minHeapData);
 							buffersControl.set_dequeu_time(blocksInfo.utime_last > blocksInfo.utime_first ?
 											(blocksInfo.utime_last - blocksInfo.utime_first) / 1000 : 0);
+						} else {
+							this->blockStoreTrashPush(blockStore);
+							buffersControl.sub__pb_used_dequeu_size(blockStore->getUseAllSize());
 						}
 					}
 					while(blocksInfo.usedCount &&
