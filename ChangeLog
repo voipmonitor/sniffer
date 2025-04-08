@@ -1,3 +1,8 @@
+2025.04.1 08.04.2025
+====================
+- set dpdk_pkt_burst = 128 (from 32)
+
+
 2025.04.0 07.04.2025
 ====================
 - Added support for applying multiple filters on individual interfaces - interface_libpcap_filter. See doc/voipmonitor.conf for detailed explanation. This option allows to overcome ~2.2M PPS on AWS or other virtualisations without using DPDK where software interrupts is the bottleneck [VS-1683]
