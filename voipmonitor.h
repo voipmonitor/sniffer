@@ -443,6 +443,8 @@ bool useCdrStatProcessThreads();
 
 int cleanup_calls_period();
 
+unsigned getCountInterfaces();
+
 void set_all_ports_for_tcp();
 
 inline bool useChartsCacheOrCdrStatInProcessCall() {

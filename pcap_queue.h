@@ -906,6 +906,8 @@ public:
 	}
 	static void parseInterfaces(const char *interfaces_str, vector<dstring> *filters_by_interface,
 				    vector<sInterface> *interfaces);
+	static void getInterfaces(const char *interfaces_str, vector<string> *interfaces);
+	static unsigned getCountInterfaces(const char *interfaces_str, vector<dstring> *filters_by_interface);
 protected:
 	bool init();
 	void parseInterfaces(vector<sInterface> *interfaces);

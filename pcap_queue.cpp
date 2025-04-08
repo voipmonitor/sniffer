@@ -6727,12 +6727,19 @@ void PcapQueue_readFromInterface::terminate() {
 }
 
 bool PcapQueue_readFromInterface::init() {
-	if(opt_scanpcapdir[0] ||
-	   !opt_pcap_queue_iface_separate_threads) {
+	if(opt_scanpcapdir[0]) {
 		return(true);
 	}
 	vector<sInterface> interfaces;
 	parseInterfaces(&interfaces);
+	if(!opt_t2_boost && !opt_pcap_queue_iface_separate_threads) {
+		if(!interfaces.size()) {
+			return(false);
+		} else if(interfaces.size() == 1) {
+			interface = interfaces[0];
+			return(true);
+		}
+	}
 	for(size_t i = 0; i < interfaces.size(); i++) {
 		if(this->readThreadsCount < READ_THREADS_MAX - 1) {
 			this->readThreads[this->readThreadsCount] = new FILE_LINE(15047) PcapQueue_readFromInterfaceThread(interfaces[i], PcapQueue_readFromInterfaceThread::read, NULL, NULL, this);
@@ -6752,7 +6759,7 @@ void PcapQueue_readFromInterface::parseInterfaces(const char *interfaces_str, ve
 	for(unsigned i = 0; i < interfaces_v.size(); i++) {
 		sInterface interface;
 		interface.interface = interfaces_v[i];
-		if(filters_by_interface->size()) {
+		if(filters_by_interface && filters_by_interface->size()) {
 			list<string> filters;
 			for(vector<dstring>::iterator iter = filters_by_interface->begin(); iter != filters_by_interface->end(); iter++) {
 				if(iter->str[0] == interface.interface && !iter->str[1].empty()) {
@@ -6778,6 +6785,21 @@ void PcapQueue_readFromInterface::parseInterfaces(const char *interfaces_str, ve
 			interfaces->push_back(interface);
 		}
 	}
+}
+
+void PcapQueue_readFromInterface::getInterfaces(const char *interfaces_str, vector<string> *rslt_interfaces) {
+	vector<sInterface> interfaces;
+	parseInterfaces(interfaces_str, NULL, &interfaces);
+	rslt_interfaces->clear();
+	for(unsigned i = 0; i < interfaces.size(); i++) {
+		rslt_interfaces->push_back(interfaces[i].interface);
+	}
+}
+
+unsigned PcapQueue_readFromInterface::getCountInterfaces(const char *interfaces_str, vector<dstring> *filters_by_interface) {
+	vector<sInterface> interfaces;
+	parseInterfaces(interfaces_str, filters_by_interface, &interfaces);
+	return(interfaces.size());
 }
 
 bool PcapQueue_readFromInterface::initThread(void *arg, unsigned int arg2, string *error) {

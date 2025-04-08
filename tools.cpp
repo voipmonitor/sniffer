@@ -98,6 +98,7 @@
 #include "config_param.h"
 #include "websocket.h"
 #include "mgcp.h"
+#include "pcap_queue.h"
 
 #ifndef SIZE_MAX
 # ifdef __SIZE_MAX__
@@ -146,7 +147,6 @@ extern string binaryNameWithPath;
 extern char configfile[1024];
 extern int ownPidStart;
 extern int ownPidFork;
-extern vector<string> ifnamev;
 pid_t mysqlPid = 0;
 
 extern TarQueue *tarQueue[2];
@@ -10306,7 +10306,10 @@ bool set_eth_channels(const char *ifname, unsigned limit, string *log) {
 #endif
 
 void handleInterfaceOptions(void) {
-	if(!ifnamev.size()) {
+	vector<string> interfaces;
+	extern char ifname[1024];
+	PcapQueue_readFromInterface::getInterfaces(ifname, &interfaces);
+	if(!interfaces.size()) {
 		return;
 	}
 	#ifndef FREEBSD
@@ -10324,7 +10327,7 @@ void handleInterfaceOptions(void) {
 			}
 		}
 	}
-	for(std::vector<string>::iterator iface = ifnamev.begin(); iface != ifnamev.end(); iface++) {
+	for(vector<string>::iterator iface = interfaces.begin(); iface != interfaces.end(); iface++) {
 		string log;
 		set_eth_ringparam(iface->c_str(), &log);
 		syslog(LOG_NOTICE, "%s - set_eth_ringparam: %s", iface->c_str(), log.c_str());

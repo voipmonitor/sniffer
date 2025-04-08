@@ -1055,7 +1055,6 @@ char user_filter[1024*20] = "";
 eSnifferMode sniffer_mode = snifferMode_read_from_interface;
 char ifname[1024];	// Specifies the name of the network device to use for 
 			// the network lookup, for example, eth0
-vector<string> ifnamev;
 vector<dstring> ifname_libpcap_filter;
 vector<vmIP> if_filter_ip;
 vector<vmIPmask> if_filter_net;
@@ -5189,7 +5188,7 @@ int main_init_read() {
 				if(opt_dup_check_type != _dedup_na && 
 				   (is_receiver() || is_server() ?
 				     !opt_receiver_check_id_sensor :
-				     ifnamev.size() > 1)) {
+				     getCountInterfaces() > 1)) {
 					if(pass == 0) {
 						pcapQueueQ_outThread_dedup = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::dedup, pcapQueueQ);
 					} else {
@@ -9089,15 +9088,6 @@ void set_context_config() {
 		opt_pcap_queue_use_blocks = false;
 	}
 	
-	ifnamev = split(ifname, split(",|;| |\t|\r|\n", "|"), true);
-	for(unsigned i = 0; i < ifnamev.size(); ) {
-		if(ifnamev[i] == "--") {
-			ifnamev.erase(ifnamev.begin() + i);
-		} else {
-			i++;
-		}
-	}
-	
 	if(opt_pcap_queue_dequeu_window_length < 0) {
 		if(is_receiver() || is_server()) {
 			opt_pcap_queue_dequeu_window_length = 2000;
@@ -9180,7 +9170,7 @@ void set_context_config() {
 			if(is_receiver() || is_server()) {
 				opt_pcap_queue_use_blocks = 1;
 				syslog(LOG_NOTICE, "enabling pcap_queue_use_blocks because set udpfrag in server/receiver mode");
-			} else if(ifnamev.size() > 1) {
+			} else if(getCountInterfaces() > 1) {
 				opt_pcap_queue_use_blocks = 1;
 				syslog(LOG_NOTICE, "enabling pcap_queue_use_blocks because set udpfrag in multiple interfaces");
 			}
@@ -9189,7 +9179,7 @@ void set_context_config() {
 			if(is_receiver() || is_server()) {
 				opt_pcap_queue_use_blocks = 1;
 				syslog(LOG_NOTICE, "enabling pcap_queue_use_blocks because set deduplicate in server/receiver mode");
-			} else if(ifnamev.size() > 1) {
+			} else if(getCountInterfaces() > 1) {
 				opt_pcap_queue_use_blocks = 1;
 				syslog(LOG_NOTICE, "enabling pcap_queue_use_blocks because set deduplicate in multiple interfaces");
 			}
@@ -9202,7 +9192,7 @@ void set_context_config() {
 	}
 	
 	if(getThreadingMode() < 2 && 
-	   (ifnamev.size() > 1 || opt_pcap_queue_use_blocks)) {
+	   (getCountInterfaces() > 1 || opt_pcap_queue_use_blocks)) {
 		syslog(LOG_NOTICE, "set threading mode 2");
 		setThreadingMode(2);
 	}
@@ -10108,6 +10098,9 @@ int cleanup_calls_period() {
 		1);
 }
 
+unsigned getCountInterfaces() {
+	return(PcapQueue_readFromInterface::getCountInterfaces(ifname, &ifname_libpcap_filter));
+}
 
 void set_all_ports_for_tcp() {
 	for(unsigned i = 0; i < 0xFFFF; i++) {
