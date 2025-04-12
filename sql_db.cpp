@@ -5408,26 +5408,30 @@ void *MySqlStore::threadINotifyQFiles(void *arg) {
 		me->loadFromQFileConfig.inotify = false;
 		return(NULL);
 	}
-	unsigned watchBuffMaxLen = 1024 * (sizeof(inotify_event) + 256);
+	ssize_t watchBuffMaxLen = 1024 * (sizeof(inotify_event) + 256);
 	char *watchBuff =  new FILE_LINE(29009) char[watchBuffMaxLen];
 	while(!is_terminating()) {
-		unsigned watchBuffLen = read(inotifyDescriptor, watchBuff, watchBuffMaxLen);
-		if(watchBuffLen == watchBuffMaxLen) {
-			syslog(LOG_NOTICE, "qfiles inotify events filled whole buffer");
-		}
-		unsigned i = 0;
-		while(i < watchBuffLen && !is_terminating()) {
-			if(watchBuffLen - i < sizeof(inotify_event)) {
-				break;
+		ssize_t watchBuffLen = read(inotifyDescriptor, watchBuff, watchBuffMaxLen);
+		if(watchBuffLen > (ssize_t)sizeof(inotify_event)) {
+			if(watchBuffLen == watchBuffMaxLen) {
+				syslog(LOG_NOTICE, "qfiles inotify events filled whole buffer");
 			}
-			inotify_event *event = (inotify_event*)(watchBuff + i);
-			if(watchBuffLen - i < sizeof(inotify_event) + event->len) {
-				break;
+			ssize_t i = 0;
+			while(i < watchBuffLen && !is_terminating()) {
+				if(watchBuffLen - i < (ssize_t)sizeof(inotify_event)) {
+					break;
+				}
+				inotify_event *event = (inotify_event*)(watchBuff + i);
+				if(watchBuffLen - i < (ssize_t)sizeof(inotify_event) + event->len) {
+					break;
+				}
+				i += sizeof(inotify_event) + event->len;
+				if(event->mask & IN_CLOSE_WRITE) {
+					me->addFileFromINotify(event->name);
+				}
 			}
-			i += sizeof(inotify_event) + event->len;
-			if(event->mask & IN_CLOSE_WRITE) {
-				me->addFileFromINotify(event->name);
-			}
+		} else {
+			usleep(1000);
 		}
 	}
 	delete [] watchBuff;
