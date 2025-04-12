@@ -1,3 +1,8 @@
+2025.04.3 08.04.2025
+====================
+- fix crash in MySqlStore::threadINotifyQFiles when read returns -1 (bug introduced in 2025.04.0)
+
+
 2025.04.2 08.04.2025
 ====================
 - fix threading_mod=1 if t2_boost=no
