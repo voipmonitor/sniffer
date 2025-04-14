@@ -7145,8 +7145,10 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("jitterbuffer_adapt_resync_threshold", &opt_jitterbuffer_adapt_resync_threshold));
 		setDisableIfEnd();
 	group("system");
-		addConfigItem(new FILE_LINE(42340) cConfigItem_string("pcapcommand", pcapcommand, sizeof(pcapcommand)));
-		addConfigItem(new FILE_LINE(42341) cConfigItem_string("filtercommand", filtercommand, sizeof(filtercommand)));
+		addConfigItem((new FILE_LINE(42340) cConfigItem_string("pcapcommand", pcapcommand, sizeof(pcapcommand)))
+			->setReadOnly());
+		addConfigItem((new FILE_LINE(42341) cConfigItem_string("filtercommand", filtercommand, sizeof(filtercommand)))
+			->setReadOnly());
 		addConfigItem(new FILE_LINE(42342) cConfigItem_integer("openfile_max", &opt_openfile_max));
 		addConfigItem(new FILE_LINE(42343) cConfigItem_yesno("rrd", &opt_rrd));
 		addConfigItem(new FILE_LINE(42344) cConfigItem_string("php_path", opt_php_path, sizeof(opt_php_path)));
