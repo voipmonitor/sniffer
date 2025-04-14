@@ -16481,7 +16481,9 @@ void AsyncSystemCommand::popSystemCommandThread() {
 			if(sverb.system_command) {
 				syslog(LOG_NOTICE, "call system command: %s (queue size: %i)", command.c_str(), systemCommandQueue.getSize());
 			}
-			system(command.c_str());
+			SimpleBuffer out, err;
+			int exit_code;
+			vm_pexec(command.c_str(), &out, &err, &exit_code);
 			okPop = true;
 		}
 		if(!okPop) {

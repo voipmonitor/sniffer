@@ -459,10 +459,7 @@ int Mgmt_getfile(Mgmt_params *params);
 int Mgmt_getfile_in_tar(Mgmt_params *params);
 int Mgmt_getfile_in_tar_check_complete(Mgmt_params *params);
 int Mgmt_getfile_is_zip_support(Mgmt_params *params);
-int Mgmt_getwav(Mgmt_params *params);
-int Mgmt_genwav(Mgmt_params *params);
 int Mgmt_genhttppcap(Mgmt_params *params);
-int Mgmt_getsiptshark(Mgmt_params *params);
 int Mgmt_upgrade_restart(Mgmt_params *params);
 int Mgmt_custipcache_vect_print(Mgmt_params *params);
 int Mgmt_custipcache_refresh(Mgmt_params *params);
@@ -470,7 +467,6 @@ int Mgmt_custipcache_get_cust_id(Mgmt_params *params);
 int Mgmt_syslogstr(Mgmt_params *params);
 int Mgmt_coutstr(Mgmt_params *params);
 int Mgmt_terminating(Mgmt_params *params);
-int Mgmt_quit(Mgmt_params *params);
 int Mgmt_pcapstat(Mgmt_params *params);
 int Mgmt_sniffer_threads(Mgmt_params *params);
 int Mgmt_sniffer_stat(Mgmt_params *params);
@@ -576,10 +572,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_getfile_in_tar,
 	Mgmt_getfile_in_tar_check_complete,
 	Mgmt_getfile_is_zip_support,
-	Mgmt_getwav,
-	Mgmt_genwav,
 	Mgmt_genhttppcap,
-	Mgmt_getsiptshark,
 	Mgmt_upgrade_restart,
 	Mgmt_custipcache_vect_print,
 	Mgmt_custipcache_refresh,
@@ -587,7 +580,6 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_syslogstr,
 	Mgmt_coutstr,
 	Mgmt_terminating,
-	Mgmt_quit,
 	Mgmt_pcapstat,
 	Mgmt_sniffer_threads,
 	Mgmt_sniffer_stat,
@@ -4282,198 +4274,6 @@ int Mgmt_flush_tar(Mgmt_params *params) {
 	return(params->sendString("OK"));
 }
 
-int Mgmt_genwav(Mgmt_params *params) {
-	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("genwav", "generates wav");
-		return(0);
-	}
-
-	char filename[2048];
-	unsigned int size;
-	char wavfile[2048 + 10];
-	char pcapfile[2048 + 10];
-	char cmd[4092];
-	int secondrun = 0;
-	char buf_output[1024];
-
-	sscanf(params->buf, "genwav %s", filename);
-
-	snprintf(pcapfile, sizeof(pcapfile), "%s.pcap", filename);
-	snprintf(wavfile, sizeof(wavfile), "%s.wav", filename);
-
-getwav2:
-	size = file_size(wavfile);
-	if(size) {
-		snprintf(buf_output, sizeof(buf_output), "%d", size);
-		params->sendString(buf_output);
-		return 0;
-	}
-	if(secondrun > 0) {
-		// wav does not exist
-		params->sendString("0");
-		return -1;
-	}
-
-	// wav does not exists, check if exists pcap and try to create wav
-	size = file_size(pcapfile);
-	if(!size) {
-		params->sendString("0");
-		return -1;
-	}
-	snprintf(cmd, sizeof(cmd), "%s --rtp-firstleg -k -WRc -r \"%s.pcap\" -y -d %s 2>/dev/null >/dev/null", binaryNameWithPath.c_str(), filename, getSpoolDir(tsf_main, 0));
-	system(cmd);
-	secondrun = 1;
-	goto getwav2;
-}
-
-int Mgmt_getwav(Mgmt_params *params) {
-	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("getwav", "gets wav");
-		return(0);
-	}
-
-	char filename[2048];
-	int fd;
-	unsigned int size;
-	char wavfile[2048 + 10];
-	char pcapfile[2048 + 10];
-	char cmd[4092];
-	char rbuf[4096];
-	ssize_t nread;
-	int secondrun = 0;
-
-	sscanf(params->buf, "getwav %s", filename);
-
-	snprintf(pcapfile, sizeof(pcapfile), "%s.pcap", filename);
-	snprintf(wavfile, sizeof(wavfile), "%s.wav", filename);
-
-getwav:
-	size = file_size(wavfile);
-	if(size) {
-		fd = open(wavfile, O_RDONLY);
-		if(fd < 0) {
-			char buf_output[2048 + 100];
-			snprintf(buf_output, sizeof(buf_output), "error: cannot open file [%s]", wavfile);
-			params->sendString(buf_output);
-			return -1;
-		}
-		while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
-			if (params->sendString(rbuf, nread) == -1){
-				close(fd);
-				return -1;
-			}
-		}
-		if(true /*eof*/) { // obsolete parameter eof
-			if (params->sendString("EOF") == -1){
-				close(fd);
-				return -1;
-			}
-		}
-		close(fd);
-		return 0;
-	}
-	if(secondrun > 0) {
-		// wav does not exist
-		params->sendString("0");
-		return -1;
-	}
-
-	// wav does not exists, check if exists pcap and try to create wav
-	size = file_size(pcapfile);
-	if(!size) {
-		params->sendString("0");
-		return -1;
-	}
-	snprintf(cmd, sizeof(cmd), "%s --rtp-firstleg -k -WRc -r \"%s.pcap\" -y 2>/dev/null >/dev/null", binaryNameWithPath.c_str(), filename);
-	system(cmd);
-	secondrun = 1;
-	goto getwav;
-}
-
-int Mgmt_getsiptshark(Mgmt_params *params) {
-	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("getsiptshark", "get sip tshark");
-		return(0);
-	}
-
-	char filename[2048];
-	int fd;
-	unsigned int size;
-	char tsharkfile[2048 + 10];
-	char pcapfile[2048 + 10];
-	char rbuf[4096];
-	ssize_t nread;
-
-	sscanf(params->buf, "getsiptshark %s", filename);
-
-	snprintf(tsharkfile, sizeof(tsharkfile), "%s.pcap2txt", filename);
-	snprintf(pcapfile, sizeof(pcapfile), "%s.pcap", filename);
-
-	size = file_size(tsharkfile);
-	if(size) {
-		fd = open(tsharkfile, O_RDONLY);
-		if(fd < 0) {
-			char buf_output[2048 + 100];
-			snprintf(buf_output, sizeof(buf_output), "error: cannot open file [%s]", tsharkfile);
-			params->sendString(buf_output);
-			return -1;
-		}
-		while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
-			if (params->sendString(rbuf, nread) == -1){
-				close(fd);
-				return -1;
-			}
-		}
-		if(true /*eof*/) { // obsolete parameter eof
-			if (params->sendString("EOF") == -1){
-				close(fd);
-				return -1;
-			}
-		}
-		close(fd);
-		return 0;
-	}
-
-	size = file_size(pcapfile);
-	if(!size) {
-		params->sendString("0");
-		return -1;
-	}
-
-	char cmd[10000];
-	snprintf(cmd, sizeof(cmd), "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin tshark -r \"%s.pcap\" -R sip > \"%s.pcap2txt\" 2>/dev/null", filename, filename);
-	system(cmd);
-	snprintf(cmd, sizeof(cmd), "echo ==== >> \"%s.pcap2txt\"", filename);
-	system(cmd);
-	snprintf(cmd, sizeof(cmd), "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin tshark -r \"%s.pcap\" -V -R sip >> \"%s.pcap2txt\" 2>/dev/null", filename, filename);
-	system(cmd);
-
-	size = file_size(tsharkfile);
-	if(size) {
-		fd = open(tsharkfile, O_RDONLY);
-		if(fd < 0) {
-			char buf_output[2048 + 100];
-			snprintf(buf_output, sizeof(buf_output), "error: cannot open file [%s]", filename);
-			params->sendString(buf_output);
-			return -1;
-		}
-		while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
-			if (params->sendString(rbuf, nread) == -1){
-				close(fd);
-				return -1;
-			}
-		}
-		if(true /*eof*/) { // obsolete parameter eof
-			if (params->sendString("EOF") == -1){
-				close(fd);
-				return -1;
-			}
-		}
-		close(fd);
-	}
-	return(0);
-}
-
 int Mgmt_genhttppcap(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
 		params->registerCommand("genhttppcap", "get http pcap");
@@ -4503,14 +4303,6 @@ int Mgmt_genhttppcap(Mgmt_params *params) {
 		params->sendString("null");
 		return(0);
 	}
-}
-
-int Mgmt_quit(Mgmt_params *params) {
-	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("quit", "quit");
-		return(0);
-	}
-	return(0);
 }
 
 int Mgmt_terminating(Mgmt_params *params) {
