@@ -895,8 +895,10 @@ bool GeoIP_country::load(SqlDb *sqlDb) {
 		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
 		while((row = rows.fetchRow())) {
+			vmIP ip;
+			ip.setIP(&row, "ip");
 			customer_data.push_back(GeoIP_country_rec(
-				row["ip"].c_str(),
+				ip,
 				atoi(row["mask"].c_str()),
 				row["country"].c_str()));
 		}

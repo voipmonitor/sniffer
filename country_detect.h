@@ -252,11 +252,9 @@ public:
 				this->country_code = country_code;
 			}
 		}
-		GeoIP_country_rec(const char *ip, unsigned int mask, const char *country_code) {
-			vmIP vm_ip;
-			vm_ip.setFromString(ip);
-			this->ip_from = vm_ip.network(mask);
-			this->ip_to = vm_ip.broadcast(mask);
+		GeoIP_country_rec(vmIP ip, unsigned int mask, const char *country_code) {
+			this->ip_from = ip.network(mask);
+			this->ip_to = ip.broadcast(mask);
 			if(country_code) {
 				this->country_code = country_code;
 			}
