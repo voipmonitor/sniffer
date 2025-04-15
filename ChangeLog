@@ -1,3 +1,8 @@
+2025.04.4 14.04.2025
+====================
+- Fixed vulnerability allowing arbitrary command execution via tcp manager [VS-1698]
+
+
 2025.04.3 08.04.2025
 ====================
 - fix crash in MySqlStore::threadINotifyQFiles when read returns -1 (bug introduced in 2025.04.0)

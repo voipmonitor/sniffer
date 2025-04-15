@@ -6761,6 +6761,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr_flags |= CDR_PROTO_TCP;
 	if (protocol_is_udp)
 		cdr_flags |= CDR_PROTO_UDP;
+	if (is_ssl) {
+		cdr_flags |= CDR_PROTO_TLS;
+	}
 	#if not EXPERIMENTAL_LITE_RTP_MOD
 	if(opt_srtp_rtp_local_instances) {
 		for(int i = 0; i < rtp_size(); i++) {
@@ -8167,6 +8170,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					flags |= CDR_RTP_STREAM_IS_AB;
 				}
 				flags |= rtp_i->iscaller ? CDR_RTP_STREAM_IS_CALLER : CDR_RTP_STREAM_IS_CALLED;
+				if (rtp_i->srtp_decrypt) {
+					flags |=  CDR_RTP_STREAM_IS_SRTP;
+				}
 				rtps.add(flags, "flags", !flags);
 			}
 			if(existsColumns.cdr_rtp_duration) {
@@ -8783,6 +8789,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					flags |= CDR_RTP_STREAM_IS_AB;
 				}
 				flags |= rtp_i->iscaller ? CDR_RTP_STREAM_IS_CALLER : CDR_RTP_STREAM_IS_CALLED;
+				if (rtp_i->srtp_decrypt) {
+					flags |=  CDR_RTP_STREAM_IS_SRTP;
+				}
 				if(flags) {
 					rtps.add(flags, "flags");
 				}
