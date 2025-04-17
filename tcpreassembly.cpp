@@ -32,6 +32,7 @@ extern char opt_tcpreassembly_sip_log[1024];
 extern char opt_tcpreassembly_diameter_log[1024];
 extern char opt_pb_read_from_file[256];
 extern int verbosity;
+extern bool opt_ssl_reassembly_ipport_reverse_enable;
 
 #define ENABLE_DEBUG(type, subEnable) (_ENABLE_DEBUG(type, subEnable) && _debug_stream)
 #define _ENABLE_DEBUG(type, subEnable) ((type == TcpReassembly::http ? sverb.tcpreassembly_http : \
@@ -3706,7 +3707,9 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 				create_new_link = true;
 			}
 		} else if(!this->enableCrazySequence && this->enableWildLink) {
-			if(!(type == ssl && !this->check_dest_ip_port(header_ip->get_saddr(), header_tcp.get_source(), header_ip->get_daddr(), header_tcp.get_dest()))) {
+			if(type != ssl ||
+			   (opt_ssl_reassembly_ipport_reverse_enable ||
+			    this->check_dest_ip_port(header_ip->get_saddr(), header_tcp.get_source(), header_ip->get_daddr(), header_tcp.get_dest()))) {
 				if(ENABLE_DEBUG(type, _debug_packet)) {
 					(*_debug_stream)
 						<< fixed

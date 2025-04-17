@@ -525,7 +525,8 @@ int opt_ssl_dtls_handshake_safe = false;
 bool opt_ssl_dtls_find_by_server_side = true;
 bool opt_ssl_dtls_find_by_client_side = false;
 int opt_ssl_dtls_boost = true;
-bool opt_ssl_reassymbly_all_complete_after_zerodata_ack = false;
+bool opt_ssl_reassembly_all_complete_after_zerodata_ack = false;
+bool opt_ssl_reassembly_ipport_reverse_enable = true;
 bool opt_ssl_enable_redirection_unencrypted_sip_content = false;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
@@ -4993,7 +4994,7 @@ int main_init_read() {
 		tcpReassemblySsl = new FILE_LINE(42029) TcpReassembly(TcpReassembly::ssl);
 		tcpReassemblySsl->setEnableIgnorePairReqResp();
 		tcpReassemblySsl->setEnableDestroyStreamsInComplete();
-		if(opt_ssl_reassymbly_all_complete_after_zerodata_ack) {
+		if(opt_ssl_reassembly_all_complete_after_zerodata_ack) {
 			tcpReassemblySsl->setEnableAllCompleteAfterZerodataAck();
 		}
 		tcpReassemblySsl->setIgnorePshInCheckOkData();
@@ -6851,7 +6852,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_find_by_client_side", &opt_ssl_dtls_find_by_client_side));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_boost", &opt_ssl_dtls_boost));
 				expert();
-				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_reassymbly_all_complete_after_zerodata_ack", &opt_ssl_reassymbly_all_complete_after_zerodata_ack));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_reassembly_all_complete_after_zerodata_ack", &opt_ssl_reassembly_all_complete_after_zerodata_ack));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_reassembly_ipport_reverse_enable", &opt_ssl_reassembly_ipport_reverse_enable));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);

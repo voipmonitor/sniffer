@@ -65,7 +65,7 @@ private:
 			    DSSL_Session_get_keys_data *get_keys_data, DSSL_Session *session);
 	string get_session_data(timeval ts);
 	bool restore_session_data(const char *data);
-	void store_session(class cSslDsslSessions *sessions, timeval ts, bool force = false);
+	void store_session(class cSslDsslSessions *sessions, timeval ts, int type_store);
 private:
 	vmIP ips;
 	vmPort ports;
@@ -209,6 +209,12 @@ public:
 
 class cSslDsslSessions {
 public:
+	enum eTypeStoreSession {
+		_tss_force = 1 << 0,
+		_tss_db = 1 << 1,
+		_tss_mem = 1 << 2,
+		_tss_force_all = _tss_force | _tss_db | _tss_mem
+	};
 	struct sSessionData {
 		string data;
 	};
@@ -236,6 +242,7 @@ private:
 	void init();
 	void term();
 	void loadSessions();
+	void setSessionData(vmIP sip, vmPort sport, vmIP cip, vmPort cport, const char *session_data);
 	void deleteOldSessions(timeval ts);
 	string storeSessionsTableName();
 	void lock_sessions() {

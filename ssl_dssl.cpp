@@ -222,7 +222,7 @@ void cSslDsslSession::processData(vector<string> *rslt_decrypt, char *data, unsi
 					process_error_code = 0;
 				}
 				if(opt_ssl_store_sessions && !opt_nocdr && !init) {
-					this->store_session(sessions, ts);
+					this->store_session(sessions, ts, cSslDsslSessions::_tss_db);
 				}
 				break;
 			}
@@ -412,33 +412,39 @@ bool cSslDsslSession::restore_session_data(const char *data) {
 	return(false);
 }
 
-void cSslDsslSession::store_session(cSslDsslSessions *sessions, timeval ts, bool force) {
-	if(opt_ssl_store_sessions && !opt_nocdr && sessions->exists_sessions_table &&
-	   this->process_data_counter > 0 &&
+void cSslDsslSession::store_session(cSslDsslSessions *sessions, timeval ts, int type_store) {
+	if(this->process_data_counter > 0 &&
 	   this->session->c_dec.version && this->session->s_dec.version &&
-	    (force || (!this->stored_at || this->stored_at < (u_long)(ts.tv_sec - (session->version == TLS1_3_VERSION ? 60 : 3600))))) {
+	    ((type_store & cSslDsslSessions::_tss_force) || 
+	     ((type_store & cSslDsslSessions::_tss_db) && (!this->stored_at || this->stored_at < (u_long)(ts.tv_sec - (session->version == TLS1_3_VERSION ? 60 : 3600)))))) {
 		string session_data = get_session_data(ts);
-		SqlDb_row session_row_insert;
-		session_row_insert.add(existsColumns.ssl_sessions_id_sensor_is_unsigned && opt_id_sensor < 0 ? 0 : opt_id_sensor, "id_sensor");
-		session_row_insert.add(ips, "serverip", false, sessions->sqlDb, sessions->storeSessionsTableName().c_str());
-		session_row_insert.add(ports.getPort(), "serverport");
-		session_row_insert.add(ipc, "clientip", false, sessions->sqlDb, sessions->storeSessionsTableName().c_str());
-		session_row_insert.add(portc.getPort(), "clientport");
-		session_row_insert.add(sqlDateTimeString(ts.tv_sec), "stored_at");
-		session_row_insert.add(session_data, "session");
-		SqlDb_row session_row_update;
-		session_row_update.add(sqlDateTimeString(ts.tv_sec), "stored_at");
-		session_row_update.add(session_data, "session");
-		if(!sessions->sqlDb) {
-			sessions->sqlDb = createSqlObject();
+		if(type_store & cSslDsslSessions::_tss_mem) {
+			sessions->setSessionData(ips, ports, ipc, portc, session_data.c_str());
 		}
-		sqlStore->query_lock(MYSQL_ADD_QUERY_END(
-				     sessions->sqlDb->insertOrUpdateQuery(sessions->storeSessionsTableName(), session_row_insert, session_row_update, false, true)),
-				     STORE_PROC_ID_OTHER, 0);
-		this->stored_at = ts.tv_sec;
-		this->session->tls_session_server_seq_saved = this->session->tls_session_server_seq;
-		this->session->tls_session_client_seq_saved = this->session->tls_session_client_seq;
-		sessions->deleteOldSessions(ts);
+		if((type_store & cSslDsslSessions::_tss_db) &&
+		   opt_ssl_store_sessions && !opt_nocdr && sessions->exists_sessions_table) {
+			SqlDb_row session_row_insert;
+			session_row_insert.add(existsColumns.ssl_sessions_id_sensor_is_unsigned && opt_id_sensor < 0 ? 0 : opt_id_sensor, "id_sensor");
+			session_row_insert.add(ips, "serverip", false, sessions->sqlDb, sessions->storeSessionsTableName().c_str());
+			session_row_insert.add(ports.getPort(), "serverport");
+			session_row_insert.add(ipc, "clientip", false, sessions->sqlDb, sessions->storeSessionsTableName().c_str());
+			session_row_insert.add(portc.getPort(), "clientport");
+			session_row_insert.add(sqlDateTimeString(ts.tv_sec), "stored_at");
+			session_row_insert.add(session_data, "session");
+			SqlDb_row session_row_update;
+			session_row_update.add(sqlDateTimeString(ts.tv_sec), "stored_at");
+			session_row_update.add(session_data, "session");
+			if(!sessions->sqlDb) {
+				sessions->sqlDb = createSqlObject();
+			}
+			sqlStore->query_lock(MYSQL_ADD_QUERY_END(
+					     sessions->sqlDb->insertOrUpdateQuery(sessions->storeSessionsTableName(), session_row_insert, session_row_update, false, true)),
+					     STORE_PROC_ID_OTHER, 0);
+			this->stored_at = ts.tv_sec;
+			this->session->tls_session_server_seq_saved = this->session->tls_session_server_seq;
+			this->session->tls_session_client_seq_saved = this->session->tls_session_client_seq;
+			sessions->deleteOldSessions(ts);
+		}
 	}
 }
 
@@ -986,7 +992,10 @@ void cSslDsslSessions::destroySession(vmIP saddr, vmIP daddr, vmPort sport, vmPo
 			if(iter_session->second->session->tls_session_server_seq != iter_session->second->session->tls_session_server_seq_saved ||
 			   iter_session->second->session->tls_session_client_seq != iter_session->second->session->tls_session_client_seq_saved) {
 				timeval ts = getTimeval();
-				iter_session->second->store_session(this, ts, true);
+				iter_session->second->store_session(this, ts, cSslDsslSessions::_tss_force_all);
+			} else {
+				timeval ts = getTimeval();
+				iter_session->second->store_session(this, ts, cSslDsslSessions::_tss_force | cSslDsslSessions::_tss_mem);
 			}
 			if(iter_session->second->get_keys_ok) {
 				keyErase(iter_session->second->session->client_random);
@@ -1089,7 +1098,7 @@ void cSslDsslSessions::storeSessions() {
 		for(map<sStreamId, cSslDsslSession*>::iterator iter = sessions.begin(); iter != sessions.end(); iter++) {
 			if(iter->second->session->tls_session_server_seq != iter->second->session->tls_session_server_seq_saved ||
 			   iter->second->session->tls_session_client_seq != iter->second->session->tls_session_client_seq_saved) {
-				iter->second->store_session(this, ts, true);
+				iter->second->store_session(this, ts, cSslDsslSessions::_tss_force | cSslDsslSessions::_tss_db);
 			}
 		}
 	}
@@ -1155,6 +1164,15 @@ void cSslDsslSessions::loadSessions() {
 	} else {
 		syslog(LOG_NOTICE, "there are no current ssl/tls sessions");
 	}
+}
+
+void cSslDsslSessions::setSessionData(vmIP sip, vmPort sport, vmIP cip, vmPort cport, const char *session_data) {
+	sStreamId sid(sip, sport, cip, cport);
+	sSessionData sessionData;
+	sessionData.data = session_data;
+	lock_sessions_db();
+	sessions_db[sid] = sessionData;
+	unlock_sessions_db();
 }
 
 void cSslDsslSessions::deleteOldSessions(timeval ts) {
