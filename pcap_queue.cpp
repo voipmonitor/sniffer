@@ -81,6 +81,8 @@ void daemonizeOutput(string error);
 extern int verbosity;
 extern int verbosityE;
 extern int opt_snaplen;
+extern bool opt_libpcap_immediate_mode;
+extern bool opt_libpcap_nonblock_mode;
 extern int opt_rrd;
 extern int opt_udpfrag;
 extern int opt_skinny;
@@ -3844,7 +3846,7 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(sInterface *i
 	extern int opt_ringbuffer;
 	this->pcap_snaplen = get_pcap_snaplen();
 	this->pcap_promisc = opt_promisc;
-	this->pcap_timeout = 1000;
+	this->pcap_timeout = 100;
 	this->pcap_buffer_size = opt_ringbuffer * 1024 * 1024;
 	//
 	memset(&this->last_ps, 0, sizeof(this->last_ps));
@@ -4013,6 +4015,12 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_set_timeout failed", this->getInterfaceAlias().c_str()); 
 		goto failed;
 	}
+	if(opt_libpcap_immediate_mode) {
+		if((status = pcap_set_immediate_mode(this->pcapHandle, 1)) != 0) {
+			snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_set_immediate_mode failed", this->getInterfaceAlias().c_str()); 
+			goto failed;
+		}
+	}
 	if((status = pcap_set_buffer_size(this->pcapHandle, this->pcap_buffer_size)) != 0) {
 		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_set_buffer_size failed", this->getInterfaceAlias().c_str()); 
 		goto failed;
@@ -4048,6 +4056,12 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 		}
 		if(rssAfterActivate > rssBeforeActivate) {
 			all_ringbuffers_size += (rssAfterActivate - rssBeforeActivate) * 1024 * 1024;
+		}
+	}
+	if(opt_libpcap_nonblock_mode) {
+		if(pcap_setnonblock(this->pcapHandle, 1, errbuf) < 0) {
+			snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_setnonblock failed (%s)", this->getInterfaceAlias().c_str(), errbuf); 
+			goto failed;
 		}
 	}
 	if(opt_mirrorip) {

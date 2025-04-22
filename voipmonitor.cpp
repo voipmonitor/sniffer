@@ -1115,6 +1115,8 @@ int opt_scanpcapmethod = IN_CLOSE_WRITE; // Specifies how to watch for new files
 int opt_promisc = 1;	// put interface to promisc mode?
 int opt_use_oneshot_buffer = 1;
 int opt_snaplen = 0;
+bool opt_libpcap_immediate_mode = false;
+bool opt_libpcap_nonblock_mode = false;
 char pcapcommand[4092] = "";
 char filtercommand[4092] = "";
 
@@ -6326,6 +6328,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("interfaces_optimize", &opt_ifaces_optimize));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("eth_max_channels", &opt_eth_max_channels));
 					expert();
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("libpcap_immediate_mode", &opt_libpcap_immediate_mode));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("libpcap_nonblock_mode", &opt_libpcap_nonblock_mode));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk", &opt_use_dpdk));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("dpdk_init", &opt_dpdk_init))
 						->disableYes()
