@@ -477,7 +477,6 @@ private:
 	int pcap_buffer_size;
 	pcap_stat last_ps;
 	u_long countPacketDrop;
-	u_int64_t lastPacketTimeUS;
 	u_int64_t lastTimeLogErrPcapNextExNullPacket;
 	u_int64_t lastTimeLogErrPcapNextExErrorReading;
 	int32_t libpcap_buffer_offset;
@@ -494,6 +493,8 @@ private:
 	#endif
 	u_int64_t firstTimeErrorLogEtherTypeFFFF_ms;
 	u_int64_t counterErrorLogEtherTypeFFFF_ms;
+	u_int64_t firstPacketTime_us;
+	u_int64_t firstPacketTime_at_ms;
 friend class PcapQueue_readFromInterfaceThread;
 };
 

@@ -13966,11 +13966,20 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 					if(!closeCall &&
 					   (c_branch->oneway == 1 && currTimeS_unshift > call->get_last_packet_time_s() + opt_onewaytimeout)) {
 						/*
-						cout << " * " << currTimeS_unshift - call->get_last_packet_time_s() << endl
-						     << " * " << call->get_last_packet_time_us() - call->first_packet_time_us << endl
-						     << " * " << currTimeS - call->_time / 1000 << endl
-						     << " * " << packet_time_s - call->first_packet_time_us / 1000000 << endl
-						     << " * " << getTimeMS_rdtsc() - currTimeMS << endl;
+						if(abs(call->time_shift_ms) > 2000) {
+							cout << " *** " << call->call_id << endl
+							     << " * time_shift_ms : " << call->time_shift_ms << endl
+							     << " * packet_time_s : " << packet_time_s << endl
+							     << " * currTimeS : " << currTimeS << endl
+							     << " * currTimeS_unshift : " << currTimeS_unshift << endl
+							     << " * call->get_last_packet_time_s() : " << call->get_last_packet_time_s() << endl
+							     << " * currTimeS_unshift - currTimeS : " << (int64_t)currTimeS_unshift - (int64_t)currTimeS << endl
+							     << " * currTimeS_unshift - call->get_last_packet_time_s() : " << (int64_t)currTimeS_unshift - (int64_t)call->get_last_packet_time_s() << endl
+							     << " * call->get_last_packet_time_us() - call->first_packet_time_us : " << (int64_t)call->get_last_packet_time_us() - (int64_t)call->first_packet_time_us << endl
+							     //<< " * " << currTimeS - call->_time / 1000 << endl
+							     << " * packet_time_s - call->first_packet_time_us : " << (int64_t)packet_time_s - (int64_t)call->first_packet_time_us / 1000000 << endl
+							     << " * getTimeMS_rdtsc() - currTimeMS : " << (int64_t)getTimeMS_rdtsc() - (int64_t)currTimeMS << endl;
+						}
 						*/
 						closeCall = true;
 						call->oneway_timeout_exceeded = true;

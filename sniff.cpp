@@ -11535,7 +11535,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 	int64_t system_time_ms = getTimeMS_rdtsc();
 	int64_t system_time_ms_2 = getTimeMS();
 	int64_t packet_time_ms = packetS->getTimeUS() / 1000;
-	if(abs(system_time_ms - packet_time_ms) > 2000) {
+	if(abs(system_time_ms - packet_time_ms) > DEBUG_PACKET_DELAY_TEST) {
 		cout << " *process_SIP* "
 		     << (packetS->block_store ? packetS->block_store->ifname : "--") << ", " 
 		     << system_time_ms - packet_time_ms << ", "
