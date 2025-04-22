@@ -467,6 +467,15 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 		}
 		cout << "--- end ---" << endl;
 	}
+	#if DEBUG_INVITE_TRACE
+	if(dataLength > 6 && !memcmp(data, "INVITE", 6)) {
+		string dump_data((char*)data, dataLength);
+		find_and_replace(dump_data, CR_STR, CR_STR_ESC);
+		find_and_replace(dump_data, LF_STR, LF_STR_ESC);
+		static int c = 0;
+		cout << " *** INVITE / SslData::processPacket " << (++c) << " " << port_src << "->" << port_dst << " : " << dump_data << endl;
+	}
+	#endif
 	if(dataType == ReassemblyBuffer::_websocket) {
 		pcap_pkthdr *tcpHeader;
 		u_char *tcpPacket;

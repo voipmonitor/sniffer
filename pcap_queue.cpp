@@ -6342,6 +6342,19 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 			      !block->get_add_hp_pointers(&pcap_header_plus2, &pcap_packet, pcap_snaplen) ||
 			      (block->count && force_push)) {
 				if(block) {
+					#if DEBUG_PACKET_DELAY_TEST
+					int64_t system_time_ms = getTimeMS_rdtsc();
+					int64_t system_time_ms_2 = getTimeMS();
+					for(unsigned i = 0; i < block->count; i++) {
+						int64_t packet_time_ms = getTimeUS(block->get_header(i)->header_fix_size.ts_tv_sec, block->get_header(i)->header_fix_size.ts_tv_usec) / 1000;
+						if(abs(system_time_ms - packet_time_ms) > 2000) {
+							cout << " *** " << typeThread << ", " 
+							     << block->ifname << ", " 
+							     << system_time_ms - packet_time_ms << ", "
+							     << system_time_ms_2 - packet_time_ms << endl;
+						}
+					}
+					#endif
 					this->push_block(block);
 				}
 				block = new FILE_LINE(0) pcap_block_store(pcap_block_store::plus2);
@@ -6364,6 +6377,21 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 			
 			res = this->pcap_next_ex_iface(this->pcapHandle, &pcap_next_ex_header, &pcap_next_ex_packet,
 						       opt_pcap_queue_use_blocks_read_check, &checkProtocolData);
+			
+			#if DEBUG_PACKET_DELAY_TEST
+			if(res > 0) {
+				int64_t system_time_ms = getTimeMS_rdtsc();
+				int64_t system_time_ms_2 = getTimeMS();
+				int64_t packet_time_ms = getTimeUS(pcap_next_ex_header->ts.tv_sec, pcap_next_ex_header->ts.tv_usec) / 1000;
+				if(abs(system_time_ms - packet_time_ms) > 2000) {
+					cout << " * pcap_next_ex_iface * " 
+					     << typeThread << ", " 
+					     << interface.interface << ", " 
+					     << system_time_ms - packet_time_ms << ", "
+					     << system_time_ms_2 - packet_time_ms << endl;
+				}
+			}
+			#endif
 			
 			#if EXPERIMENTAL_INTERFACE_DUPL
 			}
@@ -6557,6 +6585,17 @@ void PcapQueue_readFromInterfaceThread::processBlock(pcap_block_store *block) {
 				   0, getTimeUS(block->get_header(i)->header_fix_size.ts_tv_sec, block->get_header(i)->header_fix_size.ts_tv_usec),
 				   NULL, 0,
 				   __FILE__, __LINE__, __FUNCTION__, ("process block - typethread " + intToString(typeThread)).c_str());
+		}
+		#endif
+		#if DEBUG_PACKET_DELAY_TEST
+		int64_t system_time_ms = getTimeMS_rdtsc();
+		int64_t system_time_ms_2 = getTimeMS();
+		int64_t packet_time_ms = getTimeUS(block->get_header(i)->header_fix_size.ts_tv_sec, block->get_header(i)->header_fix_size.ts_tv_usec) / 1000;
+		if(abs(system_time_ms - packet_time_ms) > 2000) {
+			cout << " *** " << typeThread << ", " 
+			     << block->ifname << ", " 
+			     << system_time_ms - packet_time_ms << ", "
+			     << system_time_ms_2 - packet_time_ms << endl;
 		}
 		#endif
 		switch(this->typeThread) {
@@ -8491,6 +8530,19 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							   (*blockStore)[i].header->header_ip_offset, getTimeUS((*blockStore)[i].header->header_fix_size.ts_tv_sec, (*blockStore)[i].header->header_fix_size.ts_tv_usec),
 							   NULL, 0,
 							   __FILE__, __LINE__, __FUNCTION__, "before deque");
+					}
+				}
+				#endif
+				#if DEBUG_PACKET_DELAY_TEST
+				int64_t system_time_ms = getTimeMS_rdtsc();
+				int64_t system_time_ms_2 = getTimeMS();
+				for(unsigned i = 0; i < blockStore->count; i++) {
+					int64_t packet_time_ms = getTimeUS(blockStore->get_header(i)->header_fix_size.ts_tv_sec, blockStore->get_header(i)->header_fix_size.ts_tv_usec) / 1000;
+					if(abs(system_time_ms - packet_time_ms) > 2000) {
+						cout << " *D* "
+						     << blockStore->ifname << ", " 
+						     << system_time_ms - packet_time_ms << ", "
+						     << system_time_ms_2 - packet_time_ms << endl;
 					}
 				}
 				#endif

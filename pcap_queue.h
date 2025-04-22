@@ -864,7 +864,7 @@ private:
 	unsigned int counter_pop_usleep;
 	unsigned long pop_usleep_sum;
 	unsigned long pop_usleep_sum_last_push;
-	bool force_push;
+	volatile bool force_push;
 	volatile bool threadTerminated;
 	pstat_data threadPstatData[2][2];
 	volatile int _sync_qring;
