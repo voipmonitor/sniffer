@@ -39,10 +39,10 @@ extern int opt_ipaccount;
 extern int opt_skinny;
 extern int opt_mgcp;
 extern bool opt_enable_diameter;
-extern unsigned opt_tcp_port_mgcp_gateway;
-extern unsigned opt_udp_port_mgcp_gateway;
-extern unsigned opt_tcp_port_mgcp_callagent;
-extern unsigned opt_udp_port_mgcp_callagent;
+extern char *mgcp_gateway_tcp_portmatrix;
+extern char *mgcp_gateway_udp_portmatrix;
+extern char *mgcp_callagent_tcp_portmatrix;
+extern char *mgcp_callagent_udp_portmatrix;
 extern int opt_dup_check_type;
 extern int opt_dup_check_ipheader;
 extern int opt_dup_check_ipheader_ignore_ttl;
@@ -814,8 +814,8 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				    isSslIpPort(ppd->header_ip->get_saddr(), ppd->header_tcp->get_source(), ppd->header_ip->get_daddr(), ppd->header_tcp->get_dest())) ||
 				   (opt_skinny && (skinnyportmatrix[ppd->header_tcp->get_source()] || skinnyportmatrix[ppd->header_tcp->get_dest()])) ||
 				   (opt_mgcp && 
-				    ((unsigned)ppd->header_tcp->get_source() == opt_tcp_port_mgcp_gateway || (unsigned)ppd->header_tcp->get_dest() == opt_tcp_port_mgcp_gateway ||
-				     (unsigned)ppd->header_tcp->get_source() == opt_tcp_port_mgcp_callagent || (unsigned)ppd->header_tcp->get_dest() == opt_tcp_port_mgcp_callagent)) ||
+				    (mgcp_gateway_tcp_portmatrix[ppd->header_tcp->get_source()] || mgcp_gateway_tcp_portmatrix[ppd->header_tcp->get_dest()] ||
+				     mgcp_callagent_tcp_portmatrix[ppd->header_tcp->get_source()] || mgcp_callagent_tcp_portmatrix[ppd->header_tcp->get_dest()])) ||
 				   (opt_enable_diameter && (diameter_tcp_portmatrix[ppd->header_tcp->get_source()] || diameter_tcp_portmatrix[ppd->header_tcp->get_dest()]))) {
 					// OK
 				} else if(opt_enable_ss7 && (ss7portmatrix[ppd->header_tcp->get_source()] || ss7portmatrix[ppd->header_tcp->get_dest()])) {

@@ -1241,6 +1241,10 @@ char *ss7_rudp_portmatrix;
 char *diameter_tcp_portmatrix;
 char *diameter_udp_portmatrix;
 char *ssl_portmatrix;
+char *mgcp_gateway_tcp_portmatrix;
+char *mgcp_gateway_udp_portmatrix;
+char *mgcp_callagent_tcp_portmatrix;
+char *mgcp_callagent_udp_portmatrix;
 vector<vmIP> httpip;
 vector<vmIPmask> httpnet;
 vector<vmIP> webrtcip;
@@ -1470,11 +1474,6 @@ unsigned opt_udp_port_l2tp = 1701;
 unsigned opt_udp_port_tzsp = 0x9090;
 unsigned opt_udp_port_vxlan = 4789;
 unsigned opt_udp_port_hperm = 7932;
-
-unsigned opt_tcp_port_mgcp_gateway = 2427;
-unsigned opt_udp_port_mgcp_gateway = 2427;
-unsigned opt_tcp_port_mgcp_callagent = 2727;
-unsigned opt_udp_port_mgcp_callagent = 2727;
 
 bool opt_icmp_process_data = false;
 
@@ -3621,6 +3620,14 @@ int main(int argc, char *argv[]) {
 	memset(ssl_portmatrix, 0, 65537);
 	ssl_client_random_portmatrix = new FILE_LINE(0) char[65537];
 	memset(ssl_client_random_portmatrix, 0, 65537);
+	mgcp_gateway_tcp_portmatrix = new FILE_LINE(0) char[65537];
+	memset(mgcp_gateway_tcp_portmatrix, 0, 65537);
+	mgcp_gateway_udp_portmatrix = new FILE_LINE(0) char[65537];
+	memset(mgcp_gateway_udp_portmatrix, 0, 65537);
+	mgcp_callagent_tcp_portmatrix = new FILE_LINE(0) char[65537];
+	memset(mgcp_callagent_tcp_portmatrix, 0, 65537);
+	mgcp_callagent_udp_portmatrix = new FILE_LINE(0) char[65537];
+	memset(mgcp_callagent_udp_portmatrix, 0, 65537);
 
 	pthread_mutex_init(&mysqlconnect_lock, NULL);
 	pthread_mutex_init(&hostbyname_lock, NULL);
@@ -4505,6 +4512,10 @@ int main(int argc, char *argv[]) {
 	delete [] diameter_udp_portmatrix;
 	delete [] ssl_portmatrix;
 	delete [] ssl_client_random_portmatrix;
+	delete [] mgcp_gateway_tcp_portmatrix;
+	delete [] mgcp_gateway_udp_portmatrix;
+	delete [] mgcp_callagent_tcp_portmatrix;
+	delete [] mgcp_callagent_udp_portmatrix;
 	
 	delete regfailedcache;
 	
@@ -6873,10 +6884,18 @@ void cConfig::addConfigItems() {
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mgcp", &opt_mgcp));
 				expert();
-				addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_mgcp_gateway", &opt_tcp_port_mgcp_gateway));
-				addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_mgcp_gateway", &opt_udp_port_mgcp_gateway));
-				addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_mgcp_callagent", &opt_tcp_port_mgcp_callagent));
-				addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_mgcp_callagent", &opt_udp_port_mgcp_callagent));
+				addConfigItem((new FILE_LINE(42270) cConfigItem_ports("tcp_port_mgcp_gateway", mgcp_gateway_tcp_portmatrix))
+				->setDefaultValueStr("2427")
+				->setClearBeforeFirstSet());
+				addConfigItem((new FILE_LINE(42270) cConfigItem_ports("udp_port_mgcp_gateway", mgcp_gateway_udp_portmatrix))
+				->setDefaultValueStr("2427")
+				->setClearBeforeFirstSet());
+				addConfigItem((new FILE_LINE(42270) cConfigItem_ports("tcp_port_mgcp_callagent", mgcp_callagent_tcp_portmatrix))
+				->setDefaultValueStr("2727")
+				->setClearBeforeFirstSet());
+				addConfigItem((new FILE_LINE(42270) cConfigItem_ports("udp_port_mgcp_callagent", mgcp_callagent_udp_portmatrix))
+				->setDefaultValueStr("2727")
+				->setClearBeforeFirstSet());
 		setDisableIfEnd();
 	group("CDR");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -9499,6 +9518,10 @@ void set_default_values() {
 	portMatrixDefaultPort matrixDefaultPorts[] = {
 		{sipportmatrix, 5060},
 		{skinnyportmatrix, 2000},
+		{mgcp_gateway_tcp_portmatrix, 2427},
+		{mgcp_gateway_udp_portmatrix, 2427},
+		{mgcp_callagent_tcp_portmatrix, 2727},
+		{mgcp_callagent_udp_portmatrix, 2727},
 		{NULL, 0}
 	};
 	portMatrixDefaultPort *p = matrixDefaultPorts;

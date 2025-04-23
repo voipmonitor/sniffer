@@ -195,12 +195,12 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 					extern char *skinnyportmatrix;
 					packetS->pflags.set_skinny(opt_skinny && (skinnyportmatrix[_port_src] || skinnyportmatrix[_port_dst]));
 					extern int opt_mgcp;
-					extern unsigned opt_tcp_port_mgcp_gateway;
-					extern unsigned opt_tcp_port_mgcp_callagent;
+					extern char *mgcp_gateway_tcp_portmatrix;
+					extern char *mgcp_callagent_tcp_portmatrix;
 					extern bool opt_enable_diameter;
 					extern char *diameter_tcp_portmatrix;
-					packetS->pflags.set_mgcp(opt_mgcp && ((unsigned)_port_src == opt_tcp_port_mgcp_gateway || (unsigned)_port_dst == opt_tcp_port_mgcp_gateway ||
-									     (unsigned)_port_src == opt_tcp_port_mgcp_callagent || (unsigned)_port_dst == opt_tcp_port_mgcp_callagent));
+					packetS->pflags.set_mgcp(opt_mgcp && (mgcp_gateway_tcp_portmatrix[_port_src] || mgcp_gateway_tcp_portmatrix[_port_dst] ||
+									      mgcp_callagent_tcp_portmatrix[_port_src] || mgcp_callagent_tcp_portmatrix[_port_dst]));
 					packetS->pflags.set_diameter(opt_enable_diameter && (diameter_tcp_portmatrix[_port_src] || diameter_tcp_portmatrix[_port_dst]));
 					packetS->need_sip_process = !packetS->pflags.other_processing() &&
 								    (sipportmatrix[_port_src] || sipportmatrix[_port_dst] ||
