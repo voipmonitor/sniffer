@@ -7930,6 +7930,20 @@ void cThreadMonitor::registerThread(int tid, const char *description) {
 	memset(thread->last_time_us, 0, sizeof(thread->last_time_us));
 	thread->orig_scheduler = -1;
 	thread->orig_priority = -1;
+	#if TRAFFIC_MONITOR
+	thread->packets_cnt_in = 0;
+	thread->packets_cnt_out = 0;
+	thread->packets_size_in = 0;
+	thread->packets_size_out = 0;
+	memset(thread->packets_cnt_in_last, 0, sizeof(thread->packets_cnt_in_last));
+	memset(thread->packets_cnt_out_last, 0, sizeof(thread->packets_cnt_out_last));
+	memset(thread->packets_size_in_last, 0, sizeof(thread->packets_size_in_last));
+	memset(thread->packets_size_out_last, 0, sizeof(thread->packets_size_out_last));
+	u_int64_t time_us = ::getTimeUS();
+	for(unsigned i = 0; i < sizeof(thread->packets_last_time_us) / sizeof(thread->packets_last_time_us[0]); i++) {
+		thread->packets_last_time_us[i] = time_us;
+	}
+	#endif
 	tm_lock();
 	threads[thread->tid] = thread;
 	tm_unlock();
@@ -7958,6 +7972,11 @@ cThreadMonitor::sThread *cThreadMonitor::getSelfThread() {
 	return(thread);
 }
 
+cThreadMonitor::sThread *cThreadMonitor::getSelfThreadData() {
+	extern cThreadMonitor threadMonitor;
+	return(threadMonitor.getSelfThread());
+}
+
 void cThreadMonitor::setSchedPolPriority(int indexPstat) {
 	extern string opt_sched_pol_auto;
 	extern int opt_sched_pol_auto_heap_limit;
@@ -7978,7 +7997,7 @@ void cThreadMonitor::setSchedPolPriority(int indexPstat) {
 		double cpu_perc = this->getCpuUsagePerc(iter->second, indexPstat);
 		if(cpu_perc > 0) {
 			sDescrCpuPerc dp;
-			dp.description = iter->second->description;
+			strcpy_null_term(dp.description, iter->second->description.c_str());
 			dp.tid = iter->second->tid;
 			dp.cpu_perc = cpu_perc;
 			descrPerc.push_back(dp);
@@ -8015,20 +8034,27 @@ void cThreadMonitor::setSchedPolPriority(int indexPstat) {
 }
 
 string cThreadMonitor::output(int indexPstat) {
+	int columns = 1;
 	list<sDescrCpuPerc> descrPerc;
 	double sum_cpu = 0;
+	#if TRAFFIC_MONITOR
+	u_int64_t time_us = ::getTimeUS();
+	#endif
 	tm_lock();
 	map<int, sThread*>::iterator iter;
 	for(iter = threads.begin(); iter != threads.end(); iter++) {
 		double cpu_perc = this->getCpuUsagePerc(iter->second, indexPstat);
 		if(cpu_perc > 0) {
 			sDescrCpuPerc dp;
-			dp.description = iter->second->description;
+			strcpy_null_term(dp.description, iter->second->description.c_str());
 			dp.tid = iter->second->tid;
 			dp.cpu_perc = cpu_perc;
 			dp.cs = this->getContextSwitches(iter->second, indexPstat);
 			dp.usleep = this->getUsleep(iter->second, indexPstat);
 			dp.time_us = this->getTimeUS(iter->second, indexPstat);
+			#if TRAFFIC_MONITOR
+			evalTraffic(iter->second, &dp.traffic, time_us, indexPstat);
+			#endif
 			descrPerc.push_back(dp);
 			sum_cpu += cpu_perc;
 		}
@@ -8040,11 +8066,8 @@ string cThreadMonitor::output(int indexPstat) {
 	int counter = 0;
 	int maxDescrLength = 45;
 	for(iter_dp = descrPerc.begin(); iter_dp != descrPerc.end(); iter_dp++) {
-		char descr[maxDescrLength + 1];
-		strncpy(descr, iter_dp->description.c_str(), maxDescrLength);
-		descr[maxDescrLength] = 0;
 		outStr << fixed
-		       << setw(maxDescrLength) << left << iter_dp->description.substr(0, maxDescrLength)
+		       << setw(maxDescrLength) << left << string(iter_dp->description).substr(0, maxDescrLength)
 		       << " (" << setw(7) << right << iter_dp->tid << ") : "
 		       << setprecision(1) << setw(5) << right << iter_dp->cpu_perc;
 		// scheduler / priority
@@ -8097,9 +8120,23 @@ string cThreadMonitor::output(int indexPstat) {
 				outStr << setw(10) << " ";
 			}
 		}
+		// traffic
+		#if TRAFFIC_MONITOR
+		outStr << "  ";
+		sTraffic *iter_tr = &iter_dp->traffic;
+		if(iter_tr->packets_cnt_in > 0 || iter_tr->packets_cnt_out > 0) {
+		       outStr << " " << setw(5) << right << format_metric((double)iter_tr->packets_cnt_in / iter_tr->time_us * 1e6, 3, "--- ") << "p"
+			      << " " << setw(5) << right << format_metric((double)iter_tr->packets_size_in * 8 / iter_tr->time_us * 1e6, 3, "--- ") << "b"
+			      << " -> "
+			      << " " << setw(5) << right << format_metric((double)iter_tr->packets_cnt_out / iter_tr->time_us * 1e6, 3, "--- ") << "p"
+			      << " " << setw(5) << right << format_metric((double)iter_tr->packets_size_out * 8 / iter_tr->time_us * 1e6, 3, "--- ") << "b";
+		} else {
+			outStr << setw(32) << " ";
+		}
+		#endif
 		//
 		++counter;
-		if(!(counter % 2)) {
+		if(!(counter % columns)) {
 			outStr << endl;
 		} else {
 			outStr << "  |  ";
@@ -8111,6 +8148,39 @@ string cThreadMonitor::output(int indexPstat) {
 	outStr << "SUM : " << setprecision(1) << setw(5) << sum_cpu << endl;
 	return(outStr.str());
 }
+
+#if TRAFFIC_MONITOR
+string cThreadMonitor::output_traffic(int indexStat) {
+	list<sDescrTraffic> descrTraffic;
+	u_int64_t time_us = ::getTimeUS();
+	tm_lock();
+	map<int, sThread*>::iterator iter;
+	for(iter = threads.begin(); iter != threads.end(); iter++) {
+		sDescrTraffic dt;
+		if(evalTraffic(iter->second, &dt, time_us, indexStat)) {
+			strcpy_null_term(dt.description, iter->second->description.c_str());
+			dt.tid = iter->second->tid;
+			descrTraffic.push_back(dt);
+		}
+	}
+	tm_unlock();
+	ostringstream outStr;
+	list<sDescrTraffic>::iterator iter_tr;
+	int maxDescrLength = 45;
+	for(iter_tr = descrTraffic.begin(); iter_tr != descrTraffic.end(); iter_tr++) {
+		outStr << fixed
+		       << setw(maxDescrLength) << left << string(iter_tr->description).substr(0, maxDescrLength)
+		       << " (" << setw(7) << right << iter_tr->tid << ") :"
+		       << " " << setw(5) << right << format_metric((double)iter_tr->packets_cnt_in / iter_tr->time_us * 1e6, 3, "--- ") << "p"
+		       << " " << setw(5) << right << format_metric((double)iter_tr->packets_size_in * 8 / iter_tr->time_us * 1e6, 3, "--- ") << "b"
+		       << " -> "
+		       << " " << setw(5) << right << format_metric((double)iter_tr->packets_cnt_out / iter_tr->time_us * 1e6, 3, "--- ") << "p"
+		       << " " << setw(5) << right << format_metric((double)iter_tr->packets_size_out * 8 / iter_tr->time_us * 1e6, 3, "--- ") << "b"
+		       << endl;
+	}
+	return(outStr.str());
+}
+#endif
 
 double cThreadMonitor::getCpuUsagePerc(sThread *thread, int indexPstat) {
 	if(thread->pstat[indexPstat][0].cpu_total_time) {
@@ -8154,6 +8224,28 @@ u_int64_t cThreadMonitor::getTimeUS(sThread *thread, int indexPstat) {
 		thread->last_time_us[indexPstat][0] - thread->last_time_us[indexPstat][1] :
 		0);
 }
+
+#if TRAFFIC_MONITOR
+bool cThreadMonitor::evalTraffic(sThread *thread, sTraffic *traffic, u_int64_t time_us, int indexStat) {
+	bool rslt = false;
+	if(thread->packets_cnt_in > 0 || thread->packets_cnt_out > 0) {
+		traffic->packets_cnt_in = thread->packets_cnt_in - thread->packets_cnt_in_last[indexStat];
+		traffic->packets_cnt_out = thread->packets_cnt_out - thread->packets_cnt_out_last[indexStat];
+		if(traffic->packets_cnt_in > 0 || traffic->packets_cnt_out > 0) {
+			traffic->packets_size_in = thread->packets_size_in - thread->packets_size_in_last[indexStat];
+			traffic->packets_size_out = thread->packets_size_out - thread->packets_size_out_last[indexStat];
+			traffic->time_us = time_us - thread->packets_last_time_us[indexStat];
+			thread->packets_cnt_in_last[indexStat] = thread->packets_cnt_in;
+			thread->packets_cnt_out_last[indexStat] = thread->packets_cnt_out;
+			thread->packets_size_in_last[indexStat] = thread->packets_size_in;
+			thread->packets_size_out_last[indexStat] = thread->packets_size_out;
+			rslt = true;
+		}
+	}
+	thread->packets_last_time_us[indexStat] = time_us;
+	return(rslt);
+}
+#endif
 
 
 void cCsv::sRow::dump() {
@@ -10895,4 +10987,46 @@ cRegExp *number2Regex(const char *number) {
 		return(regexp);
 	}
 	return(NULL);
+}
+
+
+string format_metric(double value, int sig_digits, const char *zero) {
+	if(!value) return(zero);
+	const char *prefixes[]  = {"", "k", "M", "G", "T"};
+	const int exponents[] = {  0,   3,   6,   9,  12 };
+	int magnitude = (int)floor(log10(fabs(value)));
+	int shift = magnitude - (sig_digits - 1);
+	double factor = pow(10.0, shift);
+	value = round(value / factor) * factor;
+	if(!value) return(zero);
+	int exponent_id = 0;
+	double absval = fabs(value);
+	for(int i = 1; i < (int)(sizeof(exponents) / sizeof(exponents[0])); ++i) {
+		if(absval >= pow(10.0, exponents[i])) {
+			exponent_id = i;
+		} else {
+			break;
+		}
+	}
+	double scaled = value / pow(10.0, exponents[exponent_id]);
+	if(fabs(scaled) >= 1000.0 && exponent_id + 1 < (int)(sizeof(exponents) / sizeof(exponents[0]))) {
+		scaled /= 1000.0;
+		++exponent_id;
+	}
+	int int_digits;
+	if(scaled == 0) {
+		int_digits = 1;
+	} else {
+		int_digits = (int)floor(log10(fabs(scaled))) + 1;
+		if(int_digits < 1) {
+			int_digits = 1;
+		}
+	}
+	int dec_places = sig_digits - int_digits;
+	if(dec_places < 0) {
+		dec_places = 0;
+	}
+	char out[256];
+	snprintf(out, sizeof(out), "%.*f%s", dec_places, scaled, prefixes[exponent_id]);
+	return(out);
 }

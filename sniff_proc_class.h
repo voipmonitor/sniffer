@@ -1916,6 +1916,9 @@ private:
 	batch_packet_s_time* direct_rtp_queue_pop_item;
 	u_int64_t direct_rtp_queue_last_time;
 	volatile int direct_rtp_queue_lock;
+	#if TRAFFIC_MONITOR
+	cThreadMonitor::sThread *thread_data;
+	#endif
 friend inline void *_PreProcessPacket_outThreadFunction(void *arg);
 friend inline void *_PreProcessPacket_nextThreadFunction(void *arg);
 friend class TcpReassemblySip;
@@ -2322,6 +2325,9 @@ private:
 	#endif
 	volatile u_int32_t calls;
 	static volatile int _sync_add_rtp_rd_threads;
+	#if TRAFFIC_MONITOR
+	cThreadMonitor::sThread *thread_data;
+	#endif
 friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
 friend inline void *_ProcessRtpPacket_nextThreadFunction(void *arg);
 };

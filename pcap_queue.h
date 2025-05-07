@@ -299,6 +299,10 @@ protected:
 	pstat_data nextThreadsPstatData[PCAP_QUEUE_NEXT_THREADS_MAX][2][2];
 	pstat_data procPstatData[2];
 	bool initAllReadThreadsFinished;
+	#if TRAFFIC_MONITOR
+	cThreadMonitor::sThread *thread_data_main;
+	cThreadMonitor::sThread *thread_data_write;
+	#endif
 protected:
 	class PcapQueue_readFromFifo *instancePcapFifo;
 private:
@@ -890,6 +894,9 @@ private:
 	unsigned long long sumPacketsSize[3];
 	bool prepareHeaderPacketPool; // experimental option
 	pcap_dispatch_data dispatch_data;
+	#if TRAFFIC_MONITOR
+	cThreadMonitor::sThread *thread_data;
+	#endif
 friend void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg);
 friend class PcapQueue_readFromInterface;
 };
@@ -1465,6 +1472,9 @@ private:
 		}
 		return(false);
 	}
+	#if TRAFFIC_MONITOR
+	void tm_inc_packets_out(sHeaderPacketPQout *hp);
+	#endif
 private:
 	eTypeOutputThread typeOutputThread;
 	PcapQueue_readFromFifo *pcapQueue;
@@ -1504,6 +1514,9 @@ private:
 	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
 	unsigned push_thread;
 	u_int64_t last_race_log[2];
+	#endif
+	#if TRAFFIC_MONITOR
+	cThreadMonitor::sThread *thread_data;
 	#endif
 friend inline void *_PcapQueue_outputThread_outThreadFunction(void *arg);
 };

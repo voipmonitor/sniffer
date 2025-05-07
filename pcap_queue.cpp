@@ -1471,6 +1471,10 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->instancePcapHandle = NULL;
 	this->instancePcapFifo = NULL;
 	this->initAllReadThreadsFinished = false;
+	#if TRAFFIC_MONITOR
+	thread_data_main = NULL;
+	thread_data_write = NULL;
+	#endif
 	this->counter_calls_old = 0;
 	this->counter_calls_clean_old = 0;
 	this->counter_calls_save_1_old = 0;
@@ -4873,6 +4877,9 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(sInterface 
 		sumPacketsSize[i] = 0;
 	}
 	prepareHeaderPacketPool = false; // experimental option
+	#if TRAFFIC_MONITOR
+	thread_data = NULL;
+	#endif
 	vm_pthread_create(("pb - read thread " + getInterfaceAlias() + " " + getTypeThreadName()).c_str(),
 			  &this->threadHandle, NULL, _PcapQueue_readFromInterfaceThread_threadFunction, this, __FILE__, __LINE__);
 }
@@ -4957,6 +4964,11 @@ PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 }
 
 inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packet) {
+	#if TRAFFIC_MONITOR
+	if(thread_data) {
+		thread_data->inc_packets_out(HPH(*header_packet)->caplen);
+	}
+	#endif
 	#if TRACE_INVITE_BYE
 	if(memmem(HPP(*header_packet), HPH(*header_packet)->caplen, "INVITE sip", 10)) {
 		cout << "push INVITE " << typeThread << endl;
@@ -5231,6 +5243,9 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 		pthread_set_priority(opt_sched_pol_interface);
 	}
 	this->threadId = get_unix_tid();
+	#if TRAFFIC_MONITOR
+	this->thread_data = cThreadMonitor::getSelfThreadData();
+	#endif
 	if(VERBOSE) {
 		ostringstream outStr;
 		outStr << "start thread t0i_" 
@@ -5457,6 +5472,11 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 						continue;
 					}
 				} else {
+					#if TRAFFIC_MONITOR
+					if(thread_data) {
+						thread_data->inc_packets_in(pcap_next_ex_header->caplen);
+					}
+					#endif
 					sumPacketsSize[0] += pcap_next_ex_header->caplen;
 					#if TRACE_INVITE_BYE
 					if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "INVITE sip", 10)) {
@@ -5585,6 +5605,11 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 					}
 					continue;
 				}
+				#if TRAFFIC_MONITOR
+				if(thread_data) {
+					thread_data->inc_packets_in(pcap_next_ex_header->caplen);
+				}
+				#endif
 				sumPacketsSize[0] += pcap_next_ex_header->caplen;
 				memcpy(HPH(header_packet_read),
 				       pcap_next_ex_header,
@@ -5717,6 +5742,11 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 			break;
 		case defrag: {
 			POP_FROM_PREV_THREAD;
+			#if TRAFFIC_MONITOR
+			if(thread_data) {
+				thread_data->inc_packets_in(HPH(hpii.header_packet)->caplen);
+			}
+			#endif
 			bool okPush = true;
 			if(opt_udpfrag) {
 				res = this->pcapProcess(&hpii.header_packet, this->typeThread,
@@ -5738,6 +5768,11 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 		case md1:
 		case md2: {
 			POP_FROM_PREV_THREAD;
+			#if TRAFFIC_MONITOR
+			if(thread_data) {
+				thread_data->inc_packets_in(HPH(hpii.header_packet)->caplen);
+			}
+			#endif
 			bool okPush = true;
 			if((this->typeThread == md1 && !(this->counter % 2)) ||
 			   (this->typeThread == md2 && (opt_dup_check_type != _dedup_na ? hpii.header_packet->dc.is_empty() : !hpii.header_packet->detect_headers))) {
@@ -5762,6 +5797,11 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 			break;
 		case dedup: {
 			POP_FROM_PREV_THREAD;
+			#if TRAFFIC_MONITOR
+			if(thread_data) {
+				thread_data->inc_packets_in(HPH(hpii.header_packet)->caplen);
+			}
+			#endif
 			if(opt_pcap_queue_iface_dedup_separate_threads_extend) {
 				bool okPush = true;
 				if(opt_dup_check_type != _dedup_na) {
@@ -6206,6 +6246,12 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 					while(!(is_terminating() || this->threadDoTerminate)) {
 						copy_block_no_active_index = (dispatch_data.copy_block_active_index + 1) % 2;
 						if(dispatch_data.copy_block_full[copy_block_no_active_index]) {
+							#if TRAFFIC_MONITOR
+							if(thread_data) {
+								thread_data->inc_packets_in(dispatch_data.copy_block[copy_block_no_active_index]->size_packets,
+											    dispatch_data.copy_block[copy_block_no_active_index]->count);
+							}
+							#endif
 							#if DEBUG_threadFunction_blocks_LAG
 							u_int64_t x[10];
 							x[0] = getTimeUS();
@@ -6235,6 +6281,11 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 							x[2] = getTimeUS();
 							#endif
 							block->copy(dispatch_data.copy_block[copy_block_no_active_index]);
+							#if TRAFFIC_MONITOR
+							if(thread_data) {
+								thread_data->inc_packets_out(block->size_packets, block->count);
+							}
+							#endif
 							#if DEBUG_threadFunction_blocks_LAG
 							x[3] = getTimeUS();
 							#endif
@@ -6368,6 +6419,11 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 					}
 					#endif
 					this->push_block(block);
+					#if TRAFFIC_MONITOR
+					if(thread_data) {
+						thread_data->inc_packets_out(block->size_packets, block->count);
+					}
+					#endif
 				}
 				block = new FILE_LINE(0) pcap_block_store(pcap_block_store::plus2);
 				strncpy(block->ifname, this->getInterfaceAlias().c_str(), sizeof(block->ifname) - 1);
@@ -6427,6 +6483,11 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 				}
 				continue;
 			}
+			#if TRAFFIC_MONITOR
+			if(thread_data) {
+				thread_data->inc_packets_in(pcap_next_ex_header->caplen);
+			}
+			#endif
 			#if TRACE_INVITE_BYE
 			if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "INVITE sip", 10)) {
 				cout << "get INVITE (3) " << typeThread << endl;
@@ -6486,11 +6547,21 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 				}
 				continue;
 			}
+			#if TRAFFIC_MONITOR
+			if(thread_data) {
+				thread_data->inc_packets_in(block->size_packets, block->count);
+			}
+			#endif
 			this->counter_pop_usleep = 0;
 			this->pop_usleep_sum = 0;
 			this->pop_usleep_sum_last_push = 0;
 			this->processBlock(block);
 			this->push_block(block);
+			#if TRAFFIC_MONITOR
+			if(thread_data) {
+				thread_data->inc_packets_out(block->size_packets, block->count);
+			}
+			#endif
 			//cout << this->typeThread << flush;
 			break;
 		}
@@ -6692,7 +6763,9 @@ void PcapQueue_readFromInterfaceThread::terminate() {
 
 const char *PcapQueue_readFromInterfaceThread::getTypeThreadName() {
 	return(typeThread == read ? "read" : 
+	       typeThread == dpdk_worker ? "dpdk_worker" : 
 	       typeThread == detach ? "detach" : 
+	       typeThread == pcap_process ? "pcap_process" : 
 	       typeThread == defrag ? "defrag" :
 	       typeThread == md1 ? "md1" :
 	       typeThread == md2 ? "md2" :
@@ -6861,6 +6934,9 @@ bool PcapQueue_readFromInterface::initThread(void *arg, unsigned int arg2, strin
 
 void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) {
 	this->mainThreadId = get_unix_tid();
+	#if TRAFFIC_MONITOR
+	this->thread_data_main = cThreadMonitor::getSelfThreadData();
+	#endif
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
 		outStr << "start thread t0 (" << this->nameQueue << ") /" << this->mainThreadId << endl;
@@ -6980,6 +7056,11 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			if(minThreadTimeIndex >= 0) {
 				hpi = this->readThreads[minThreadTimeIndex]->POP();
 				if(hpi.header_packet) {
+					#if TRAFFIC_MONITOR
+					if(thread_data_main) {
+						thread_data_main->inc_packets_in(hpi.header_packet->header.caplen);
+					}
+					#endif
 					header_packet_fetch = &hpi.header_packet;
 					if(!hpi.header_packet->detect_headers) {
 						::pcapProcess(header_packet_fetch, -1,
@@ -7067,6 +7148,11 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			} else if(res == 0) {
 				USLEEP(100);
 			} else if(res > 0) {
+				#if TRAFFIC_MONITOR
+				if(thread_data_main) {
+					thread_data_main->inc_packets_in(pcap_next_ex_header->caplen);
+				}
+				#endif
 				this->ppd.pid.clear();
 				if(pcap_next_ex_header->caplen > get_pcap_snaplen()) {
 					pcap_next_ex_header->caplen = get_pcap_snaplen();
@@ -7292,6 +7378,9 @@ void PcapQueue_readFromInterface::threadFunction_blocks() {
 
 void *PcapQueue_readFromInterface::writeThreadFunction(void *arg, unsigned int arg2) {
 	this->writeThreadId = get_unix_tid();
+	#if TRAFFIC_MONITOR
+	this->thread_data_write = cThreadMonitor::getSelfThreadData();
+	#endif
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
 		outStr << "start thread t0 (" << this->nameQueue << " / write" << ") /" << this->writeThreadId << endl;
@@ -7320,6 +7409,11 @@ void *PcapQueue_readFromInterface::writeThreadFunction(void *arg, unsigned int a
 		while(!TERMINATING) {
 			pcap_block_store *blockStore;
 			if(this->block_qring->pop(&blockStore, false)) {
+				#if TRAFFIC_MONITOR
+				if(thread_data_write) {
+					thread_data_write->inc_packets_in(blockStore->size_packets, blockStore->count);
+				}
+				#endif
 				for(size_t i = 0; i < blockStore->count; i++) {
 					u_char *packetPos = blockStore->block + blockStore->offsets[i] + sizeof(pcap_pkthdr_plus);
 					hp = *(sHeaderPacket**)packetPos;
@@ -7331,6 +7425,11 @@ void *PcapQueue_readFromInterface::writeThreadFunction(void *arg, unsigned int a
 				}
 				this->check_bypass_buffer();
 				blockStoreBypassQueue->push(blockStore);
+				#if TRAFFIC_MONITOR
+				if(thread_data_write) {
+					thread_data_write->inc_packets_out(blockStore->size_packets, blockStore->count);
+				}
+				#endif
 				usleepCounter = 0;
 			} else {
 				USLEEP_C(100, usleepCounter++);
@@ -7755,6 +7854,11 @@ void PcapQueue_readFromInterface::check_bypass_buffer() {
 }
 
 void PcapQueue_readFromInterface::push_blockstore(pcap_block_store **block_store) {
+	#if TRAFFIC_MONITOR
+	if(thread_data_main) {
+		thread_data_main->inc_packets_out((*block_store)->size_packets, (*block_store)->count);
+	}
+	#endif
 	if(!opt_pcap_queue_compress && this->instancePcapFifo && opt_pcap_queue_suppress_t1_thread) {
 		this->instancePcapFifo->addBlockStoreToPcapStoreQueue(*block_store);
 	} else if(this->block_qring) {
@@ -8094,6 +8198,9 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 		}
 	} else {
 		this->mainThreadId = tid;
+		#if TRAFFIC_MONITOR
+		this->thread_data_main = cThreadMonitor::getSelfThreadData();
+		#endif
 	}
 	vmIP _socketClientIP;
 	vmPort _socketClientPort;
@@ -8419,8 +8526,19 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 				#if LOG_PACKETS_PER_SEC or LOG_PACKETS_SUM
 				size_t blockCountPackets = blockStore->count;
 				#endif
+				#if TRAFFIC_MONITOR
+				size_t blockCountPackets = blockStore->count;
+				if(thread_data_main) {
+					thread_data_main->inc_packets_in(blockSizePackets, blockCountPackets);
+				}
+				#endif
 				if(blockStore->compress()) {
 					if(this->pcapStoreQueue.push(blockStore, false)) {
+						#if TRAFFIC_MONITOR
+						if(thread_data_main) {
+							thread_data_main->inc_packets_out(blockSizePackets, blockCountPackets);
+						}
+						#endif
 						sumPacketsSize[0] += blockSizePackets ? blockSizePackets : blockSize;
 						#if LOG_PACKETS_PER_SEC or LOG_PACKETS_SUM
 						sumPacketsCount[0] += blockCountPackets;
@@ -8467,6 +8585,9 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 		pthread_set_priority(opt_sched_pol_interface);
 	}
 	this->writeThreadId = get_unix_tid();
+	#if TRAFFIC_MONITOR
+	this->thread_data_write = cThreadMonitor::getSelfThreadData();
+	#endif
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
 		outStr << "start thread t2 (" << this->nameQueue << " / write" << ") /" << this->writeThreadId << endl;
@@ -8510,6 +8631,11 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 		}
 		this->pcapStoreQueue.pop(&blockStore);
 		if(blockStore) {
+			#if TRAFFIC_MONITOR
+			if(thread_data_write) {
+				thread_data_write->inc_packets_in(blockStore->size_packets, blockStore->count);
+			}
+			#endif
 			if(opt_cachedir[0]) {
 				this->checkFreeSizeCachedir();
 			}
@@ -8621,6 +8747,11 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 								hp_out.block_store_locked = false;
 								hp_out.header_ip_last_offset = 0xFFFF;
 								this->processPacket(&hp_out);
+								#if TRAFFIC_MONITOR
+								if(thread_data_write) {
+									thread_data_write->inc_packets_out(hp_out.header->get_caplen());
+								}
+								#endif
 								++listBlockStore[pti.blockStore];
 								if(listBlockStore[pti.blockStore] == pti.blockStore->count) {
 									this->blockStoreTrashPush(pti.blockStore);
@@ -8706,6 +8837,11 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						hp_out.block_store_locked = false;
 						hp_out.header_ip_last_offset = 0xFFFF;
 						this->processPacket(&hp_out);
+						#if TRAFFIC_MONITOR
+						if(thread_data_write) {
+							thread_data_write->inc_packets_out(hp_out.header->get_caplen());
+						}
+						#endif
 						if(!actBlockInfo->inc_pos_act()) {
 							this->blockStoreTrashPush(actBlockInfo->blockStore);
 							buffersControl.sub__pb_used_dequeu_size(actBlockInfo->blockStore->getUseAllSize());
@@ -8790,6 +8926,11 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						hp_out.block_store_locked = false;
 						hp_out.header_ip_last_offset = 0xFFFF;
 						this->processPacket(&hp_out);
+						#if TRAFFIC_MONITOR
+						if(thread_data_write) {
+							thread_data_write->inc_packets_out(hp_out.header->get_caplen());
+						}
+						#endif
 						if(!minBlockInfo->inc_pos_act()) {
 							this->blockStoreTrashPush(minBlockInfo->blockStore);
 							buffersControl.sub__pb_used_dequeu_size(minBlockInfo->blockStore->getUseAllSize());
@@ -8824,6 +8965,11 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						hp_out.block_store_locked = false;
 						hp_out.header_ip_last_offset = 0xFFFF;
 						this->processPacket(&hp_out);
+						#if TRAFFIC_MONITOR
+						if(thread_data_write) {
+							thread_data_write->inc_packets_out(hp_out.header->get_caplen());
+						}
+						#endif
 					}
 					this->blockStoreTrashPush(blockStore);
 					usleepCounter = 0;
@@ -10084,6 +10230,9 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 				   #endif
 				    0;
 	this->next_threads_count_mod = 0;
+	#if TRAFFIC_MONITOR
+	thread_data = NULL;
+	#endif
 	for(int i = 0; i < this->next_threads_count; i++) {
 		this->next_threads[i].sem_init();
 		arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
@@ -10263,6 +10412,9 @@ void *PcapQueue_outputThread::outThreadFunction() {
 	this->initThreadOk = true;
 	extern unsigned int opt_preprocess_packets_qring_usleep;
 	this->outThreadId = get_unix_tid();
+	#if TRAFFIC_MONITOR
+	this->thread_data = cThreadMonitor::getSelfThreadData();
+	#endif
 	syslog(LOG_NOTICE, "start thread t2_%s/%i", this->getNameOutputThread().c_str(), this->outThreadId);
 	sBatchHP *batch;
 	unsigned int usleepCounter = 0;
@@ -10282,6 +10434,13 @@ void *PcapQueue_outputThread::outThreadFunction() {
 		}
 		if(this->qring[this->readit]->used == 1) {
 			batch = this->qring[this->readit];
+			#if TRAFFIC_MONITOR
+			if(thread_data) {
+				for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
+					thread_data->inc_packets_in(batch->batch[batch_index].header->get_caplen());
+				}
+			}
+			#endif
 			uint32_t firstHeaderTimeS = batch->batch[0].header->get_tv_sec();
 			if(typeOutputThread == detach && this->next_threads[0].thread_handle) {
 				extern int opt_pre_process_packets_next_thread_sem_sync;
@@ -10398,6 +10557,11 @@ void *PcapQueue_outputThread::outThreadFunction() {
 								destroy = true;
 							} else {
 								destroy = !this->pcapQueue->processPacket_push(&batch->batch[completed]);
+								#if TRAFFIC_MONITOR
+								if(!destroy) {
+									tm_inc_packets_out(&batch->batch[completed]);
+								}
+								#endif
 							}
 							if(destroy) {
 								batch->batch[completed].destroy_or_unlock_blockstore();
@@ -10439,6 +10603,11 @@ void *PcapQueue_outputThread::outThreadFunction() {
 						destroy = true;
 					} else {
 						destroy = !this->pcapQueue->processPacket_push(&batch->batch[batch_index]);
+						#if TRAFFIC_MONITOR
+						if(!destroy) {
+							tm_inc_packets_out(&batch->batch[batch_index]);
+						}
+						#endif
 					}
 					if(destroy) {
 						batch->batch[batch_index].destroy_or_unlock_blockstore();
@@ -10771,16 +10940,28 @@ void PcapQueue_outputThread::processDetach_findHeaderIp(sHeaderPacketPQout *hp) 
 void PcapQueue_outputThread::processDetach_push(sHeaderPacketPQout *hp) {
 	if(pcapQueueQ_outThread_defrag) {
 		pcapQueueQ_outThread_defrag->push(hp);
+		#if TRAFFIC_MONITOR
+		tm_inc_packets_out(hp);
+		#endif
 		return;
 	} else if(pcapQueueQ_outThread_dedup) {
 		pcapQueueQ_outThread_dedup->push(hp);
+		#if TRAFFIC_MONITOR
+		tm_inc_packets_out(hp);
+		#endif
 		return;
 	} else if(pcapQueueQ_outThread_detach2) {
 		pcapQueueQ_outThread_detach2->push(hp);
+		#if TRAFFIC_MONITOR
+		tm_inc_packets_out(hp);
+		#endif
 		return;
 	}
 	if(this->pcapQueue->processPacket_analysis(hp) &&
 	   this->pcapQueue->processPacket_push(hp)) {
+		#if TRAFFIC_MONITOR
+		tm_inc_packets_out(hp);
+		#endif
 		return;
 	}
 	hp->destroy_or_unlock_blockstore();
@@ -10924,6 +11105,9 @@ void PcapQueue_outputThread::processDefrag_push(sHeaderPacketPQout *hp) {
 	#endif
 	if(pcapQueueQ_outThread_dedup) {
 		pcapQueueQ_outThread_dedup->push(hp);
+		#if TRAFFIC_MONITOR
+		tm_inc_packets_out(hp);
+		#endif
 		return;
 	} else if(pcapQueueQ_outThread_detach2) {
 		#if DEBUG_ALLOC_PACKETS
@@ -10932,10 +11116,16 @@ void PcapQueue_outputThread::processDefrag_push(sHeaderPacketPQout *hp) {
 		}
 		#endif
 		pcapQueueQ_outThread_detach2->push(hp);
+		#if TRAFFIC_MONITOR
+		tm_inc_packets_out(hp);
+		#endif
 		return;
 	}
 	if(this->pcapQueue->processPacket_analysis(hp) &&
 	   this->pcapQueue->processPacket_push(hp)) {
+		#if TRAFFIC_MONITOR
+		tm_inc_packets_out(hp);
+		#endif
 		return;
 	}
 	hp->destroy_or_unlock_blockstore();
@@ -11099,10 +11289,16 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 	}
 	if(pcapQueueQ_outThread_detach2) {
 		pcapQueueQ_outThread_detach2->push(hp);
+		#if TRAFFIC_MONITOR
+		tm_inc_packets_out(hp);
+		#endif
 		return;
 	}
 	if(this->pcapQueue->processPacket_analysis(hp) &&
 	   this->pcapQueue->processPacket_push(hp)) {
+		#if TRAFFIC_MONITOR
+		tm_inc_packets_out(hp);
+		#endif
 		return;
 	}
 	hp->destroy_or_unlock_blockstore();
@@ -11116,6 +11312,9 @@ void PcapQueue_outputThread::processDetach2(sHeaderPacketPQout *hp) {
 	#endif
 	if(this->pcapQueue->processPacket_analysis(hp) &&
 	   this->pcapQueue->processPacket_push(hp)) {
+		#if TRAFFIC_MONITOR
+		tm_inc_packets_out(hp);
+		#endif
 		return;
 	}
 	hp->destroy_or_unlock_blockstore();
@@ -11159,6 +11358,14 @@ double PcapQueue_outputThread::getCpuUsagePerc(int nextThreadIndexPlus, int psta
 	}
 	return(-1);
 }
+
+#if TRAFFIC_MONITOR
+void PcapQueue_outputThread::tm_inc_packets_out(sHeaderPacketPQout *hp) {
+	if(thread_data) {
+		thread_data->inc_packets_out(hp->header->get_caplen());
+	}
+}
+#endif
 
 static volatile int _dpdk_init;
 static void *dpdk_main_thread_fce(void *arg) {

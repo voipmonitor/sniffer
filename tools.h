@@ -3745,10 +3745,44 @@ public:
 		u_int64_t last_time_us[2][5];
 		int orig_scheduler;
 		int orig_priority;
+		#if TRAFFIC_MONITOR
+		volatile u_int64_t packets_cnt_in;
+		volatile u_int64_t packets_cnt_out;
+		volatile u_int64_t packets_size_in;
+		volatile u_int64_t packets_size_out;
+		u_int64_t packets_cnt_in_last[5];
+		u_int64_t packets_cnt_out_last[5];
+		u_int64_t packets_size_in_last[5];
+		u_int64_t packets_size_out_last[5];
+		u_int64_t packets_last_time_us[5];
+		inline void inc_packets_in(u_int64_t size, u_int64_t cnt = 1) {
+			packets_size_in += size;
+			packets_cnt_in += cnt;
+		}
+		inline void inc_packets_out(u_int64_t size, u_int64_t cnt = 1) {
+			packets_size_out += size;
+			packets_cnt_out += cnt;
+		}
+		#endif
 	};
 private:
+	#if TRAFFIC_MONITOR
+	struct sTraffic {
+		sTraffic() {
+			memset((void*)this, 0, sizeof(*this));
+		}
+		u_int64_t packets_cnt_in;
+		u_int64_t packets_cnt_out;
+		u_int64_t packets_size_in;
+		u_int64_t packets_size_out;
+		u_int64_t time_us;
+	};
+	#endif
 	struct sDescrCpuPerc {
-		string description;
+		sDescrCpuPerc() {
+			memset((void*)this, 0, sizeof(*this));
+		}
+		char description[100];
 		int tid;
 		double cpu_perc;
 		context_switches_data cs;
@@ -3757,19 +3791,38 @@ private:
 		bool operator < (const sDescrCpuPerc& other) const { 
 			return(this->cpu_perc > other.cpu_perc); 
 		}
+		#if TRAFFIC_MONITOR
+		sTraffic traffic;
+		#endif
 	};
+	#if TRAFFIC_MONITOR
+	struct sDescrTraffic : public sTraffic {
+		sDescrTraffic() {
+			memset((void*)this, 0, sizeof(*this));
+		}
+		char description[100];
+		int tid;
+	};
+	#endif
 public:
 	cThreadMonitor();
 	void registerThread(int tid, const char *description);
 	void unregisterThread(int tid);
 	sThread *getSelfThread();
+	static sThread *getSelfThreadData();
 	void setSchedPolPriority(int indexPstat);
 	string output(int indexPstat);
+	#if TRAFFIC_MONITOR
+	string output_traffic(int indexStat);
+	#endif
 private:
 	double getCpuUsagePerc(sThread *thread, int indexPstat);
 	context_switches_data getContextSwitches(sThread *thread, int indexPstat);
 	u_int64_t getUsleep(sThread *thread, int indexPstat);
 	u_int64_t getTimeUS(sThread *thread, int indexPstat);
+	#if TRAFFIC_MONITOR
+	bool evalTraffic(sThread *thread, sTraffic *traffic, u_int64_t time_us, int indexStat);
+	#endif
 	void tm_lock() {
 		__SYNC_LOCK_QUICK(this->_sync);
 	}
@@ -4899,6 +4952,9 @@ int check_fma();
 int check_avx2();
 bool is_vmware();
 #endif
+
+
+string format_metric(double value, int sig_digits, const char *zero = "0");
 
 
 #endif
