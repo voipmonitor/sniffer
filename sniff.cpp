@@ -10210,9 +10210,11 @@ void *PreProcessPacket::outThreadFunction() {
 				preProcessPacket[ppt_detach]->push_packet_detach__active__prepare();
 				batch_detach_x = this->qring_detach_x[this->readit];
 				#if TRAFFIC_MONITOR
+				u_int32_t tm_caplen[batch_detach_x->count];
 				if(thread_data) {
 					for(unsigned batch_index = 0; batch_index < batch_detach_x->count; batch_index++) {
-						thread_data->inc_packets_in(batch_detach_x->batch[batch_index]->hp.header->get_caplen());
+						tm_caplen[batch_index] = batch_detach_x->batch[batch_index]->hp.header->get_caplen();
+						thread_data->inc_packets_in(tm_caplen[batch_index]);
 					}
 				}
 				#endif
@@ -10253,7 +10255,7 @@ void *PreProcessPacket::outThreadFunction() {
 							   this->items_flag[completed] != 0) {
 								#if TRAFFIC_MONITOR
 								if(thread_data) {
-									thread_data->inc_packets_out(batch_detach_x->batch[completed]->hp.header->get_caplen());
+									thread_data->inc_packets_out(tm_caplen[completed]);
 								}
 								#endif
 								this->process_DETACH_X_2(qring_detach_active_push_item->batch[completed]);
@@ -10291,7 +10293,7 @@ void *PreProcessPacket::outThreadFunction() {
 					for(unsigned batch_index = completed; batch_index < count; batch_index++) {
 						#if TRAFFIC_MONITOR
 						if(thread_data) {
-							thread_data->inc_packets_out(batch_detach_x->batch[batch_index]->hp.header->get_caplen());
+							thread_data->inc_packets_out(tm_caplen[batch_index]);
 						}
 						this->process_DETACH_X_2(qring_detach_active_push_item->batch[batch_index]);
 						#endif
@@ -10300,7 +10302,7 @@ void *PreProcessPacket::outThreadFunction() {
 					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 						#if TRAFFIC_MONITOR
 						if(thread_data) {
-							thread_data->inc_packets_out(batch_detach_x->batch[batch_index]->hp.header->get_caplen());
+							thread_data->inc_packets_out(tm_caplen[batch_index]);
 						}
 						#endif
 						this->process_DETACH_X_1(batch_detach_x->batch[batch_index], qring_detach_active_push_item->batch[batch_index]);
@@ -10324,9 +10326,11 @@ void *PreProcessPacket::outThreadFunction() {
 				exists_used = true;
 				batch_detach = this->qring_detach[this->readit];
 				#if TRAFFIC_MONITOR
+				u_int32_t tm_caplen[batch_detach->count];
 				if(thread_data) {
 					for(unsigned batch_index = 0; batch_index < batch_detach->count; batch_index++) {
-						thread_data->inc_packets_in(batch_detach->batch[batch_index]->header_pt->caplen);
+						tm_caplen[batch_index] = batch_detach->batch[batch_index]->header_pt->caplen;
+						thread_data->inc_packets_in(tm_caplen[batch_index]);
 					}
 				}
 				#endif
@@ -10367,7 +10371,7 @@ void *PreProcessPacket::outThreadFunction() {
 							   this->items_flag[completed] != 0) {
 								#if TRAFFIC_MONITOR
 								if(thread_data) {
-									thread_data->inc_packets_out(batch_detach->batch[completed]->header_pt->caplen);
+									thread_data->inc_packets_out(tm_caplen[completed]);
 								}
 								#endif
 								packet_s_process* p = (packet_s_process*)(batch_detach->batch[completed]->pointer[0]);
@@ -10424,7 +10428,7 @@ void *PreProcessPacket::outThreadFunction() {
 						if(p) {
 							#if TRAFFIC_MONITOR
 							if(thread_data) {
-								thread_data->inc_packets_out(batch_detach->batch[batch_index]->header_pt->caplen);
+								thread_data->inc_packets_out(tm_caplen[batch_index]);
 							}
 							#endif
 							if(opt_t2_boost_direct_rtp) {
@@ -10447,7 +10451,7 @@ void *PreProcessPacket::outThreadFunction() {
 					for(unsigned batch_index = 0; batch_index < batch_detach->count; batch_index++) {
 						#if TRAFFIC_MONITOR
 						if(thread_data) {
-							thread_data->inc_packets_out(batch_detach->batch[batch_index]->header_pt->caplen);
+							thread_data->inc_packets_out(tm_caplen[batch_index]);
 						}
 						#endif
 						if(opt_t2_boost_direct_rtp) {
@@ -10489,9 +10493,11 @@ void *PreProcessPacket::outThreadFunction() {
 				exists_used = true;
 				batch = this->qring[this->readit];
 				#if TRAFFIC_MONITOR
+				u_int32_t tm_caplen[batch->count];
 				if(thread_data) {
 					for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
-						thread_data->inc_packets_in(batch->batch[batch_index]->header_pt->caplen);
+						tm_caplen[batch_index] = batch->batch[batch_index]->header_pt->caplen;
+						thread_data->inc_packets_in(tm_caplen[batch_index]);
 					}
 				}
 				#endif
@@ -10614,7 +10620,7 @@ void *PreProcessPacket::outThreadFunction() {
 						   this->items_flag[completed] != 0) {
 							#if TRAFFIC_MONITOR
 							if(thread_data) {
-								thread_data->inc_packets_out(batch->batch[completed]->header_pt->caplen);
+								thread_data->inc_packets_out(tm_caplen[completed]);
 							}
 							#endif
 							processNextAction(batch->batch[completed]);
@@ -10661,7 +10667,7 @@ void *PreProcessPacket::outThreadFunction() {
 				for(unsigned batch_index = completed; batch_index < count; batch_index++) {
 					#if TRAFFIC_MONITOR
 					if(thread_data) {
-						thread_data->inc_packets_out(batch->batch[batch_index]->header_pt->caplen);
+						thread_data->inc_packets_out(tm_caplen[batch_index]);
 					}
 					#endif
 					processNextAction(batch->batch[batch_index]);
@@ -10700,9 +10706,11 @@ void *PreProcessPacket::outThreadFunction() {
 				exists_used = true;
 				batch = this->qring[this->readit];
 				#if TRAFFIC_MONITOR
+				u_int32_t tm_caplen[batch->count];
 				if(thread_data) {
 					for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
-						thread_data->inc_packets_in(batch->batch[batch_index]->header_pt->caplen);
+						tm_caplen[batch_index] = batch->batch[batch_index]->header_pt->caplen;
+						thread_data->inc_packets_in(tm_caplen[batch_index]);
 					}
 				}
 				#endif
@@ -10834,7 +10842,7 @@ void *PreProcessPacket::outThreadFunction() {
 						for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 							#if TRAFFIC_MONITOR
 							if(thread_data) {
-								thread_data->inc_packets_out(batch->batch[batch_index]->header_pt->caplen);
+								thread_data->inc_packets_out(tm_caplen[batch_index]);
 							}
 							#endif
 							this->_process_FIND_CALL_push(batch->batch[batch_index]);
@@ -10901,12 +10909,12 @@ void *PreProcessPacket::outThreadFunction() {
 							}
 						}
 						for(unsigned batch_index = 0; batch_index < count; batch_index++) {
-							packet_s_process *packetS = batch->batch[batch_index];
 							#if TRAFFIC_MONITOR
 							if(thread_data) {
-								thread_data->inc_packets_out(packetS->header_pt->caplen);
+								thread_data->inc_packets_out(tm_caplen[batch_index]);
 							}
 							#endif
+							packet_s_process *packetS = batch->batch[batch_index];
 							if(packetS->typeContentIsSip()) {
 								if(!packetS->call) {
 									this->process_findSipCall(&packetS);
@@ -10920,7 +10928,7 @@ void *PreProcessPacket::outThreadFunction() {
 					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 						#if TRAFFIC_MONITOR
 						if(thread_data) {
-							thread_data->inc_packets_out(batch->batch[batch_index]->header_pt->caplen);
+							thread_data->inc_packets_out(tm_caplen[batch_index]);
 						}
 						#endif
 						this->process_FIND_CALL(batch->batch[batch_index]);
@@ -10942,9 +10950,11 @@ void *PreProcessPacket::outThreadFunction() {
 				exists_used = true;
 				batch = this->qring[this->readit];
 				#if TRAFFIC_MONITOR
+				u_int32_t tm_caplen[batch->count];
 				if(thread_data) {
 					for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
-						thread_data->inc_packets_in(batch->batch[batch_index]->header_pt->caplen);
+						tm_caplen[batch_index] = batch->batch[batch_index]->header_pt->caplen;
+						thread_data->inc_packets_in(tm_caplen[batch_index]);
 					}
 				}
 				#endif
@@ -10995,7 +11005,7 @@ void *PreProcessPacket::outThreadFunction() {
 							   this->items_flag[completed] != 0) {
 								#if TRAFFIC_MONITOR
 								if(thread_data) {
-									thread_data->inc_packets_out(batch->batch[completed]->header_pt->caplen);
+									thread_data->inc_packets_out(tm_caplen[completed]);
 								}
 								#endif
 								++completed;
@@ -11014,7 +11024,7 @@ void *PreProcessPacket::outThreadFunction() {
 								if(this->items_thread_index[batch_index] == 0) {
 									#if TRAFFIC_MONITOR
 									if(thread_data) {
-										thread_data->inc_packets_out(batch->batch[batch_index]->header_pt->caplen);
+										thread_data->inc_packets_out(tm_caplen[batch_index]);
 									}
 									#endif
 									this->process_PROCESS_CALL(batch->batch[batch_index], 0);
@@ -11024,7 +11034,7 @@ void *PreProcessPacket::outThreadFunction() {
 							for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 								#if TRAFFIC_MONITOR
 								if(thread_data) {
-									thread_data->inc_packets_out(batch->batch[batch_index]->header_pt->caplen);
+									thread_data->inc_packets_out(tm_caplen[batch_index]);
 								}
 								#endif
 								this->process_PROCESS_CALL(batch->batch[batch_index], 0);
@@ -11049,7 +11059,7 @@ void *PreProcessPacket::outThreadFunction() {
 					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 						#if TRAFFIC_MONITOR
 						if(thread_data) {
-							thread_data->inc_packets_out(batch->batch[batch_index]->header_pt->caplen);
+							thread_data->inc_packets_out(tm_caplen[batch_index]);
 						}
 						#endif
 						this->process_PROCESS_CALL(batch->batch[batch_index], 0);
