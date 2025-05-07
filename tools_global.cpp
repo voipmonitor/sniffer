@@ -1176,11 +1176,12 @@ char *strncasestr(const char *haystack, const char *needle, size_t len) {
                 return (char *)haystack;
 
         char firstNeedleUpperChar = toupper(*needle);
+	char firstNeedleLowerChar = tolower(*needle);
 	
         for (i=0; i<=(int)(len-needle_len); i++)
         {
-                if ((toupper(haystack[0]) == firstNeedleUpperChar) &&
-                        (0 == strncasecmp(haystack, needle, needle_len)))
+                if ((haystack[0] == firstNeedleUpperChar || haystack[0] == firstNeedleLowerChar) &&
+                    (0 == strncasecmp(haystack, needle, needle_len)))
                         return (char *)haystack;
 
                 haystack++;
