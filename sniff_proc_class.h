@@ -650,17 +650,17 @@ public:
 		extern char *diameter_tcp_portmatrix;
 		extern char *diameter_udp_portmatrix;
 		extern int opt_mgcp;
-		extern unsigned opt_tcp_port_mgcp_gateway;
-		extern unsigned opt_udp_port_mgcp_gateway;
-		extern unsigned opt_tcp_port_mgcp_callagent;
-		extern unsigned opt_udp_port_mgcp_callagent;
+		extern char *mgcp_gateway_tcp_portmatrix;
+		extern char *mgcp_gateway_udp_portmatrix;
+		extern char *mgcp_callagent_tcp_portmatrix;
+		extern char *mgcp_callagent_udp_portmatrix;
 		pflags.set_skinny(opt_skinny && pflags.get_tcp() && (skinnyportmatrix[source] || skinnyportmatrix[dest]));
 		pflags.set_mgcp(opt_mgcp && 
 				(pflags.get_tcp() ?
-				  ((unsigned)source == opt_tcp_port_mgcp_gateway || (unsigned)dest == opt_tcp_port_mgcp_gateway ||
-				   (unsigned)source == opt_tcp_port_mgcp_callagent || (unsigned)dest == opt_tcp_port_mgcp_callagent) :
-				  ((unsigned)source == opt_udp_port_mgcp_gateway || (unsigned)dest == opt_udp_port_mgcp_gateway ||
-				   (unsigned)source == opt_udp_port_mgcp_callagent || (unsigned)dest == opt_udp_port_mgcp_callagent)));
+				  (mgcp_gateway_tcp_portmatrix[source] || mgcp_gateway_tcp_portmatrix[dest] ||
+				   mgcp_callagent_tcp_portmatrix[source] || mgcp_callagent_tcp_portmatrix[dest]) :
+				  (mgcp_gateway_udp_portmatrix[source] || mgcp_gateway_udp_portmatrix[dest] ||
+				   mgcp_callagent_udp_portmatrix[source] || mgcp_callagent_udp_portmatrix[dest])));
 		pflags.set_dtls_handshake(!pflags.get_tcp() && IS_DTLS_HANDSHAKE(packet + dataoffset, datalen));
 		pflags.set_diameter(opt_enable_diameter && 
 				    (pflags.get_tcp() ?
@@ -1584,10 +1584,10 @@ private:
 		extern char *diameter_tcp_portmatrix;
 		extern char *diameter_udp_portmatrix;
 		extern int opt_mgcp;
-		extern unsigned opt_tcp_port_mgcp_gateway;
-		extern unsigned opt_udp_port_mgcp_gateway;
-		extern unsigned opt_tcp_port_mgcp_callagent;
-		extern unsigned opt_udp_port_mgcp_callagent;
+		extern char *mgcp_gateway_tcp_portmatrix;
+		extern char *mgcp_gateway_udp_portmatrix;
+		extern char *mgcp_callagent_tcp_portmatrix;
+		extern char *mgcp_callagent_udp_portmatrix;
 		pcap_pkthdr *header = packet_data->hp.header->_getStdHeader();
 		u_char *packet = packet_data->hp.packet;
 		#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
@@ -1598,10 +1598,10 @@ private:
 		packet_data->pflags.set_skinny(opt_skinny && packet_data->pflags.get_tcp() && (skinnyportmatrix[packet_data->source] || skinnyportmatrix[packet_data->dest]));
 		packet_data->pflags.set_mgcp(opt_mgcp && 
 					     (packet_data->pflags.get_tcp() ?
-					       ((unsigned)packet_data->source == opt_tcp_port_mgcp_gateway || (unsigned)packet_data->dest == opt_tcp_port_mgcp_gateway ||
-						(unsigned)packet_data->source == opt_tcp_port_mgcp_callagent || (unsigned)packet_data->dest == opt_tcp_port_mgcp_callagent) :
-					       ((unsigned)packet_data->source == opt_udp_port_mgcp_gateway || (unsigned)packet_data->dest == opt_udp_port_mgcp_gateway ||
-						(unsigned)packet_data->source == opt_udp_port_mgcp_callagent || (unsigned)packet_data->dest == opt_udp_port_mgcp_callagent)));
+					       (mgcp_gateway_tcp_portmatrix[packet_data->source] || mgcp_gateway_tcp_portmatrix[packet_data->dest] ||
+						mgcp_callagent_tcp_portmatrix[packet_data->source] || mgcp_callagent_tcp_portmatrix[packet_data->dest]) :
+					       (mgcp_gateway_udp_portmatrix[packet_data->source] || mgcp_gateway_udp_portmatrix[packet_data->dest] ||
+						mgcp_callagent_udp_portmatrix[packet_data->source] || mgcp_callagent_udp_portmatrix[packet_data->dest])));
 		packet_data->pflags.set_dtls_handshake(!packet_data->pflags.get_tcp() && IS_DTLS_HANDSHAKE(packet + packet_data->data_offset, packet_data->datalen));
 		packet_data->pflags.set_diameter(opt_enable_diameter && 
 						 (packet_data->pflags.get_tcp() ?

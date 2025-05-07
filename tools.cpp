@@ -5402,10 +5402,10 @@ void convertAnonymousInPacket(sHeaderPacket *header_packet, pcapProcessData *ppd
 				do_convert_sip = true;
 			}
 		} else if((ppd->flags.get_tcp() ?
-			    ((unsigned)(header_tcp->get_source()) == opt_tcp_port_mgcp_gateway || (unsigned)(header_tcp->get_dest()) == opt_tcp_port_mgcp_gateway ||
-			     (unsigned)(header_tcp->get_source()) == opt_tcp_port_mgcp_callagent || (unsigned)(header_tcp->get_dest()) == opt_tcp_port_mgcp_callagent) :
-			    ((unsigned)(header_udp->get_source()) == opt_udp_port_mgcp_gateway || (unsigned)(header_udp->get_dest()) == opt_udp_port_mgcp_gateway ||
-			     (unsigned)(header_udp->get_source()) == opt_udp_port_mgcp_callagent || (unsigned)(header_udp->get_dest()) == opt_udp_port_mgcp_callagent)) &&
+			    (mgcp_gateway_tcp_portmatrix[header_tcp->get_source()] || mgcp_gateway_tcp_portmatrix[header_tcp->get_dest()] ||
+			     mgcp_callagent_tcp_portmatrix[header_tcp->get_source()] || mgcp_callagent_tcp_portmatrix[header_tcp->get_dest()]) :
+			    (mgcp_gateway_udp_portmatrix[header_udp->get_source()] || mgcp_gateway_udp_portmatrix[header_udp->get_dest()] ||
+			     mgcp_callagent_udp_portmatrix[header_udp->get_source()] || mgcp_callagent_udp_portmatrix[header_udp->get_dest()])) &&
 			  check_mgcp((char*)payload_tcp_udp, payload_tcp_udp_length) &&
 			  (strstr((char*)payload_tcp_udp, "\r\n\r\n") ||
 			   strstr((char*)payload_tcp_udp, "\n\n"))) {
