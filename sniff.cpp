@@ -13175,13 +13175,13 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 					if(batch_index_distribute < count &&
 					   this->hash_find_flag[batch_index_distribute] != 0) {
 						packet_s_process_0 *packetS = batch->batch[batch_index_distribute];
-						#if TRAFFIC_MONITOR
-						if(thread_data) {
-							thread_data->inc_packets_out(packetS->header_pt->caplen);
-						}
-						#endif
 						batch->batch[batch_index_distribute] = NULL;
 						if(this->hash_find_flag[batch_index_distribute] == 1) {
+							#if TRAFFIC_MONITOR
+							if(thread_data) {
+								thread_data->inc_packets_out(packetS->header_pt->caplen);
+							}
+							#endif
 							this->rtp_packet_distr(packetS, _process_rtp_packets_distribute_threads_use);
 						}
 						++batch_index_distribute;
@@ -13261,11 +13261,6 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 					this->hash_find_flag[batch_index] = -2;
 					continue;
 				}
-				#if TRAFFIC_MONITOR
-				if(thread_data) {
-					thread_data->inc_packets_out(packetS->header_pt->caplen);
-				}
-				#endif
 				packetS->init2_rtp();
 				this->find_hash(packetS, rtp_counters, false);
 				if(packetS->call_info.length > 0) {
@@ -13284,13 +13279,13 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 		calltable->unlock_calls_hash();
 		for(;batch_index_distribute < count; batch_index_distribute++) {
 			packet_s_process_0 *packetS = batch->batch[batch_index_distribute];
-			#if TRAFFIC_MONITOR
-			if(thread_data) {
-				thread_data->inc_packets_out(packetS->header_pt->caplen);
-			}
-			#endif
 			batch->batch[batch_index_distribute] = NULL;
 			if(this->hash_find_flag[batch_index_distribute] == 1) {
+				#if TRAFFIC_MONITOR
+				if(thread_data) {
+					thread_data->inc_packets_out(packetS->header_pt->caplen);
+				}
+				#endif
 				this->rtp_packet_distr(packetS, _process_rtp_packets_distribute_threads_use);
 			}
 		}
