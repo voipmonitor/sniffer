@@ -7939,10 +7939,24 @@ void cThreadMonitor::registerThread(int tid, const char *description) {
 	memset(thread->packets_cnt_out_last, 0, sizeof(thread->packets_cnt_out_last));
 	memset(thread->packets_size_in_last, 0, sizeof(thread->packets_size_in_last));
 	memset(thread->packets_size_out_last, 0, sizeof(thread->packets_size_out_last));
-	u_int64_t time_us = ::getTimeUS();
+	{u_int64_t time_us = ::getTimeUS();
 	for(unsigned i = 0; i < sizeof(thread->packets_last_time_us) / sizeof(thread->packets_last_time_us[0]); i++) {
 		thread->packets_last_time_us[i] = time_us;
-	}
+	}}
+	#endif
+	#if BUFFER_PUSH_MONITOR
+	thread->buffer_push_cnt_all = 0;
+	thread->buffer_push_cnt_full = 0;
+	thread->buffer_push_cnt_full_loop = 0;
+	thread->buffer_push_sum_usleep_full_loop = 0;
+	memset(thread->buffer_push_cnt_all_last, 0, sizeof(thread->buffer_push_cnt_all_last));
+	memset(thread->buffer_push_cnt_full_last, 0, sizeof(thread->buffer_push_cnt_full_last));
+	memset(thread->buffer_push_cnt_full_loop_last, 0, sizeof(thread->buffer_push_cnt_full_loop_last));
+	memset(thread->buffer_push_sum_usleep_full_loop_last, 0, sizeof(thread->buffer_push_sum_usleep_full_loop_last));
+	{u_int64_t time_us = ::getTimeUS();
+	for(unsigned i = 0; i < sizeof(thread->packets_last_time_us) / sizeof(thread->packets_last_time_us[0]); i++) {
+		thread->buffer_push_last_time_us[i] = time_us;
+	}}
 	#endif
 	tm_lock();
 	threads[thread->tid] = thread;
@@ -8033,7 +8047,7 @@ void cThreadMonitor::setSchedPolPriority(int indexPstat) {
 	}
 }
 
-string cThreadMonitor::output(int indexPstat) {
+string cThreadMonitor::output(int indexPstat, int outputFlags) {
 	int columns = 1;
 	list<sDescrCpuPerc> descrPerc;
 	double sum_cpu = 0;
@@ -8043,29 +8057,50 @@ string cThreadMonitor::output(int indexPstat) {
 	tm_lock();
 	map<int, sThread*>::iterator iter;
 	for(iter = threads.begin(); iter != threads.end(); iter++) {
+		int use_counter = 0;
 		double cpu_perc = this->getCpuUsagePerc(iter->second, indexPstat);
 		if(cpu_perc > 0) {
-			sDescrCpuPerc dp;
-			strcpy_null_term(dp.description, iter->second->description.c_str());
-			dp.tid = iter->second->tid;
-			dp.cpu_perc = cpu_perc;
-			dp.cs = this->getContextSwitches(iter->second, indexPstat);
-			dp.usleep = this->getUsleep(iter->second, indexPstat);
-			dp.time_us = this->getTimeUS(iter->second, indexPstat);
-			#if TRAFFIC_MONITOR
-			evalTraffic(iter->second, &dp.traffic, time_us, indexPstat);
-			#endif
+			++use_counter;
+		}
+		sDescrCpuPerc dp;
+		strcpy_null_term(dp.description, iter->second->description.c_str());
+		dp.tid = iter->second->tid;
+		dp.cpu_perc = cpu_perc > 0 ? cpu_perc : 0;
+		dp.cs = this->getContextSwitches(iter->second, indexPstat);
+		dp.usleep = this->getUsleep(iter->second, indexPstat);
+		dp.time_us = this->getTimeUS(iter->second, indexPstat);
+		#if TRAFFIC_MONITOR
+		if(evalTraffic(iter->second, &dp.traffic, time_us, indexPstat)) {
+			++use_counter;
+		}
+		#endif
+		#if BUFFER_PUSH_MONITOR
+		if(evalBufferPush(iter->second, &dp.buffer_push, time_us, indexPstat)) {
+			++use_counter;
+		}
+		#endif
+		if(use_counter > 0) {
 			descrPerc.push_back(dp);
-			sum_cpu += cpu_perc;
+			if(cpu_perc > 0) {
+				sum_cpu += cpu_perc;
+			}
 		}
 	}
 	tm_unlock();
 	ostringstream outStr;
-	descrPerc.sort();
+	if(!(outputFlags & _of_no_sort)) {
+		descrPerc.sort();
+	}
 	list<sDescrCpuPerc>::iterator iter_dp;
 	int counter = 0;
 	int maxDescrLength = 45;
 	for(iter_dp = descrPerc.begin(); iter_dp != descrPerc.end(); iter_dp++) {
+		#if TRAFFIC_MONITOR
+		if((outputFlags & _of_only_traffic) && 
+		   !(iter_dp->traffic.packets_cnt_in > 0 || iter_dp->traffic.packets_cnt_out > 0)) {
+			continue;
+		}
+		#endif
 		outStr << fixed
 		       << setw(maxDescrLength) << left << string(iter_dp->description).substr(0, maxDescrLength)
 		       << " (" << setw(7) << right << iter_dp->tid << ") : "
@@ -8134,6 +8169,19 @@ string cThreadMonitor::output(int indexPstat) {
 			outStr << setw(32) << " ";
 		}
 		#endif
+		#if BUFFER_PUSH_MONITOR
+		outStr << "  ";
+		sBufferPush *iter_bp = &iter_dp->buffer_push;
+		if(iter_bp->cnt_all > 0) {
+		       outStr << "bf" << right << setw(7) << setprecision(2) << ((double)iter_bp->cnt_full / iter_bp->cnt_all * 100) << "%"
+			      << " " << right << setw(7) << setprecision(2) << ((double)iter_bp->sum_usleep_full_loop / iter_bp->time_us * 100) << "%";
+		} else if(iter_bp->cnt_full_loop > 0) {
+		       outStr << "bf" << right << setw(7) << "FULL"
+			      << " " << right << setw(7) << setprecision(2) << ((double)iter_bp->sum_usleep_full_loop / iter_bp->time_us * 100) << "%";
+		} else {
+			outStr << setw(19) << " ";
+		}
+		#endif
 		//
 		++counter;
 		if(!(counter % columns)) {
@@ -8145,7 +8193,7 @@ string cThreadMonitor::output(int indexPstat) {
 	if(counter % 2) {
 		outStr << endl;
 	}
-	outStr << "SUM : " << setprecision(1) << setw(5) << sum_cpu << endl;
+	outStr << "CPU ALL : " << setprecision(1) << setw(5) << sum_cpu << endl;
 	return(outStr.str());
 }
 
@@ -8243,6 +8291,28 @@ bool cThreadMonitor::evalTraffic(sThread *thread, sTraffic *traffic, u_int64_t t
 		}
 	}
 	thread->packets_last_time_us[indexStat] = time_us;
+	return(rslt);
+}
+#endif
+
+#if TRAFFIC_MONITOR
+bool cThreadMonitor::evalBufferPush(sThread *thread, sBufferPush *buffer_push, u_int64_t time_us, int indexStat) {
+	bool rslt = false;
+	if(thread->buffer_push_cnt_all > 0) {
+		buffer_push->cnt_all = thread->buffer_push_cnt_all - thread->buffer_push_cnt_all_last[indexStat];
+		buffer_push->cnt_full = thread->buffer_push_cnt_full - thread->buffer_push_cnt_full_last[indexStat];
+		buffer_push->cnt_full_loop = thread->buffer_push_cnt_full_loop - thread->buffer_push_cnt_full_loop_last[indexStat];
+		buffer_push->sum_usleep_full_loop = thread->buffer_push_sum_usleep_full_loop - thread->buffer_push_sum_usleep_full_loop_last[indexStat];
+		if(buffer_push->cnt_all > 0 || buffer_push->cnt_full > 0 || buffer_push->cnt_full_loop > 0) {
+			buffer_push->time_us = time_us - thread->buffer_push_last_time_us[indexStat];
+			thread->buffer_push_cnt_all_last[indexStat] = thread->buffer_push_cnt_all;
+			thread->buffer_push_cnt_full_last[indexStat] = thread->buffer_push_cnt_full;
+			thread->buffer_push_cnt_full_loop_last[indexStat] = thread->buffer_push_cnt_full_loop;
+			thread->buffer_push_sum_usleep_full_loop_last[indexStat] = thread->buffer_push_sum_usleep_full_loop;
+			rslt = true;
+		}
+	}
+	thread->buffer_push_last_time_us[indexStat] = time_us;
 	return(rslt);
 }
 #endif

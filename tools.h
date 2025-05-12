@@ -3734,6 +3734,11 @@ public:
 
 class cThreadMonitor {
 public:
+	enum eOutputFlags {
+		_of_no_sort = (1 << 0),
+		_of_only_traffic = (1 << 1)
+	};
+public:
 	struct sThread {
 		int tid;
 		pthread_t thread;
@@ -3764,6 +3769,17 @@ public:
 			packets_cnt_out += cnt;
 		}
 		#endif
+		#if BUFFER_PUSH_MONITOR
+		volatile u_int64_t buffer_push_cnt_all;
+		volatile u_int64_t buffer_push_cnt_full;
+		volatile u_int64_t buffer_push_cnt_full_loop;
+		volatile u_int64_t buffer_push_sum_usleep_full_loop;
+		u_int64_t buffer_push_cnt_all_last[5];
+		u_int64_t buffer_push_cnt_full_last[5];
+		u_int64_t buffer_push_cnt_full_loop_last[5];
+		u_int64_t buffer_push_sum_usleep_full_loop_last[5];
+		u_int64_t buffer_push_last_time_us[5];
+		#endif
 	};
 private:
 	#if TRAFFIC_MONITOR
@@ -3775,6 +3791,18 @@ private:
 		u_int64_t packets_cnt_out;
 		u_int64_t packets_size_in;
 		u_int64_t packets_size_out;
+		u_int64_t time_us;
+	};
+	#endif
+	#if BUFFER_PUSH_MONITOR
+	struct sBufferPush {
+		sBufferPush() {
+			memset((void*)this, 0, sizeof(*this));
+		}
+		u_int64_t cnt_all;
+		u_int64_t cnt_full;
+		u_int64_t cnt_full_loop;
+		u_int64_t sum_usleep_full_loop;
 		u_int64_t time_us;
 	};
 	#endif
@@ -3794,6 +3822,9 @@ private:
 		#if TRAFFIC_MONITOR
 		sTraffic traffic;
 		#endif
+		#if BUFFER_PUSH_MONITOR
+		sBufferPush buffer_push;
+		#endif
 	};
 	#if TRAFFIC_MONITOR
 	struct sDescrTraffic : public sTraffic {
@@ -3811,7 +3842,7 @@ public:
 	sThread *getSelfThread();
 	static sThread *getSelfThreadData();
 	void setSchedPolPriority(int indexPstat);
-	string output(int indexPstat);
+	string output(int indexPstat, int outputFlags);
 	#if TRAFFIC_MONITOR
 	string output_traffic(int indexStat);
 	#endif
@@ -3822,6 +3853,9 @@ private:
 	u_int64_t getTimeUS(sThread *thread, int indexPstat);
 	#if TRAFFIC_MONITOR
 	bool evalTraffic(sThread *thread, sTraffic *traffic, u_int64_t time_us, int indexStat);
+	#endif
+	#if BUFFER_PUSH_MONITOR
+	bool evalBufferPush(sThread *thread, sBufferPush *buffer_push, u_int64_t time_us, int indexStat);
 	#endif
 	void tm_lock() {
 		__SYNC_LOCK_QUICK(this->_sync);

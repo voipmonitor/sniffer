@@ -4594,7 +4594,14 @@ int Mgmt_sniffer_threads(Mgmt_params *params) {
 		return(0);
 	}
 	extern cThreadMonitor threadMonitor;
-	string threads = threadMonitor.output(1);
+	int outputFlags = 0;
+	if(strstr(params->buf, "no_sort") != NULL) {
+		outputFlags |= cThreadMonitor::_of_no_sort;
+	}
+	if(strstr(params->buf, "only_traffic") != NULL) {
+		outputFlags |= cThreadMonitor::_of_only_traffic;
+	}
+	string threads = threadMonitor.output(1, outputFlags);
 	return(params->sendString(&threads));
 }
 
@@ -4605,7 +4612,7 @@ int Mgmt_sniffer_traffic(Mgmt_params *params) {
 		return(0);
 	}
 	extern cThreadMonitor threadMonitor;
-	string traffic = threadMonitor.output_traffic(1);
+	string traffic = threadMonitor.output_traffic(2);
 	return(params->sendString(&traffic));
 }
 #endif

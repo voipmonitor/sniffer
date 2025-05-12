@@ -10336,6 +10336,11 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 	}
 	if(!qring_push_index) {
 		++qringPushCounter;
+		#if BUFFER_PUSH_MONITOR
+		if(thread_data) {
+			++thread_data->buffer_push_cnt_all;
+		}
+		#endif
 		unsigned int usleepCounter = 0;
 		while(this->qring[this->writeit]->used != 0) {
 			if(is_terminating()) {
@@ -10344,10 +10349,28 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 			}
 			if(usleepCounter == 0) {
 				++qringPushCounter_full;
+				#if BUFFER_PUSH_MONITOR
+				if(thread_data) {
+					++thread_data->buffer_push_cnt_full;
+				}
+				#endif
 			}
+			#if BUFFER_PUSH_MONITOR
+			if(thread_data) {
+				++thread_data->buffer_push_cnt_full_loop;
+			}
+			#endif
 			extern unsigned int opt_sip_batch_usleep;
 			if(opt_sip_batch_usleep) {
+				#if BUFFER_PUSH_MONITOR
+				unsigned us =
+				#endif
 				USLEEP_C(opt_sip_batch_usleep, usleepCounter++);
+				#if BUFFER_PUSH_MONITOR
+				if(thread_data) {
+					thread_data->buffer_push_sum_usleep_full_loop += us;
+				}
+				#endif
 			} else {
 				__ASM_PAUSE;
 			}
