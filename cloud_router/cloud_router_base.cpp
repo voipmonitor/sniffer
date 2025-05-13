@@ -783,7 +783,7 @@ bool cSocket::_write(u_char *data, size_t *dataLen) {
 	return(true);
 }
 
-bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock, bool debug) {
+bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock, bool debug, vmIP *ip) {
 	if(isError() || !okHandle()) {
 		if(debug) {
 			cout << "cSocket::read " << handle
@@ -834,7 +834,23 @@ bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock, bool de
 	}
 	if(doRead) {
 		errno = 0;
-		ssize_t recvLen = recv(handle, data, *dataLen, 0);
+		ssize_t recvLen;
+		if(ip) {
+			sockaddr_in6 cliaddr;
+			socklen_t cliaddr_len = sizeof(cliaddr);
+			recvLen = recvfrom(handle, data, *dataLen, 0,
+					   (sockaddr*)&cliaddr, &cliaddr_len);
+			if((cliaddr.sin6_family == AF_INET6 && VM_IPV6_B) ||
+			   cliaddr.sin6_family == AF_INET) {
+				if(cliaddr.sin6_family == AF_INET6) {
+					ip->setIPv6(cliaddr.sin6_addr, true);
+				} else {
+					ip->setIPv4(((sockaddr_in*)&cliaddr)->sin_addr.s_addr, true);
+				}
+			}
+		} else {
+			recvLen = recv(handle, data, *dataLen, 0);
+		}
 		if(debug) {
 			cout << "cSocket::read " << handle
 			     << " recvLen " << recvLen << endl;
@@ -1480,11 +1496,12 @@ void cServer::listen_process(int index) {
 		u_char *data = new FILE_LINE(0) u_char[dataLen_max];
 		while(!((listen_socket[index] && listen_socket[index]->isTerminate()) || CR_TERMINATE())) {
 			dataLen = dataLen_max;
-			if(!listen_socket[index]->read(data, &dataLen) && listen_socket[index]->isError()) {
+			vmIP ip;
+			if(!listen_socket[index]->read(data, &dataLen, false, false, &ip) && listen_socket[index]->isError()) {
 				break;
 			}
 			if(dataLen > 0) {
-				evData(data, dataLen);
+				evData(data, dataLen, ip);
 			} else {
 				USLEEP(1000);
 			}
@@ -1498,7 +1515,7 @@ void cServer::createConnection(cSocket *socket) {
 	connection->connection_start();
 }
 
-void cServer::evData(u_char */*data*/, size_t /*dataLen*/) {
+void cServer::evData(u_char */*data*/, size_t /*dataLen*/, vmIP /*ip*/) {
 }
 
 void cServer::setStartVerbString(const char *startVerbString) {
