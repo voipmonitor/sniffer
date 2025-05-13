@@ -9758,19 +9758,24 @@ inline void *_PreProcessPacket_nextThreadFunction(void *arg) {
 }
 
 PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, unsigned idPreProcessThread) {
+	extern bool opt_hep_via_pb;
 	this->typePreProcessThread = typePreProcessThread;
 	this->needLockPush = false;
 	switch(typePreProcessThread) {
 	case ppt_detach_x:
 		extern bool opt_ssl_enable_redirection_unencrypted_sip_content;
 		if(opt_t2_boost_direct_rtp &&
-		   ((opt_enable_ssl && opt_ssl_enable_redirection_unencrypted_sip_content) || opt_ipfix || opt_hep)) {
+		   ((opt_enable_ssl && opt_ssl_enable_redirection_unencrypted_sip_content) || 
+		    opt_ipfix ||
+		    (opt_hep && !(opt_t2_boost && opt_hep_via_pb)))) {
 			this->needLockPush = true;
 		}
 		break;
 	case ppt_detach:
 		if(!opt_t2_boost_direct_rtp &&
-		   (opt_enable_ssl || opt_ipfix || opt_hep)) {
+		   (opt_enable_ssl ||
+		    opt_ipfix ||
+		    (opt_hep && !(opt_t2_boost && opt_hep_via_pb)))) {
 			this->needLockPush = true;
 		}
 		break;
