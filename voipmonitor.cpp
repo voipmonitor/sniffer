@@ -1496,6 +1496,7 @@ unsigned opt_hep_bind_port;
 bool opt_hep_bind_udp;
 bool opt_hep_counter_log;
 bool opt_hep_kamailio_protocol_id_fix = true;
+bool opt_hep_via_pb = false;
 
 bool opt_kamailio;
 vmIP opt_kamailio_dstip;
@@ -7469,6 +7470,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_bind_udp",  &opt_hep_bind_udp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_counter_log",  &opt_hep_counter_log));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_kamailio_protocol_id_fix", &opt_hep_kamailio_protocol_id_fix));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_via_pb",  &opt_hep_via_pb));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audiocodes",  &opt_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_audiocodes",  &opt_udp_port_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_audiocodes",  &opt_tcp_port_audiocodes));

@@ -479,6 +479,10 @@ bool pcap_block_store::add_hp(pcap_pkthdr_plus *header, u_char *packet, int memc
 	return(true);
 }
 
+bool pcap_block_store::add_hp_ext(pcap_pkthdr_plus *header, u_char *packet, int memcpy_packet_size) {
+	return(add_hp(header, packet, memcpy_packet_size));
+}
+
 /*bool pcap_block_store::add(pcap_pkthdr_plus *header, u_char *packet) {
 	return(this->add((pcap_pkthdr*)header, packet, header->offset, header->dlink));
 }*/
@@ -591,6 +595,10 @@ bool pcap_block_store::isFull_checkTimeout() {
 		return(true);
 	}
 	return(false);
+}
+
+bool pcap_block_store::isFull_checkTimeout_ext() {
+	return(isFull_checkTimeout());
 }
 
 bool pcap_block_store::isTimeout() {
@@ -8152,6 +8160,10 @@ inline void PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(pcap_block_sto
 			USLEEP_C(100, usleepCounter++);
 		}
 	}
+}
+
+void PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue_ext(pcap_block_store *blockStore) {
+	addBlockStoreToPcapStoreQueue(blockStore);
 }
 
 bool PcapQueue_readFromFifo::createThread() {

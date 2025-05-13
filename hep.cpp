@@ -11,13 +11,20 @@
 
 extern bool opt_hep_kamailio_protocol_id_fix;
 extern bool opt_hep_counter_log;
+extern bool opt_hep_via_pb;
+extern int opt_t2_boost;
 
 cHepCounter hep_counter;
 
 static cHEP_Server *HEP_Server;
 
 
-cHEP_ProcessData::cHEP_ProcessData() {
+cHEP_ProcessData::cHEP_ProcessData() : cTimer(NULL) {
+	block_store = NULL;
+	block_store_sync = 0;
+	if(opt_t2_boost && opt_hep_via_pb) {
+		start();
+	}
 }
 
 void cHEP_ProcessData::processData(u_char *data, size_t dataLen, vmIP ip) {
@@ -98,8 +105,6 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen, vmIP ip) {
 	}
 	if((hepData.ip_protocol_family == PF_INET || hepData.ip_protocol_family == PF_INET6) &&
 	   (hepData.ip_protocol_id == IPPROTO_UDP || hepData.ip_protocol_id == IPPROTO_TCP || hepData.ip_protocol_id == IPPROTO_ESP)) {
-		extern int opt_id_sensor;
-		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 		int dlink = PcapDumper::get_global_pcap_dlink_en10();
 		int pcap_handle_index = PcapDumper::get_global_handle_index_en10();
 		ether_header header_eth;
@@ -135,37 +140,8 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen, vmIP ip) {
 						  hepData.ip_source_address, hepData.ip_destination_address, hepData.protocol_source_port, hepData.protocol_destination_port,
 						  0, 0, (hepData.set_flags & (1ull << _hep_chunk_tcp_flag)) ? hepData.tcp_flag : 0,
 						  hepData.timestamp_seconds, hepData.timestamp_microseconds, dlink);
-			unsigned iphdrSize = ((iphdr2*)(tcpPacket + sizeof(header_eth)))->get_hdr_size();
-			unsigned dataOffset = sizeof(header_eth) + 
-					      iphdrSize +
-					      ((tcphdr2*)(tcpPacket + sizeof(header_eth) + iphdrSize))->doff * 4;
-			packet_flags pflags;
-			pflags.init();
-			pflags.set_tcp(2);
-			sPacketInfoData pid;
-			pid.clear();
-			if(opt_t2_boost_direct_rtp) {
-				sHeaderPacketPQout hp(tcpHeader, tcpPacket,
-						      dlink, opt_id_sensor, vmIP());
-				preProcessPacket[PreProcessPacket::ppt_detach_x]->push_packet(
-					sizeof(header_eth), 0xFFFF,
-					dataOffset, payload_len,
-					hepData.protocol_source_port, hepData.protocol_destination_port,
-					pflags,
-					&hp,
-					pcap_handle_index);
-			} else {
-				preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-					#if USE_PACKET_NUMBER
-					0, 
-					#endif
-					hepData.ip_source_address, hepData.protocol_source_port, hepData.ip_destination_address, hepData.protocol_destination_port, 
-					payload_len, dataOffset,
-					pcap_handle_index, tcpHeader, tcpPacket, _t_packet_alloc_header_std, 
-					pflags, (iphdr2*)(tcpPacket + sizeof(header_eth)), (iphdr2*)(tcpPacket + sizeof(header_eth)),
-					NULL, 0, dlink, opt_id_sensor, vmIP(), pid,
-					false);
-			}
+			processPacket(&hepData, tcpHeader, tcpPacket, payload_len, true,
+				      dlink, pcap_handle_index);
 		} else if(hepData.ip_protocol_id == IPPROTO_UDP) {
 			pcap_pkthdr *udpHeader;
 			u_char *udpPacket;
@@ -173,36 +149,8 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen, vmIP ip) {
 						  (u_char*)&header_eth, payload_data, payload_len, 0,
 						  hepData.ip_source_address, hepData.ip_destination_address, hepData.protocol_source_port, hepData.protocol_destination_port,
 						  hepData.timestamp_seconds, hepData.timestamp_microseconds);
-			unsigned iphdrSize = ((iphdr2*)(udpPacket + sizeof(header_eth)))->get_hdr_size();
-			unsigned dataOffset = sizeof(header_eth) + 
-					      iphdrSize + 
-					      sizeof(udphdr2);
-			packet_flags pflags;
-			pflags.init();
-			sPacketInfoData pid;
-			pid.clear();
-			if(opt_t2_boost_direct_rtp) {
-				sHeaderPacketPQout hp(udpHeader, udpPacket,
-						      dlink, opt_id_sensor, vmIP());
-				preProcessPacket[PreProcessPacket::ppt_detach_x]->push_packet(
-					sizeof(header_eth), 0xFFFF,
-					dataOffset, payload_len,
-					hepData.protocol_source_port, hepData.protocol_destination_port,
-					pflags,
-					&hp,
-					pcap_handle_index);
-			} else {
-				preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-					#if USE_PACKET_NUMBER
-					0,
-					#endif
-					hepData.ip_source_address, hepData.protocol_source_port, hepData.ip_destination_address, hepData.protocol_destination_port, 
-					payload_len, dataOffset,
-					pcap_handle_index, udpHeader, udpPacket, _t_packet_alloc_header_std, 
-					pflags, (iphdr2*)(udpPacket + sizeof(header_eth)), (iphdr2*)(udpPacket + sizeof(header_eth)),
-					NULL, 0, dlink, opt_id_sensor, vmIP(), pid,
-					false);
-			}
+			processPacket(&hepData, udpHeader, udpPacket, payload_len, false,
+				      dlink, pcap_handle_index);
 		}
 	}
 }
@@ -425,6 +373,78 @@ void cHEP_ProcessData::processChunk(u_char *data, size_t dataLen, sHEP_Data *hep
 	if(ok) {
 		hepData->set_flags |= (1ull << chunk_type);
 	}
+}
+
+void cHEP_ProcessData::processPacket(sHEP_Data *hepData, pcap_pkthdr *header, u_char *packet, unsigned payload_len, bool tcp,
+				     int dlink, int pcap_handle_index) {
+	if(opt_t2_boost && opt_hep_via_pb) {
+		block_store_lock();
+		if(!block_store) {
+			block_store = new FILE_LINE(0) pcap_block_store;
+		}
+		pcap_pkthdr_plus header_plus;
+		header_plus.convertFromStdHeader(header);
+		header_plus.header_ip_encaps_offset = 0xFFFF;
+		header_plus.header_ip_offset = sizeof(ether_header);
+		header_plus.dlink = dlink;
+		header_plus.pid.clear();
+		if(!block_store->add_hp_ext(&header_plus, packet)) {
+			extern PcapQueue_readFromFifo *pcapQueueQ;
+			pcapQueueQ->addBlockStoreToPcapStoreQueue_ext(block_store);
+			block_store = new FILE_LINE(0) pcap_block_store;
+			block_store->add_hp_ext(&header_plus, packet);
+		}
+		delete header;
+		delete [] packet;
+		block_store_unlock();
+	} else {
+		unsigned iphdrSize = ((iphdr2*)(packet + sizeof(ether_header)))->get_hdr_size();
+		unsigned dataOffset = sizeof(ether_header) + iphdrSize + 
+				      (tcp ?
+					((tcphdr2*)(packet + sizeof(ether_header) + iphdrSize))->doff * 4 :
+					sizeof(udphdr2));
+		packet_flags pflags;
+		pflags.init();
+		if(tcp) {
+			pflags.set_tcp(2);
+		}
+		sPacketInfoData pid;
+		pid.clear();
+		extern int opt_id_sensor;
+		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
+		if(opt_t2_boost_direct_rtp) {
+			sHeaderPacketPQout hp(header, packet,
+					      dlink, opt_id_sensor, vmIP());
+			preProcessPacket[PreProcessPacket::ppt_detach_x]->push_packet(
+				sizeof(ether_header), 0xFFFF,
+				dataOffset, payload_len,
+				hepData->protocol_source_port, hepData->protocol_destination_port,
+				pflags,
+				&hp,
+				pcap_handle_index);
+		} else {
+			preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
+				#if USE_PACKET_NUMBER
+				0, 
+				#endif
+				hepData->ip_source_address, hepData->protocol_source_port, hepData->ip_destination_address, hepData->protocol_destination_port, 
+				payload_len, dataOffset,
+				pcap_handle_index, header, packet, _t_packet_alloc_header_std, 
+				pflags, (iphdr2*)(packet + sizeof(ether_header)), (iphdr2*)(packet + sizeof(ether_header)),
+				NULL, 0, dlink, opt_id_sensor, vmIP(), pid,
+				false);
+		}
+	}
+}
+
+void cHEP_ProcessData::evTimer(u_int32_t /*time_s*/, int /*typeTimer*/, void */*data*/) {
+	block_store_lock();
+	if(block_store && block_store->isFull_checkTimeout_ext()) {
+		extern PcapQueue_readFromFifo *pcapQueueQ;
+		pcapQueueQ->addBlockStoreToPcapStoreQueue_ext(block_store);
+		block_store = NULL;
+	}
+	block_store_unlock();
 }
 
 

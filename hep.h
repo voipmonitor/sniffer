@@ -4,6 +4,8 @@
 
 #include "cloud_router/cloud_router_base.h"
 
+#include "tools.h"
+
 
 enum eHEP_ProtocolType {
 	_hep_prot_SIP = 0x01,
@@ -115,7 +117,7 @@ struct sHEP_Data {
 	u_int16_t tag_type;
 };
 
-class cHEP_ProcessData {
+class cHEP_ProcessData : public cTimer {
 public:
 	cHEP_ProcessData();
 	void processData(u_char *data, size_t dataLen, vmIP ip = 0);
@@ -130,8 +132,21 @@ protected:
 	u_int16_t chunkLength(u_char *data, size_t dataLen);
 	void processChunks(u_char *data, size_t dataLen, sHEP_Data *hepData);
 	void processChunk(u_char *data, size_t dataLen, sHEP_Data *hepData);
+private:
+	void processPacket(sHEP_Data *hepData, pcap_pkthdr *header, u_char *packet, unsigned payload_len, bool tcp,
+			   int dlink, int pcap_handle_index);
+	void evTimer(u_int32_t time_s, int typeTimer, void *data);
+	void block_store_lock() {
+		__SYNC_LOCK_USLEEP(block_store_sync, 50);
+	}
+	void block_store_unlock() {
+		__SYNC_UNLOCK(block_store_sync);
+	}
 public:
 	SimpleBuffer hep_buffer;
+private:
+	struct pcap_block_store *block_store;
+	volatile int block_store_sync;
 };
  
 class cHEP_Server : public cServer, public cHEP_ProcessData {

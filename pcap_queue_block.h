@@ -317,6 +317,7 @@ struct pcap_block_store {
 	inline void clear(bool prefetch);
 	inline void copy(pcap_block_store *from);
 	inline bool add_hp(pcap_pkthdr_plus *header, u_char *packet, int memcpy_packet_size = 0);
+	bool add_hp_ext(pcap_pkthdr_plus *header, u_char *packet, int memcpy_packet_size = 0);
 	inline void inc_h(pcap_pkthdr_plus2 *header) {
 		inc_h(header->get_caplen());
 	}
@@ -325,6 +326,7 @@ struct pcap_block_store {
 	inline void add_dpdk(pcap_pkthdr_plus2 *header, void *mbuf);
 	inline bool is_dpkd_data_full();
 	inline bool isFull_checkTimeout();
+	bool isFull_checkTimeout_ext();
 	inline bool isTimeout();
 	inline pcap_pkthdr_pcap operator [] (size_t indexItem) {
 		pcap_pkthdr_pcap headerPcap;

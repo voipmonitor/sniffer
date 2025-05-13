@@ -9,6 +9,7 @@
 #include "calltable.h"
 #include "record_array.h"
 #include "filter_register.h"
+#include "tools.h"
 
 
 #define NEW_REGISTER_MAX_STATES 3
