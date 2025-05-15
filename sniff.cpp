@@ -5725,7 +5725,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					// remove all RTP  
 					call->removeFindTables(c_branch);
 					c_branch->ipport_n = 0;
-					call->setFlagForRemoveRTP();
+					extern bool opt_remove_rtp_streams_after_resp3xx;
+					if(opt_remove_rtp_streams_after_resp3xx) {
+						call->setFlagForRemoveRTP();
+					}
 				}
 				process_packet__parse_custom_headers(call, packetS);
 				goto endsip_save_packet;
