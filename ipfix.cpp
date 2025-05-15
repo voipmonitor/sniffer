@@ -13,6 +13,8 @@
 
 
 extern bool opt_ipfix_counter_log;
+extern bool opt_ipfix_via_pb;
+extern int opt_t2_boost;
 
 cIpFixCounter ipfix_counter;
 
@@ -32,7 +34,13 @@ void cIPFixServer::createConnection(cSocket *socket) {
 }
 
 cIPFixConnection::cIPFixConnection(cSocket *socket)
-: cServerConnection(socket) {
+: cServerConnection(socket), cTimer(NULL) {
+	block_store = NULL;
+	block_store_sync = 0;
+	if(opt_t2_boost && opt_ipfix_via_pb) {
+		setEveryMS(100);
+		start();
+	}
 }
 
 cIPFixConnection::~cIPFixConnection() {
@@ -128,28 +136,28 @@ void cIPFixConnection::process_ipfix_HandShake(sIPFixHeader *header) {
 void cIPFixConnection::process_ipfix_SipIn(sIPFixHeader *header) {
 	sIPFixSipIn *data = (sIPFixSipIn*)((u_char*)header + sizeof(sIPFixHeader));
 	string sip_data = data->SipMsg(header);
-	push_packet(header, sip_data, false, data->GetTime(), data->GetSrc(), data->GetDst());
+	process_packet(header, sip_data, false, data->GetTime(), data->GetSrc(), data->GetDst());
 }
 
 void cIPFixConnection::process_ipfix_SipOut(sIPFixHeader *header) {
 	sIPFixSipOut *data = (sIPFixSipOut*)((u_char*)header + sizeof(sIPFixHeader));
 	string sip_data = data->SipMsg(header);
-	push_packet(header, sip_data, false, data->GetTime(), data->GetSrc(), data->GetDst());
+	process_packet(header, sip_data, false, data->GetTime(), data->GetSrc(), data->GetDst());
 }
 
 void cIPFixConnection::process_ipfix_SipInTcp(sIPFixHeader *header) {
 	sIPFixSipInTCP *data = (sIPFixSipInTCP*)((u_char*)header + sizeof(sIPFixHeader));
 	string sip_data = data->SipMsg(header);
-	push_packet(header, sip_data, true, data->GetTime(), data->GetSrc(), data->GetDst());
+	process_packet(header, sip_data, true, data->GetTime(), data->GetSrc(), data->GetDst());
 }
 
 void cIPFixConnection::process_ipfix_SipOutTcp(sIPFixHeader *header) {
 	sIPFixSipOutTCP *data = (sIPFixSipOutTCP*)((u_char*)header + sizeof(sIPFixHeader));
 	string sip_data = data->SipMsg(header);
-	push_packet(header, sip_data, true, data->GetTime(), data->GetSrc(), data->GetDst());
+	process_packet(header, sip_data, true, data->GetTime(), data->GetSrc(), data->GetDst());
 }
 
-void cIPFixConnection::push_packet(sIPFixHeader *header, string &data, bool tcp, timeval time, vmIPport src, vmIPport dst) {
+void cIPFixConnection::process_packet(sIPFixHeader *header, string &data, bool tcp, timeval time, vmIPport src, vmIPport dst) {
 	/*
 	cout << "************************************************************" << endl;
 	cout << ntohs(header->SetID) << " / " << ntohl(header->SeqNum) << endl;
@@ -164,8 +172,6 @@ void cIPFixConnection::push_packet(sIPFixHeader *header, string &data, bool tcp,
 	time.tv_usec = time_us % 1000000ull;
 	*/
 	//
-	extern int opt_id_sensor;
-	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 	int dlink = PcapDumper::get_global_pcap_dlink_en10();
 	int pcap_handle_index = PcapDumper::get_global_handle_index_en10();
 	ether_header header_eth;
@@ -179,22 +185,66 @@ void cIPFixConnection::push_packet(sIPFixHeader *header, string &data, bool tcp,
 					  src.ip, dst.ip, src.port, dst.port,
 					  0, 0, 0,
 					  time.tv_sec, time.tv_usec, dlink);
-		unsigned iphdrSize = ((iphdr2*)(tcpPacket + sizeof(header_eth)))->get_hdr_size();
-		unsigned dataOffset = sizeof(header_eth) + 
-				      iphdrSize +
-				      ((tcphdr2*)(tcpPacket + sizeof(header_eth) + iphdrSize))->doff * 4;
+		push_packet(src, dst,
+			    tcpHeader, tcpPacket, data.length(), true,
+			    dlink, pcap_handle_index);
+	} else {
+		pcap_pkthdr *udpHeader;
+		u_char *udpPacket;
+		createSimpleUdpDataPacket(sizeof(header_eth), &udpHeader,  &udpPacket,
+					  (u_char*)&header_eth, (u_char*)data.c_str(), data.length(), 0,
+					  src.ip, dst.ip, src.port, dst.port,
+					  time.tv_sec, time.tv_usec);
+		push_packet(src, dst,
+			    udpHeader, udpPacket, data.length(), false,
+			    dlink, pcap_handle_index);
+	}
+}
+
+void cIPFixConnection::push_packet(vmIPport src, vmIPport dst,
+				   pcap_pkthdr *header, u_char *packet, unsigned data_len, bool tcp,
+				   int dlink, int pcap_handle_index) {
+	if(opt_t2_boost && opt_ipfix_via_pb) {
+		block_store_lock();
+		if(!block_store) {
+			block_store = new FILE_LINE(0) pcap_block_store;
+		}
+		pcap_pkthdr_plus header_plus;
+		header_plus.convertFromStdHeader(header);
+		header_plus.header_ip_encaps_offset = 0xFFFF;
+		header_plus.header_ip_offset = sizeof(ether_header);
+		header_plus.dlink = dlink;
+		header_plus.pid.clear();
+		if(!block_store->add_hp_ext(&header_plus, packet)) {
+			extern PcapQueue_readFromFifo *pcapQueueQ;
+			pcapQueueQ->addBlockStoreToPcapStoreQueue_ext(block_store);
+			block_store = new FILE_LINE(0) pcap_block_store;
+			block_store->add_hp_ext(&header_plus, packet);
+		}
+		delete header;
+		delete [] packet;
+		block_store_unlock();
+	} else {
+		unsigned iphdrSize = ((iphdr2*)(packet + sizeof(ether_header)))->get_hdr_size();
+		unsigned dataOffset = sizeof(ether_header) + iphdrSize + 
+				      (tcp ?
+					((tcphdr2*)(packet + sizeof(ether_header) + iphdrSize))->doff * 4 :
+					sizeof(udphdr2));
 		packet_flags pflags;
 		pflags.init();
-		pflags.set_tcp(2);
-		pflags.set_ssl(true);
+		if(tcp) {
+			pflags.set_tcp(2);
+		}
 		sPacketInfoData pid;
 		pid.clear();
+		extern int opt_id_sensor;
+		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 		if(opt_t2_boost_direct_rtp) {
-			sHeaderPacketPQout hp(tcpHeader, tcpPacket,
+			sHeaderPacketPQout hp(header, packet,
 					      dlink, opt_id_sensor, vmIP());
 			preProcessPacket[PreProcessPacket::ppt_detach_x]->push_packet(
-				sizeof(header_eth), 0xFFFF,
-				dataOffset, data.length(),
+				sizeof(ether_header), 0xFFFF,
+				dataOffset, data_len,
 				src.port, dst.port,
 				pflags,
 				&hp,
@@ -204,52 +254,24 @@ void cIPFixConnection::push_packet(sIPFixHeader *header, string &data, bool tcp,
 				#if USE_PACKET_NUMBER
 				0, 
 				#endif
-				src.ip, src.port, dst.ip, dst.port, 
-				data.length(), dataOffset,
-				pcap_handle_index, tcpHeader, tcpPacket, _t_packet_alloc_header_std, 
-				pflags, (iphdr2*)(tcpPacket + sizeof(header_eth)), (iphdr2*)(tcpPacket + sizeof(header_eth)),
-				NULL, 0, dlink, opt_id_sensor, vmIP(), pid,
-				false);
-		}
-	} else {
-		pcap_pkthdr *udpHeader;
-		u_char *udpPacket;
-		createSimpleUdpDataPacket(sizeof(header_eth), &udpHeader,  &udpPacket,
-					  (u_char*)&header_eth, (u_char*)data.c_str(), data.length(), 0,
-					  src.ip, dst.ip, src.port, dst.port,
-					  time.tv_sec, time.tv_usec);
-		unsigned iphdrSize = ((iphdr2*)(udpPacket + sizeof(header_eth)))->get_hdr_size();
-		unsigned dataOffset = sizeof(header_eth) + 
-				      iphdrSize + 
-				      sizeof(udphdr2);
-		packet_flags pflags;
-		pflags.init();
-		pflags.set_ssl(true);
-		sPacketInfoData pid;
-		pid.clear();
-		if(opt_t2_boost_direct_rtp) {
-			sHeaderPacketPQout hp(udpHeader, udpPacket,
-					      dlink, opt_id_sensor, vmIP());
-			preProcessPacket[PreProcessPacket::ppt_detach_x]->push_packet(
-				sizeof(header_eth), 0xFFFF,
-				dataOffset, data.length(),
-				src.port, dst.port,
-				pflags,
-				&hp,
-				pcap_handle_index);
-		} else {
-			preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-				#if USE_PACKET_NUMBER
-				0,
-				#endif
-				src.ip, src.port, dst.ip, dst.port, 
-				data.length(), dataOffset,
-				pcap_handle_index, udpHeader, udpPacket, _t_packet_alloc_header_std, 
-				pflags, (iphdr2*)(udpPacket + sizeof(header_eth)), (iphdr2*)(udpPacket + sizeof(header_eth)),
+				src.ip, src.port, dst.ip, dst.port,
+				data_len, dataOffset,
+				pcap_handle_index, header, packet, _t_packet_alloc_header_std, 
+				pflags, (iphdr2*)(packet + sizeof(ether_header)), (iphdr2*)(packet + sizeof(ether_header)),
 				NULL, 0, dlink, opt_id_sensor, vmIP(), pid,
 				false);
 		}
 	}
+}
+
+void cIPFixConnection::evTimer(u_int32_t /*time_s*/, int /*typeTimer*/, void */*data*/) {
+	block_store_lock();
+	if(block_store && block_store->isFull_checkTimeout_ext(100)) {
+		extern PcapQueue_readFromFifo *pcapQueueQ;
+		pcapQueueQ->addBlockStoreToPcapStoreQueue_ext(block_store);
+		block_store = NULL;
+	}
+	block_store_unlock();
 }
 
 

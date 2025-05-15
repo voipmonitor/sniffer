@@ -19,10 +19,12 @@ cHepCounter hep_counter;
 static cHEP_Server *HEP_Server;
 
 
-cHEP_ProcessData::cHEP_ProcessData() : cTimer(NULL) {
+cHEP_ProcessData::cHEP_ProcessData() 
+ : cTimer(NULL) {
 	block_store = NULL;
 	block_store_sync = 0;
 	if(opt_t2_boost && opt_hep_via_pb) {
+		setEveryMS(100);
 		start();
 	}
 }
@@ -140,8 +142,8 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen, vmIP ip) {
 						  hepData.ip_source_address, hepData.ip_destination_address, hepData.protocol_source_port, hepData.protocol_destination_port,
 						  0, 0, (hepData.set_flags & (1ull << _hep_chunk_tcp_flag)) ? hepData.tcp_flag : 0,
 						  hepData.timestamp_seconds, hepData.timestamp_microseconds, dlink);
-			processPacket(&hepData, tcpHeader, tcpPacket, payload_len, true,
-				      dlink, pcap_handle_index);
+			pushPacket(&hepData, tcpHeader, tcpPacket, payload_len, true,
+				   dlink, pcap_handle_index);
 		} else if(hepData.ip_protocol_id == IPPROTO_UDP) {
 			pcap_pkthdr *udpHeader;
 			u_char *udpPacket;
@@ -149,8 +151,8 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen, vmIP ip) {
 						  (u_char*)&header_eth, payload_data, payload_len, 0,
 						  hepData.ip_source_address, hepData.ip_destination_address, hepData.protocol_source_port, hepData.protocol_destination_port,
 						  hepData.timestamp_seconds, hepData.timestamp_microseconds);
-			processPacket(&hepData, udpHeader, udpPacket, payload_len, false,
-				      dlink, pcap_handle_index);
+			pushPacket(&hepData, udpHeader, udpPacket, payload_len, false,
+				   dlink, pcap_handle_index);
 		}
 	}
 }
@@ -375,8 +377,8 @@ void cHEP_ProcessData::processChunk(u_char *data, size_t dataLen, sHEP_Data *hep
 	}
 }
 
-void cHEP_ProcessData::processPacket(sHEP_Data *hepData, pcap_pkthdr *header, u_char *packet, unsigned payload_len, bool tcp,
-				     int dlink, int pcap_handle_index) {
+void cHEP_ProcessData::pushPacket(sHEP_Data *hepData, pcap_pkthdr *header, u_char *packet, unsigned payload_len, bool tcp,
+				  int dlink, int pcap_handle_index) {
 	if(opt_t2_boost && opt_hep_via_pb) {
 		block_store_lock();
 		if(!block_store) {
@@ -439,7 +441,7 @@ void cHEP_ProcessData::processPacket(sHEP_Data *hepData, pcap_pkthdr *header, u_
 
 void cHEP_ProcessData::evTimer(u_int32_t /*time_s*/, int /*typeTimer*/, void */*data*/) {
 	block_store_lock();
-	if(block_store && block_store->isFull_checkTimeout_ext()) {
+	if(block_store && block_store->isFull_checkTimeout_ext(100)) {
 		extern PcapQueue_readFromFifo *pcapQueueQ;
 		pcapQueueQ->addBlockStoreToPcapStoreQueue_ext(block_store);
 		block_store = NULL;

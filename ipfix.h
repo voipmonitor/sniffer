@@ -7,6 +7,8 @@
 
 #include "cloud_router/cloud_router_base.h"
 
+#include "tools.h"
+
 
 using namespace std;
 
@@ -257,7 +259,7 @@ public:
 	virtual void createConnection(cSocket *socket);
 };
 
-class cIPFixConnection : public cServerConnection {
+class cIPFixConnection : public cServerConnection, public cTimer {
 public:
 	cIPFixConnection(cSocket *socket);
 	~cIPFixConnection();
@@ -271,7 +273,20 @@ private:
 	void process_ipfix_SipOut(sIPFixHeader *header);
 	void process_ipfix_SipInTcp(sIPFixHeader *header);
 	void process_ipfix_SipOutTcp(sIPFixHeader *header);
-	void push_packet(sIPFixHeader *header, string &data, bool tcp, timeval time, vmIPport src, vmIPport dst);
+	void process_packet(sIPFixHeader *header, string &data, bool tcp, timeval time, vmIPport src, vmIPport dst);
+	void push_packet(vmIPport src, vmIPport dst,
+			 pcap_pkthdr *header, u_char *packet, unsigned data_len, bool tcp,
+			 int dlink, int pcap_handle_index);
+	void evTimer(u_int32_t time_s, int typeTimer, void *data);
+	void block_store_lock() {
+		__SYNC_LOCK_USLEEP(block_store_sync, 50);
+	}
+	void block_store_unlock() {
+		__SYNC_UNLOCK(block_store_sync);
+	}
+private:
+	struct pcap_block_store *block_store;
+	volatile int block_store_sync;
 };
 
 class cIpFixCounter {

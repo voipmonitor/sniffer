@@ -325,8 +325,8 @@ struct pcap_block_store {
 	inline bool get_add_hp_pointers(pcap_pkthdr_plus2 **header, u_char **packet, unsigned min_size_for_packet);
 	inline void add_dpdk(pcap_pkthdr_plus2 *header, void *mbuf);
 	inline bool is_dpkd_data_full();
-	inline bool isFull_checkTimeout();
-	bool isFull_checkTimeout_ext();
+	inline bool isFull_checkTimeout(unsigned timeout_ms = 0);
+	bool isFull_checkTimeout_ext(unsigned timeout_ms = 0);
 	inline bool isTimeout();
 	inline pcap_pkthdr_pcap operator [] (size_t indexItem) {
 		pcap_pkthdr_pcap headerPcap;

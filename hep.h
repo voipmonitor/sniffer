@@ -133,8 +133,8 @@ protected:
 	void processChunks(u_char *data, size_t dataLen, sHEP_Data *hepData);
 	void processChunk(u_char *data, size_t dataLen, sHEP_Data *hepData);
 private:
-	void processPacket(sHEP_Data *hepData, pcap_pkthdr *header, u_char *packet, unsigned payload_len, bool tcp,
-			   int dlink, int pcap_handle_index);
+	void pushPacket(sHEP_Data *hepData, pcap_pkthdr *header, u_char *packet, unsigned payload_len, bool tcp,
+			int dlink, int pcap_handle_index);
 	void evTimer(u_int32_t time_s, int typeTimer, void *data);
 	void block_store_lock() {
 		__SYNC_LOCK_USLEEP(block_store_sync, 50);

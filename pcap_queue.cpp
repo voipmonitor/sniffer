@@ -586,19 +586,19 @@ bool pcap_block_store::is_dpkd_data_full() {
 	return(this->count == this->dpdk_data_size);
 }
 
-bool pcap_block_store::isFull_checkTimeout() {
+bool pcap_block_store::isFull_checkTimeout(unsigned timeout_ms) {
 	if(this->full) {
 		return(true);
 	}
-	if(this->size && getTimeMS_rdtsc() > (this->timestampMS + opt_pcap_queue_block_max_time_ms)) {
+	if(this->size && getTimeMS_rdtsc() > (this->timestampMS + (timeout_ms ? timeout_ms : opt_pcap_queue_block_max_time_ms))) {
 		this->full = true;
 		return(true);
 	}
 	return(false);
 }
 
-bool pcap_block_store::isFull_checkTimeout_ext() {
-	return(isFull_checkTimeout());
+bool pcap_block_store::isFull_checkTimeout_ext(unsigned timeout_ms) {
+	return(isFull_checkTimeout(timeout_ms));
 }
 
 bool pcap_block_store::isTimeout() {

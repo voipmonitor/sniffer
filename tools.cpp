@@ -10602,10 +10602,15 @@ void checkSwapUsage(void) {
 cTimer::cTimer(void *data) {
 	this->data = data;
 	timer_thread = 0;
+	every_ms = 0;
 }
 
 cTimer::~cTimer() {
 	stop();
+}
+
+void cTimer::setEveryMS(unsigned every_ms) {
+	this->every_ms = every_ms;
 }
 
 void cTimer::start() {
@@ -10631,32 +10636,44 @@ void *cTimer::_timerFce(void *arg) {
 }
 
 void cTimer::timerFce() {
-	last_time_us = 0;
-	last_time_s = 0;
-	last_time_m = 0;
+	u_int64_t last_time_us = 0;
+	u_int32_t last_time_s = 0;
+	u_int32_t last_time_m = 0;
 	while(!terminating) {
 		u_int64_t time_us = getTimeUS();
-		u_int32_t time_s = time_us / 1000000;
-		u_int32_t time_m = time_s / 60;
-		if(last_time_us) {
-			int typeChangeTime = 0;
-			if(time_s > last_time_s) {
-				typeChangeTime |= _tt_sec;
-				last_time_s = time_s;
-				if(time_m > last_time_m) {
-					typeChangeTime |= _tt_min;
-					last_time_m = time_m;
+		if(every_ms) {
+			if(last_time_us) {
+				if(time_us / 1000 >= last_time_us / 1000 + every_ms) {
+					evTimer(0, _tt_every_ms, data);
+					last_time_us = time_us;
 				}
+			} else {
+				last_time_us = time_us;
 			}
-			if(typeChangeTime) {
-				evTimer(time_s, typeChangeTime, data);
-			}
+			usleep(min((int)(1000000 - time_us % 1000000), every_ms < 10 ? 1000 : 10000));
 		} else {
-			last_time_s = time_s;
-			last_time_m = time_m;
+			u_int32_t time_s = time_us / 1000000;
+			u_int32_t time_m = time_s / 60;
+			if(last_time_us) {
+				int typeChangeTime = 0;
+				if(time_s > last_time_s) {
+					typeChangeTime |= _tt_sec;
+					last_time_s = time_s;
+					if(time_m > last_time_m) {
+						typeChangeTime |= _tt_min;
+						last_time_m = time_m;
+					}
+				}
+				if(typeChangeTime) {
+					evTimer(time_s, typeChangeTime, data);
+				}
+			} else {
+				last_time_s = time_s;
+				last_time_m = time_m;
+			}
+			last_time_us = time_us;
+			usleep(min((int)(1000000 - time_us % 1000000), 10000));
 		}
-		last_time_us = time_us;
-		usleep(min((int)(1000000 - time_us % 1000000), 10000));
 	}
 }
 

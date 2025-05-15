@@ -4791,11 +4791,13 @@ class cTimer {
 public:
 	enum eTypeTimer {
 		_tt_sec = 1,
-		_tt_min = 2
+		_tt_min = 2,
+		_tt_every_ms = 4
 	};
 public:
 	cTimer(void *data);
 	~cTimer();
+	void setEveryMS(unsigned every_ms);
 	void start();
 	void stop();
 protected:
@@ -4808,9 +4810,7 @@ protected:
 private:
 	pthread_t timer_thread;
 	bool terminating;
-	u_int64_t last_time_us;
-	u_int32_t last_time_s;
-	u_int32_t last_time_m;
+	u_int32_t every_ms;
 };
 
 class cWsCalls {
