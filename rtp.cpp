@@ -1263,7 +1263,8 @@ bool RTP::read(CallBranch *c_branch,
 	}
 	this->last_packet_time_us = pcap_header_us;
 
-	if(owner && !is_read_from_file_simple()) {
+	extern bool opt_ignore_rtp_after_bye_confirmed;
+	if(owner && !is_read_from_file_simple() && opt_ignore_rtp_after_bye_confirmed) {
 		u_int64_t seenbye_and_ok_time_usec = owner->getSeenByeAndOkTimeUS(c_branch);
 		if(seenbye_and_ok_time_usec && getTimeUS(header) > seenbye_and_ok_time_usec) {
 			return(false);
