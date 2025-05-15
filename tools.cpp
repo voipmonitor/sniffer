@@ -7925,12 +7925,12 @@ void cThreadMonitor::registerThread(int tid, const char *description) {
 	thread->description = description;
 	memset(thread->pstat, 0, sizeof(thread->pstat));
 	memset(thread->cs, 0, sizeof(thread->cs));
-	thread->usleep_sum = 0;
-	memset(thread->usleep_sum_stopper, 0, sizeof(thread->usleep_sum_stopper));
 	memset(thread->last_time_us, 0, sizeof(thread->last_time_us));
 	thread->orig_scheduler = -1;
 	thread->orig_priority = -1;
-	#if TRAFFIC_MONITOR
+	#if SNIFFER_THREADS_EXT
+	thread->usleep_sum = 0;
+	memset(thread->usleep_sum_last, 0, sizeof(thread->usleep_sum_last));
 	thread->packets_cnt_in = 0;
 	thread->packets_cnt_out = 0;
 	thread->packets_size_in = 0;
@@ -7943,8 +7943,6 @@ void cThreadMonitor::registerThread(int tid, const char *description) {
 	for(unsigned i = 0; i < sizeof(thread->packets_last_time_us) / sizeof(thread->packets_last_time_us[0]); i++) {
 		thread->packets_last_time_us[i] = time_us;
 	}}
-	#endif
-	#if BUFFER_PUSH_MONITOR
 	thread->buffer_push_cnt_all = 0;
 	thread->buffer_push_cnt_full = 0;
 	thread->buffer_push_cnt_full_loop = 0;
@@ -7967,7 +7965,13 @@ void cThreadMonitor::unregisterThread(int tid) {
 	tm_lock();
 	map<int, sThread*>::iterator iter = threads.find(tid);
 	if(iter != threads.end()) {
-		if(!sverb.usleep_stat) {
+		bool enable_sniffer_threads_ext = false;
+		#if SNIFFER_THREADS_EXT
+		if(sverb.sniffer_threads_ext) {
+			enable_sniffer_threads_ext = true;
+		}
+		#endif
+		if(!enable_sniffer_threads_ext) {
 			delete iter->second;
 		}
 		threads.erase(iter);
@@ -8051,7 +8055,7 @@ string cThreadMonitor::output(int indexPstat, int outputFlags) {
 	int columns = 1;
 	list<sDescrCpuPerc> descrPerc;
 	double sum_cpu = 0;
-	#if TRAFFIC_MONITOR
+	#if SNIFFER_THREADS_EXT
 	u_int64_t time_us = ::getTimeUS();
 	#endif
 	tm_lock();
@@ -8067,14 +8071,12 @@ string cThreadMonitor::output(int indexPstat, int outputFlags) {
 		dp.tid = iter->second->tid;
 		dp.cpu_perc = cpu_perc > 0 ? cpu_perc : 0;
 		dp.cs = this->getContextSwitches(iter->second, indexPstat);
-		dp.usleep = this->getUsleep(iter->second, indexPstat);
 		dp.time_us = this->getTimeUS(iter->second, indexPstat);
-		#if TRAFFIC_MONITOR
+		#if SNIFFER_THREADS_EXT
+		dp.usleep = this->getUsleep(iter->second, indexPstat);
 		if(evalTraffic(iter->second, &dp.traffic, time_us, indexPstat)) {
 			++use_counter;
 		}
-		#endif
-		#if BUFFER_PUSH_MONITOR
 		if(evalBufferPush(iter->second, &dp.buffer_push, time_us, indexPstat)) {
 			++use_counter;
 		}
@@ -8095,7 +8097,7 @@ string cThreadMonitor::output(int indexPstat, int outputFlags) {
 	int counter = 0;
 	int maxDescrLength = 45;
 	for(iter_dp = descrPerc.begin(); iter_dp != descrPerc.end(); iter_dp++) {
-		#if TRAFFIC_MONITOR
+		#if SNIFFER_THREADS_EXT
 		if((outputFlags & _of_only_traffic) && 
 		   !(iter_dp->traffic.packets_cnt_in > 0 || iter_dp->traffic.packets_cnt_out > 0)) {
 			continue;
@@ -8145,8 +8147,9 @@ string cThreadMonitor::output(int indexPstat, int outputFlags) {
 		} else {
 			outStr << setw(10) << " ";
 		}
-		// usleep
-		if(sverb.usleep_stat) {
+		#if SNIFFER_THREADS_EXT
+		if(sverb.sniffer_threads_ext) {
+			// usleep
 			outStr << "  ";
 			if(iter_dp->usleep && iter_dp->time_us) {
 				outStr << "us " << right << setw(5) << setprecision(1) 
@@ -8154,32 +8157,30 @@ string cThreadMonitor::output(int indexPstat, int outputFlags) {
 			} else {
 				outStr << setw(10) << " ";
 			}
-		}
-		// traffic
-		#if TRAFFIC_MONITOR
-		outStr << "  ";
-		sTraffic *iter_tr = &iter_dp->traffic;
-		if(iter_tr->packets_cnt_in > 0 || iter_tr->packets_cnt_out > 0) {
-		       outStr << " " << setw(5) << right << format_metric((double)iter_tr->packets_cnt_in / iter_tr->time_us * 1e6, 3, "--- ") << "p"
-			      << " " << setw(5) << right << format_metric((double)iter_tr->packets_size_in * 8 / iter_tr->time_us * 1e6, 3, "--- ") << "b"
-			      << " -> "
-			      << " " << setw(5) << right << format_metric((double)iter_tr->packets_cnt_out / iter_tr->time_us * 1e6, 3, "--- ") << "p"
-			      << " " << setw(5) << right << format_metric((double)iter_tr->packets_size_out * 8 / iter_tr->time_us * 1e6, 3, "--- ") << "b";
-		} else {
-			outStr << setw(32) << " ";
-		}
-		#endif
-		#if BUFFER_PUSH_MONITOR
-		outStr << "  ";
-		sBufferPush *iter_bp = &iter_dp->buffer_push;
-		if(iter_bp->cnt_all > 0) {
-		       outStr << "bf" << right << setw(7) << setprecision(2) << ((double)iter_bp->cnt_full / iter_bp->cnt_all * 100) << "%"
-			      << " " << right << setw(7) << setprecision(2) << ((double)iter_bp->sum_usleep_full_loop / iter_bp->time_us * 100) << "%";
-		} else if(iter_bp->cnt_full_loop > 0) {
-		       outStr << "bf" << right << setw(7) << "FULL"
-			      << " " << right << setw(7) << setprecision(2) << ((double)iter_bp->sum_usleep_full_loop / iter_bp->time_us * 100) << "%";
-		} else {
-			outStr << setw(19) << " ";
+			// traffic
+			outStr << "  ";
+			sTraffic *iter_tr = &iter_dp->traffic;
+			if(iter_tr->packets_cnt_in > 0 || iter_tr->packets_cnt_out > 0) {
+			       outStr << " " << setw(5) << right << format_metric((double)iter_tr->packets_cnt_in / iter_tr->time_us * 1e6, 3, "--- ") << "p"
+				      << " " << setw(5) << right << format_metric((double)iter_tr->packets_size_in * 8 / iter_tr->time_us * 1e6, 3, "--- ") << "b"
+				      << " -> "
+				      << " " << setw(5) << right << format_metric((double)iter_tr->packets_cnt_out / iter_tr->time_us * 1e6, 3, "--- ") << "p"
+				      << " " << setw(5) << right << format_metric((double)iter_tr->packets_size_out * 8 / iter_tr->time_us * 1e6, 3, "--- ") << "b";
+			} else {
+				outStr << setw(32) << " ";
+			}
+			// buffer push
+			outStr << "  ";
+			sBufferPush *iter_bp = &iter_dp->buffer_push;
+			if(iter_bp->cnt_all > 0) {
+			       outStr << "bf" << right << setw(7) << setprecision(2) << ((double)iter_bp->cnt_full / iter_bp->cnt_all * 100) << "%"
+				      << " " << right << setw(7) << setprecision(2) << ((double)iter_bp->sum_usleep_full_loop / iter_bp->time_us * 100) << "%";
+			} else if(iter_bp->cnt_full_loop > 0) {
+			       outStr << "bf" << right << setw(8) << "FULL"
+				      << " " << right << setw(7) << setprecision(2) << ((double)iter_bp->sum_usleep_full_loop / iter_bp->time_us * 100) << "%";
+			} else {
+				outStr << setw(19) << " ";
+			}
 		}
 		#endif
 		//
@@ -8196,39 +8197,6 @@ string cThreadMonitor::output(int indexPstat, int outputFlags) {
 	outStr << "CPU ALL : " << setprecision(1) << setw(5) << sum_cpu << endl;
 	return(outStr.str());
 }
-
-#if TRAFFIC_MONITOR
-string cThreadMonitor::output_traffic(int indexStat) {
-	list<sDescrTraffic> descrTraffic;
-	u_int64_t time_us = ::getTimeUS();
-	tm_lock();
-	map<int, sThread*>::iterator iter;
-	for(iter = threads.begin(); iter != threads.end(); iter++) {
-		sDescrTraffic dt;
-		if(evalTraffic(iter->second, &dt, time_us, indexStat)) {
-			strcpy_null_term(dt.description, iter->second->description.c_str());
-			dt.tid = iter->second->tid;
-			descrTraffic.push_back(dt);
-		}
-	}
-	tm_unlock();
-	ostringstream outStr;
-	list<sDescrTraffic>::iterator iter_tr;
-	int maxDescrLength = 45;
-	for(iter_tr = descrTraffic.begin(); iter_tr != descrTraffic.end(); iter_tr++) {
-		outStr << fixed
-		       << setw(maxDescrLength) << left << string(iter_tr->description).substr(0, maxDescrLength)
-		       << " (" << setw(7) << right << iter_tr->tid << ") :"
-		       << " " << setw(5) << right << format_metric((double)iter_tr->packets_cnt_in / iter_tr->time_us * 1e6, 3, "--- ") << "p"
-		       << " " << setw(5) << right << format_metric((double)iter_tr->packets_size_in * 8 / iter_tr->time_us * 1e6, 3, "--- ") << "b"
-		       << " -> "
-		       << " " << setw(5) << right << format_metric((double)iter_tr->packets_cnt_out / iter_tr->time_us * 1e6, 3, "--- ") << "p"
-		       << " " << setw(5) << right << format_metric((double)iter_tr->packets_size_out * 8 / iter_tr->time_us * 1e6, 3, "--- ") << "b"
-		       << endl;
-	}
-	return(outStr.str());
-}
-#endif
 
 double cThreadMonitor::getCpuUsagePerc(sThread *thread, int indexPstat) {
 	if(thread->pstat[indexPstat][0].cpu_total_time) {
@@ -8257,11 +8225,13 @@ context_switches_data cThreadMonitor::getContextSwitches(sThread *thread, int in
 	return(rslt);
 }
 
+#if SNIFFER_THREADS_EXT
 u_int64_t cThreadMonitor::getUsleep(sThread *thread, int indexPstat) {
-	u_int64_t rslt = thread->usleep_sum - thread->usleep_sum_stopper[indexPstat];
-	thread->usleep_sum_stopper[indexPstat] = thread->usleep_sum;
+	u_int64_t rslt = thread->usleep_sum - thread->usleep_sum_last[indexPstat];
+	thread->usleep_sum_last[indexPstat] = thread->usleep_sum;
 	return(rslt);
 }
+#endif
 
 u_int64_t cThreadMonitor::getTimeUS(sThread *thread, int indexPstat) {
 	if(thread->last_time_us[indexPstat][0]) {
@@ -8273,7 +8243,7 @@ u_int64_t cThreadMonitor::getTimeUS(sThread *thread, int indexPstat) {
 		0);
 }
 
-#if TRAFFIC_MONITOR
+#if SNIFFER_THREADS_EXT
 bool cThreadMonitor::evalTraffic(sThread *thread, sTraffic *traffic, u_int64_t time_us, int indexStat) {
 	bool rslt = false;
 	if(thread->packets_cnt_in > 0 || thread->packets_cnt_out > 0) {
@@ -8293,9 +8263,7 @@ bool cThreadMonitor::evalTraffic(sThread *thread, sTraffic *traffic, u_int64_t t
 	thread->packets_last_time_us[indexStat] = time_us;
 	return(rslt);
 }
-#endif
 
-#if TRAFFIC_MONITOR
 bool cThreadMonitor::evalBufferPush(sThread *thread, sBufferPush *buffer_push, u_int64_t time_us, int indexStat) {
 	bool rslt = false;
 	if(thread->buffer_push_cnt_all > 0) {

@@ -299,7 +299,7 @@ protected:
 	pstat_data nextThreadsPstatData[PCAP_QUEUE_NEXT_THREADS_MAX][2][2];
 	pstat_data procPstatData[2];
 	bool initAllReadThreadsFinished;
-	#if TRAFFIC_MONITOR
+	#if SNIFFER_THREADS_EXT
 	cThreadMonitor::sThread *thread_data_main;
 	cThreadMonitor::sThread *thread_data_write;
 	#endif
@@ -831,13 +831,6 @@ private:
 	void processBlock(pcap_block_store *block);
 	void preparePstatData(int pstatDataIndex);
 	double getCpuUsagePerc(int pstatDataIndex, bool preparePstatData = true);
-	double getQringFillingPerc() {
-		unsigned int _readit = readit;
-		unsigned int _writeit = writeit;
-		return(_writeit >= _readit ?
-			(double)(_writeit - _readit) / qringmax * 100 :
-			(double)(qringmax - _readit + _writeit) / qringmax * 100);
-	}
 	void terminate();
 	const char *getTypeThreadName();
 	void prepareLogTraffic();
@@ -894,7 +887,7 @@ private:
 	unsigned long long sumPacketsSize[3];
 	bool prepareHeaderPacketPool; // experimental option
 	pcap_dispatch_data dispatch_data;
-	#if TRAFFIC_MONITOR
+	#if SNIFFER_THREADS_EXT
 	cThreadMonitor::sThread *thread_data;
 	#endif
 friend void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg);
@@ -1459,7 +1452,7 @@ public:
 		return("");
 	}
 	void preparePstatData(int nextThreadId, int pstatDataIndex);
-	double getCpuUsagePerc(int nextThreadId, int pstatDataIndex, double *percFullQring, bool preparePstatData = true);
+	double getCpuUsagePerc(int nextThreadId, int pstatDataIndex, bool preparePstatData = true);
 	bool existsNextThread(int next_thread_index) {
 		return(next_thread_index < MAX_PRE_PROCESS_PACKET_NEXT_THREADS &&
 		       this->next_threads[next_thread_index].thread_id);
@@ -1473,8 +1466,12 @@ private:
 		}
 		return(false);
 	}
-	#if TRAFFIC_MONITOR
-	void tm_inc_packets_out(sHeaderPacketPQout *hp);
+	#if SNIFFER_THREADS_EXT
+	inline void tm_inc_packets_out(sHeaderPacketPQout *hp) {
+		if(sverb.sniffer_threads_ext && thread_data) {
+			thread_data->inc_packets_out(hp->header->get_caplen());
+		}
+	}
 	#endif
 private:
 	eTypeOutputThread typeOutputThread;
@@ -1490,8 +1487,6 @@ private:
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
 	pstat_data threadPstatData[2][2];
-	u_int64_t qringPushCounter;
-	u_int64_t qringPushCounter_full;
 	int outThreadId;
 	#if not DEFRAG_MOD_OLDVER
 	cIpFrag *ip_defrag;
@@ -1516,7 +1511,7 @@ private:
 	unsigned push_thread;
 	u_int64_t last_race_log[2];
 	#endif
-	#if TRAFFIC_MONITOR
+	#if SNIFFER_THREADS_EXT
 	cThreadMonitor::sThread *thread_data;
 	#endif
 friend inline void *_PcapQueue_outputThread_outThreadFunction(void *arg);

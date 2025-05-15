@@ -3745,12 +3745,12 @@ public:
 		string description;
 		pstat_data pstat[5][2];
 		context_switches_data cs[5][2];
-		volatile u_int64_t usleep_sum;
-		u_int64_t usleep_sum_stopper[5];
 		u_int64_t last_time_us[2][5];
 		int orig_scheduler;
 		int orig_priority;
-		#if TRAFFIC_MONITOR
+		#if SNIFFER_THREADS_EXT
+		volatile u_int64_t usleep_sum;
+		u_int64_t usleep_sum_last[5];
 		volatile u_int64_t packets_cnt_in;
 		volatile u_int64_t packets_cnt_out;
 		volatile u_int64_t packets_size_in;
@@ -3768,8 +3768,6 @@ public:
 			packets_size_out += size;
 			packets_cnt_out += cnt;
 		}
-		#endif
-		#if BUFFER_PUSH_MONITOR
 		volatile u_int64_t buffer_push_cnt_all;
 		volatile u_int64_t buffer_push_cnt_full;
 		volatile u_int64_t buffer_push_cnt_full_loop;
@@ -3782,7 +3780,7 @@ public:
 		#endif
 	};
 private:
-	#if TRAFFIC_MONITOR
+	#if SNIFFER_THREADS_EXT
 	struct sTraffic {
 		sTraffic() {
 			memset((void*)this, 0, sizeof(*this));
@@ -3793,8 +3791,6 @@ private:
 		u_int64_t packets_size_out;
 		u_int64_t time_us;
 	};
-	#endif
-	#if BUFFER_PUSH_MONITOR
 	struct sBufferPush {
 		sBufferPush() {
 			memset((void*)this, 0, sizeof(*this));
@@ -3814,27 +3810,16 @@ private:
 		int tid;
 		double cpu_perc;
 		context_switches_data cs;
-		u_int64_t usleep;
 		u_int64_t time_us;
 		bool operator < (const sDescrCpuPerc& other) const { 
 			return(this->cpu_perc > other.cpu_perc); 
 		}
-		#if TRAFFIC_MONITOR
+		#if SNIFFER_THREADS_EXT
+		u_int64_t usleep;
 		sTraffic traffic;
-		#endif
-		#if BUFFER_PUSH_MONITOR
 		sBufferPush buffer_push;
 		#endif
 	};
-	#if TRAFFIC_MONITOR
-	struct sDescrTraffic : public sTraffic {
-		sDescrTraffic() {
-			memset((void*)this, 0, sizeof(*this));
-		}
-		char description[100];
-		int tid;
-	};
-	#endif
 public:
 	cThreadMonitor();
 	void registerThread(int tid, const char *description);
@@ -3843,18 +3828,13 @@ public:
 	static sThread *getSelfThreadData();
 	void setSchedPolPriority(int indexPstat);
 	string output(int indexPstat, int outputFlags);
-	#if TRAFFIC_MONITOR
-	string output_traffic(int indexStat);
-	#endif
 private:
 	double getCpuUsagePerc(sThread *thread, int indexPstat);
 	context_switches_data getContextSwitches(sThread *thread, int indexPstat);
 	u_int64_t getUsleep(sThread *thread, int indexPstat);
 	u_int64_t getTimeUS(sThread *thread, int indexPstat);
-	#if TRAFFIC_MONITOR
+	#if SNIFFER_THREADS_EXT
 	bool evalTraffic(sThread *thread, sTraffic *traffic, u_int64_t time_us, int indexStat);
-	#endif
-	#if BUFFER_PUSH_MONITOR
 	bool evalBufferPush(sThread *thread, sBufferPush *buffer_push, u_int64_t time_us, int indexStat);
 	#endif
 	void tm_lock() {

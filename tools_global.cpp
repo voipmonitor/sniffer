@@ -1093,7 +1093,8 @@ void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int lin
 		++usleepStats[id];
 		__SYNC_UNLOCK(usleepStatsSync);
 	}
-	if(sverb.usleep_stat) {
+	#if SNIFFER_THREADS_EXT
+	if(sverb.sniffer_threads_ext) {
 		static __thread cThreadMonitor::sThread *thread = NULL;
 		if(!thread) {
 			thread = threadMonitor.getSelfThread();
@@ -1102,6 +1103,7 @@ void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int lin
 			thread->usleep_sum += useconds;
 		}
 	}
+	#endif
 }
 
 string usleep_stats(unsigned int useconds_lt) {

@@ -469,9 +469,6 @@ int Mgmt_coutstr(Mgmt_params *params);
 int Mgmt_terminating(Mgmt_params *params);
 int Mgmt_pcapstat(Mgmt_params *params);
 int Mgmt_sniffer_threads(Mgmt_params *params);
-#if TRAFFIC_MONITOR
-int Mgmt_sniffer_traffic(Mgmt_params *params);
-#endif
 int Mgmt_sniffer_stat(Mgmt_params *params);
 int Mgmt_datadir_stat(Mgmt_params *params);
 int Mgmt_gitUpgrade(Mgmt_params *params);
@@ -585,9 +582,6 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_terminating,
 	Mgmt_pcapstat,
 	Mgmt_sniffer_threads,
-	#if TRAFFIC_MONITOR
-	Mgmt_sniffer_traffic,
-	#endif
 	Mgmt_sniffer_stat,
 	Mgmt_datadir_stat,
 	Mgmt_gitUpgrade,
@@ -4604,18 +4598,6 @@ int Mgmt_sniffer_threads(Mgmt_params *params) {
 	string threads = threadMonitor.output(1, outputFlags);
 	return(params->sendString(&threads));
 }
-
-#if TRAFFIC_MONITOR
-int Mgmt_sniffer_traffic(Mgmt_params *params) {
-	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("sniffer_traffic", "return sniffer's traffic per threads statistics", true);
-		return(0);
-	}
-	extern cThreadMonitor threadMonitor;
-	string traffic = threadMonitor.output_traffic(2);
-	return(params->sendString(&traffic));
-}
-#endif
 
 int Mgmt_pcapstat(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {

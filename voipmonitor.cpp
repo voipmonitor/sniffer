@@ -483,6 +483,7 @@ unsigned int opt_rtp_batch_usleep = 10;
 unsigned int opt_lock_calls_usleep = 10;
 unsigned int opt_usleep_force = 0;
 unsigned int opt_usleep_minimal = 0;
+bool opt_sniffer_threads_ext = false;
 int opt_cleanup_calls_period = 10;
 int opt_destroy_calls_period = 2;
 int opt_safe_cleanup_calls = 1;
@@ -5279,9 +5280,6 @@ int main_init_read() {
 						}
 					}
 				}
-				#if EXPERIMENTAL_T2_QUEUE_FULL_STAT
-				print_t2_queue_full_stat();
-				#endif
 				if(opt_enable_ssl) {
 					if(opt_ssl_enable_dtls_queue == 1) {
 						extern void dtls_queue_cleanup();
@@ -7526,6 +7524,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("rtp_batch_usleep", &opt_rtp_batch_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("lock_calls_usleep", &opt_lock_calls_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("usleep_minimal", &opt_usleep_minimal));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sniffer_threads_ext", &opt_sniffer_threads_ext));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -8072,9 +8071,7 @@ void parse_verb_param(string verbParam) {
 		verbParam == "memory_stat_ex_log")		{ sverb.memory_stat = 1; sverb.memory_stat_log = 1; }
 	else if(verbParam.substr(0, 25) == "memory_stat_ignore_limit=")
 								sverb.memory_stat_ignore_limit = atoi(verbParam.c_str() + 25);
-	else if(verbParam == "qring_stat")			sverb.qring_stat = 1;
-	else if(verbParam.substr(0, 10) == "qring_full")	sverb.qring_full = atof(verbParam.c_str() + 11);
-	else if(verbParam == "usleep_stat")			sverb.usleep_stat = 1;
+	else if(verbParam == "sniffer_threads_ext")		sverb.sniffer_threads_ext = 1;
 	else if(verbParam == "alloc_stat")			sverb.alloc_stat = 1;
 	else if(verbParam == "qfiles")				sverb.qfiles = 1;
 	else if(verbParam == "query_error")			sverb.query_error = 1;
@@ -9485,6 +9482,10 @@ void set_context_config() {
 		opt_audio_format = FORMAT_OGG;
 	}
 	#endif
+	
+	if(opt_sniffer_threads_ext) {
+		sverb.sniffer_threads_ext = true;
+	}
 }
 
 void check_context_config() {

@@ -254,12 +254,13 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 			rslt_useconds = useconds_min;
 		}
 	}
-	extern bool opt_usleep_stats;
+	#if SNIFFER_THREADS_EXT
 	extern sVerbose sverb;
-	if(opt_usleep_stats || sverb.usleep_stat) {
+	if(sverb.sniffer_threads_ext) {
 		void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line);
 		usleep_stats_add(rslt_useconds, !opt_usleep_progressive || counter == (unsigned int)-1, file, line);
 	}
+	#endif
 	usleep(rslt_useconds);
 	return(rslt_useconds);
 }
@@ -272,12 +273,13 @@ inline unsigned int usleep(unsigned int useconds, const char *file, int line) {
 	if(opt_usleep_minimal && useconds < opt_usleep_minimal) {
 		useconds = opt_usleep_minimal;
 	}
-	extern bool opt_usleep_stats;
+	#if SNIFFER_THREADS_EXT
 	extern sVerbose sverb;
-	if(opt_usleep_stats || sverb.usleep_stat) {
+	if(sverb.sniffer_threads_ext) {
 		void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line);
 		usleep_stats_add(useconds, 1, file, line);
 	}
+	#endif
 	usleep(useconds);
 	return(useconds);
 }

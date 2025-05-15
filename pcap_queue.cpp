@@ -1479,7 +1479,7 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->instancePcapHandle = NULL;
 	this->instancePcapFifo = NULL;
 	this->initAllReadThreadsFinished = false;
-	#if TRAFFIC_MONITOR
+	#if SNIFFER_THREADS_EXT
 	thread_data_main = NULL;
 	thread_data_write = NULL;
 	#endif
@@ -2348,16 +2348,12 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				}
 			}
 			if(pcapQueueQ_outThread_detach) {
-				double percFullQring = 0;
-				double detach_cpu = pcapQueueQ_outThread_detach->getCpuUsagePerc(0, pstatDataIndex, &percFullQring);
+				double detach_cpu = pcapQueueQ_outThread_detach->getCpuUsagePerc(0, pstatDataIndex);
 				if(task == pcapStatLog && detach_cpu >= 0) {
 					outStrStat << "/detach:" << setprecision(1) << detach_cpu;
-					if(sverb.qring_full && percFullQring > sverb.qring_full) {
-						outStrStat << "#" << percFullQring;
-					}
 					for(int i = 0; i < MAX_PRE_PROCESS_PACKET_NEXT_THREADS; i++) {
 						if(pcapQueueQ_outThread_detach->existsNextThread(i)) {
-							double next_cpu = pcapQueueQ_outThread_detach->getCpuUsagePerc(i + 1, pstatDataIndex, NULL);
+							double next_cpu = pcapQueueQ_outThread_detach->getCpuUsagePerc(i + 1, pstatDataIndex);
 							if(next_cpu >= 0) {
 								outStrStat << "|" << setprecision(1) << next_cpu;
 							}
@@ -2387,17 +2383,13 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				}
 			}
 			if(pcapQueueQ_outThread_defrag) {
-				double percFullQring = 0;
-				double defrag_cpu = pcapQueueQ_outThread_defrag->getCpuUsagePerc(0, pstatDataIndex, &percFullQring);
+				double defrag_cpu = pcapQueueQ_outThread_defrag->getCpuUsagePerc(0, pstatDataIndex);
 				if(task == pcapStatLog && defrag_cpu >= 0) {
 					outStrStat << "/defrag:" << setprecision(1) << defrag_cpu;
-					if(sverb.qring_full && percFullQring > sverb.qring_full) {
-						outStrStat << "#" << percFullQring;
-					}
 					#if not DEFRAG_MOD_OLDVER
 					for(int i = 0; i < MAX_PRE_PROCESS_PACKET_NEXT_THREADS; i++) {
 						if(pcapQueueQ_outThread_defrag->existsNextThread(i)) {
-							double next_cpu = pcapQueueQ_outThread_defrag->getCpuUsagePerc(i + 1, pstatDataIndex, NULL);
+							double next_cpu = pcapQueueQ_outThread_defrag->getCpuUsagePerc(i + 1, pstatDataIndex);
 							if(next_cpu >= 0) {
 								outStrStat << "|" << setprecision(1) << next_cpu;
 							}
@@ -2430,26 +2422,18 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				#endif
 			}
 			if(pcapQueueQ_outThread_dedup) {
-				double percFullQring = 0;
-				double dedup_cpu = pcapQueueQ_outThread_dedup->getCpuUsagePerc(0, pstatDataIndex, &percFullQring);
+				double dedup_cpu = pcapQueueQ_outThread_dedup->getCpuUsagePerc(0, pstatDataIndex);
 				if(task == pcapStatLog && dedup_cpu >= 0) {
 					outStrStat << "/dedup:" << setprecision(1) << dedup_cpu;
-					if(sverb.qring_full && percFullQring > sverb.qring_full) {
-						outStrStat << "#" << percFullQring;
-					}
 				}
 			}
 			if(pcapQueueQ_outThread_detach2) {
-				double percFullQring = 0;
-				double detach_cpu = pcapQueueQ_outThread_detach2->getCpuUsagePerc(0, pstatDataIndex, &percFullQring);
+				double detach_cpu = pcapQueueQ_outThread_detach2->getCpuUsagePerc(0, pstatDataIndex);
 				if(task == pcapStatLog && detach_cpu >= 0) {
 					outStrStat << "/detach2:" << setprecision(1) << detach_cpu;
-					if(sverb.qring_full && percFullQring > sverb.qring_full) {
-						outStrStat << "#" << percFullQring;
-					}
 					for(int i = 0; i < MAX_PRE_PROCESS_PACKET_NEXT_THREADS; i++) {
 						if(pcapQueueQ_outThread_detach2->existsNextThread(i)) {
-							double next_cpu = pcapQueueQ_outThread_detach2->getCpuUsagePerc(i + 1, pstatDataIndex, NULL);
+							double next_cpu = pcapQueueQ_outThread_detach2->getCpuUsagePerc(i + 1, pstatDataIndex);
 							if(next_cpu >= 0) {
 								outStrStat << "|" << setprecision(1) << next_cpu;
 							}
@@ -2479,13 +2463,9 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				}
 			}
 			if(opt_ipaccount) {
-				double percFullQring = 0;
 				double ipacc_cpu = this->getCpuUsagePerc(destroyBlocksThread, pstatDataIndex);
 				if(task == pcapStatLog && ipacc_cpu >= 0) {
 					outStrStat << "/ipacc:" << setprecision(1) << ipacc_cpu;
-					if(sverb.qring_full && percFullQring > sverb.qring_full) {
-						outStrStat << "#" << percFullQring;
-					}
 				}
 			}
 			double last_t2cpu_preprocess_packet_out_thread_check_next_level = -2;
@@ -2505,8 +2485,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 					unsigned countOutPerc = 0;
 					for(int j = 0; j < 1 + MAX_PRE_PROCESS_PACKET_NEXT_THREADS; j++) {
 						if(j == 0 || preProcessPacket[i]->existsNextThread(j - 1)) {
-							double percFullQring = 0;
-							double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(j, j == 0 ? &percFullQring : NULL, pstatDataIndex);
+							double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(j, pstatDataIndex);
 							if(t2cpu_preprocess_packet_out_thread >= 0) {
 								if(t2cpu_preprocess_packet_out_thread > t2cpu_preprocess_packet_thread_max) {
 									t2cpu_preprocess_packet_thread_max = t2cpu_preprocess_packet_out_thread;
@@ -2524,15 +2503,6 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 									}
 									outStrStat << setprecision(1) << t2cpu_preprocess_packet_out_thread;
 									++countOutPerc;
-									if(sverb.qring_stat) {
-										double qringFillingPerc = preProcessPacket[i]->getQringFillingPerc();
-										if(qringFillingPerc > 0) {
-											outStrStat << "r" << qringFillingPerc;
-										}
-									}
-									if(sverb.qring_full && percFullQring > sverb.qring_full) {
-										outStrStat << "#" << percFullQring;
-									}
 									if(i == 0 && sverb.alloc_stat) {
 										if(preProcessPacket[i]->getAllocCounter(1) || preProcessPacket[i]->getAllocStackCounter(1)) {
 											unsigned long stack = preProcessPacket[i]->getAllocStackCounter(0) - preProcessPacket[i]->getAllocStackCounter(1);
@@ -2638,8 +2608,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				#if CALLX_MOD_OLDVER
 				if(preProcessPacketCallX && calltable->useCallX()) {
 					for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
-						double percFullQring = 0;
-						double t2cpu_preprocess_packet_out_thread = preProcessPacketCallX[i]->getCpuUsagePerc(0, &percFullQring, pstatDataIndex);
+						double t2cpu_preprocess_packet_out_thread = preProcessPacketCallX[i]->getCpuUsagePerc(0, pstatDataIndex);
 						if(t2cpu_preprocess_packet_out_thread >= 0) {
 							if(task == pcapStatLog) {
 								outStrStat << "/" 
@@ -2650,9 +2619,6 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 									if(qringFillingPerc > 0) {
 										outStrStat << "r" << qringFillingPerc;
 									}
-								}
-								if(sverb.qring_full && percFullQring > sverb.qring_full) {
-									outStrStat << "#" << percFullQring;
 								}
 							}
 							++count_t2cpu;
@@ -2675,8 +2641,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				}
 				if(preProcessPacketCallFindX && calltable->useCallFindX()) {
 					for(int i = 0; i < preProcessPacketCallX_count; i++) {
-						double percFullQring;
-						double t2cpu_preprocess_packet_out_thread = preProcessPacketCallFindX[i]->getCpuUsagePerc(0, &percFullQring, pstatDataIndex);
+						double t2cpu_preprocess_packet_out_thread = preProcessPacketCallFindX[i]->getCpuUsagePerc(0, pstatDataIndex);
 						if(t2cpu_preprocess_packet_out_thread >= 0) {
 							if(task == pcapStatLog) {
 								outStrStat << "/" 
@@ -2687,9 +2652,6 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 									if(qringFillingPerc > 0) {
 										outStrStat << "r" << qringFillingPerc;
 									}
-								}
-								if(sverb.qring_full && percFullQring > sverb.qring_full) {
-									outStrStat << "#" << percFullQring;
 								}
 							}
 							++count_t2cpu;
@@ -2714,8 +2676,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				unsigned countOutPerc = 0;
 				for(int i = 0; i < 1 + MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS; i++) {
 					if(i == 0 || processRtpPacketHash->existsNextThread(i - 1)) {
-						double percFullQring;
-						double t2cpu_process_rtp_packet_out_thread = processRtpPacketHash->getCpuUsagePerc(i, i == 0 ? &percFullQring : NULL, pstatDataIndex);
+						double t2cpu_process_rtp_packet_out_thread = processRtpPacketHash->getCpuUsagePerc(i, pstatDataIndex);
 						if(t2cpu_process_rtp_packet_out_thread >= 0) {
 							if(task == pcapStatLog) {
 								if(!countOutPerc) {
@@ -2725,15 +2686,6 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 								}
 								outStrStat << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
 								++countOutPerc;
-								if(i == 0 && sverb.qring_stat) {
-									double qringFillingPerc = processRtpPacketHash->getQringFillingPerc();
-									if(qringFillingPerc > 0) {
-										outStrStat << "r" << qringFillingPerc;
-									}
-								}
-								if(i == 0 && sverb.qring_full && percFullQring > sverb.qring_full) {
-									outStrStat << "#" << percFullQring;
-								}
 							}
 							++count_t2cpu;
 							sum_t2cpu += t2cpu_process_rtp_packet_out_thread;
@@ -2764,8 +2716,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				countOutPerc = 0;
 				for(int i = 0; i < MAX_PROCESS_RTP_PACKET_THREADS; i++) {
 					if(processRtpPacketDistribute[i]) {
-						double percFullQring;
-						double t2cpu_process_rtp_packet_out_thread = processRtpPacketDistribute[i]->getCpuUsagePerc(0, &percFullQring, pstatDataIndex);
+						double t2cpu_process_rtp_packet_out_thread = processRtpPacketDistribute[i]->getCpuUsagePerc(0, pstatDataIndex);
 						if(t2cpu_process_rtp_packet_out_thread >= 0) {
 							if(task == pcapStatLog) {
 								if(!countOutPerc) {
@@ -2775,15 +2726,6 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 								}
 								outStrStat << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
 								++countOutPerc;
-								if(sverb.qring_stat) {
-									double qringFillingPerc = processRtpPacketDistribute[i]->getQringFillingPerc();
-									if(qringFillingPerc > 0) {
-										outStrStat << "r" << qringFillingPerc;
-									}
-								}
-								if(sverb.qring_full && percFullQring > sverb.qring_full) {
-									outStrStat << "#" << percFullQring;
-								}
 							}
 						}
 						++countRtpRdThreads;
@@ -4885,7 +4827,7 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(sInterface 
 		sumPacketsSize[i] = 0;
 	}
 	prepareHeaderPacketPool = false; // experimental option
-	#if TRAFFIC_MONITOR
+	#if SNIFFER_THREADS_EXT
 	thread_data = NULL;
 	#endif
 	vm_pthread_create(("pb - read thread " + getInterfaceAlias() + " " + getTypeThreadName()).c_str(),
@@ -4972,8 +4914,8 @@ PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 }
 
 inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packet) {
-	#if TRAFFIC_MONITOR
-	if(thread_data) {
+	#if SNIFFER_THREADS_EXT
+	if(sverb.sniffer_threads_ext && thread_data) {
 		thread_data->inc_packets_out(HPH(*header_packet)->caplen);
 	}
 	#endif
@@ -5251,7 +5193,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 		pthread_set_priority(opt_sched_pol_interface);
 	}
 	this->threadId = get_unix_tid();
-	#if TRAFFIC_MONITOR
+	#if SNIFFER_THREADS_EXT
 	this->thread_data = cThreadMonitor::getSelfThreadData();
 	#endif
 	if(VERBOSE) {
@@ -5480,8 +5422,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 						continue;
 					}
 				} else {
-					#if TRAFFIC_MONITOR
-					if(thread_data) {
+					#if SNIFFER_THREADS_EXT
+					if(sverb.sniffer_threads_ext && thread_data) {
 						thread_data->inc_packets_in(pcap_next_ex_header->caplen);
 					}
 					#endif
@@ -5613,8 +5555,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 					}
 					continue;
 				}
-				#if TRAFFIC_MONITOR
-				if(thread_data) {
+				#if SNIFFER_THREADS_EXT
+				if(sverb.sniffer_threads_ext && thread_data) {
 					thread_data->inc_packets_in(pcap_next_ex_header->caplen);
 				}
 				#endif
@@ -5750,8 +5692,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 			break;
 		case defrag: {
 			POP_FROM_PREV_THREAD;
-			#if TRAFFIC_MONITOR
-			if(thread_data) {
+			#if SNIFFER_THREADS_EXT
+			if(sverb.sniffer_threads_ext && thread_data) {
 				thread_data->inc_packets_in(HPH(hpii.header_packet)->caplen);
 			}
 			#endif
@@ -5776,8 +5718,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 		case md1:
 		case md2: {
 			POP_FROM_PREV_THREAD;
-			#if TRAFFIC_MONITOR
-			if(thread_data) {
+			#if SNIFFER_THREADS_EXT
+			if(sverb.sniffer_threads_ext && thread_data) {
 				thread_data->inc_packets_in(HPH(hpii.header_packet)->caplen);
 			}
 			#endif
@@ -5805,8 +5747,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 			break;
 		case dedup: {
 			POP_FROM_PREV_THREAD;
-			#if TRAFFIC_MONITOR
-			if(thread_data) {
+			#if SNIFFER_THREADS_EXT
+			if(sverb.sniffer_threads_ext && thread_data) {
 				thread_data->inc_packets_in(HPH(hpii.header_packet)->caplen);
 			}
 			#endif
@@ -6254,8 +6196,8 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 					while(!(is_terminating() || this->threadDoTerminate)) {
 						copy_block_no_active_index = (dispatch_data.copy_block_active_index + 1) % 2;
 						if(dispatch_data.copy_block_full[copy_block_no_active_index]) {
-							#if TRAFFIC_MONITOR
-							if(thread_data) {
+							#if SNIFFER_THREADS_EXT
+							if(sverb.sniffer_threads_ext && thread_data) {
 								thread_data->inc_packets_in(dispatch_data.copy_block[copy_block_no_active_index]->size_packets,
 											    dispatch_data.copy_block[copy_block_no_active_index]->count);
 							}
@@ -6289,8 +6231,8 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 							x[2] = getTimeUS();
 							#endif
 							block->copy(dispatch_data.copy_block[copy_block_no_active_index]);
-							#if TRAFFIC_MONITOR
-							if(thread_data) {
+							#if SNIFFER_THREADS_EXT
+							if(sverb.sniffer_threads_ext && thread_data) {
 								thread_data->inc_packets_out(block->size_packets, block->count);
 							}
 							#endif
@@ -6427,8 +6369,8 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 					}
 					#endif
 					this->push_block(block);
-					#if TRAFFIC_MONITOR
-					if(thread_data) {
+					#if SNIFFER_THREADS_EXT
+					if(sverb.sniffer_threads_ext && thread_data) {
 						thread_data->inc_packets_out(block->size_packets, block->count);
 					}
 					#endif
@@ -6491,8 +6433,8 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 				}
 				continue;
 			}
-			#if TRAFFIC_MONITOR
-			if(thread_data) {
+			#if SNIFFER_THREADS_EXT
+			if(sverb.sniffer_threads_ext && thread_data) {
 				thread_data->inc_packets_in(pcap_next_ex_header->caplen);
 			}
 			#endif
@@ -6555,8 +6497,8 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 				}
 				continue;
 			}
-			#if TRAFFIC_MONITOR
-			if(thread_data) {
+			#if SNIFFER_THREADS_EXT
+			if(sverb.sniffer_threads_ext && thread_data) {
 				thread_data->inc_packets_in(block->size_packets, block->count);
 			}
 			#endif
@@ -6565,8 +6507,8 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 			this->pop_usleep_sum_last_push = 0;
 			this->processBlock(block);
 			this->push_block(block);
-			#if TRAFFIC_MONITOR
-			if(thread_data) {
+			#if SNIFFER_THREADS_EXT
+			if(sverb.sniffer_threads_ext && thread_data) {
 				thread_data->inc_packets_out(block->size_packets, block->count);
 			}
 			#endif
@@ -6942,7 +6884,7 @@ bool PcapQueue_readFromInterface::initThread(void *arg, unsigned int arg2, strin
 
 void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) {
 	this->mainThreadId = get_unix_tid();
-	#if TRAFFIC_MONITOR
+	#if SNIFFER_THREADS_EXT
 	this->thread_data_main = cThreadMonitor::getSelfThreadData();
 	#endif
 	if(VERBOSE || DEBUG_VERBOSE) {
@@ -7064,8 +7006,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			if(minThreadTimeIndex >= 0) {
 				hpi = this->readThreads[minThreadTimeIndex]->POP();
 				if(hpi.header_packet) {
-					#if TRAFFIC_MONITOR
-					if(thread_data_main) {
+					#if SNIFFER_THREADS_EXT
+					if(sverb.sniffer_threads_ext && thread_data_main) {
 						thread_data_main->inc_packets_in(hpi.header_packet->header.caplen);
 					}
 					#endif
@@ -7156,8 +7098,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			} else if(res == 0) {
 				USLEEP(100);
 			} else if(res > 0) {
-				#if TRAFFIC_MONITOR
-				if(thread_data_main) {
+				#if SNIFFER_THREADS_EXT
+				if(sverb.sniffer_threads_ext && thread_data_main) {
 					thread_data_main->inc_packets_in(pcap_next_ex_header->caplen);
 				}
 				#endif
@@ -7386,7 +7328,7 @@ void PcapQueue_readFromInterface::threadFunction_blocks() {
 
 void *PcapQueue_readFromInterface::writeThreadFunction(void *arg, unsigned int arg2) {
 	this->writeThreadId = get_unix_tid();
-	#if TRAFFIC_MONITOR
+	#if SNIFFER_THREADS_EXT
 	this->thread_data_write = cThreadMonitor::getSelfThreadData();
 	#endif
 	if(VERBOSE || DEBUG_VERBOSE) {
@@ -7417,8 +7359,8 @@ void *PcapQueue_readFromInterface::writeThreadFunction(void *arg, unsigned int a
 		while(!TERMINATING) {
 			pcap_block_store *blockStore;
 			if(this->block_qring->pop(&blockStore, false)) {
-				#if TRAFFIC_MONITOR
-				if(thread_data_write) {
+				#if SNIFFER_THREADS_EXT
+				if(sverb.sniffer_threads_ext && thread_data_write) {
 					thread_data_write->inc_packets_in(blockStore->size_packets, blockStore->count);
 				}
 				#endif
@@ -7433,8 +7375,8 @@ void *PcapQueue_readFromInterface::writeThreadFunction(void *arg, unsigned int a
 				}
 				this->check_bypass_buffer();
 				blockStoreBypassQueue->push(blockStore);
-				#if TRAFFIC_MONITOR
-				if(thread_data_write) {
+				#if SNIFFER_THREADS_EXT
+				if(sverb.sniffer_threads_ext && thread_data_write) {
 					thread_data_write->inc_packets_out(blockStore->size_packets, blockStore->count);
 				}
 				#endif
@@ -7628,12 +7570,6 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 			outStrStat << "t0i_" << this->readThreads[i]->getInterfaceAlias() << "_CPU[";
 			outStrStat << setprecision(1) << this->readThreads[i]->getTraffic(divide) << "Mb/s";
 			outStrStat << ";main:" << setprecision(1) << ti_cpu;
-			if(sverb.qring_stat) {
-				double qringFillingPerc = this->readThreads[i]->getQringFillingPerc();
-				if(qringFillingPerc > 0) {
-					outStrStat << "r" << qringFillingPerc;
-				}
-			}
 			if(sverb.alloc_stat) {
 				if(this->readThreads[i]->allocCounter[1] || this->readThreads[i]->allocStackCounter[1]) {
 					unsigned long stack = this->readThreads[i]->allocStackCounter[0] - this->readThreads[i]->allocStackCounter[1];
@@ -7691,12 +7627,6 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
 					outStrStat << "%/detach:" << setprecision(1) << tid_cpu;
-					if(sverb.qring_stat) {
-						double qringFillingPerc = this->readThreads[i]->detachThread->getQringFillingPerc();
-						if(qringFillingPerc > 0) {
-							outStrStat << "r" << qringFillingPerc;
-						}
-					}
 					if(sverb.alloc_stat) {
 						if(this->readThreads[i]->detachThread->allocCounter[1] || this->readThreads[i]->detachThread->allocStackCounter[1]) {
 							unsigned long stack = this->readThreads[i]->detachThread->allocStackCounter[0] - this->readThreads[i]->detachThread->allocStackCounter[1];
@@ -7719,12 +7649,6 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
 					outStrStat << "%/pcap_process:" << setprecision(1) << tid_cpu;
-					if(sverb.qring_stat) {
-						double qringFillingPerc = this->readThreads[i]->pcapProcessThread->getQringFillingPerc();
-						if(qringFillingPerc > 0) {
-							outStrStat << "r" << qringFillingPerc;
-						}
-					}
 				}
 			}
 			if(this->readThreads[i]->defragThread) {
@@ -7733,12 +7657,6 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
 					outStrStat << "%/defrag:" << setprecision(1) << tid_cpu;
-					if(sverb.qring_stat) {
-						double qringFillingPerc = this->readThreads[i]->defragThread->getQringFillingPerc();
-						if(qringFillingPerc > 0) {
-							outStrStat << "r" << qringFillingPerc;
-						}
-					}
 				}
 			}
 			if(this->readThreads[i]->md1Thread) {
@@ -7747,12 +7665,6 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
 					outStrStat << "%/md1:" << setprecision(1) << tid_cpu;
-					if(sverb.qring_stat) {
-						double qringFillingPerc = this->readThreads[i]->md1Thread->getQringFillingPerc();
-						if(qringFillingPerc > 0) {
-							outStrStat << "r" << qringFillingPerc;
-						}
-					}
 				}
 			}
 			if(this->readThreads[i]->md2Thread) {
@@ -7761,12 +7673,6 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
 					outStrStat << "%/md2:" << setprecision(1) << tid_cpu;
-					if(sverb.qring_stat) {
-						double qringFillingPerc = this->readThreads[i]->md2Thread->getQringFillingPerc();
-						if(qringFillingPerc > 0) {
-							outStrStat << "r" << qringFillingPerc;
-						}
-					}
 				}
 			}
 			if(this->readThreads[i]->dedupThread) {
@@ -7775,12 +7681,6 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
 					outStrStat << "%/dedup:" << setprecision(1) << tid_cpu;
-					if(sverb.qring_stat) {
-						double qringFillingPerc = this->readThreads[i]->dedupThread->getQringFillingPerc();
-						if(qringFillingPerc > 0) {
-							outStrStat << "r" << qringFillingPerc;
-						}
-					}
 				}
 			}
 			if(this->readThreads[i]->serviceThread) {
@@ -7789,12 +7689,6 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
 					outStrStat << "%/service:" << setprecision(1) << tid_cpu;
-					if(sverb.qring_stat) {
-						double qringFillingPerc = this->readThreads[i]->serviceThread->getQringFillingPerc();
-						if(qringFillingPerc> 0) {
-							outStrStat << "r" << qringFillingPerc;
-						}
-					}
 				}
 			}
 			outStrStat << "%] ";
@@ -7862,8 +7756,8 @@ void PcapQueue_readFromInterface::check_bypass_buffer() {
 }
 
 void PcapQueue_readFromInterface::push_blockstore(pcap_block_store **block_store) {
-	#if TRAFFIC_MONITOR
-	if(thread_data_main) {
+	#if SNIFFER_THREADS_EXT
+	if(sverb.sniffer_threads_ext && thread_data_main) {
 		thread_data_main->inc_packets_out((*block_store)->size_packets, (*block_store)->count);
 	}
 	#endif
@@ -8210,7 +8104,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 		}
 	} else {
 		this->mainThreadId = tid;
-		#if TRAFFIC_MONITOR
+		#if SNIFFER_THREADS_EXT
 		this->thread_data_main = cThreadMonitor::getSelfThreadData();
 		#endif
 	}
@@ -8538,16 +8432,16 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 				#if LOG_PACKETS_PER_SEC or LOG_PACKETS_SUM
 				size_t blockCountPackets = blockStore->count;
 				#endif
-				#if TRAFFIC_MONITOR
+				#if SNIFFER_THREADS_EXT
 				size_t blockCountPackets = blockStore->count;
-				if(thread_data_main) {
+				if(sverb.sniffer_threads_ext && thread_data_main) {
 					thread_data_main->inc_packets_in(blockSizePackets, blockCountPackets);
 				}
 				#endif
 				if(blockStore->compress()) {
 					if(this->pcapStoreQueue.push(blockStore, false)) {
-						#if TRAFFIC_MONITOR
-						if(thread_data_main) {
+						#if SNIFFER_THREADS_EXT
+						if(sverb.sniffer_threads_ext && thread_data_main) {
 							thread_data_main->inc_packets_out(blockSizePackets, blockCountPackets);
 						}
 						#endif
@@ -8597,7 +8491,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 		pthread_set_priority(opt_sched_pol_interface);
 	}
 	this->writeThreadId = get_unix_tid();
-	#if TRAFFIC_MONITOR
+	#if SNIFFER_THREADS_EXT
 	this->thread_data_write = cThreadMonitor::getSelfThreadData();
 	#endif
 	if(VERBOSE || DEBUG_VERBOSE) {
@@ -8643,8 +8537,8 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 		}
 		this->pcapStoreQueue.pop(&blockStore);
 		if(blockStore) {
-			#if TRAFFIC_MONITOR
-			if(thread_data_write) {
+			#if SNIFFER_THREADS_EXT
+			if(sverb.sniffer_threads_ext && thread_data_write) {
 				thread_data_write->inc_packets_in(blockStore->size_packets, blockStore->count);
 			}
 			#endif
@@ -8759,8 +8653,8 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 								hp_out.block_store_locked = false;
 								hp_out.header_ip_last_offset = 0xFFFF;
 								this->processPacket(&hp_out);
-								#if TRAFFIC_MONITOR
-								if(thread_data_write) {
+								#if SNIFFER_THREADS_EXT
+								if(sverb.sniffer_threads_ext && thread_data_write) {
 									thread_data_write->inc_packets_out(hp_out.header->get_caplen());
 								}
 								#endif
@@ -8849,8 +8743,8 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						hp_out.block_store_locked = false;
 						hp_out.header_ip_last_offset = 0xFFFF;
 						this->processPacket(&hp_out);
-						#if TRAFFIC_MONITOR
-						if(thread_data_write) {
+						#if SNIFFER_THREADS_EXT
+						if(sverb.sniffer_threads_ext && thread_data_write) {
 							thread_data_write->inc_packets_out(hp_out.header->get_caplen());
 						}
 						#endif
@@ -8938,8 +8832,8 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						hp_out.block_store_locked = false;
 						hp_out.header_ip_last_offset = 0xFFFF;
 						this->processPacket(&hp_out);
-						#if TRAFFIC_MONITOR
-						if(thread_data_write) {
+						#if SNIFFER_THREADS_EXT
+						if(sverb.sniffer_threads_ext && thread_data_write) {
 							thread_data_write->inc_packets_out(hp_out.header->get_caplen());
 						}
 						#endif
@@ -8977,8 +8871,8 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						hp_out.block_store_locked = false;
 						hp_out.header_ip_last_offset = 0xFFFF;
 						this->processPacket(&hp_out);
-						#if TRAFFIC_MONITOR
-						if(thread_data_write) {
+						#if SNIFFER_THREADS_EXT
+						if(sverb.sniffer_threads_ext && thread_data_write) {
 							thread_data_write->inc_packets_out(hp_out.header->get_caplen());
 						}
 						#endif
@@ -10187,8 +10081,6 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 	this->qring_push_index = 0;
 	this->qring_push_index_count = 0;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
-	qringPushCounter = 0;
-	qringPushCounter_full = 0;
 	this->outThreadId = 0;
 	this->defrag_counter = 0;
 	this->ipfrag_lastcleanup = 0;
@@ -10242,7 +10134,7 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 				   #endif
 				    0;
 	this->next_threads_count_mod = 0;
-	#if TRAFFIC_MONITOR
+	#if SNIFFER_THREADS_EXT
 	thread_data = NULL;
 	#endif
 	for(int i = 0; i < this->next_threads_count; i++) {
@@ -10347,9 +10239,8 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 		hp->block_store_locked = true;
 	}
 	if(!qring_push_index) {
-		++qringPushCounter;
-		#if BUFFER_PUSH_MONITOR
-		if(thread_data) {
+		#if SNIFFER_THREADS_EXT
+		if(sverb.sniffer_threads_ext && thread_data) {
 			++thread_data->buffer_push_cnt_all;
 		}
 		#endif
@@ -10360,26 +10251,25 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 				return;
 			}
 			if(usleepCounter == 0) {
-				++qringPushCounter_full;
-				#if BUFFER_PUSH_MONITOR
-				if(thread_data) {
+				#if SNIFFER_THREADS_EXT
+				if(sverb.sniffer_threads_ext && thread_data) {
 					++thread_data->buffer_push_cnt_full;
 				}
 				#endif
 			}
-			#if BUFFER_PUSH_MONITOR
-			if(thread_data) {
+			#if SNIFFER_THREADS_EXT
+			if(sverb.sniffer_threads_ext && thread_data) {
 				++thread_data->buffer_push_cnt_full_loop;
 			}
 			#endif
 			extern unsigned int opt_sip_batch_usleep;
 			if(opt_sip_batch_usleep) {
-				#if BUFFER_PUSH_MONITOR
+				#if SNIFFER_THREADS_EXT
 				unsigned us =
 				#endif
 				USLEEP_C(opt_sip_batch_usleep, usleepCounter++);
-				#if BUFFER_PUSH_MONITOR
-				if(thread_data) {
+				#if SNIFFER_THREADS_EXT
+				if(sverb.sniffer_threads_ext && thread_data) {
 					thread_data->buffer_push_sum_usleep_full_loop += us;
 				}
 				#endif
@@ -10447,7 +10337,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 	this->initThreadOk = true;
 	extern unsigned int opt_preprocess_packets_qring_usleep;
 	this->outThreadId = get_unix_tid();
-	#if TRAFFIC_MONITOR
+	#if SNIFFER_THREADS_EXT
 	this->thread_data = cThreadMonitor::getSelfThreadData();
 	#endif
 	syslog(LOG_NOTICE, "start thread t2_%s/%i", this->getNameOutputThread().c_str(), this->outThreadId);
@@ -10469,8 +10359,8 @@ void *PcapQueue_outputThread::outThreadFunction() {
 		}
 		if(this->qring[this->readit]->used == 1) {
 			batch = this->qring[this->readit];
-			#if TRAFFIC_MONITOR
-			if(thread_data) {
+			#if SNIFFER_THREADS_EXT
+			if(sverb.sniffer_threads_ext && thread_data) {
 				for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
 					thread_data->inc_packets_in(batch->batch[batch_index].header->get_caplen());
 				}
@@ -10592,7 +10482,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 								destroy = true;
 							} else {
 								destroy = !this->pcapQueue->processPacket_push(&batch->batch[completed]);
-								#if TRAFFIC_MONITOR
+								#if SNIFFER_THREADS_EXT
 								if(!destroy) {
 									tm_inc_packets_out(&batch->batch[completed]);
 								}
@@ -10638,7 +10528,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 						destroy = true;
 					} else {
 						destroy = !this->pcapQueue->processPacket_push(&batch->batch[batch_index]);
-						#if TRAFFIC_MONITOR
+						#if SNIFFER_THREADS_EXT
 						if(!destroy) {
 							tm_inc_packets_out(&batch->batch[batch_index]);
 						}
@@ -10975,26 +10865,26 @@ void PcapQueue_outputThread::processDetach_findHeaderIp(sHeaderPacketPQout *hp) 
 void PcapQueue_outputThread::processDetach_push(sHeaderPacketPQout *hp) {
 	if(pcapQueueQ_outThread_defrag) {
 		pcapQueueQ_outThread_defrag->push(hp);
-		#if TRAFFIC_MONITOR
+		#if SNIFFER_THREADS_EXT
 		tm_inc_packets_out(hp);
 		#endif
 		return;
 	} else if(pcapQueueQ_outThread_dedup) {
 		pcapQueueQ_outThread_dedup->push(hp);
-		#if TRAFFIC_MONITOR
+		#if SNIFFER_THREADS_EXT
 		tm_inc_packets_out(hp);
 		#endif
 		return;
 	} else if(pcapQueueQ_outThread_detach2) {
 		pcapQueueQ_outThread_detach2->push(hp);
-		#if TRAFFIC_MONITOR
+		#if SNIFFER_THREADS_EXT
 		tm_inc_packets_out(hp);
 		#endif
 		return;
 	}
 	if(this->pcapQueue->processPacket_analysis(hp) &&
 	   this->pcapQueue->processPacket_push(hp)) {
-		#if TRAFFIC_MONITOR
+		#if SNIFFER_THREADS_EXT
 		tm_inc_packets_out(hp);
 		#endif
 		return;
@@ -11140,7 +11030,7 @@ void PcapQueue_outputThread::processDefrag_push(sHeaderPacketPQout *hp) {
 	#endif
 	if(pcapQueueQ_outThread_dedup) {
 		pcapQueueQ_outThread_dedup->push(hp);
-		#if TRAFFIC_MONITOR
+		#if SNIFFER_THREADS_EXT
 		tm_inc_packets_out(hp);
 		#endif
 		return;
@@ -11151,14 +11041,14 @@ void PcapQueue_outputThread::processDefrag_push(sHeaderPacketPQout *hp) {
 		}
 		#endif
 		pcapQueueQ_outThread_detach2->push(hp);
-		#if TRAFFIC_MONITOR
+		#if SNIFFER_THREADS_EXT
 		tm_inc_packets_out(hp);
 		#endif
 		return;
 	}
 	if(this->pcapQueue->processPacket_analysis(hp) &&
 	   this->pcapQueue->processPacket_push(hp)) {
-		#if TRAFFIC_MONITOR
+		#if SNIFFER_THREADS_EXT
 		tm_inc_packets_out(hp);
 		#endif
 		return;
@@ -11324,14 +11214,14 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 	}
 	if(pcapQueueQ_outThread_detach2) {
 		pcapQueueQ_outThread_detach2->push(hp);
-		#if TRAFFIC_MONITOR
+		#if SNIFFER_THREADS_EXT
 		tm_inc_packets_out(hp);
 		#endif
 		return;
 	}
 	if(this->pcapQueue->processPacket_analysis(hp) &&
 	   this->pcapQueue->processPacket_push(hp)) {
-		#if TRAFFIC_MONITOR
+		#if SNIFFER_THREADS_EXT
 		tm_inc_packets_out(hp);
 		#endif
 		return;
@@ -11347,7 +11237,7 @@ void PcapQueue_outputThread::processDetach2(sHeaderPacketPQout *hp) {
 	#endif
 	if(this->pcapQueue->processPacket_analysis(hp) &&
 	   this->pcapQueue->processPacket_push(hp)) {
-		#if TRAFFIC_MONITOR
+		#if SNIFFER_THREADS_EXT
 		tm_inc_packets_out(hp);
 		#endif
 		return;
@@ -11366,7 +11256,7 @@ void PcapQueue_outputThread::preparePstatData(int nextThreadIndexPlus, int pstat
 	}
 }
 
-double PcapQueue_outputThread::getCpuUsagePerc(int nextThreadIndexPlus, int pstatDataIndex, double *percFullQring, bool preparePstatData) {
+double PcapQueue_outputThread::getCpuUsagePerc(int nextThreadIndexPlus, int pstatDataIndex, bool preparePstatData) {
 	if(preparePstatData) {
 		this->preparePstatData(nextThreadIndexPlus, pstatDataIndex);
 	}
@@ -11378,29 +11268,11 @@ double PcapQueue_outputThread::getCpuUsagePerc(int nextThreadIndexPlus, int psta
 			pstat_calc_cpu_usage_pct(
 				&thread_pstat_data[pstatDataIndex][0], &thread_pstat_data[pstatDataIndex][1],
 				&ucpu_usage, &scpu_usage);
-			if(percFullQring) {
-				*percFullQring = qringPushCounter ? 100. * qringPushCounter_full / qringPushCounter : -1;
-				qringPushCounter = 0;
-				qringPushCounter_full = 0;
-			}
 			return(ucpu_usage + scpu_usage);
 		}
 	}
-	if(percFullQring) {
-		*percFullQring = -1;
-		qringPushCounter = 0;
-		qringPushCounter_full = 0;
-	}
 	return(-1);
 }
-
-#if TRAFFIC_MONITOR
-void PcapQueue_outputThread::tm_inc_packets_out(sHeaderPacketPQout *hp) {
-	if(thread_data) {
-		thread_data->inc_packets_out(hp->header->get_caplen());
-	}
-}
-#endif
 
 static volatile int _dpdk_init;
 static void *dpdk_main_thread_fce(void *arg) {

@@ -31,32 +31,6 @@ extern int opt_t2_boost_direct_rtp_delay_queue_ms;
 extern int opt_t2_boost_direct_rtp_max_queue_length_ms;
 
 
-#if EXPERIMENTAL_T2_QUEUE_FULL_STAT
-inline void add_t2_queue_full_stat() {
-	extern volatile int t2_queue_full_stat_sync;
-	extern map<unsigned, unsigned> t2_queue_full_stat_map;
-	__SYNC_LOCK(t2_queue_full_stat_sync);
-	++t2_queue_full_stat_map[get_unix_tid()];
-	__SYNC_UNLOCK(t2_queue_full_stat_sync);
-}
-
-inline void print_t2_queue_full_stat() {
-	extern volatile int t2_queue_full_stat_sync;
-	extern map<unsigned, unsigned> t2_queue_full_stat_map;
-	__SYNC_LOCK(t2_queue_full_stat_sync);
-	if(t2_queue_full_stat_map.size()) {
-		cout << "*** t2 queue full stat ***" << endl;
-		for(map<unsigned, unsigned>::iterator iter = t2_queue_full_stat_map.begin(); iter != t2_queue_full_stat_map.end(); iter++) {
-			cout << iter->first << " : " << iter->second <<  endl;
-		}
-		cout << "------" << endl;
-		t2_queue_full_stat_map.clear();
-	}
-	__SYNC_UNLOCK(t2_queue_full_stat_sync);
-}
-#endif
-
-
 class TcpReassemblySip {
 public:
 	enum e_checksip_strict_mode {
@@ -787,38 +761,33 @@ public:
 	}
 	inline pcap_queue_packet_data *push_packet_detach_x__get_pointer() {
 		if(!qring_push_index) {
-			++qringPushCounter;
-			#if BUFFER_PUSH_MONITOR
-			if(thread_data) {
+			#if SNIFFER_THREADS_EXT
+			if(sverb.sniffer_threads_ext && thread_data) {
 				++thread_data->buffer_push_cnt_all;
 			}
 			#endif
 			unsigned int usleepCounter = 0;
 			while(this->qring_detach_x[this->writeit]->used != 0) {
 				if(usleepCounter == 0) {
-					++qringPushCounter_full;
-					#if BUFFER_PUSH_MONITOR
-					if(thread_data) {
+					#if SNIFFER_THREADS_EXT
+					if(sverb.sniffer_threads_ext && thread_data) {
 						++thread_data->buffer_push_cnt_full;
 					}
 					#endif
-					#if EXPERIMENTAL_T2_QUEUE_FULL_STAT
-					add_t2_queue_full_stat();
-					#endif
 				}
-				#if BUFFER_PUSH_MONITOR
-				if(thread_data) {
+				#if SNIFFER_THREADS_EXT
+				if(sverb.sniffer_threads_ext && thread_data) {
 					++thread_data->buffer_push_cnt_full_loop;
 				}
 				#endif
 				extern unsigned int opt_preprocess_packets_qring_push_usleep;
 				if(opt_preprocess_packets_qring_push_usleep) {
-					#if BUFFER_PUSH_MONITOR
+					#if SNIFFER_THREADS_EXT
 					unsigned us =
 					#endif
 					USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
-					#if BUFFER_PUSH_MONITOR
-					if(thread_data) {
+					#if SNIFFER_THREADS_EXT
+					if(sverb.sniffer_threads_ext && thread_data) {
 						thread_data->buffer_push_sum_usleep_full_loop += us;
 					}
 					#endif
@@ -861,38 +830,33 @@ public:
 	}
 	inline packet_s *push_packet_detach__get_pointer() {
 		if(!qring_push_index) {
-			++qringPushCounter;
-			#if BUFFER_PUSH_MONITOR
-			if(thread_data) {
+			#if SNIFFER_THREADS_EXT
+			if(sverb.sniffer_threads_ext && thread_data) {
 				++thread_data->buffer_push_cnt_all;
 			}
 			#endif
 			unsigned int usleepCounter = 0;
 			while(this->qring_detach[this->writeit]->used != 0) {
 				if(usleepCounter == 0) {
-					++qringPushCounter_full;
-					#if BUFFER_PUSH_MONITOR
-					if(thread_data) {
+					#if SNIFFER_THREADS_EXT
+					if(sverb.sniffer_threads_ext && thread_data) {
 						++thread_data->buffer_push_cnt_full;
 					}
 					#endif
-					#if EXPERIMENTAL_T2_QUEUE_FULL_STAT
-					add_t2_queue_full_stat();
-					#endif
 				}
-				#if BUFFER_PUSH_MONITOR
-				if(thread_data) {
+				#if SNIFFER_THREADS_EXT
+				if(sverb.sniffer_threads_ext && thread_data) {
 					++thread_data->buffer_push_cnt_full_loop;
 				}
 				#endif
 				extern unsigned int opt_preprocess_packets_qring_push_usleep;
 				if(opt_preprocess_packets_qring_push_usleep) {
-					#if BUFFER_PUSH_MONITOR
+					#if SNIFFER_THREADS_EXT
 					unsigned us =
 					#endif
 					USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
-					#if BUFFER_PUSH_MONITOR
-					if(thread_data) {
+					#if SNIFFER_THREADS_EXT
+					if(sverb.sniffer_threads_ext && thread_data) {
 						thread_data->buffer_push_sum_usleep_full_loop += us;
 					}
 					#endif
@@ -961,38 +925,33 @@ public:
 	}
 	inline void push_packet_detach__active__prepare() {
 		if(!qring_push_index) {
-			++qringPushCounter;
-			#if BUFFER_PUSH_MONITOR
-			if(thread_data) {
+			#if SNIFFER_THREADS_EXT
+			if(sverb.sniffer_threads_ext && thread_data) {
 				++thread_data->buffer_push_cnt_all;
 			}
 			#endif
 			unsigned int usleepCounter = 0;
 			while(this->qring_detach[this->writeit]->used != 0) {
 				if(usleepCounter == 0) {
-					++qringPushCounter_full;
-					#if BUFFER_PUSH_MONITOR
-					if(thread_data) {
+					#if SNIFFER_THREADS_EXT
+					if(sverb.sniffer_threads_ext && thread_data) {
 						++thread_data->buffer_push_cnt_full;
 					}
 					#endif
-					#if EXPERIMENTAL_T2_QUEUE_FULL_STAT
-					add_t2_queue_full_stat();
-					#endif
 				}
-				#if BUFFER_PUSH_MONITOR
-				if(thread_data) {
+				#if SNIFFER_THREADS_EXT
+				if(sverb.sniffer_threads_ext && thread_data) {
 					++thread_data->buffer_push_cnt_full_loop;
 				}
 				#endif
 				extern unsigned int opt_preprocess_packets_qring_push_usleep;
 				if(opt_preprocess_packets_qring_push_usleep) {
-					#if BUFFER_PUSH_MONITOR
+					#if SNIFFER_THREADS_EXT
 					unsigned us =
 					#endif
 					USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
-					#if BUFFER_PUSH_MONITOR
-					if(thread_data) {
+					#if SNIFFER_THREADS_EXT
+					if(sverb.sniffer_threads_ext && thread_data) {
 						thread_data->buffer_push_sum_usleep_full_loop += us;
 					}
 					#endif
@@ -1052,9 +1011,8 @@ public:
 			_lock = true;
 		}
 		if(this->outThreadState == 2) {
-			++qringPushCounter;
-			#if BUFFER_PUSH_MONITOR
-			if(thread_data) {
+			#if SNIFFER_THREADS_EXT
+			if(sverb.sniffer_threads_ext && thread_data) {
 				++thread_data->buffer_push_cnt_all;
 			}
 			#endif
@@ -1069,29 +1027,25 @@ public:
 						return(false);
 					}
 					if(usleepCounter == 0) {
-						++qringPushCounter_full;
-						#if BUFFER_PUSH_MONITOR
-						if(thread_data) {
+						#if SNIFFER_THREADS_EXT
+						if(sverb.sniffer_threads_ext && thread_data) {
 							++thread_data->buffer_push_cnt_full;
 						}
 						#endif
-						#if EXPERIMENTAL_T2_QUEUE_FULL_STAT
-						add_t2_queue_full_stat();
-						#endif
 					}
-					#if BUFFER_PUSH_MONITOR
-					if(thread_data) {
+					#if SNIFFER_THREADS_EXT
+					if(sverb.sniffer_threads_ext && thread_data) {
 						++thread_data->buffer_push_cnt_full_loop;
 					}
 					#endif
 					extern unsigned int opt_preprocess_packets_qring_push_usleep;
 					if(opt_preprocess_packets_qring_push_usleep) {
-						#if BUFFER_PUSH_MONITOR
+						#if SNIFFER_THREADS_EXT
 						unsigned us =
 						#endif
 						USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
-						#if BUFFER_PUSH_MONITOR
-						if(thread_data) {
+						#if SNIFFER_THREADS_EXT
+						if(sverb.sniffer_threads_ext && thread_data) {
 							thread_data->buffer_push_sum_usleep_full_loop += us;
 						}
 						#endif
@@ -1354,7 +1308,7 @@ public:
 	}
 	void push_batch_nothread();
 	void preparePstatData(int nextThreadId, int pstatDataIndex);
-	double getCpuUsagePerc(int nextThreadId, double *percFullQring, int pstatDataIndex, bool preparePstatData = true);
+	double getCpuUsagePerc(int nextThreadId, int pstatDataIndex, bool preparePstatData = true);
 	void terminate();
 	void addNextThread();
 	void removeNextThread();
@@ -1363,13 +1317,6 @@ public:
 	static void autoStartCallX_PreProcessPacket();
 	#endif
 	static void autoStopLastLevelPreProcessPacket(bool force = false);
-	double getQringFillingPerc() {
-		unsigned int _readit = readit;
-		unsigned int _writeit = writeit;
-		return(_writeit >= _readit ?
-			(double)(_writeit - _readit) / qring_length * 100 :
-			(double)(qring_length - _readit + _writeit) / qring_length * 100);
-	}
 	inline packet_s_process *packetS_sip_create() {
 		packet_s_process *packetS = new FILE_LINE(28004) packet_s_process;
 		return(packetS);
@@ -1981,8 +1928,6 @@ private:
 	volatile int next_threads_count_mod;
 	s_next_thread next_threads[MAX_PRE_PROCESS_PACKET_NEXT_THREADS];
 	volatile int next_threads_completed;
-	u_int64_t qringPushCounter;
-	u_int64_t qringPushCounter_full;
 	volatile int8_t *items_flag;
 	volatile int8_t *items_thread_index;
 	volatile int items_processed;
@@ -2008,7 +1953,7 @@ private:
 	batch_packet_s_time* direct_rtp_queue_pop_item;
 	u_int64_t direct_rtp_queue_last_time;
 	volatile int direct_rtp_queue_lock;
-	#if TRAFFIC_MONITOR
+	#if SNIFFER_THREADS_EXT
 	cThreadMonitor::sThread *thread_data;
 	#endif
 friend inline void *_PreProcessPacket_outThreadFunction(void *arg);
@@ -2239,9 +2184,8 @@ public:
 		extern bool use_push_batch_limit_ms;
 		u_int64_t time_us = use_push_batch_limit_ms ? packetS->getTimeUS() : 0;
 		if(!qring_push_index) {
-			++qringPushCounter;
-			#if BUFFER_PUSH_MONITOR
-			if(thread_data) {
+			#if SNIFFER_THREADS_EXT
+			if(sverb.sniffer_threads_ext && thread_data) {
 				++thread_data->buffer_push_cnt_all;
 			}
 			#endif
@@ -2252,29 +2196,25 @@ public:
 					return;
 				}
 				if(usleepCounter == 0) {
-					++qringPushCounter_full;
-					#if BUFFER_PUSH_MONITOR
-					if(thread_data) {
+					#if SNIFFER_THREADS_EXT
+					if(sverb.sniffer_threads_ext && thread_data) {
 						++thread_data->buffer_push_cnt_full;
 					}
 					#endif
-					#if EXPERIMENTAL_T2_QUEUE_FULL_STAT
-					add_t2_queue_full_stat();
-					#endif
 				}
-				#if BUFFER_PUSH_MONITOR
-				if(thread_data) {
+				#if SNIFFER_THREADS_EXT
+				if(sverb.sniffer_threads_ext && thread_data) {
 					++thread_data->buffer_push_cnt_full_loop;
 				}
 				#endif
 				extern unsigned int opt_process_rtp_packets_qring_push_usleep;
 				if(opt_process_rtp_packets_qring_push_usleep) {
-					#if BUFFER_PUSH_MONITOR
+					#if SNIFFER_THREADS_EXT
 					unsigned us =
 					#endif
 					USLEEP_C(opt_process_rtp_packets_qring_push_usleep, usleepCounter++);
-					#if BUFFER_PUSH_MONITOR
-					if(thread_data) {
+					#if SNIFFER_THREADS_EXT
+					if(sverb.sniffer_threads_ext && thread_data) {
 						thread_data->buffer_push_sum_usleep_full_loop += us;
 					}
 					#endif
@@ -2344,7 +2284,7 @@ public:
 		}
 	}
 	void preparePstatData(int nextThreadId, int pstatDataIndex);
-	double getCpuUsagePerc(int nextThreadId, double *percFullQring, int pstatDataIndex, bool preparePstatData = true);
+	double getCpuUsagePerc(int nextThreadId, int pstatDataIndex, bool preparePstatData = true);
 	void terminate();
 	static void autoStartProcessRtpPacket();
 	void addRtpRhThread();
@@ -2355,13 +2295,6 @@ public:
 	}
 	static void unlockAddRtpRdThread() {
 		__SYNC_UNLOCK(_sync_add_rtp_rd_threads);
-	}
-	double getQringFillingPerc() {
-		unsigned int _readit = readit;
-		unsigned int _writeit = writeit;
-		return(_writeit >= _readit ?
-			(double)(_writeit - _readit) / qring_length * 100 :
-			(double)(qring_length - _readit + _writeit) / qring_length * 100);
 	}
 	bool isNextThreadsGt2Processing(int process_rtp_packets_hash_next_threads) {
 		for(int i = 2; i < process_rtp_packets_hash_next_threads; i++) {
@@ -2428,8 +2361,6 @@ private:
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
 	pstat_data threadPstatData[2][2];
-	u_int64_t qringPushCounter;
-	u_int64_t qringPushCounter_full;
 	bool term_processRtp;
 	s_hash_next_thread hash_next_threads[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
 	volatile int8_t *hash_find_flag;
@@ -2440,7 +2371,7 @@ private:
 	#endif
 	volatile u_int32_t calls;
 	static volatile int _sync_add_rtp_rd_threads;
-	#if TRAFFIC_MONITOR
+	#if SNIFFER_THREADS_EXT
 	cThreadMonitor::sThread *thread_data;
 	#endif
 friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
