@@ -11,7 +11,7 @@
 #define __SYNC_LOCK_WHILE(vint) while(__sync_lock_test_and_set(&vint, 1))
 #define __SYNC_LOCK_QUICK(vint) while(__sync_lock_test_and_set(&vint, 1));
 #define __SYNC_LOCK(vint) while(__sync_lock_test_and_set(&vint, 1)) { __ASM_PAUSE; };
-#define __SYNC_LOCK_USLEEP(vint, us_sleep) { if(us_sleep) { while(__sync_lock_test_and_set(&vint, 1)) { USLEEP(us_sleep); } } else { __SYNC_LOCK(vint); } }
+#define __SYNC_LOCK_USLEEP(vint, us_sleep) { if(us_sleep) { unsigned c = 0; while(__sync_lock_test_and_set(&vint, 1)) { USLEEP_C(us_sleep, c++); } } else { __SYNC_LOCK(vint); } }
 #define __SYNC_UNLOCK(vint) __sync_lock_release(&vint);
 
 #define __SYNC_NULL(vint) __sync_and_and_fetch(&vint, 0);

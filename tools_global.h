@@ -214,36 +214,56 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 	if(opt_usleep_minimal && useconds < opt_usleep_minimal) {
 		useconds = opt_usleep_minimal;
 	}
- 	unsigned int rslt_useconds = useconds;
 	extern bool opt_usleep_progressive;
+	extern bool opt_usleep_mod_enable;
+	#if defined(__x86_64__) || defined(__i386__)
+	if(opt_usleep_mod_enable && useconds <= 100 && counter != (unsigned int)-1) {
+		extern unsigned opt_usleep_mod_pause_spin_limit;
+		extern unsigned opt_usleep_mod_sched_yield_spin_limit;
+		if(counter < opt_usleep_mod_pause_spin_limit) {
+			__asm__ volatile ("pause");
+			return(0);
+		} else if(counter < opt_usleep_mod_pause_spin_limit + opt_usleep_mod_sched_yield_spin_limit) {
+			sched_yield();
+			return(0);
+		} else {
+			counter -= opt_usleep_mod_pause_spin_limit + opt_usleep_mod_sched_yield_spin_limit;
+		}
+	}
+	#endif
+ 	unsigned int rslt_useconds = useconds;
 	extern double last_traffic;
 	if((opt_usleep_progressive || last_traffic < 100) && useconds < 5000 && counter != (unsigned int)-1) {
 		unsigned int useconds_min = 0;
 		double useconds_multiple_inc = 0.01;
-		if(last_traffic >= 0) {
-			if(last_traffic < 0.5) {
-				if(useconds < 40) {
-					useconds = 40;
+		if(opt_usleep_mod_enable) {
+			useconds_multiple_inc = 1;
+		} else {
+			if(last_traffic >= 0) {
+				if(last_traffic < 0.5) {
+					if(useconds < 40) {
+						useconds = 40;
+					}
+					useconds_min = 500;
+					useconds_multiple_inc = 1;
+				} else if(last_traffic < 1) {
+					if(useconds < 20) {
+						useconds = 20;
+					}
+					useconds_min = 200;
+					useconds_multiple_inc = 0.5;
+				} else if(last_traffic < 2) {
+					useconds_min = 100;
+					useconds_multiple_inc = 0.3;
+				} else if(last_traffic < 5) {
+					useconds_multiple_inc = 0.2;
+				} else if(last_traffic < 20) {
+					useconds_multiple_inc = 0.1;
+				} else if(last_traffic < 50) {
+					useconds_multiple_inc = 0.05;
+				} else if(last_traffic < 100) {
+					useconds_multiple_inc = 0.02;
 				}
-				useconds_min = 500;
-				useconds_multiple_inc = 1;
-			} else if(last_traffic < 1) {
-				if(useconds < 20) {
-					useconds = 20;
-				}
-				useconds_min = 200;
-				useconds_multiple_inc = 0.5;
-			} else if(last_traffic < 2) {
-				useconds_min = 100;
-				useconds_multiple_inc = 0.3;
-			} else if(last_traffic < 5) {
-				useconds_multiple_inc = 0.2;
-			} else if(last_traffic < 20) {
-				useconds_multiple_inc = 0.1;
-			} else if(last_traffic < 50) {
-				useconds_multiple_inc = 0.05;
-			} else if(last_traffic < 100) {
-				useconds_multiple_inc = 0.02;
 			}
 		}
 		rslt_useconds = min(200, (int)(1 + counter * useconds_multiple_inc)) * useconds;
