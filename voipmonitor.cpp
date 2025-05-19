@@ -1267,6 +1267,7 @@ bool opt_ssl_ipport_reverse_enable;
 bool ssl_client_random_enable = false;
 char *ssl_client_random_portmatrix;
 bool ssl_client_random_portmatrix_set = false;
+bool ssl_client_random_tcp_set = false;
 vector<vmIP> ssl_client_random_ip;
 vector<vmIPmask> ssl_client_random_net;
 string ssl_client_random_tcp_host;
@@ -5027,7 +5028,7 @@ int main_init_read() {
 		tcpReassemblySsl->setDataCallback(sslData);
 		tcpReassemblySsl->setLinkTimeout(opt_ssl_link_timeout);
 		if(!is_read_from_file_simple() &&
-		   ssl_client_random_enable && ssl_client_random_maxwait_ms > 0) {
+		   ssl_client_random_use && ssl_client_random_maxwait_ms > 0) {
 			tcpReassemblySsl->setEnablePacketThread();
 		}
 		if(opt_ssl_ignore_tcp_handshake) {
@@ -9249,23 +9250,25 @@ void set_context_config() {
 	}
 	#endif //HAVE_OPENSSL101
 	
+	ssl_client_random_portmatrix_set = false;
 	if(ssl_client_random_enable) {
-		ssl_client_random_portmatrix_set = false;
 		for(unsigned i = 0; i < 65537; i++) {
 			if(ssl_client_random_portmatrix[i]) {
 				ssl_client_random_portmatrix_set = true;
 			}
 		}
+	}
+	ssl_client_random_tcp_set = !ssl_client_random_tcp_host.empty() && ssl_client_random_tcp_port;
+	ssl_client_random_use = ssl_client_random_enable || 
+				(!ssl_client_random_tcp_host.empty() && ssl_client_random_tcp_port) ||
+				ssl_master_secret_file[0];
+	if(ssl_client_random_use) {
 		if(is_read_from_file_simple()) {
 			ssl_client_random_maxwait_ms = 0;
 		} else if(!ssl_client_random_maxwait_ms) {
 			ssl_client_random_maxwait_ms = 2000;
 		}
 	}
-	
-	ssl_client_random_use = ssl_client_random_enable || 
-				(!ssl_client_random_tcp_host.empty() && ssl_client_random_tcp_port) ||
-				ssl_master_secret_file[0];
 	
 	extern cDtls dtls_handshake_safe_links;
 	dtls_handshake_safe_links.setNeedLock(true);

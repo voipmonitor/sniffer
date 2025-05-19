@@ -9914,12 +9914,13 @@ bool PcapQueue_readFromFifo::processPacket_push(sHeaderPacketPQout *hp) {
 		extern bool ssl_client_random_enable;
 		extern char *ssl_client_random_portmatrix;
 		extern bool ssl_client_random_portmatrix_set;
+		extern bool ssl_client_random_tcp_set;
 		extern vector<vmIP> ssl_client_random_ip;
 		extern vector<vmIPmask> ssl_client_random_net;
 		if(hp->header_ip_protocol == IPPROTO_UDP &&
 		   ssl_client_random_enable &&
-		   (!ssl_client_random_portmatrix_set || 
-		    ssl_client_random_portmatrix[hp->dport]) &&
+		   ((ssl_client_random_portmatrix_set && ssl_client_random_portmatrix[hp->dport]) ||
+		    (!ssl_client_random_portmatrix_set && !ssl_client_random_tcp_set)) &&
 		   ((!ssl_client_random_ip.size() && !ssl_client_random_net.size()) ||
 		    check_ip_in(header_ip->get_daddr(), &ssl_client_random_ip, &ssl_client_random_net, true)) &&
 		   hp->datalen) {

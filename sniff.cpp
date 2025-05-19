@@ -8855,12 +8855,13 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 				extern bool ssl_client_random_enable;
 				extern char *ssl_client_random_portmatrix;
 				extern bool ssl_client_random_portmatrix_set;
+				extern bool ssl_client_random_tcp_set;
 				extern vector<vmIP> ssl_client_random_ip;
 				extern vector<vmIPmask> ssl_client_random_net;
 				if(ppd.header_ip && ppd.header_ip->get_protocol() == IPPROTO_UDP &&
 				   ssl_client_random_enable &&
-				   (!ssl_client_random_portmatrix_set || 
-				    ssl_client_random_portmatrix[ppd.header_udp->get_dest()]) &&
+				   ((ssl_client_random_portmatrix_set && ssl_client_random_portmatrix[ppd.header_udp->get_dest()]) ||
+				    (!ssl_client_random_portmatrix_set && !ssl_client_random_tcp_set)) &&
 				   ((!ssl_client_random_ip.size() && !ssl_client_random_net.size()) ||
 				    check_ip_in(ppd.header_ip->get_daddr(), &ssl_client_random_ip, &ssl_client_random_net, true)) &&
 				   ppd.datalen && ppd.data[0] == '{' && ppd.data[ppd.datalen - 1] == '}') {
