@@ -215,6 +215,7 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 		useconds = opt_usleep_minimal;
 	}
 	extern bool opt_usleep_progressive;
+	extern double opt_usleep_progressive_index;
 	extern bool opt_usleep_mod_enable;
 	#if defined(__x86_64__) || defined(__i386__)
 	if(opt_usleep_mod_enable && useconds <= 100 && counter != (unsigned int)-1) {
@@ -236,8 +237,8 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 	if((opt_usleep_progressive || last_traffic < 100) && useconds < 5000 && counter != (unsigned int)-1) {
 		unsigned int useconds_min = 0;
 		double useconds_multiple_inc = 0.01;
-		if(opt_usleep_mod_enable) {
-			useconds_multiple_inc = 1;
+		if(opt_usleep_progressive_index) {
+			useconds_multiple_inc = opt_usleep_progressive_index;
 		} else {
 			if(last_traffic >= 0) {
 				if(last_traffic < 0.5) {

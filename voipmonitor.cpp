@@ -477,6 +477,7 @@ unsigned int opt_batch_length_rtp_high_traffic = 40000;
 bool batch_length_high_traffic_need = false;
 bool opt_usleep_stats = false;
 bool opt_usleep_progressive = true;
+double opt_usleep_progressive_index = 0;
 bool opt_usleep_mod_enable = false;
 unsigned opt_usleep_mod_pause_spin_limit = 100;
 unsigned opt_usleep_mod_sched_yield_spin_limit = 100;
@@ -7526,6 +7527,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sched_pol_auto_cpu_limit", &opt_sched_pol_auto_cpu_limit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("use_thread_setname", &opt_use_thread_setname));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("usleep_progressive", &opt_usleep_progressive));
+					addConfigItem(new FILE_LINE(0) cConfigItem_float("usleep_progressive_index", &opt_usleep_progressive_index));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("usleep_mod_enable", &opt_usleep_mod_enable));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("usleep_mod_pause_spin_limit", &opt_usleep_mod_pause_spin_limit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("usleep_mod_sched_yield_spin_limit", &opt_usleep_mod_sched_yield_spin_limit));
