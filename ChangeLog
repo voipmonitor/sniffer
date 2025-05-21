@@ -1,3 +1,14 @@
+2025.05.0 20.05.2025
+====================
+- fix 3XX response processing - disable removal of RTP streams which caused CPU overload [VS-1701]
+- modify reassembly and tls decryption in case there is a communication delay (no keep alive packets) and reassembly cancels link tracking and destroys ssl session. Allow the link to be established in both directions (not just towards the tls server). Preserving tl session data in case of its destruction [VS-1690]
+- modify conditions for capturing tls keys from traffic -  suppress key parsing if no upd port for keys is specified (ssl_sessionkey_udp_port) and key reception via tcp is enabled (ssl_sessionkey_bind) [VS-1702]
+- shorten pcap_timeout from 1000ms to 100ms which fixes loading calls from pcap with 403 or 603 responses [VS-1697]
+- implement possibility to add more MGCP ports [VS-1700]
+- hep and ipfix packets are now processed through the internal packet buffers (fies CPU overloading) [VS-1708]
+- write info about used protocols for SIP (udp/tcp) [VS-1221]
+
+
 2025.04.4 14.04.2025
 ====================
 - Fixed vulnerability allowing arbitrary command execution via tcp manager [VS-1698]
