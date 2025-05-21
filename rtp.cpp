@@ -33,6 +33,7 @@ Each Call class contains two RTP classes.
 #include "srtp.h"
 #include "ssl_dssl.h"
 
+#include "jitterbuffer/jitterbuf.h"
 #include "jitterbuffer/asterisk/channel.h"
 #include "jitterbuffer/asterisk/frame.h"
 #include "jitterbuffer/asterisk/abstract_jb.h"
@@ -425,6 +426,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	last_was_silence = false;
 	sum_silence_changes = 0;
 	confirm_both_sides_by_sdp = false;
+	stopped_jb_due_to_high_ooo = false;
 
 	change_packetization_iterator = 0;
 	srtp_decrypt = NULL;
@@ -852,6 +854,24 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 	if(codec == PAYLOAD_TELEVENT) return;
 
 	Call *owner = (Call*)call_owner;
+ 
+	extern int opt_jitterbuffer_adapt_ooo_limit;
+	if(channel->jitter_impl == 1 && opt_jitterbuffer_adapt_ooo_limit > 0 && 
+	   channel->jb.jbobj && ((jitterbuf*)channel->jb.jbobj)->info.frames_ooo > 0) {
+		if(channel->stopped_due_to_high_ooo) {
+			return;
+		} else if(((jitterbuf*)channel->jb.jbobj)->info.frames_ooo > opt_jitterbuffer_adapt_ooo_limit &&
+			  (!((jitterbuf*)channel->jb.jbobj)->info.frames_in ||
+			   (double)((jitterbuf*)channel->jb.jbobj)->info.frames_ooo / ((jitterbuf*)channel->jb.jbobj)->info.frames_in > 0.5)) {
+			channel->stopped_due_to_high_ooo = true;
+			stopped_jb_due_to_high_ooo = true;
+			if(owner) {
+				owner->stopped_jb_due_to_high_ooo = true;
+			}
+			return;
+		}
+	}
+ 
 	if((save_audio || energylevels) && owner && owner->silencerecording) {
 		// skip recording 
 		frame->skip = 1;

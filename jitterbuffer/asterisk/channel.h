@@ -375,6 +375,7 @@ struct ast_channel {
 	int enable_save_energylevels;
 	int last_datalen_energylevels;
 	
+	short int stopped_due_to_high_ooo;
 };
 
 /*! \brief ast_channel_tech Properties */

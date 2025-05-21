@@ -950,6 +950,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 
 	suppress_rtp_read_due_to_insufficient_hw_performance = false;
 	suppress_rtp_proc_due_to_insufficient_hw_performance = false;
+	stopped_jb_due_to_high_ooo = false;
 	
 	#if EXPERIMENTAL_SEPARATE_PROCESSSING
 	sp_sent_close_call = false;
@@ -6915,6 +6916,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(rtp_dupl_seq) {
 		cdr_flags |= CDR_RTP_DUPL_SEQ;
 	}
+	if(stopped_jb_due_to_high_ooo) {
+		cdr_flags |= CDR_STOPPED_JB_DUE_TO_HIGH_OOO;
+	}
 	
 	cdr_flags |= CDR_SAVE_FLAGS;
 	if(this->save_sip_pcap) {
@@ -8173,6 +8177,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if (rtp_i->srtp_decrypt) {
 					flags |=  CDR_RTP_STREAM_IS_SRTP;
 				}
+				if(rtp_i->stopped_jb_due_to_high_ooo) {
+					flags |=  CDR_RTP_STOPPED_JB_DUE_TO_HIGH_OOO;
+				}
 				rtps.add(flags, "flags", !flags);
 			}
 			if(existsColumns.cdr_rtp_duration) {
@@ -8791,6 +8798,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				flags |= rtp_i->iscaller ? CDR_RTP_STREAM_IS_CALLER : CDR_RTP_STREAM_IS_CALLED;
 				if (rtp_i->srtp_decrypt) {
 					flags |=  CDR_RTP_STREAM_IS_SRTP;
+				}
+				if(rtp_i->stopped_jb_due_to_high_ooo) {
+					flags |=  CDR_RTP_STOPPED_JB_DUE_TO_HIGH_OOO;
 				}
 				if(flags) {
 					rtps.add(flags, "flags");

@@ -300,6 +300,7 @@ int opt_jitterbuffer_f2_jbsize = 0;
 int opt_jitterbuffer_f2_resync_threshold = 0;
 int opt_jitterbuffer_adapt_jbsize = 0;
 int opt_jitterbuffer_adapt_resync_threshold = 0;
+int opt_jitterbuffer_adapt_ooo_limit = 0;
 
 int opt_max_buffer_mem = 0;
 int opt_ringbuffer = 50;	// ring buffer in MB 
@@ -7175,6 +7176,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("jitterbuffer_f2_resync_threshold", &opt_jitterbuffer_f2_resync_threshold));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("jitterbuffer_adapt_jbsize", &opt_jitterbuffer_adapt_jbsize));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("jitterbuffer_adapt_resync_threshold", &opt_jitterbuffer_adapt_resync_threshold));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("jitterbuffer_adapt_ooo_limit", &opt_jitterbuffer_adapt_ooo_limit));
 		setDisableIfEnd();
 	group("system");
 		addConfigItem((new FILE_LINE(42340) cConfigItem_string("pcapcommand", pcapcommand, sizeof(pcapcommand)))
