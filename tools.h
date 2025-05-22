@@ -3736,7 +3736,9 @@ class cThreadMonitor {
 public:
 	enum eOutputFlags {
 		_of_no_sort = (1 << 0),
-		_of_only_traffic = (1 << 1)
+		_of_only_traffic = (1 << 1),
+		_of_all = (1 << 2),
+		_of_line = (1 << 3)
 	};
 public:
 	struct sThread {
@@ -3745,7 +3747,7 @@ public:
 		string description;
 		pstat_data pstat[5][2];
 		context_switches_data cs[5][2];
-		u_int64_t last_time_us[2][5];
+		u_int64_t last_time_us[5][2];
 		int orig_scheduler;
 		int orig_priority;
 		#if SNIFFER_THREADS_EXT

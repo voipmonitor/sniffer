@@ -8061,7 +8061,7 @@ string cThreadMonitor::output(int indexPstat, int outputFlags) {
 	tm_lock();
 	map<int, sThread*>::iterator iter;
 	for(iter = threads.begin(); iter != threads.end(); iter++) {
-		int use_counter = 0;
+		int use_counter = (outputFlags & _of_all) ? 1 : 0;
 		double cpu_perc = this->getCpuUsagePerc(iter->second, indexPstat);
 		if(cpu_perc > 0) {
 			++use_counter;
@@ -8103,98 +8103,116 @@ string cThreadMonitor::output(int indexPstat, int outputFlags) {
 			continue;
 		}
 		#endif
-		outStr << fixed
-		       << setw(maxDescrLength) << left << string(iter_dp->description).substr(0, maxDescrLength)
-		       << " (" << setw(7) << right << iter_dp->tid << ") : "
-		       << setprecision(1) << setw(5) << right << iter_dp->cpu_perc;
-		// scheduler / priority
-		int sched_type;
-		sched_param sch_param;
-		sched_type = sched_getscheduler(iter_dp->tid);
-		sched_getparam(iter_dp->tid, &sch_param);
-		if(sched_type != SCHED_OTHER || sch_param.sched_priority != 0) {
-			outStr << "  " << setw(5) << left << get_sched_type_str(sched_type)
-			       << " " << setw(3) << right << sch_param.sched_priority;
-		} else {
-			int priority = getpriority(PRIO_PROCESS, iter_dp->tid);
-			if(priority != 0) {
-				outStr << "  " << setw(5) << left << priority << setw(4) << " ";
+		if(!(outputFlags & _of_line)) {
+			outStr << fixed
+			       << setw(maxDescrLength) << left << string(iter_dp->description).substr(0, maxDescrLength)
+			       << " (" << setw(7) << right << iter_dp->tid << ") : "
+			       << setprecision(1) << setw(5) << right << iter_dp->cpu_perc;
+			// scheduler / priority
+			int sched_type;
+			sched_param sch_param;
+			sched_type = sched_getscheduler(iter_dp->tid);
+			sched_getparam(iter_dp->tid, &sch_param);
+			if(sched_type != SCHED_OTHER || sch_param.sched_priority != 0) {
+				outStr << "  " << setw(5) << left << get_sched_type_str(sched_type)
+				       << " " << setw(3) << right << sch_param.sched_priority;
 			} else {
-				outStr << setw(11) << " ";
+				int priority = getpriority(PRIO_PROCESS, iter_dp->tid);
+				if(priority != 0) {
+					outStr << "  " << setw(5) << left << priority << setw(4) << " ";
+				} else {
+					outStr << setw(11) << " ";
+				}
 			}
-		}
-		// nonvoluntary / voluntary
-		outStr << "  ";
-		if(iter_dp->cs.non_voluntary > 1e9) {
-			outStr << right << scientific << setprecision(2)
-			       << (double)iter_dp->cs.non_voluntary;
-		} else {
-			outStr << right << setw(8)
-			       << iter_dp->cs.non_voluntary;
-		}
-		outStr << " / ";
-		if(iter_dp->cs.voluntary > 1e9) {
-			outStr << right << scientific << setprecision(2)
-			       << (double)iter_dp->cs.voluntary;
-		} else {
-			outStr << right << setw(8)
-			       << iter_dp->cs.voluntary;
-		}
-		if(iter_dp->cs.voluntary) {
-			outStr << " / "
-			       << right << setprecision(3) << setw(7)
-			       << ((double)iter_dp->cs.non_voluntary / iter_dp->cs.voluntary);
-		} else {
-			outStr << setw(10) << " ";
-		}
-		#if SNIFFER_THREADS_EXT
-		if(sverb.sniffer_threads_ext) {
-			// usleep
+			// nonvoluntary / voluntary
 			outStr << "  ";
-			if(iter_dp->usleep && iter_dp->time_us) {
-				outStr << "us " << right << setw(5) << setprecision(1) 
-				       << ((double)iter_dp->usleep / iter_dp->time_us * 100) << "% ";
+			if(iter_dp->cs.non_voluntary > 1e9) {
+				outStr << right << scientific << setprecision(2)
+				       << (double)iter_dp->cs.non_voluntary;
+			} else {
+				outStr << right << setw(8)
+				       << iter_dp->cs.non_voluntary;
+			}
+			outStr << " / ";
+			if(iter_dp->cs.voluntary > 1e9) {
+				outStr << right << scientific << setprecision(2)
+				       << (double)iter_dp->cs.voluntary;
+			} else {
+				outStr << right << setw(8)
+				       << iter_dp->cs.voluntary;
+			}
+			if(iter_dp->cs.voluntary) {
+				outStr << " / "
+				       << right << setprecision(3) << setw(7)
+				       << ((double)iter_dp->cs.non_voluntary / iter_dp->cs.voluntary);
 			} else {
 				outStr << setw(10) << " ";
 			}
-			// traffic
-			outStr << "  ";
-			sTraffic *iter_tr = &iter_dp->traffic;
-			if(iter_tr->packets_cnt_in > 0 || iter_tr->packets_cnt_out > 0) {
-			       outStr << " " << setw(5) << right << format_metric((double)iter_tr->packets_cnt_in / iter_tr->time_us * 1e6, 3, "--- ") << "p"
-				      << " " << setw(5) << right << format_metric((double)iter_tr->packets_size_in * 8 / iter_tr->time_us * 1e6, 3, "--- ") << "b"
-				      << " -> "
-				      << " " << setw(5) << right << format_metric((double)iter_tr->packets_cnt_out / iter_tr->time_us * 1e6, 3, "--- ") << "p"
-				      << " " << setw(5) << right << format_metric((double)iter_tr->packets_size_out * 8 / iter_tr->time_us * 1e6, 3, "--- ") << "b";
-			} else {
-				outStr << setw(32) << " ";
+			#if SNIFFER_THREADS_EXT
+			if(sverb.sniffer_threads_ext) {
+				// usleep
+				outStr << "  ";
+				if(iter_dp->usleep && iter_dp->time_us) {
+					outStr << "us " << right << setw(5) << setprecision(1) 
+					       << ((double)iter_dp->usleep / iter_dp->time_us * 100) << "% ";
+				} else {
+					outStr << setw(10) << " ";
+				}
+				// traffic
+				outStr << "  ";
+				sTraffic *iter_tr = &iter_dp->traffic;
+				if(iter_tr->packets_cnt_in > 0 || iter_tr->packets_cnt_out > 0) {
+				       outStr << " " << setw(5) << right << format_metric((double)iter_tr->packets_cnt_in / iter_tr->time_us * 1e6, 3, "--- ") << "p"
+					      << " " << setw(5) << right << format_metric((double)iter_tr->packets_size_in * 8 / iter_tr->time_us * 1e6, 3, "--- ") << "b"
+					      << " -> "
+					      << " " << setw(5) << right << format_metric((double)iter_tr->packets_cnt_out / iter_tr->time_us * 1e6, 3, "--- ") << "p"
+					      << " " << setw(5) << right << format_metric((double)iter_tr->packets_size_out * 8 / iter_tr->time_us * 1e6, 3, "--- ") << "b";
+				} else {
+					outStr << setw(32) << " ";
+				}
+				// buffer push
+				outStr << "  ";
+				sBufferPush *iter_bp = &iter_dp->buffer_push;
+				if(iter_bp->cnt_all > 0) {
+				       outStr << "bf" << right << setw(7) << setprecision(2) << ((double)iter_bp->cnt_full / iter_bp->cnt_all * 100) << "%"
+					      << " " << right << setw(7) << setprecision(2) << ((double)iter_bp->sum_usleep_full_loop / iter_bp->time_us * 100) << "%";
+				} else if(iter_bp->cnt_full_loop > 0) {
+				       outStr << "bf" << right << setw(8) << "FULL"
+					      << " " << right << setw(7) << setprecision(2) << ((double)iter_bp->sum_usleep_full_loop / iter_bp->time_us * 100) << "%";
+				} else {
+					outStr << setw(19) << " ";
+				}
 			}
-			// buffer push
-			outStr << "  ";
-			sBufferPush *iter_bp = &iter_dp->buffer_push;
-			if(iter_bp->cnt_all > 0) {
-			       outStr << "bf" << right << setw(7) << setprecision(2) << ((double)iter_bp->cnt_full / iter_bp->cnt_all * 100) << "%"
-				      << " " << right << setw(7) << setprecision(2) << ((double)iter_bp->sum_usleep_full_loop / iter_bp->time_us * 100) << "%";
-			} else if(iter_bp->cnt_full_loop > 0) {
-			       outStr << "bf" << right << setw(8) << "FULL"
-				      << " " << right << setw(7) << setprecision(2) << ((double)iter_bp->sum_usleep_full_loop / iter_bp->time_us * 100) << "%";
+			#endif
+			//
+			++counter;
+			if(!(counter % columns)) {
+				outStr << endl;
 			} else {
-				outStr << setw(19) << " ";
+				outStr << "  |  ";
 			}
-		}
-		#endif
-		//
-		++counter;
-		if(!(counter % columns)) {
-			outStr << endl;
 		} else {
-			outStr << "  |  ";
+			if(counter) {
+				outStr << "; ";
+			}
+			outStr << string(iter_dp->description).substr(0, maxDescrLength)
+			       << " (" << iter_dp->tid << ") : "
+			       << fixed << setprecision(1) << iter_dp->cpu_perc;
+			++counter;
 		}
 	}
-	if(counter % 2) {
-		outStr << endl;
+	if(!(outputFlags & _of_line)) {
+		if(counter % 2) {
+			outStr << endl;
+		}
+		outStr << "CPU ALL : " << setprecision(1) << setw(5) << sum_cpu << endl;
+	} else {
+		ostringstream outStrComplete;
+		if(sum_cpu) {
+			outStrComplete << "ALL : " << fixed << setprecision(1) << sum_cpu << "; " << outStr.str();
+			return(outStrComplete.str());
+		}
 	}
-	outStr << "CPU ALL : " << setprecision(1) << setw(5) << sum_cpu << endl;
 	return(outStr.str());
 }
 

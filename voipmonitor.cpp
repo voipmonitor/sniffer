@@ -5265,6 +5265,13 @@ int main_init_read() {
 				if(sverb.memory_stat_log) {
 					printMemoryStat();
 				}
+				if(sverb.threads_cpu_log) {
+					extern cThreadMonitor threadMonitor;
+					string log = threadMonitor.output(2, cThreadMonitor::_of_line);
+					if(!log.empty()) {
+						syslog(LOG_NOTICE, "threads: %s", log.c_str());
+					}
+				}
 				#if HAVE_LIBJEMALLOC
 				if(!opt_jemalloc_stat_full_folder.empty()) {
 					jeMallocStat_save();
@@ -8126,6 +8133,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "disable_save_all")		{ sverb.disable_save_call = 1; sverb.disable_save_message = 1; sverb.disable_save_register = 1; sverb.disable_save_sip_msg = 1; sverb.disable_save_packet = 1; sverb.disable_save_graph = 1; }
 	else if(verbParam == "disable_read_rtp")		sverb.disable_read_rtp = 1;
 	else if(verbParam == "thread_create")			sverb.thread_create = 1;
+	else if(verbParam == "threads_cpu_log")			sverb.threads_cpu_log = 1;
 	else if(verbParam == "timezones")			sverb.timezones = 1;
 	else if(verbParam == "tcpreplay")			sverb.tcpreplay = 1;
 	else if(verbParam == "abort_if_heap_full")		sverb.abort_if_heap_full = 1;

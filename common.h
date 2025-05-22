@@ -97,6 +97,7 @@ struct sVerbose {
 	int disable_save_sip_msg;
 	int disable_read_rtp;
 	int thread_create;
+	int threads_cpu_log;
 	int timezones;
 	int tcpreplay;
 	int abort_if_heap_full;

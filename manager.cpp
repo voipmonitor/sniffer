@@ -4595,6 +4595,12 @@ int Mgmt_sniffer_threads(Mgmt_params *params) {
 	if(strstr(params->buf, "only_traffic") != NULL) {
 		outputFlags |= cThreadMonitor::_of_only_traffic;
 	}
+	if(strstr(params->buf, "all") != NULL) {
+		outputFlags |= cThreadMonitor::_of_all;
+	}
+	if(strstr(params->buf, "line") != NULL) {
+		outputFlags |= cThreadMonitor::_of_line;
+	}
 	string threads = threadMonitor.output(1, outputFlags);
 	return(params->sendString(&threads));
 }
