@@ -201,6 +201,15 @@ inline timeval zeroTimeval() {
 
 #if defined(CLOUD_ROUTER_SERVER) or defined(CLOUD_ROUTER_SSLKEYLOGGER)
 #define USLEEP(us) usleep(us);
+#define USLEEP_C(us, c) usleep(us, c);
+inline void usleep(unsigned int useconds, unsigned int counter) {
+ 	unsigned int rslt_useconds = useconds;
+	rslt_useconds = min(100, (int)(1 + counter * 0.1)) * useconds;
+	if(rslt_useconds > 100000) {
+		rslt_useconds = 100000;
+	}
+	usleep(rslt_useconds);
+}
 #endif
 #ifdef CLOUD_ROUTER_CLIENT
 #define USLEEP(us) usleep(us, __FILE__, __LINE__);

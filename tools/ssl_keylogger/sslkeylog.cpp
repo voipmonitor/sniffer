@@ -62,9 +62,9 @@ typedef WOLFSSL_SESSION SSL_SESSION;
 
 #define min(a, b) (a < b ? a : b)
 
-#define __SYNC_LOCK(vint) while(__sync_lock_test_and_set(&vint, 1)) {};
-#define __SYNC_LOCK_USLEEP(vint, us_sleep) while(__sync_lock_test_and_set(&vint, 1)) { if(us_sleep) { usleep(us_sleep); } }
-#define __SYNC_UNLOCK(vint) __sync_lock_release(&vint);
+#define _SYNC_LOCK(vint) while(__sync_lock_test_and_set(&vint, 1)) {};
+#define _SYNC_LOCK_USLEEP(vint, us_sleep) while(__sync_lock_test_and_set(&vint, 1)) { if(us_sleep) { usleep(us_sleep); } }
+#define _SYNC_UNLOCK(vint) __sync_lock_release(&vint);
 
 
 extern "C" {
@@ -437,7 +437,7 @@ static void *write_thread(void *arg) {
 	while(true) {
 		if(key_queue_first) {
 			sKeyQueueItem *kqi = NULL;
-			__SYNC_LOCK_USLEEP(key_queue_sync, 100);
+			_SYNC_LOCK_USLEEP(key_queue_sync, 100);
 			if(key_queue_first) {
 				kqi = key_queue_first;
 				if(kqi->next) {
@@ -447,7 +447,7 @@ static void *write_thread(void *arg) {
 					key_queue_last = NULL;
 				}
 			}
-			__SYNC_UNLOCK(key_queue_sync);
+			_SYNC_UNLOCK(key_queue_sync);
 			if(kqi) {
 				write_keylog_to_dest(kqi->key);
 				delete kqi;
@@ -468,7 +468,7 @@ static void create_write_thread() {
 }
 
 static void write_keylog_to_queue(const char *key) {
-	__SYNC_LOCK_USLEEP(key_queue_sync, 100);
+	_SYNC_LOCK_USLEEP(key_queue_sync, 100);
 	create_write_thread();
 	sKeyQueueItem *kqi = new sKeyQueueItem(key);
 	if(key_queue_last) {
@@ -478,7 +478,7 @@ static void write_keylog_to_queue(const char *key) {
 		key_queue_first = kqi;
 		key_queue_last = kqi;
 	}
-	__SYNC_UNLOCK(key_queue_sync);
+	_SYNC_UNLOCK(key_queue_sync);
 }
 #endif
 
