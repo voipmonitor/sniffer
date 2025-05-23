@@ -2075,7 +2075,7 @@ int SqlInitSchema(string *rsltConnectErrorString = NULL) {
 					set_context_config_after_check_db_schema();
 				}
 				sensorsMap.fillSensors(sqlDb);
-				if(enable_register_engine) {
+				if(enable_register_engine && !opt_database_backup) {
 					initRegistersDb(sqlDb);
 				}
 			}
@@ -9610,6 +9610,7 @@ bool check_complete_parameters() {
 	    !is_remote_chart_server() &&
 	    !is_set_gui_params() &&
 	    !printConfigStruct && !printConfigFile && !is_receiver() &&
+	    !opt_database_backup &&
 	    !opt_test){
                         /* Ruler to assist with keeping help description to max. 80 chars wide:
                                   1         2         3         4         5         6         7         8

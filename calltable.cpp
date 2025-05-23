@@ -15746,6 +15746,11 @@ void CustomHeaders::createMysqlPartitions(class SqlDb *sqlDb, char type, int nex
 	}
 }
 
+void CustomHeaders::createMysqlPartitions(class SqlDb *sqlDb, const char *tableName, char type, int next_day) {
+	extern bool opt_cdr_partition_oldver;
+	_createMysqlPartition(tableName, type, next_day, opt_cdr_partition_oldver, NULL, sqlDb);
+}
+
 string CustomHeaders::getQueryForSaveUseInfo(Call* call, int type, tCH_Content *ch_content) {
 	if(!ch_content) {
 		if(call) {
@@ -15868,10 +15873,10 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 	
 	if(enableOldPartition && opt_cdr_partition && opt_create_old_partitions > 0) {
 		for(int i = opt_create_old_partitions - 1; i > 0; i--) {
-			this->createMysqlPartitions(sqlDb, 'd', -i);
+			this->createMysqlPartitions(sqlDb, tableName, 'd', -i);
 		}
 		for(int next_day = 0; next_day < LIMIT_DAY_PARTITIONS_INIT; next_day++) {
-			this->createMysqlPartitions(sqlDb, opt_cdr_partition_by_hours ? 'h' : 'd', next_day);
+			this->createMysqlPartitions(sqlDb, tableName, opt_cdr_partition_by_hours ? 'h' : 'd', next_day);
 		}
 	}
 	

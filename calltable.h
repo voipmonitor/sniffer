@@ -4307,6 +4307,7 @@ public:
 	}
 	void createMysqlPartitions(class SqlDb *sqlDb);
 	void createMysqlPartitions(class SqlDb *sqlDb, char type, int next_day);
+	void createMysqlPartitions(class SqlDb *sqlDb, const char *tableName, char type, int next_day);
 	inline unsigned long getLoadTime() {
 		return(loadTime);
 	}
