@@ -859,7 +859,6 @@ extern bool opt_pcap_queues_mirror_nonblock_mode;
 extern bool opt_pcap_queues_mirror_require_confirmation;
 extern bool opt_pcap_queues_mirror_use_checksum;
 extern int opt_pcap_dispatch;
-extern int sql_noerror;
 extern int sql_disable_next_attempt_if_error;
 int opt_cleandatabase_cdr = 0;
 int opt_cleandatabase_cdr_rtp_energylevels = 0;
@@ -2044,10 +2043,10 @@ int SqlInitSchema(string *rsltConnectErrorString = NULL) {
 			}
 			if(connectOk > 0) {
 				if(isSqlDriver("mysql")) {
-					sql_noerror = 1;
 					sql_disable_next_attempt_if_error = 1;
-					sqlDb->query("repair table mysql.proc");
-					sql_noerror = 0;
+					if(sqlDb->existsTable("mysql.proc")) {
+						sqlDb->query("repair table mysql.proc");
+					}
 					sql_disable_next_attempt_if_error = 0;
 				}
 				sqlDb->checkDbMode();

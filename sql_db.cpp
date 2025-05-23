@@ -686,10 +686,12 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 			   (callFromStoreProcessWithFixDeadlock && getLastError() == ER_LOCK_DEADLOCK)) {
 				stop = true;
 			} else if(this->getLastError() == ER_SP_ALREADY_EXISTS && pass >= 2) {
-				if(_queryByRemoteSocket("repair table mysql.proc") == 1) {
-					syslog(LOG_NOTICE, "success call 'repair table mysql.proc'");
-				} else {
-					syslog(LOG_NOTICE, "failed call 'repair table mysql.proc' with error: %s", this->getLastErrorString().c_str());
+				if(_queryByRemoteSocket("select table_name from information_schema.tables where table_schema = 'mysql' and table_name = 'proc'") == 1) {
+					if(_queryByRemoteSocket("repair table mysql.proc") == 1) {
+						syslog(LOG_NOTICE, "success call 'repair table mysql.proc'");
+					} else {
+						syslog(LOG_NOTICE, "failed call 'repair table mysql.proc' with error: %s", this->getLastErrorString().c_str());
+					}
 				}
 				if(dropProcQuery) {
 					if(_queryByRemoteSocket(dropProcQuery) == 1) {
@@ -2356,15 +2358,17 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 						}
 					} else {
 						if(this->getLastError() == ER_SP_ALREADY_EXISTS) {
-							if(!mysql_query(this->hMysqlConn, "repair table mysql.proc")) {
-								syslog(LOG_NOTICE, "success call 'repair table mysql.proc'");
-								MYSQL_RES *res = mysql_use_result(this->hMysqlConn);
-								if(res) {
-									while(mysql_fetch_row(res));
-									mysql_free_result(res);
+							if(this->existsTable("mysql.proc")) {
+								if(!mysql_query(this->hMysqlConn, "repair table mysql.proc")) {
+									syslog(LOG_NOTICE, "success call 'repair table mysql.proc'");
+									MYSQL_RES *res = mysql_use_result(this->hMysqlConn);
+									if(res) {
+										while(mysql_fetch_row(res));
+										mysql_free_result(res);
+									}
+								} else {
+									syslog(LOG_NOTICE, "failed call 'repair table mysql.proc' with error: %s", mysql_error(this->hMysqlConn));
 								}
-							} else {
-								syslog(LOG_NOTICE, "failed call 'repair table mysql.proc' with error: %s", mysql_error(this->hMysqlConn));
 							}
 							if(dropProcQuery) {
 								if(!mysql_query(this->hMysqlConn, dropProcQuery)) {
@@ -2572,8 +2576,7 @@ int64_t SqlDb_mysql::getInsertId() {
 
 bool SqlDb_mysql::existsTable(const char *table) {
 	const char *db_table_separator;
-	if(isCloud() &&
-	   (db_table_separator = strchr(table, '.')) != NULL) {
+	if((db_table_separator = strchr(table, '.')) != NULL) {
 		string db = string(table, db_table_separator - table);
 		this->query(string("select table_name from information_schema.tables where table_schema = '") + db + "' and table_name = '" + (db_table_separator + 1) + "'");
 	} else {
