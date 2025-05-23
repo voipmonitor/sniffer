@@ -932,7 +932,9 @@ void cSnifferServerConnection::cp_query() {
 				   queryStr.find("create procedure ") == 0 &&
 				   queryStr.find("(") != string::npos) {
 					string procedureName = queryStr.substr(17, queryStr.find("(") - 17);
-					sqlDb->query("repair table mysql.proc");
+					if(sqlDb->existsTable("mysql.proc")) {
+						sqlDb->query("repair table mysql.proc");
+					}
 					sqlDb->query("drop procedure if exists " + procedureName);
 				}
 				string rsltError = sqlDb->getJsonError();
