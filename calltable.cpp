@@ -5314,10 +5314,11 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 					bool _null_c = false;
 					double _v_s = rtpab[i]->delay_sum(&_null_s);
 					double _v_c = rtpab[i]->delay_cnt(&_null_c);
-					if(!_null_s && !_null_c && _v_c != 0) {
+					if(!_null_s && !_null_c) {
 						setNull = false;
-						if(_v_s / _v_c > v) {
-							v = _v_s / _v_c;
+						double _v = _v_c != 0 ? _v_s / _v_c : 0;
+						if(_v > v) {
+							v = _v;
 						}
 					}
 				}
@@ -5350,9 +5351,9 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 			bool _null_c = false;
 			double _v_s = rtpab[0]->delay_sum(&_null_s);
 			double _v_c = rtpab[0]->delay_cnt(&_null_c);
-			if(!_null_s && !_null_c && _v_c != 0) {
+			if(!_null_s && !_null_c) {
 				setNull = false;
-				v = _v_s / _v_c;
+				v = _v_c != 0 ? _v_s / _v_c : 0;
 			}
 			}
 			break;
@@ -5363,9 +5364,9 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 			bool _null_c = false;
 			double _v_s = rtpab[1]->delay_sum(&_null_s);
 			double _v_c = rtpab[1]->delay_cnt(&_null_c);
-			if(!_null_s && !_null_c && _v_c != 0) {
+			if(!_null_s && !_null_c) {
 				setNull = false;
-				v = _v_s / _v_c;
+				v = _v_c != 0 ? _v_s / _v_c : 0;
 			}
 			}
 			break;
