@@ -404,6 +404,11 @@ char opt_vmcodecs_path[1024] = "";
 int opt_cdr_stat_values = 3;
 bool opt_cdr_stat_sources = false;
 int opt_cdr_stat_interval = 15;
+int opt_cdr_problems = 0;
+bool opt_cdr_problems_by_ip = false;
+bool opt_cdr_problems_by_number = false;
+bool opt_cdr_problems_by_comb = false;
+int opt_cdr_problems_interval = 15;
 bool opt_charts_cache = false;
 int opt_charts_cache_max_threads = 3;
 bool opt_charts_cache_store = false;
@@ -870,6 +875,7 @@ int opt_cleandatabase_register_failed = 0;
 int opt_cleandatabase_register_time_info = 0;
 int opt_cleandatabase_sip_msg = 0;
 int opt_cleandatabase_cdr_stat = 71;
+int opt_cleandatabase_cdr_problems = 71;
 int opt_cleandatabase_rtp_stat = 2;
 int opt_cleandatabase_log_sensor = 30;
 int opt_cleandatabase_size = 0;
@@ -884,6 +890,7 @@ int opt_cleandatabase_register_failed_size = 0;
 int opt_cleandatabase_register_time_info_size = 0;
 int opt_cleandatabase_sip_msg_size = 0;
 int opt_cleandatabase_cdr_stat_size = 0;
+int opt_cleandatabase_cdr_problems_size = 0;
 int opt_cleandatabase_rtp_stat_size = 0;
 int opt_cleandatabase_log_sensor_size = 0;
 int opt_cleandatabase_size_period = 10 * 60;
@@ -4588,6 +4595,9 @@ int main_init_read() {
 	if(useCdrStatProcessThreads()) {
 		cdrStatInit(sqlDbInit);
 	}
+	if(useCdrProblemsProcessThreads()) {
+		cdrProblemsInit(sqlDbInit);
+	}
 	if(useChartsCacheProcessThreads()) {
 		chartsCacheInit(sqlDbInit);
 	}
@@ -5558,6 +5568,9 @@ void main_term_read() {
 	if(useCdrStatProcessThreads()) {
 		cdrStatStore(true);
 	}
+	if(useCdrProblemsProcessThreads()) {
+		cdrProblemsStore(true);
+	}
 	if(useChartsCacheProcessThreads()) {
 		chartsCacheStore(true);
 	}
@@ -5798,6 +5811,9 @@ void main_term_read() {
 	dbDataTerm();
 	if(useCdrStatProcessThreads()) {
 		cdrStatTerm();
+	}
+	if(useCdrProblemsProcessThreads()) {
+		cdrProblemsTerm();
 	}
 	if(useChartsCacheProcessThreads()) {
 		chartsCacheTerm();
@@ -6284,6 +6300,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_register_time_info", &opt_cleandatabase_register_time_info));
 			addConfigItem(new FILE_LINE(42121) cConfigItem_integer("cleandatabase_sip_msg", &opt_cleandatabase_sip_msg));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_cdr_stat", &opt_cleandatabase_cdr_stat));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_cdr_problems", &opt_cleandatabase_cdr_problems));
 			addConfigItem(new FILE_LINE(42122) cConfigItem_integer("cleandatabase_rtp_stat", &opt_cleandatabase_rtp_stat));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_log_sensor", &opt_cleandatabase_log_sensor));
 				advanced();
@@ -6299,6 +6316,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_register_time_info_size", &opt_cleandatabase_register_time_info_size));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_sip_msg_size", &opt_cleandatabase_sip_msg_size));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_cdr_stat_size", &opt_cleandatabase_cdr_stat_size));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_cdr_problems_size", &opt_cleandatabase_cdr_problems_size));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_rtp_stat_size", &opt_cleandatabase_rtp_stat_size));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_log_sensor_size", &opt_cleandatabase_log_sensor_size));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_size_period", &opt_cleandatabase_size_period));
@@ -7442,6 +7460,13 @@ void cConfig::addConfigItems() {
 				->addValues("source:1|s:1|destination:2|d:2|both:3|b:3"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_stat_sources", &opt_cdr_stat_sources));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_stat_interval", &opt_cdr_stat_interval));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("cdr_problems", &opt_cdr_problems))
+				->addValues("source:1|s:1|destination:2|d:2|both:3|b:3"));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("cdr_problems_by"));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_problems_by_ip", &opt_cdr_problems_by_ip));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_problems_by_number", &opt_cdr_problems_by_number));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_problems_by_comb", &opt_cdr_problems_by_comb));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_problems_interval", &opt_cdr_problems_interval));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache", &opt_charts_cache));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("charts_cache_max_threads", &opt_charts_cache_max_threads));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_store", &opt_charts_cache_store));
@@ -7634,7 +7659,6 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 			break;
 		}
 	}
-	
 	if(configItem->config_name == "savertp_video") {
 		switch(configItem->getValueInt()) {
 		case 0:
@@ -7659,7 +7683,6 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 			break;
 		}
 	}
-	
 	if(configItem->config_name == "saveaudio") {
 		switch(configItem->getValueInt()) {
 		case 0:
@@ -7853,6 +7876,17 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		opt_t2_boost_direct_rtp_delay_queue_ms = configItem->getValueInt();
 		opt_t2_boost_direct_rtp_max_queue_length_ms = configItem->getValueInt();
 	}
+	if(configItem->config_name == "cdr_problems_by") {
+		if(strcasestr(configItem->getValueStr().c_str(), "all")) {
+			opt_cdr_problems_by_ip = true;
+			opt_cdr_problems_by_number = true;
+			opt_cdr_problems_by_comb = true;
+		} else {
+			opt_cdr_problems_by_ip = strcasestr(configItem->getValueStr().c_str(), "ip");
+			opt_cdr_problems_by_number = strcasestr(configItem->getValueStr().c_str(), "number");
+			opt_cdr_problems_by_comb = strcasestr(configItem->getValueStr().c_str(), "comb");
+		}
+	}
 }
 
 void parse_command_line_arguments(int argc, char *argv[]) {
@@ -7951,6 +7985,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"run-droppartitions-maxdays", 1, 0, _param_run_droppartitions_maxdays},
 	    {"run-droppartitions-rtp_stat-maxdays", 1, 0, _param_run_droppartitions_rtp_stat_maxdays},
 	    {"run-droppartitions-cdr_stat-maxdays", 1, 0, _param_run_droppartitions_cdr_stat_maxdays},
+	    {"run-droppartitions-cdr_problems-maxdays", 1, 0, _param_run_droppartitions_cdr_problems_maxdays},
 	    {"clean-obsolete", 0, 0, _param_clean_obsolete},
 	    {"check-db", 0, 0, _param_check_db},
 	    {"fax-deduplicate", 0, 0, _param_fax_deduplicate},
@@ -8182,8 +8217,11 @@ void parse_verb_param(string verbParam) {
 								{ sverb.trace_call = new FILE_LINE(0) char[strlen(verbParam.c_str() + 11) + 1]; strcpy(sverb.trace_call, verbParam.c_str() + 11); }
 	else if(verbParam == "energylevels")			sverb.energylevels = 1;
 	else if(verbParam == "cdr_stat_only")			sverb.cdr_stat_only = 1;
-	else if(verbParam.substr(0, 24) == "cdr_stat_interval_store=")	
+	else if(verbParam.substr(0, 24) == "cdr_stat_interval_store=")
 								sverb.cdr_stat_interval_store = atoi(verbParam.c_str() + 24);
+	else if(verbParam == "cdr_problems_only")		sverb.cdr_problems_only = 1;
+	else if(verbParam.substr(0, 28) == "cdr_problems_interval_store=")
+								sverb.cdr_problems_interval_store = atoi(verbParam.c_str() + 28);
 	else if(verbParam == "disable_unlink_qfile")		sverb.disable_unlink_qfile = 1;
 	else if(verbParam == "registers_save")			sverb.registers_save = 1;
 	else if(verbParam == "check_config")			sverb.check_config = 1;
@@ -8532,6 +8570,7 @@ void get_command_line_arguments() {
 			case _param_run_droppartitions_maxdays:
 			case _param_run_droppartitions_rtp_stat_maxdays:
 			case _param_run_droppartitions_cdr_stat_maxdays:
+			case _param_run_droppartitions_cdr_problems_maxdays:
 				opt_test = c;
 				strcpy_null_term(opt_test_arg, optarg);
 				is_gui_param = true;
@@ -9507,6 +9546,16 @@ void set_context_config() {
 	}
 	#endif
 	
+	if(!opt_cdr_problems) {
+		if(opt_cdr_problems_by_ip || opt_cdr_problems_by_number || opt_cdr_problems_by_comb) {
+			opt_cdr_problems = true;
+		}
+	} else {
+		if(!opt_cdr_problems_by_ip && !opt_cdr_problems_by_number && !opt_cdr_problems_by_comb) {
+			opt_cdr_problems_by_ip = true;
+		}
+	}
+	
 	if(opt_sniffer_threads_ext) {
 		sverb.sniffer_threads_ext = true;
 	}
@@ -9975,6 +10024,7 @@ bool is_set_cleandatabase_by_size() {
 	       opt_cleandatabase_register_time_info_size ||
 	       opt_cleandatabase_sip_msg_size ||
 	       opt_cleandatabase_cdr_stat_size ||
+	       opt_cleandatabase_cdr_problems_size ||
 	       opt_cleandatabase_rtp_stat_size ||
 	       opt_cleandatabase_log_sensor_size);
 }
@@ -9992,6 +10042,7 @@ void clean_params_cleandatabase_by_size() {
 	opt_cleandatabase_register_time_info_size = 0;
 	opt_cleandatabase_sip_msg_size = 0;
 	opt_cleandatabase_cdr_stat_size = 0;
+	opt_cleandatabase_cdr_problems_size = 0;
 	opt_cleandatabase_rtp_stat_size = 0;
 	opt_cleandatabase_log_sensor_size = 0;
 }
@@ -10149,6 +10200,18 @@ bool useCdrStatInStore() {
 
 bool useCdrStatProcessThreads() {
 	return(opt_cdr_stat_values || opt_cdr_stat_sources);
+}
+
+bool useCdrProblemsInProcessCall() {
+	return(opt_cdr_problems && !useChartsCacheInStore());
+}
+
+bool useCdrProblemsInStore() {
+	return(opt_cdr_problems && useChartsCacheInStore());
+}
+
+bool useCdrProblemsProcessThreads() {
+	return(opt_cdr_problems);
 }
 
 int cleanup_calls_period() {

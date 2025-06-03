@@ -215,6 +215,21 @@ public:
 		}
 		return(0);
 	}
+	long long unsigned getValue_uint(unsigned table_enum, const char *column, bool onlyNotZero = false, bool *null = NULL, unsigned rowIndex = 0, int *columnIndex = NULL) {
+		const char *str = getValue_str(table_enum, column, null, rowIndex, columnIndex);
+		if(str) {
+			char *endptr;
+			long long unsigned rslt = strtoull(str, &endptr, 10);
+			if(onlyNotZero && !rslt && null) {
+				*null = true;
+			}
+			return(rslt);
+		}
+		if(onlyNotZero && null) {
+			*null = true;
+		}
+		return(0);
+	}
 	double getValue_float(unsigned table_enum, const char *column, bool onlyNotZero = false, bool *null = NULL, unsigned rowIndex = 0) {
 		const char *str = getValue_str(table_enum, column, null, rowIndex);
 		if(str) {

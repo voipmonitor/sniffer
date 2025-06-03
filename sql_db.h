@@ -771,6 +771,7 @@ public:
 	void checkColumns_cdr_conference(bool log = false);
 	void checkColumns_cdr_child(bool log = false);
 	void checkColumns_cdr_stat(bool log = false);
+	void checkColumns_cdr_problems(bool log = false);
 	void checkColumns_ss7(bool log = false);
 	void checkColumns_message(bool log = false);
 	void checkColumns_message_child(bool log = false);
@@ -1282,6 +1283,7 @@ void createMysqlPartitionsCdr();
 void _createMysqlPartitionsCdr(char type, int next_day, int connectId, SqlDb *sqlDb);
 void createMysqlPartitionsSs7();
 void createMysqlPartitionsCdrStat();
+void createMysqlPartitionsCdrProblems();
 void createMysqlPartitionsRtpStat();
 void createMysqlPartitionsLogSensor();
 void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb = NULL);
@@ -1291,6 +1293,7 @@ void _createMysqlPartition(string table, char type, int next_day, bool old_ver, 
 void dropMysqlPartitionsCdr();
 void dropMysqlPartitionsSs7();
 void dropMysqlPartitionsCdrStat();
+void dropMysqlPartitionsCdrProblems();
 void dropMysqlPartitionsRtpStat();
 void dropMysqlPartitionsLogSensor();
 void dropMysqlPartitionsBillingAgregation();
@@ -1523,8 +1526,10 @@ public:
 	bool createSs7;
 	bool dropSs7;
 	bool createCdrStat;
-	bool createRtpStat;
 	bool dropCdrStat;
+	bool createCdrProblems;
+	bool dropCdrProblems;
+	bool createRtpStat;
 	bool dropRtpStat;
 	bool createLogSensor;
 	bool dropLogSensor;
@@ -1564,6 +1569,8 @@ private:
 	time_t dropPartitionSs7At;
 	time_t createPartitionCdrStatAt;
 	time_t dropPartitionCdrStatAt;
+	time_t createPartitionCdrProblemsAt;
+	time_t dropPartitionCdrProblemsAt;
 	time_t createPartitionRtpStatAt;
 	time_t dropPartitionRtpStatAt;
 	time_t createPartitionLogSensorAt;

@@ -177,6 +177,7 @@ enum eCmdLineParams {
 	_param_run_droppartitions_maxdays,
 	_param_run_droppartitions_rtp_stat_maxdays,
 	_param_run_droppartitions_cdr_stat_maxdays,
+	_param_run_droppartitions_cdr_problems_maxdays,
 	_param_clean_obsolete,
 	_param_check_db,
 	_param_fax_deduplicate,
@@ -441,6 +442,10 @@ bool useCdrStatInProcessCall();
 bool useCdrStatInStore();
 bool useCdrStatProcessThreads();
 
+bool useCdrProblemsInProcessCall();
+bool useCdrProblemsInStore();
+bool useCdrProblemsProcessThreads();
+
 int cleanup_calls_period();
 
 unsigned getCountInterfaces();
@@ -448,13 +453,13 @@ unsigned getCountInterfaces();
 void set_all_ports_for_tcp();
 
 inline bool useChartsCacheOrCdrStatInProcessCall() {
-	return(useChartsCacheInProcessCall() || useCdrStatInProcessCall());
+	return(useChartsCacheInProcessCall() || useCdrStatInProcessCall() || useCdrProblemsInProcessCall());
 }
 inline bool useChartsCacheOrCdrStatInStore() {
-	return(useChartsCacheInStore() || useCdrStatInStore());
+	return(useChartsCacheInStore() || useCdrStatInStore() || useCdrProblemsInStore());
 }
 inline bool useChartsCacheOrCdrStatProcessThreads() {
-	return(useChartsCacheProcessThreads() || useCdrStatProcessThreads());
+	return(useChartsCacheProcessThreads() || useCdrStatProcessThreads() || useCdrProblemsProcessThreads());
 }
 
 

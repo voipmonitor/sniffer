@@ -973,6 +973,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	save_rtcp_pcap = false;
 	save_rtp_graph = false;
 
+	rslt_save_cdr_bye = 0;
+	rslt_save_cdr_flags = 0;
 }
 
 u_int64_t Call::counter_s = 0;
@@ -5154,6 +5156,8 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 	case _chartType_clipping:
 	case _chartType_clipping_caller:
 	case _chartType_clipping_called:
+	case _chartType_RTP_IP_src:
+	case _chartType_RTP_IP_dst:
 		if(!rtpab[0] && !rtpab[1]) {
 			setNull = true;
 			break;
@@ -5170,7 +5174,8 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		    type == _chartType_silence_end_caller ||
 		    type == _chartType_clipping_caller ||
 		    type == _chartType_jitter_caller ||
-		    type == _chartType_delay_caller)) {
+		    type == _chartType_delay_caller ||
+		    type == _chartType_RTP_IP_src)) {
 			setNull = true;
 			break;
 		}
@@ -5186,7 +5191,8 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		    type == _chartType_silence_end_called ||
 		    type == _chartType_clipping_called ||
 		    type == _chartType_jitter_called ||
-		    type == _chartType_delay_called)) {
+		    type == _chartType_delay_called ||
+		    type == _chartType_RTP_IP_dst)) {
 			setNull = true;
 			break;
 		}
@@ -5506,6 +5512,20 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 					}
 				}
 			}
+			}
+			break;
+		case _chartType_RTP_IP_src:
+			if(rtpab[0]->saddr.isSet()) {
+				*value_str = rtpab[0]->saddr.getString();
+			} else {
+				setNull = true;
+			}
+			break;
+		case _chartType_RTP_IP_dst:
+			if(rtpab[1]->saddr.isSet()) {
+				*value_str = rtpab[1]->saddr.getString();
+			} else {
+				setNull = true;
 			}
 			break;
 		}
@@ -5901,6 +5921,12 @@ void Call::getChartCacheValue(cDbTablesContent *tablesContent,
 		break;
 	case _chartType_IP_dst:
 		v_str = tablesContent->getValue_string(_t_cdr, "sipcallerip");
+		break;
+	case _chartType_RTP_IP_src:
+		v_str = tablesContent->getValue_string(_t_cdr, "a_saddr");
+		break;
+	case _chartType_RTP_IP_dst:
+		v_str = tablesContent->getValue_string(_t_cdr, "b_saddr");
 		break;
 	case _chartType_domain_src:
 		v_str = tablesContent->getValue_string(_t_cdr, "caller_domain");
@@ -7202,6 +7228,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	} else {
 		bye = c_branch->seeninviteok ? (c_branch->seenbye ? (c_branch->seenbye_and_ok ? 3 : 2) : 1) : 0;
 	}
+	rslt_save_cdr_bye = bye;
 	cdr.add(bye, "bye");
 
 	if(!c_branch->match_header.empty()) {
@@ -7684,6 +7711,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr.add((dscp_a << 24) + (dscp_b << 16) + (dscp_c << 8) + dscp_d, "dscp");
 	}
 	
+	rslt_save_cdr_flags = cdr_flags;
 	if(cdr_flags && existsColumns.cdr_flags) {
 		cdr.add(cdr_flags, "flags");
 	}
@@ -7773,7 +7801,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	adjustSipResponse(c_branch->lastSIPresponse);
 	
 	if((useChartsCacheInProcessCall() && sverb.charts_cache_only) ||
-	   (useCdrStatInProcessCall() && sverb.cdr_stat_only)) {
+	   (useCdrStatInProcessCall() && sverb.cdr_stat_only) ||
+	   (useCdrProblemsInProcessCall() && sverb.cdr_problems_only)) {
 		return(0);
 	}
 	

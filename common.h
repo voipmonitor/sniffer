@@ -143,6 +143,8 @@ struct sVerbose {
 	int energylevels;
 	int cdr_stat_only;
 	int cdr_stat_interval_store;
+	int cdr_problems_only;
+	int cdr_problems_interval_store;
 	int disable_unlink_qfile;
 	int registers_save;
 	int check_config;

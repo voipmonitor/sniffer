@@ -81,6 +81,8 @@ enum eChartType {
 	_chartType_codecs,
 	_chartType_IP_src,
 	_chartType_IP_dst,
+	_chartType_RTP_IP_src,
+	_chartType_RTP_IP_dst,
 	_chartType_domain_src,
 	_chartType_domain_dst,
 	_chartType_caller_countries,
@@ -120,7 +122,8 @@ enum eChartPercType {
 enum eChartTypeUse {
 	_chartTypeUse_NA,
 	_chartTypeUse_chartCache,
-	_chartTypeUse_cdrStat
+	_chartTypeUse_cdrStat,
+	_chartTypeUse_cdrProblems
 };
 
 enum eCdrStatType {
@@ -319,6 +322,39 @@ public:
 		u_int32_t store_counter;
 		volatile u_int32_t counter_add;
 	};
+	struct sCdrProblems {
+		sCdrProblems() {
+			memset(this, 0, sizeof(*this));
+		}
+		void add(sChartsCallData *call_data, int src_dst);
+		void store(vmIP *ip, string *number, int src_dst, int by_type, 
+			   u_int32_t timeFrom, u_int32_t created_at_real, SqlDb *sqlDb);
+		void store(SqlDb_row *row);
+		unsigned count;
+		unsigned count_connected;
+		unsigned count_mos_low;
+		unsigned count_interrupted_calls;
+		unsigned count_one_way;
+		unsigned count_missing_rtp;
+		unsigned count_missing_srtp_key;
+		unsigned count_fas;
+		unsigned count_zerossrc;
+		unsigned count_sipalg;
+		unsigned count_bye_code_2;
+		unsigned count_bye_code_102;
+		unsigned count_bye_code_103;
+		unsigned count_bye_code_104;
+		unsigned count_bye_code_105;
+		unsigned count_bye_code_101;
+		unsigned count_bye_code_106;
+		unsigned count_bye_code_107;
+		unsigned count_bye_code_108;
+		unsigned count_bye_code_109;
+		unsigned count_bye_code_100;
+		unsigned count_bye_code_110;
+		u_int32_t store_counter;
+		volatile u_int32_t counter_add;
+	};
 	struct sFieldValue {
 		string field;
 		double value;
@@ -327,25 +363,42 @@ public:
 public:
 	cChartInterval(eChartTypeUse typeUse);
 	~cChartInterval();
-	void setInterval(u_int32_t timeFrom, u_int32_t timeTo);
-	void setInterval(u_int32_t timeFrom, u_int32_t timeTo, vmIP &ip_src, vmIP &ip_dst);
-	void add(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
-		 u_int32_t calldate_from, u_int32_t calldate_to,
-		 map<class cChartFilter*, bool> *filters_map);
-	void add(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
-		 u_int32_t calldate_from, u_int32_t calldate_to,
-		 vmIP &ip_src, vmIP &ip_dst);
+	void setInterval_chart(u_int32_t timeFrom, u_int32_t timeTo);
+	void setInterval_stat(u_int32_t timeFrom, u_int32_t timeTo, vmIP &ip_src, vmIP &ip_dst);
+	void setInterval_problems(u_int32_t timeFrom, u_int32_t timeTo, vmIP_string &src, vmIP_string &dst);
+	void add_chart(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
+		       u_int32_t calldate_from, u_int32_t calldate_to,
+		       map<class cChartFilter*, bool> *filters_map);
+	void add_stat(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
+		      u_int32_t calldate_from, u_int32_t calldate_to,
+		      vmIP &ip_src, vmIP &ip_dst);
+	void add_problems(sChartsCallData *call, vmIP_string &src, vmIP_string &dst);
 	void store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb);
-	void init();
-	void init(vmIP &ip_src, vmIP &ip_dst);
+	void init_chart();
+	void init_stat(vmIP &ip_src, vmIP &ip_dst);
+	void init_problems(vmIP_string &src, vmIP_string &dst);
 	void clear();
 private:
 	eChartTypeUse typeUse;
 	u_int32_t timeFrom;
 	u_int32_t timeTo;
-	map<cChartSeriesId, cChartIntervalSeriesData*> seriesData;
-	map<vmIP, sSeriesDataCdrStat*> seriesDataCdrStat_src;
-	map<vmIP, sSeriesDataCdrStat*> seriesDataCdrStat_dst;
+	union {
+		struct {
+			map<cChartSeriesId, cChartIntervalSeriesData*> *data;
+		} chart;
+		struct {
+			map<vmIP, sSeriesDataCdrStat*> *src;
+			map<vmIP, sSeriesDataCdrStat*> *dst;
+		} stat;
+		struct {
+			map<vmIP, sCdrProblems*> *ip_src;
+			map<vmIP, sCdrProblems*> *ip_dst;
+			map<string, sCdrProblems*> *number_src;
+			map<string, sCdrProblems*> *number_dst;
+			map<vmIP_string, sCdrProblems*> *comb_src;
+			map<vmIP_string, sCdrProblems*> *comb_dst;
+		} problems;
+	};
 	u_int32_t created_at_real;
 	u_int32_t last_use_at_real;
 	u_int32_t last_store_at;
@@ -355,6 +408,7 @@ friend class cChartDataPool;
 friend class cChartIntervalSeriesData;
 friend class cCharts;
 friend class cCdrStat;
+friend class cCdrProblems;
 };
 
 class cChartFilter {
@@ -568,6 +622,74 @@ friend class cChartDataItem;
 friend class cChartInterval;
 };
 
+class cCdrProblems {
+public:
+	cCdrProblems();
+	~cCdrProblems();
+	void clear();
+	void add(sChartsCallData *call);
+	void store(bool forceAll = false);
+	void cleanup(bool forceAll = false);
+	void lock_intervals() { __SYNC_LOCK(sync_intervals); }
+	void unlock_intervals() { __SYNC_UNLOCK(sync_intervals); }
+	static string db_fields(vector<dstring> *fields = NULL);
+	static bool exists_columns_check(const char *column, int by_type);
+	static void exists_columns_clear(int by_type);
+	static void exists_columns_add(const char *column, int by_type);
+	static inline bool enableBySrcDst(int src_dst) {
+		return(src_dst == 0 ? enableBySrc() : enableByDst());
+	}
+	static inline bool enableBySrc() {
+		extern int opt_cdr_problems;
+		return(opt_cdr_problems == 1 || opt_cdr_problems == 3);
+	}
+	static inline bool enableByDst() {
+		extern int opt_cdr_problems;
+		return(opt_cdr_problems == 2 || opt_cdr_problems == 3);
+	}
+	static string side_string(int src_dst) {
+		return(src_dst == 0 ? "src" : "dst");
+	}
+	static inline bool enableByType(int by_type) {
+		return(by_type == 0 ? enableByIP() : 
+		       by_type == 1 ? enableByNumber() :
+		       by_type == 2 ? enableByComb() : 
+				      false);
+	}
+	static inline bool enableByIP() {
+		extern bool opt_cdr_problems_by_ip;
+		return(opt_cdr_problems_by_ip);
+	}
+	static inline bool enableByNumber() {
+		extern bool opt_cdr_problems_by_number;
+		return(opt_cdr_problems_by_number);
+	}
+	static inline bool enableByComb() {
+		extern bool opt_cdr_problems_by_comb;
+		return(opt_cdr_problems_by_comb);
+	}
+	static string tableNameSuffix(int by_type) {
+		return(by_type == 0 ? "_by_ip" : 
+		       by_type == 1 ? "_by_number" :
+				      "_by_comb");
+	}
+private:
+	map<u_int32_t, cChartInterval*> intervals;
+	volatile u_int32_t first_interval;
+	unsigned mainInterval;
+	unsigned intervalStore;
+	unsigned intervalCleanup;
+	unsigned intervalExpiration;
+	SqlDb *sqlDbStore;
+	u_int32_t last_store_at;
+	u_int32_t last_store_at_real;
+	u_int32_t last_cleanup_at;
+	u_int32_t last_cleanup_at_real;
+	volatile int sync_intervals;
+	static map<string, bool> exists_columns[3];
+	static volatile int exists_column_sync;
+};
+
 struct sFilterCache_call_ipv4_comb {
 	union {
 		struct {
@@ -660,19 +782,29 @@ void cdrStatAddCall(sChartsCallData *call);
 void cdrStatStore(bool forceAll = false);
 void cdrStatCleanup(bool forceAll = false);
 
+void cdrProblemsInit(SqlDb *sqlDb);
+void cdrProblemsTerm();
+bool cdrProblemsIsSet();
+void cdrProblemsAddCall(sChartsCallData *call);
+void cdrProblemsStore(bool forceAll = false);
+void cdrProblemsCleanup(bool forceAll = false);
+
 inline void chartsCacheAndCdrStatAddCall(sChartsCallData *call, void *callData, cFiltersCache *filtersCache, int threadIndex) {
 	chartsCacheAddCall(call, callData, filtersCache, threadIndex);
 	cdrStatAddCall(call);
+	cdrProblemsAddCall(call);
 }
 
 inline void chartsCacheAndCdrStatStore(bool forceAll = false) {
 	chartsCacheStore(forceAll);
 	cdrStatStore(forceAll);
+	cdrProblemsStore(forceAll);
 }
 
 inline void chartsCacheAndCdrStatCleanup(bool forceAll = false) {
 	chartsCacheCleanup(forceAll);
 	cdrStatCleanup(forceAll);
+	cdrProblemsCleanup(forceAll);
 }
 
 

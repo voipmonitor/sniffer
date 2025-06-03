@@ -47,6 +47,10 @@ extern bool opt_cdr_rtpport;
 extern bool opt_cdr_rtpsrcport;
 extern int opt_cdr_stat_values;
 extern bool opt_cdr_stat_sources;
+extern int opt_cdr_problems;
+extern bool opt_cdr_problems_by_ip;
+extern bool opt_cdr_problems_by_number;
+extern bool opt_cdr_problems_by_comb;
 extern int opt_create_old_partitions;
 extern bool opt_disable_partition_operations;
 extern vector<dstring> opt_custom_headers_cdr;
@@ -139,6 +143,7 @@ bool opt_cdr_partition_oldver = false;
 bool opt_ss7_partition_oldver;
 bool opt_cdr_stat_values_partition_oldver[2] = { false, false };
 bool opt_cdr_stat_sources_partition_oldver[2] = { false, false };
+bool opt_cdr_problems_partition_oldver[3] = { false, false, false };
 bool opt_rtp_stat_partition_oldver = false;
 bool opt_log_sensor_partition_oldver = false;
 sExistsColumns existsColumns;
@@ -6895,8 +6900,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	if(opt_cdr_stat_values) {
 	for(int src_dst = 0; src_dst < 2; src_dst++) {
 	if(cCdrStat::enableBySrcDst(src_dst)) {
-	vector<dstring> cdr_stat_fields;
-	string cdr_stat_fields_str = cCdrStat::metrics_db_fields(&cdr_stat_fields);
+	string cdr_stat_fields_str = cCdrStat::metrics_db_fields();
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_stat_values") + cCdrStat::tableNameSuffix(src_dst) + "` (\
 			`from_time` datetime,\
@@ -6941,6 +6945,77 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				 PARTITION ") + partMonthName + " VALUES LESS THAN ('" + limitMonth + "') engine innodb)") :
 		""));	 
 	}}}
+	
+	if(opt_cdr_problems) {
+	string cdr_problems_fields_str = cCdrProblems::db_fields();
+	if(opt_cdr_problems_by_ip) {
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `cdr_problems_by_ip` (\
+			`from_time` datetime,\
+			`side` enum('src','dst'),\
+			`addr` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`sensor_id` int,\
+			`created_at` datetime,\
+			`updated_at` datetime,\
+			`updated_counter` smallint unsigned,\
+			" + cdr_problems_fields_str + "\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "PRIMARY KEY" : "UNIQUE KEY `comb_1`") + "(`from_time`,`side`,`addr`,`sensor_id`,`created_at`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(supportPartitions != _supportPartitions_na ?
+		(opt_cdr_problems_partition_oldver[0] ? 
+			string(" PARTITION BY RANGE (to_days(`from_time`))(\
+				 PARTITION ") + partMonthName + " VALUES LESS THAN (to_days('" + limitMonth + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(`from_time`)(\
+				 PARTITION ") + partMonthName + " VALUES LESS THAN ('" + limitMonth + "') engine innodb)") :
+		""));
+	}
+	if(opt_cdr_problems_by_number) {
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `cdr_problems_by_number` (\
+			`from_time` datetime,\
+			`side` enum('src','dst'),\
+			`number` varchar(255) DEFAULT NULL,\
+			`sensor_id` int,\
+			`created_at` datetime,\
+			`updated_at` datetime,\
+			`updated_counter` smallint unsigned,") + "\
+			" + cdr_problems_fields_str + "\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "PRIMARY KEY" : "UNIQUE KEY `comb_1`") + "(`from_time`,`side`,`number`,`sensor_id`,`created_at`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(supportPartitions != _supportPartitions_na ?
+		(opt_cdr_problems_partition_oldver[1] ? 
+			string(" PARTITION BY RANGE (to_days(`from_time`))(\
+				 PARTITION ") + partMonthName + " VALUES LESS THAN (to_days('" + limitMonth + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(`from_time`)(\
+				 PARTITION ") + partMonthName + " VALUES LESS THAN ('" + limitMonth + "') engine innodb)") :
+		""));
+	}
+	if(opt_cdr_problems_by_comb) {
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `cdr_problems_by_comb` (\
+			`from_time` datetime,\
+			`side` enum('src','dst'),\
+			`addr` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`number` varchar(255) DEFAULT NULL,\
+			`sensor_id` int,\
+			`created_at` datetime,\
+			`updated_at` datetime,\
+			`updated_counter` smallint unsigned,\
+			" + cdr_problems_fields_str + "\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "PRIMARY KEY" : "UNIQUE KEY `comb_1`") + "(`from_time`,`side`,`addr`,`number`,`sensor_id`,`created_at`),\
+			KEY `comb_2` (`from_time`,`side`,`number`,`addr`,`sensor_id`),\
+			KEY `comb_3` (`from_time`,`side`,`addr`,`sensor_id`),\
+			KEY `comb_4` (`from_time`,`side`,`number`,`sensor_id`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(supportPartitions != _supportPartitions_na ?
+		(opt_cdr_problems_partition_oldver[2] ? 
+			string(" PARTITION BY RANGE (to_days(`from_time`))(\
+				 PARTITION ") + partMonthName + " VALUES LESS THAN (to_days('" + limitMonth + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(`from_time`)(\
+				 PARTITION ") + partMonthName + " VALUES LESS THAN ('" + limitMonth + "') engine innodb)") :
+		""));
+	}
+	}
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `rtp_stat` (\
@@ -9036,6 +9111,14 @@ void SqlDb_mysql::checkDbMode() {
 						}
 					}
 				}
+				for(int by_type = 0; by_type < 3; by_type++) {
+					if(cCdrProblems::enableByType(by_type)) {
+						if(this->isOldVerPartition(("cdr_problems" + cCdrProblems::tableNameSuffix(by_type)).c_str())) {
+							opt_cdr_problems_partition_oldver[by_type] = true;
+							syslog(LOG_NOTICE, "table cdr_problems%s contain old mode partitions", cCdrProblems::tableNameSuffix(by_type).c_str());
+						}
+					}
+				}
 				if(this->isOldVerPartition("rtp_stat")) {
 					opt_rtp_stat_partition_oldver = true;
 					syslog(LOG_NOTICE, "table rtp_stat contain old mode partitions");
@@ -9111,6 +9194,7 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumnsSilentLog) {
 	this->checkColumns_cdr_conference(!checkColumnsSilentLog);
 	this->checkColumns_cdr_child(!checkColumnsSilentLog);
 	this->checkColumns_cdr_stat(!checkColumnsSilentLog);
+	this->checkColumns_cdr_problems(!checkColumnsSilentLog);
 	this->checkColumns_ss7(!checkColumnsSilentLog);
 	this->checkColumns_message(!checkColumnsSilentLog);
 	this->checkColumns_message_child(!checkColumnsSilentLog);
@@ -9694,12 +9778,45 @@ void SqlDb_mysql::checkColumns_cdr_stat(bool log) {
 			map<string, u_int64_t> tableSize;
 			for(unsigned i = 0; i < cdr_stat_fields.size(); i++) {
 				bool existsColumn = false;
-				this->checkNeedAlterAdd(("cdr_stat_values" + cCdrStat::tableNameSuffix(src_dst)).c_str(), "field " + cdr_stat_fields[i].str[0], true,
+				this->checkNeedAlterAdd("cdr_stat_values" + cCdrStat::tableNameSuffix(src_dst), "field " + cdr_stat_fields[i].str[0], true,
 							log, &tableSize, &existsColumn,
 							cdr_stat_fields[i].str[0].c_str(), cdr_stat_fields[i].str[1].c_str(), NULL_CHAR_PTR,
 							NULL_CHAR_PTR);
 				if(existsColumn) {
 					cCdrStat::exists_columns_add(cdr_stat_fields[i].str[0].c_str(), src_dst);
+				}
+			}
+		}
+	}
+}
+
+void SqlDb_mysql::checkColumns_cdr_problems(bool log) {
+	for(int by_type = 0; by_type < 3; by_type++) {
+		cCdrProblems::exists_columns_clear(by_type);
+	}
+	bool existsTable = false;
+	for(int by_type = 0; by_type < 3; by_type++) {
+		if(this->existsTable("cdr_problems" + cCdrProblems::tableNameSuffix(by_type))) {
+			existsTable = true;
+			break;
+		}
+	}
+	if(!opt_cdr_problems || !existsTable) {
+		return;
+	}
+	vector<dstring> cdr_problems_fields;
+	cCdrProblems::db_fields(&cdr_problems_fields);
+	for(int by_type = 0; by_type < 3; by_type++) {
+		if(cCdrProblems::enableByType(by_type)) {
+			map<string, u_int64_t> tableSize;
+			for(unsigned i = 0; i < cdr_problems_fields.size(); i++) {
+				bool existsColumn = false;
+				this->checkNeedAlterAdd("cdr_problems" + cCdrProblems::tableNameSuffix(by_type), "field " + cdr_problems_fields[i].str[0], true,
+							log, &tableSize, &existsColumn,
+							cdr_problems_fields[i].str[0].c_str(), cdr_problems_fields[i].str[1].c_str(), NULL_CHAR_PTR,
+							NULL_CHAR_PTR);
+				if(existsColumn) {
+					cCdrProblems::exists_columns_add(cdr_problems_fields[i].str[0].c_str(), by_type);
 				}
 			}
 		}
@@ -10875,6 +10992,18 @@ void createMysqlPartitionsCdrStat() {
 	partitionsServiceIsInProgress = 0;
 }
 
+void createMysqlPartitionsCdrProblems() {
+	partitionsServiceIsInProgress = 1;
+	if(opt_cdr_problems) {
+		for(int by_type = 0; by_type < 3; by_type++) {
+			if(cCdrProblems::enableByType(by_type)) {
+				createMysqlPartitionsTable(("cdr_problems" + cCdrProblems::tableNameSuffix(by_type)).c_str(), opt_cdr_problems_partition_oldver[by_type], false, 'm');
+			}
+		}
+	}
+	partitionsServiceIsInProgress = 0;
+}
+
 void createMysqlPartitionsRtpStat() {
 	partitionsServiceIsInProgress = 1;
 	createMysqlPartitionsTable("rtp_stat", opt_rtp_stat_partition_oldver);
@@ -11236,6 +11365,17 @@ void dropMysqlPartitionsCdrStat() {
 		for(int src_dst = 0; src_dst < 2; src_dst++) {
 			if(cCdrStat::enableBySrcDst(src_dst)) {
 				dropMysqlPartitionsTable(("cdr_stat_sources" + cCdrStat::tableNameSuffix(src_dst)).c_str(), opt_cleandatabase_cdr_stat, 0, 'm');
+			}
+		}
+	}
+}
+
+void dropMysqlPartitionsCdrProblems() {
+	extern int opt_cleandatabase_cdr_problems;
+	if(opt_cdr_problems) {
+		for(int by_type = 0; by_type < 3; by_type++) {
+			if(cCdrProblems::enableByType(by_type)) {
+				dropMysqlPartitionsTable(("cdr_problems" + cCdrProblems::tableNameSuffix(by_type)).c_str(), opt_cleandatabase_cdr_problems, 0, 'm');
 			}
 		}
 	}
@@ -11711,6 +11851,8 @@ void sCreatePartitions::init() {
 	dropSs7 = false;
 	createCdrStat = false;
 	dropCdrStat = false;
+	createCdrProblems = false;
+	dropCdrProblems = false;
 	createRtpStat = false;
 	dropRtpStat = false;
 	createLogSensor = false;
@@ -11726,6 +11868,7 @@ bool sCreatePartitions::isSet() {
 	return(createCdr || dropCdr || 
 	       createSs7 || dropSs7 ||
 	       createCdrStat || dropCdrStat ||
+	       createCdrProblems || dropCdrProblems ||
 	       createRtpStat || dropRtpStat ||
 	       createLogSensor || dropLogSensor ||
 	       createIpacc || 
@@ -11788,6 +11931,9 @@ void sCreatePartitions::doCreatePartitions() {
 	if(this->createCdrStat) {
 		createMysqlPartitionsCdrStat();
 	}
+	if(this->createCdrProblems) {
+		createMysqlPartitionsCdrProblems();
+	}
 	if(this->createRtpStat) {
 		createMysqlPartitionsRtpStat();
 	}
@@ -11811,6 +11957,9 @@ void sCreatePartitions::doDropPartitions() {
 	}
 	if(this->dropCdrStat) {
 		dropMysqlPartitionsCdrStat();
+	}
+	if(this->dropCdrProblems) {
+		dropMysqlPartitionsCdrProblems();
 	}
 	if(this->dropRtpStat) {
 		dropMysqlPartitionsRtpStat();
@@ -11894,6 +12043,8 @@ cCreatePartitions::cCreatePartitions() {
 	dropPartitionSs7At = 0;
 	createPartitionCdrStatAt = 0;
 	dropPartitionCdrStatAt = 0;
+	createPartitionCdrProblemsAt = 0;
+	dropPartitionCdrProblemsAt = 0;
 	createPartitionRtpStatAt = 0;
 	dropPartitionRtpStatAt = 0;
 	createPartitionLogSensorAt = 0;
@@ -11965,6 +12116,16 @@ void cCreatePartitions::run(bool firstIter) {
 		if(check_time_partition_operation(dropPartitionCdrStatAt)) {
 			create_partitions.dropCdrStat = true;
 			dropPartitionCdrStatAt = actTime;
+		}
+	}
+	if(true /* cdr_problems */) {
+		if(check_time_partition_operation(createPartitionCdrProblemsAt)) {
+			create_partitions.createCdrProblems = true;
+			createPartitionCdrProblemsAt = actTime;
+		}
+		if(check_time_partition_operation(dropPartitionCdrProblemsAt)) {
+			create_partitions.dropCdrProblems = true;
+			dropPartitionCdrProblemsAt = actTime;
 		}
 	}
 	if(true /* rtp_stat */) {
@@ -12152,6 +12313,14 @@ void cPartitions::fillTables(SqlDb *sqlDb) {
 		for(int src_dst = 0; src_dst < 2; src_dst++) {
 			if(cCdrStat::enableBySrcDst(src_dst)) {
 				addTable("cdr_stat", ("cdr_stat_sources" + cCdrStat::tableNameSuffix(src_dst)).c_str());
+			}
+		}
+	}
+	// CDR_PROBLEMS
+	if(opt_cdr_problems) {
+		for(int by_type = 0; by_type < 3; by_type++) {
+			if(cCdrProblems::enableByType(by_type)) {
+				addTable("cdr_problems", ("cdr_problems" + cCdrProblems::tableNameSuffix(by_type)).c_str());
 			}
 		}
 	}
@@ -12359,6 +12528,7 @@ bool cPartitions::cleanup_by_size(const char *datadir, const char *database) {
 	extern int opt_cleandatabase_register_time_info_size;
 	extern int opt_cleandatabase_sip_msg_size;
 	extern int opt_cleandatabase_cdr_stat_size;
+	extern int opt_cleandatabase_cdr_problems_size;
 	extern int opt_cleandatabase_rtp_stat_size;
 	extern int opt_cleandatabase_log_sensor_size;
 	if(opt_cleandatabase_size || opt_cleandatabase_min_free_size) {
@@ -12393,6 +12563,9 @@ bool cPartitions::cleanup_by_size(const char *datadir, const char *database) {
 	}
 	if(opt_cleandatabase_cdr_stat_size) {
 		cleanup_group_by_size("cdr_stat", opt_cleandatabase_cdr_stat_size, sqlDb);
+	}
+	if(opt_cleandatabase_cdr_problems_size) {
+		cleanup_group_by_size("cdr_problems", opt_cleandatabase_cdr_problems_size, sqlDb);
 	}
 	if(opt_cleandatabase_rtp_stat_size) {
 		cleanup_group_by_size("rtp_stat", opt_cleandatabase_rtp_stat_size, sqlDb);

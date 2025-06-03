@@ -3058,6 +3058,8 @@ public:
 	bool save_rtp_payload_pcap : 1;
 	bool save_rtcp_pcap : 1;
 	bool save_rtp_graph : 1;
+	unsigned rslt_save_cdr_bye;
+	u_int64_t rslt_save_cdr_flags;
 private:
 	SqlDb_row cdr;
 	SqlDb_row cdr_next;
