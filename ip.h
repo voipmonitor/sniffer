@@ -91,7 +91,7 @@ struct vmIP {
 			}
 		} else {
 		#endif
-			#if defined(__x86_64__)
+			#if SIZEOF_LONG_IS_8
 			ip.v4.n = atol((char*)data_ip);
 			#else
 			ip.v4.n = atoll((char*)data_ip);

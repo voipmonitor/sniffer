@@ -162,7 +162,18 @@ struct sVerbose {
 };
 
 
-#if defined __x86_64__ && !defined __ILP32__
+#if (defined(__SIZEOF_POINTER__) && (__SIZEOF_POINTER__ == 8)) || \
+    (!defined(__SIZEOF_POINTER__) && (defined(__LP64__) || defined(__x86_64__) || defined(__aarch64__)))
+#define SIZEOF_POINTER_IS_8 1
+#endif
+
+#if (defined(__SIZEOF_LONG__) && (__SIZEOF_LONG__ == 8)) || \
+    (!defined(__SIZEOF_LONG__) && (defined(__LP64__) || defined(__x86_64__) || defined(__aarch64__)))
+#define SIZEOF_LONG_IS_8 1
+#endif
+
+
+#if SIZEOF_LONG_IS_8
 #define int_64_format_prefix ""
 #else
 #define int_64_format_prefix "l"

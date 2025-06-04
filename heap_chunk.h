@@ -3,9 +3,10 @@
 
 #include "config.h"
 #include "sync.h"
+#include "common.h"
 
 
-#if defined(__x86_64__)
+#if SIZEOF_POINTER_IS_8
 #define HEAP_CHUNK_USED_HEADER_SIZE 16 // p (long)&temp->PrevFree - (long)temp; (sizeof(unsigned int)+sizeof(void*))
 #else
 #define HEAP_CHUNK_USED_HEADER_SIZE 8
