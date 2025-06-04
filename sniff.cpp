@@ -10675,6 +10675,9 @@ void *PreProcessPacket::outThreadFunction() {
 					processNextAction(batch->batch[batch_index]);
 					batch->batch[batch_index] = NULL;
 				}
+				if(!opt_t2_boost_direct_rtp) {
+					counter_all_packets += count;
+				}
 				
 				#endif
 				
@@ -11678,7 +11681,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 		     << system_time_ms_2 - packet_time_ms << endl;
 	}
 	#endif
-	if(!opt_t2_boost_direct_rtp) {
+	if(!opt_t2_boost_direct_rtp && !parallel_threads) {
 		++counter_all_packets;
 	}
 	bool isSip = false;
