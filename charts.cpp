@@ -1052,7 +1052,7 @@ void cChartInterval::sCdrProblems::add(sChartsCallData *call_data, int src_dst) 
 		bye = call->rslt_save_cdr_bye;
 		flags = call->rslt_save_cdr_flags;
 		rtp_a_set = call->rtpab[0] && call->rtpab[0]->saddr.isSet();
-		rtp_b_set = call->rtpab[0] && call->rtpab[0]->saddr.isSet();
+		rtp_b_set = call->rtpab[1] && call->rtpab[1]->saddr.isSet();
 	} else {
 		Call::getChartCacheValue(call_data->tables_content(), src_dst == 0 ? _chartType_mos_caller : _chartType_mos_called, &mos, NULL, &mos_null, chartsCache);
 		bool connect_duration_null;
@@ -1070,16 +1070,18 @@ void cChartInterval::sCdrProblems::add(sChartsCallData *call_data, int src_dst) 
 		rtp_a_set = !a_saddr_str.empty() && !a_saddr_null;
 		rtp_b_set = !b_saddr_str.empty() && !b_saddr_null;
 	}
-	++count;
+	++count_all;
 	if(connected)					++count_connected;
-	if(!mos_null && mos > 0 && mos < 4)		++count_mos_low;
+	if(!mos_null && mos > 0 && mos < 3.1)		++count_mos_lt_31;
+	if(!mos_null && mos >= 3.1 && mos < 3.6)	++count_mos_lt_36;
+	if(!mos_null && mos >= 3.6 && mos < 4.0)	++count_mos_lt_40;
 	if(bye == 1)					++count_interrupted_calls;
 	if(connected && (rtp_a_set ^ rtp_b_set))	++count_one_way;
 	if(connected && !rtp_a_set && !rtp_b_set)	++count_missing_rtp;
-	if(flags | CDR_SRTP_WITHOUT_KEY)		++count_missing_srtp_key;
-	if(flags | CDR_FAS_DETECTED)			++count_fas;
-	if(flags | CDR_ZEROSSRC_DETECTED)		++count_zerossrc;
-	if(flags | CDR_SIPALG_DETECTED)			++count_sipalg;
+	if(flags & CDR_SRTP_WITHOUT_KEY)		++count_missing_srtp_key;
+	if(flags & CDR_FAS_DETECTED)			++count_fas;
+	if(flags & CDR_ZEROSSRC_DETECTED)		++count_zerossrc;
+	if(flags & CDR_SIPALG_DETECTED)			++count_sipalg;
 	if(bye == 2) 					++count_bye_code_2;
 	if(bye == 102) 					++count_bye_code_102;
 	if(bye == 103) 					++count_bye_code_103;
@@ -1094,7 +1096,7 @@ void cChartInterval::sCdrProblems::add(sChartsCallData *call_data, int src_dst) 
 	if(bye == 110) 					++count_bye_code_110;
 }
 
-void cChartInterval::sCdrProblems::store(vmIP *ip, string *number, int src_dst, int by_type,
+void cChartInterval::sCdrProblems::store(vmIP *ip, string *number, eProblemType pt, int src_dst, int by_type,
 					 u_int32_t timeFrom, u_int32_t created_at_real, SqlDb *sqlDb) {
 	if(counter_add) {
 		string table_name = "cdr_problems" + cCdrProblems::tableNameSuffix(by_type);
@@ -1107,6 +1109,7 @@ void cChartInterval::sCdrProblems::store(vmIP *ip, string *number, int src_dst, 
 		if(number) {
 			cdr_problems_row.add(sqlEscapeString(*number), "number");
 		}
+		cdr_problems_row.add(pt, "type");
 		cdr_problems_row.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "sensor_id");
 		cdr_problems_row.add(sqlDateTimeString(created_at_real), "created_at");
 		string insert_str;
@@ -1129,9 +1132,11 @@ void cChartInterval::sCdrProblems::store(vmIP *ip, string *number, int src_dst, 
 }
 
 void cChartInterval::sCdrProblems::store(SqlDb_row *row) {
-	row->add(count, "count_all");
+	row->add(count_all, "count_all");
 	row->add(count_connected, "count_connected");
-	row->add(count_mos_low, "count_mos_low");
+	row->add(count_mos_lt_31, "count_mos_lt_31");
+	row->add(count_mos_lt_36, "count_mos_lt_36");
+	row->add(count_mos_lt_40, "count_mos_lt_40");
 	row->add(count_interrupted_calls, "count_interrupted_calls");
 	row->add(count_one_way, "count_one_way");
 	row->add(count_missing_rtp, "count_missing_rtp");
@@ -1192,7 +1197,7 @@ void cChartInterval::setInterval_stat(u_int32_t timeFrom, u_int32_t timeTo, vmIP
 	init_stat(ip_src, ip_dst);
 }
 
-void cChartInterval::setInterval_problems(u_int32_t timeFrom, u_int32_t timeTo, vmIP_string &src, vmIP_string &dst) {
+void cChartInterval::setInterval_problems(u_int32_t timeFrom, u_int32_t timeTo, sProblemId &src, sProblemId &dst) {
 	this->timeFrom = timeFrom;
 	this->timeTo = timeTo;
 	init_problems(src, dst);
@@ -1270,7 +1275,7 @@ void cChartInterval::add_stat(sChartsCallData *call, unsigned call_interval, boo
 	}
 }
 
-void cChartInterval::add_problems(sChartsCallData *call, vmIP_string &src, vmIP_string &dst) {
+void cChartInterval::add_problems(sChartsCallData *call, sProblemId &src, sProblemId &dst) {
 	if(typeUse != _chartTypeUse_cdrProblems) {
 		return;
 	}
@@ -1278,47 +1283,44 @@ void cChartInterval::add_problems(sChartsCallData *call, vmIP_string &src, vmIP_
 	for(int src_dst = 0; src_dst < 2; src_dst++) {
 	for(int by_type = 0; by_type < 3; by_type++) {
 		if(cCdrProblems::enableBySrcDst(src_dst) && cCdrProblems::enableByType(by_type)) {
-			vmIP_string *ip_str = src_dst == 0 ? &src : &dst;
+			sProblemId problem_id = src_dst == 0 ? src : dst;
+			map<sProblemId, sCdrProblems*> *cdrProblems;
+			bool ok_add = false;
 			switch(by_type) {
 			case 0:
-				if(ip_str->ip.isSet()) {
-					map<vmIP, sCdrProblems*> *cdrProblems = src_dst == 0 ? problems.ip_src : problems.ip_dst;
+				if(problem_id.ip.isSet()) {
+					problem_id.str.clear();
+					cdrProblems = src_dst == 0 ? problems.ip_src : problems.ip_dst;
 					if(cdrProblems) {
-						map<vmIP, sCdrProblems*>::iterator iter = cdrProblems->find(ip_str->ip);
-						if(iter != cdrProblems->end()) {
-							iter->second->add(call, src_dst);
-							update = true;
-							++iter->second->counter_add;
-						}
+						ok_add = true;
 					}
 				}
 				break;
 			case 1:
-				if(!ip_str->str.empty()) {
-					map<string, sCdrProblems*> *cdrProblems = src_dst == 0 ? problems.number_src : problems.number_dst;
+				if(!problem_id.str.empty()) {
+					problem_id.ip.clear();
+					cdrProblems = src_dst == 0 ? problems.number_src : problems.number_dst;
 					if(cdrProblems) {
-						map<string, sCdrProblems*>::iterator iter = cdrProblems->find(ip_str->str);
-						if(iter != cdrProblems->end()) {
-							iter->second->add(call, src_dst);
-							update = true;
-							++iter->second->counter_add;
-						}
+						ok_add = true;
 					}
 				}
 				break;
 			case 2:
-				if(ip_str->ip.isSet()) {
-					map<vmIP_string, sCdrProblems*> *cdrProblems = src_dst == 0 ? problems.comb_src : problems.comb_dst;
+				if(problem_id.ip.isSet()) {
+					cdrProblems = src_dst == 0 ? problems.comb_src : problems.comb_dst;
 					if(cdrProblems) {
-						map<vmIP_string, sCdrProblems*>::iterator iter = cdrProblems->find(*ip_str);
-						if(iter != cdrProblems->end()) {
-							iter->second->add(call, src_dst);
-							update = true;
-							++iter->second->counter_add;
-						}
+						ok_add = true;
 					}
 				}
 				break;
+			}
+			if(ok_add) {
+				map<sProblemId, sCdrProblems*>::iterator iter = cdrProblems->find(problem_id);
+				if(iter != cdrProblems->end()) {
+					iter->second->add(call, src_dst);
+					update = true;
+					++iter->second->counter_add;
+				}
 			}
 		}
 	}}
@@ -1447,35 +1449,36 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 			for(int src_dst = 0; src_dst < 2; src_dst++) {
 			for(int by_type = 0; by_type < 3; by_type++) {
 				if(cCdrProblems::enableBySrcDst(src_dst) && cCdrProblems::enableByType(by_type)) {
+					map<sProblemId, sCdrProblems*> *cdrProblems;
 					switch(by_type) {
 					case 0: {
-						map<vmIP, sCdrProblems*> *cdrProblems = src_dst == 0 ? problems.ip_src : problems.ip_dst;
+						cdrProblems = src_dst == 0 ? problems.ip_src : problems.ip_dst;
 						if(cdrProblems) {
-							for(map<vmIP, sCdrProblems*>::iterator iter = cdrProblems->begin(); iter != cdrProblems->end(); iter++) {
+							for(map<sProblemId, sCdrProblems*>::iterator iter = cdrProblems->begin(); iter != cdrProblems->end(); iter++) {
 								if(iter->second->counter_add) {
-									iter->second->store((vmIP*)&iter->first, NULL, src_dst, by_type,
+									iter->second->store((vmIP*)&iter->first.ip, NULL, iter->first.pt, src_dst, by_type,
 											    timeFrom, created_at_real, sqlDb);
 								}
 							}
 						}}
 						break;
 					case 1: {
-						map<string, sCdrProblems*> *cdrProblems = src_dst == 0 ? problems.number_src : problems.number_dst;
+						cdrProblems = src_dst == 0 ? problems.number_src : problems.number_dst;
 						if(cdrProblems) {
-							for(map<string, sCdrProblems*>::iterator iter = cdrProblems->begin(); iter != cdrProblems->end(); iter++) {
+							for(map<sProblemId, sCdrProblems*>::iterator iter = cdrProblems->begin(); iter != cdrProblems->end(); iter++) {
 								if(iter->second->counter_add) {
-									iter->second->store(NULL, (string*)&iter->first, src_dst, by_type,
+									iter->second->store(NULL, (string*)&iter->first.str, iter->first.pt, src_dst, by_type,
 											    timeFrom, created_at_real, sqlDb);
 								}
 							}
 						}}
 						break;
 					case 2: {
-						map<vmIP_string, sCdrProblems*> *cdrProblems = src_dst == 0 ? problems.comb_src : problems.comb_dst;
+						cdrProblems = src_dst == 0 ? problems.comb_src : problems.comb_dst;
 						if(cdrProblems) {
-							for(map<vmIP_string, sCdrProblems*>::iterator iter = cdrProblems->begin(); iter != cdrProblems->end(); iter++) {
+							for(map<sProblemId, sCdrProblems*>::iterator iter = cdrProblems->begin(); iter != cdrProblems->end(); iter++) {
 								if(iter->second->counter_add) {
-									iter->second->store((vmIP*)&iter->first.ip, (string*)&iter->first.str, src_dst, by_type,
+									iter->second->store((vmIP*)&iter->first.ip, (string*)&iter->first.str, iter->first.pt, src_dst, by_type,
 											    timeFrom, created_at_real, sqlDb);
 								}
 							}
@@ -1529,52 +1532,45 @@ void cChartInterval::init_stat(vmIP &ip_src, vmIP &ip_dst) {
 	}
 }
 
-void cChartInterval::init_problems(vmIP_string &src, vmIP_string &dst) {
+void cChartInterval::init_problems(sProblemId &src, sProblemId &dst) {
 	if(typeUse == _chartTypeUse_cdrProblems) {
 		for(int src_dst = 0; src_dst < 2; src_dst++) {
 		for(int by_type = 0; by_type < 3; by_type++) {
 			if(cCdrProblems::enableBySrcDst(src_dst) && cCdrProblems::enableByType(by_type)) {
-				vmIP_string *ip_str = src_dst == 0 ? &src : &dst;
+				sProblemId problem_id = src_dst == 0 ? src : dst;
+				map<sProblemId, sCdrProblems*> **cdrProblems;
+				bool ok_init = false;
 				switch(by_type) {
 				case 0:
-					if(ip_str->ip.isSet()) {
-						map<vmIP, sCdrProblems*> **cdrProblems = src_dst == 0 ? &problems.ip_src : &problems.ip_dst;
-						if(!*cdrProblems) {
-							*cdrProblems = new map<vmIP, sCdrProblems*>;
-						}
-						map<vmIP, sCdrProblems*>::iterator iter = (*cdrProblems)->find(ip_str->ip);
-						if(iter == (*cdrProblems)->end()) {
-							sCdrProblems *cdrProblemsItem = new FILE_LINE(0) sCdrProblems;
-							(**cdrProblems)[ip_str->ip] = cdrProblemsItem;
-						}
+					if(problem_id.ip.isSet()) {
+						problem_id.str.clear();
+						cdrProblems = src_dst == 0 ? &problems.ip_src : &problems.ip_dst;
+						ok_init = true;
 					}
 					break;
 				case 1:
-					if(!ip_str->str.empty()) {
-						map<string, sCdrProblems*> **cdrProblems = src_dst == 0 ? &problems.number_src : &problems.number_dst;
-						if(!*cdrProblems) {
-							*cdrProblems = new map<string, sCdrProblems*>;
-						}
-						map<string, sCdrProblems*>::iterator iter = (*cdrProblems)->find(ip_str->str);
-						if(iter == (*cdrProblems)->end()) {
-							sCdrProblems *cdrProblemsItem = new FILE_LINE(0) sCdrProblems;
-							(**cdrProblems)[ip_str->str] = cdrProblemsItem;
-						}
+					if(!problem_id.str.empty()) {
+						problem_id.ip.clear();
+						cdrProblems = src_dst == 0 ? &problems.number_src : &problems.number_dst;
+						ok_init = true;
 					}
 					break;
 				case 2:
-					if(ip_str->ip.isSet()) {
-						map<vmIP_string, sCdrProblems*> **cdrProblems = src_dst == 0 ? &problems.comb_src : &problems.comb_dst;
-						if(!*cdrProblems) {
-							*cdrProblems = new map<vmIP_string, sCdrProblems*>;
-						}
-						map<vmIP_string, sCdrProblems*>::iterator iter = (*cdrProblems)->find(*ip_str);
-						if(iter == (*cdrProblems)->end()) {
-							sCdrProblems *cdrProblemsItem = new FILE_LINE(0) sCdrProblems;
-							(**cdrProblems)[*ip_str] = cdrProblemsItem;
-						}
+					if(problem_id.ip.isSet()) {
+						cdrProblems = src_dst == 0 ? &problems.comb_src : &problems.comb_dst;
+						ok_init = true;
 					}
 					break;
+				}
+				if(ok_init) {
+					if(!*cdrProblems) {
+						*cdrProblems = new map<sProblemId, sCdrProblems*>;
+					}
+					map<sProblemId, sCdrProblems*>::iterator iter = (*cdrProblems)->find(problem_id);
+					if(iter == (*cdrProblems)->end()) {
+						sCdrProblems *cdrProblemsItem = new FILE_LINE(0) sCdrProblems;
+						(**cdrProblems)[problem_id] = cdrProblemsItem;
+					}
 				}
 			}
 		}}
@@ -1612,40 +1608,25 @@ void cChartInterval::clear() {
 		for(int src_dst = 0; src_dst < 2; src_dst++) {
 		for(int by_type = 0; by_type < 3; by_type++) {
 			if(cCdrProblems::enableBySrcDst(src_dst) && cCdrProblems::enableByType(by_type)) {
+				map<sProblemId, sCdrProblems*> **cdrProblems;
 				switch(by_type) {
-				case 0: {
-					map<vmIP, sCdrProblems*> **cdrProblems = src_dst == 0 ? &problems.ip_src : &problems.ip_dst;
-					if(cdrProblems) {
-						for(map<vmIP, sCdrProblems*>::iterator iter = (*cdrProblems)->begin(); iter != (*cdrProblems)->end(); iter++) {
-							delete iter->second;
-						}
-						(*cdrProblems)->clear();
-						delete *cdrProblems;
-						*cdrProblems = NULL;
-					}}
+				case 0:
+					cdrProblems = src_dst == 0 ? &problems.ip_src : &problems.ip_dst;
 					break;
-				case 1: {
-					map<string, sCdrProblems*> **cdrProblems = src_dst == 0 ? &problems.number_src : &problems.number_dst;
-					if(cdrProblems) {
-						for(map<string, sCdrProblems*>::iterator iter = (*cdrProblems)->begin(); iter != (*cdrProblems)->end(); iter++) {
-							delete iter->second;
-						}
-						(*cdrProblems)->clear();
-						delete *cdrProblems;
-						*cdrProblems = NULL;
-					}}
+				case 1:
+					cdrProblems = src_dst == 0 ? &problems.number_src : &problems.number_dst;
 					break;
-				case 2: {
-					map<vmIP_string, sCdrProblems*> **cdrProblems = src_dst == 0 ? &problems.comb_src : &problems.comb_dst;
-					if(cdrProblems) {
-						for(map<vmIP_string, sCdrProblems*>::iterator iter = (*cdrProblems)->begin(); iter != (*cdrProblems)->end(); iter++) {
-							delete iter->second;
-						}
-						(*cdrProblems)->clear();
-						delete *cdrProblems;
-						*cdrProblems = NULL;
-					}}
+				case 2:
+					cdrProblems = src_dst == 0 ? &problems.comb_src : &problems.comb_dst;
 					break;
+				}
+				if(cdrProblems) {
+					for(map<sProblemId, sCdrProblems*>::iterator iter = (*cdrProblems)->begin(); iter != (*cdrProblems)->end(); iter++) {
+						delete iter->second;
+					}
+					(*cdrProblems)->clear();
+					delete *cdrProblems;
+					*cdrProblems = NULL;
 				}
 			}
 		}}
@@ -2619,6 +2600,90 @@ map<string, bool> cCdrStat::exists_columns[2];
 volatile int cCdrStat::exists_column_sync;
 
 
+cCdrProblems::cListIP::cListIP() {
+	load();
+	created_at = getTimeS_rdtsc();
+}
+
+void cCdrProblems::cListIP::load(SqlDb *sqlDb) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
+	if(sqlDb->existsTable("cb_ip_groups")) {
+		sqlDb->query("select * from cb_ip_groups");
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
+		SqlDb_row row;
+		while((row = rows.fetchRow())) {
+			if(atoi(row["server"].c_str())) {
+				servers.addComb(row["ip"].c_str());
+			}
+			if(atoi(row["trunk"].c_str())) {
+				trunks.addComb(row["ip"].c_str());
+			}
+		}
+	}
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
+}
+
+bool cCdrProblems::cListIP::isFromOwnClients(vmIP &src, vmIP &dst, list<vmIP> &proxy) {
+	if(servers.checkIP(dst) && !servers.checkIP(src)) {
+		return(true);
+	}
+	if(!servers.is_empty() && proxy.size() && !trunks.checkIP(src)) {
+		for(list<vmIP>::iterator iter = proxy.begin(); iter != proxy.end(); iter++) {
+			if(servers.checkIP(*iter)) {
+				return(true);
+			}
+		}
+	}
+	return(false);
+}
+
+bool cCdrProblems::cListIP::isFromOwnServers(vmIP &src) {
+	return(servers.checkIP(src));
+}
+
+bool cCdrProblems::cListIP::isFromPublicTrunks(vmIP &src) {
+	return(trunks.checkIP(src));
+}
+
+void cCdrProblems::cListIP::fetch_ip_from_call(sChartsCallData *call, vmIP *src, vmIP *dst, list<vmIP> *proxy) {
+	if(call->type == sChartsCallData::_call) {
+		if(src) {
+			*src = call->call()->getSipcallerip(call->call()->branch_main());
+		}
+		if(dst) {
+			*dst = call->call()->getSipcalledip(call->call()->branch_main());
+		}
+		if(proxy) {
+			for(list<vmIPport>::iterator iter = call->branch_main()->proxies.begin(); iter != call->branch_main()->proxies.end(); iter++) {
+				proxy->push_back(iter->ip.getIPv4());
+			}
+		}
+	} else {
+		if(src) {
+			*src = call->tables_content()->getValue_ip(_t_cdr, "sipcallerip");
+		}
+		if(dst) {
+			*dst = call->tables_content()->getValue_ip(_t_cdr, "sipcalledip");
+		}
+		if(proxy) {
+			int proxy_count = call->tables_content()->getCountRows(_t_cdr_proxy);
+			if(proxy_count > 0) {
+				for(int i = 0; i < proxy_count; i++) {
+					vmIP ip = call->tables_content()->getValue_ip(_t_cdr_proxy, "dst", NULL, i).getIPv4();
+					proxy->push_back(ip);
+				}
+			}
+		}
+	}
+}
+
 cCdrProblems::cCdrProblems() {
 	first_interval = 0;
 	mainInterval = opt_cdr_problems_interval * 60;
@@ -2631,11 +2696,19 @@ cCdrProblems::cCdrProblems() {
 	last_cleanup_at = 0;
 	last_cleanup_at_real = 0;
 	sync_intervals = 0;
+	list_ip = new FILE_LINE(0) cListIP();
+	list_ip->load();
+	list_ip_sync = 0;
+	list_ip_load_sync = 0;
+	list_ip_load_processed = 0;
 }
 
 cCdrProblems::~cCdrProblems() {
 	if(sqlDbStore) {
 		delete sqlDbStore;
+	}
+	if(list_ip) {
+		delete list_ip;
 	}
 	clear();
 }
@@ -2651,48 +2724,79 @@ void cCdrProblems::add(sChartsCallData *call) {
 	u_int64_t callbegin_us;
 	vmIP ip_src;
 	vmIP ip_dst;
+	list<vmIP> ip_proxy;
 	string number_src;
 	string number_dst;
 	if(call->type == sChartsCallData::_call) {
 		callbegin_us = call->call()->calltime_us();
-		if(cCdrProblems::enableBySrc()) {
-			ip_src = call->call()->getSipcallerip(call->call()->branch_main());
-			number_src = call->call()->branch_main()->caller;
+		ip_src = call->call()->getSipcallerip(call->call()->branch_main());
+		ip_dst = call->call()->getSipcalledip(call->call()->branch_main());
+		for(list<vmIPport>::iterator iter = call->branch_main()->proxies.begin(); iter != call->branch_main()->proxies.end(); iter++) {
+			ip_proxy.push_back(iter->ip.getIPv4());
 		}
-		if(cCdrProblems::enableByDst()) {
-			ip_dst = call->call()->getSipcalledip(call->call()->branch_main());
-			number_dst = call->call()->get_called(call->call()->branch_main());
-		}
+		number_src = call->call()->branch_main()->caller;
+		number_dst = call->call()->get_called(call->call()->branch_main());
 	} else {
 		callbegin_us = call->tables_content()->getValue_int(_t_cdr, "calldate");
-		if(cCdrProblems::enableBySrc()) {
-			ip_src = call->tables_content()->getValue_ip(_t_cdr, "sipcallerip");
-			number_src = call->tables_content()->getValue_str(_t_cdr, "caller");
+		ip_src = call->tables_content()->getValue_ip(_t_cdr, "sipcallerip");
+		ip_dst = call->tables_content()->getValue_ip(_t_cdr, "sipcalledip");
+		int proxy_count = call->tables_content()->getCountRows(_t_cdr_proxy);
+		if(proxy_count > 0) {
+			for(int i = 0; i < proxy_count; i++) {
+				vmIP ip = call->tables_content()->getValue_ip(_t_cdr_proxy, "dst", NULL, i).getIPv4();
+				ip_proxy.push_back(ip);
+			}
 		}
-		if(cCdrProblems::enableByDst()) {
-			ip_dst = call->tables_content()->getValue_ip(_t_cdr, "sipcalledip");
-			number_dst = call->tables_content()->getValue_str(_t_cdr, "called");
+		number_src = call->tables_content()->getValue_str(_t_cdr, "caller");
+		number_dst = call->tables_content()->getValue_str(_t_cdr, "called");
+	}
+	for(int pt = _pt_from_own_clients; pt <= _pt_from_public_trunks; pt++) {
+		bool ok_type = false;
+		lock_list_ip();
+		switch(pt) {
+		case _pt_from_own_clients:
+			if(list_ip->isFromOwnClients(ip_src, ip_dst, ip_proxy)) {
+				ok_type = true;
+			}
+			break;
+		case _pt_from_own_servers:
+			if(list_ip->isFromOwnServers(ip_src)) {
+				ok_type = true;
+			}
+			break;
+		case _pt_from_public_trunks:
+			if(list_ip->isFromPublicTrunks(ip_src)) {
+				ok_type = true;
+			}
+			break;
+		}
+		unlock_list_ip();
+		if(ok_type) {
+			sProblemId src(ip_src, number_src, (eProblemType)pt);
+			sProblemId dst(ip_dst, number_dst, (eProblemType)pt);
+			u_int32_t callbegin_s = callbegin_us / 1000000;
+			u_int32_t callbegin_interval_s = callbegin_s / mainInterval * mainInterval;
+			cChartInterval* interval = NULL;
+			lock_intervals();
+			interval = intervals[callbegin_interval_s];
+			if(!interval) {
+				if(callbegin_interval_s > first_interval) {
+					first_interval = callbegin_interval_s;
+				}
+				interval = new FILE_LINE(0) cChartInterval(_chartTypeUse_cdrProblems);
+				interval->setInterval_problems(callbegin_interval_s, callbegin_interval_s + mainInterval, src, dst);
+				intervals[callbegin_interval_s] = interval;
+			} else {
+				interval->init_problems(src, dst);
+			}
+			unlock_intervals();
+			interval->add_problems(call, src, dst);
 		}
 	}
-	vmIP_string src(ip_src, number_src);
-	vmIP_string dst(ip_dst, number_dst);
-	u_int32_t callbegin_s = callbegin_us / 1000000;
-	u_int32_t callbegin_interval_s = callbegin_s / mainInterval * mainInterval;
-	cChartInterval* interval = NULL;
-	lock_intervals();
-	interval = intervals[callbegin_interval_s];
-	if(!interval) {
-		if(callbegin_interval_s > first_interval) {
-			first_interval = callbegin_interval_s;
-		}
-		interval = new FILE_LINE(0) cChartInterval(_chartTypeUse_cdrProblems);
-		interval->setInterval_problems(callbegin_interval_s, callbegin_interval_s + mainInterval, src, dst);
-		intervals[callbegin_interval_s] = interval;
-	} else {
-		interval->init_problems(src, dst);
+	extern int opt_cdr_problems_list_ip_refresh_interval;
+	if(list_ip->created_at + opt_cdr_problems_list_ip_refresh_interval < getTimeS_rdtsc() && !list_ip_load_sync && !list_ip_load_processed) {
+		load_list_ip();
 	}
-	unlock_intervals();
-	interval->add_problems(call, src, dst);
 }
 
 void cCdrProblems::store(bool forceAll) {
@@ -2761,6 +2865,33 @@ void cCdrProblems::cleanup(bool forceAll) {
 	last_cleanup_at_real = real_time;
 }
 
+void cCdrProblems::load_list_ip() {
+	if(list_ip_load_sync || list_ip_load_processed) {
+		return;
+	}
+	__SYNC_LOCK(list_ip_load_sync);
+	pthread_t thread;
+	vm_pthread_create("refresh list ip for record problems", &thread, NULL, cCdrProblems::load_list_ip, this, __FILE__, __LINE__);
+}
+
+void *cCdrProblems::load_list_ip(void *arg) {
+	cCdrProblems *me = (cCdrProblems*)arg;
+	usleep(100000);
+	if(me->list_ip_load_processed) {
+		return(NULL);
+	}
+	__SYNC_SET(me->list_ip_load_processed);
+	cListIP *list_ip_new = new FILE_LINE(0) cListIP;
+	me->lock_list_ip();
+	delete me->list_ip;
+	syslog(LOG_NOTICE, "cdr problems list ip refreshed");
+	me->list_ip = list_ip_new;
+	me->unlock_list_ip();
+	__SYNC_UNLOCK(me->list_ip_load_sync);
+	__SYNC_NULL(me->list_ip_load_processed);
+	return(NULL);
+}
+
 string cCdrProblems::db_fields(vector<dstring> *fields) {
 	vector<dstring> _fields;
 	if(!fields) {
@@ -2768,7 +2899,9 @@ string cCdrProblems::db_fields(vector<dstring> *fields) {
 	}
 	fields->push_back(dstring("count_all", "int unsigned"));
 	fields->push_back(dstring("count_connected", "int unsigned"));
-	fields->push_back(dstring("count_mos_low", "int unsigned"));
+	fields->push_back(dstring("count_mos_lt_31", "int unsigned"));
+	fields->push_back(dstring("count_mos_lt_36", "int unsigned"));
+	fields->push_back(dstring("count_mos_lt_40", "int unsigned"));
 	fields->push_back(dstring("count_interrupted_calls", "int unsigned"));
 	fields->push_back(dstring("count_one_way", "int unsigned"));
 	fields->push_back(dstring("count_missing_rtp", "int unsigned"));

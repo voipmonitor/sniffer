@@ -409,6 +409,7 @@ bool opt_cdr_problems_by_ip = false;
 bool opt_cdr_problems_by_number = false;
 bool opt_cdr_problems_by_comb = false;
 int opt_cdr_problems_interval = 15;
+int opt_cdr_problems_list_ip_refresh_interval = 900;
 bool opt_charts_cache = false;
 int opt_charts_cache_max_threads = 3;
 bool opt_charts_cache_store = false;
@@ -974,7 +975,7 @@ mysqlSSLOptions optMySsl_2;
 
 bool opt_mysql_2_http = false;
 
-int opt_alter_rows_limit = 1000;
+int opt_alter_rows_limit = 100000;
 bool opt_mysql_security_invoker_routines = true;
 
 char opt_mysql_timezone[256] = "";
@@ -7467,6 +7468,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_problems_by_number", &opt_cdr_problems_by_number));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_problems_by_comb", &opt_cdr_problems_by_comb));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_problems_interval", &opt_cdr_problems_interval));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_problems_list_ip_refresh_interval", &opt_cdr_problems_list_ip_refresh_interval));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache", &opt_charts_cache));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("charts_cache_max_threads", &opt_charts_cache_max_threads));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_store", &opt_charts_cache_store));

@@ -303,6 +303,37 @@ friend class cChartInterval;
 friend class cChartIntervalSeriesData;
 };
 
+
+enum eProblemType {
+	_pt_from_own_clients = 1,
+	_pt_from_own_servers,
+	_pt_from_public_trunks
+};
+
+struct sProblemId {
+	inline sProblemId() {
+	}
+	inline sProblemId(vmIP ip, string str, eProblemType pt) {
+		this->ip = ip;
+		this->str = str;
+		this->pt = pt;
+	}
+	inline bool operator == (const sProblemId& other) const {
+		return(this->ip == other.ip &&
+		       this->str == other.str && 
+		       this->pt == other.pt);
+	}
+	inline bool operator < (const sProblemId& other) const { 
+		return(this->ip < other.ip ? 1 : this->ip > other.ip ? 0 :
+		       this->str < other.str ? 1 : this->str > other.str ? 0 :
+		       this->pt < other.pt);
+	}
+	vmIP ip;
+	string str;
+	eProblemType pt;
+};
+
+
 class cChartInterval {
 public:
 	struct sSeriesDataCdrStat {
@@ -327,12 +358,14 @@ public:
 			memset(this, 0, sizeof(*this));
 		}
 		void add(sChartsCallData *call_data, int src_dst);
-		void store(vmIP *ip, string *number, int src_dst, int by_type, 
+		void store(vmIP *ip, string *number, eProblemType pt, int src_dst, int by_type, 
 			   u_int32_t timeFrom, u_int32_t created_at_real, SqlDb *sqlDb);
 		void store(SqlDb_row *row);
-		unsigned count;
+		unsigned count_all;
 		unsigned count_connected;
-		unsigned count_mos_low;
+		unsigned count_mos_lt_31;
+		unsigned count_mos_lt_36;
+		unsigned count_mos_lt_40;
 		unsigned count_interrupted_calls;
 		unsigned count_one_way;
 		unsigned count_missing_rtp;
@@ -365,18 +398,18 @@ public:
 	~cChartInterval();
 	void setInterval_chart(u_int32_t timeFrom, u_int32_t timeTo);
 	void setInterval_stat(u_int32_t timeFrom, u_int32_t timeTo, vmIP &ip_src, vmIP &ip_dst);
-	void setInterval_problems(u_int32_t timeFrom, u_int32_t timeTo, vmIP_string &src, vmIP_string &dst);
+	void setInterval_problems(u_int32_t timeFrom, u_int32_t timeTo, sProblemId &src, sProblemId &dst);
 	void add_chart(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 		       u_int32_t calldate_from, u_int32_t calldate_to,
 		       map<class cChartFilter*, bool> *filters_map);
 	void add_stat(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 		      u_int32_t calldate_from, u_int32_t calldate_to,
 		      vmIP &ip_src, vmIP &ip_dst);
-	void add_problems(sChartsCallData *call, vmIP_string &src, vmIP_string &dst);
+	void add_problems(sChartsCallData *call, sProblemId &src, sProblemId &dst);
 	void store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb);
 	void init_chart();
 	void init_stat(vmIP &ip_src, vmIP &ip_dst);
-	void init_problems(vmIP_string &src, vmIP_string &dst);
+	void init_problems(sProblemId &src, sProblemId &dst);
 	void clear();
 private:
 	eChartTypeUse typeUse;
@@ -391,12 +424,12 @@ private:
 			map<vmIP, sSeriesDataCdrStat*> *dst;
 		} stat;
 		struct {
-			map<vmIP, sCdrProblems*> *ip_src;
-			map<vmIP, sCdrProblems*> *ip_dst;
-			map<string, sCdrProblems*> *number_src;
-			map<string, sCdrProblems*> *number_dst;
-			map<vmIP_string, sCdrProblems*> *comb_src;
-			map<vmIP_string, sCdrProblems*> *comb_dst;
+			map<sProblemId, sCdrProblems*> *ip_src;
+			map<sProblemId, sCdrProblems*> *ip_dst;
+			map<sProblemId, sCdrProblems*> *number_src;
+			map<sProblemId, sCdrProblems*> *number_dst;
+			map<sProblemId, sCdrProblems*> *comb_src;
+			map<sProblemId, sCdrProblems*> *comb_dst;
 		} problems;
 	};
 	u_int32_t created_at_real;
@@ -624,6 +657,18 @@ friend class cChartInterval;
 
 class cCdrProblems {
 public:
+	struct cListIP {
+		ListIP servers;
+		ListIP trunks;
+		u_int32_t created_at;
+		cListIP();
+		void load(SqlDb *sqlDb = NULL);
+		bool isFromOwnClients(vmIP &src, vmIP &dst, list<vmIP> &proxy);
+		bool isFromOwnServers(vmIP &src);
+		bool isFromPublicTrunks(vmIP &src);
+		inline void fetch_ip_from_call(sChartsCallData *call, vmIP *src, vmIP *dst, list<vmIP> *proxy);
+	};
+public:
 	cCdrProblems();
 	~cCdrProblems();
 	void clear();
@@ -632,6 +677,10 @@ public:
 	void cleanup(bool forceAll = false);
 	void lock_intervals() { __SYNC_LOCK(sync_intervals); }
 	void unlock_intervals() { __SYNC_UNLOCK(sync_intervals); }
+	void lock_list_ip() { __SYNC_LOCK(list_ip_sync); }
+	void unlock_list_ip() { __SYNC_UNLOCK(list_ip_sync); }
+	void load_list_ip();
+	static void *load_list_ip(void *arg);
 	static string db_fields(vector<dstring> *fields = NULL);
 	static bool exists_columns_check(const char *column, int by_type);
 	static void exists_columns_clear(int by_type);
@@ -688,6 +737,10 @@ private:
 	volatile int sync_intervals;
 	static map<string, bool> exists_columns[3];
 	static volatile int exists_column_sync;
+	cListIP *list_ip;
+	volatile int list_ip_sync;
+	volatile int list_ip_load_sync;
+	volatile int list_ip_load_processed;
 };
 
 struct sFilterCache_call_ipv4_comb {

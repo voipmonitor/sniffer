@@ -1286,25 +1286,6 @@ struct vmIPmask_port {
 	vmPort port;
 };
 
-struct vmIP_string {
-	inline vmIP_string() {
-	}
-	inline vmIP_string(vmIP ip, std::string str) {
-		this->ip = ip;
-		this->str = str;
-	}
-	inline bool operator == (const vmIP_string& other) const {
-		return(this->ip == other.ip &&
-		       this->str == other.str);
-	}
-	inline bool operator < (const vmIP_string& other) const { 
-		return(this->ip < other.ip ||
-		       (this->ip == other.ip && this->str < other.str));
-	}
-	vmIP ip;
-	std::string str;
-};
-
 
 inline vmIP str_2_vmIP(const char *str) {
 	vmIP vm_ip;

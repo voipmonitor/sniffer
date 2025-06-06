@@ -6952,6 +6952,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_problems_by_ip` (\
 			`from_time` datetime,\
+			`type` enum('from_own_clients','from_own_servers','from_public_trunks'),\
 			`side` enum('src','dst'),\
 			`addr` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`sensor_id` int,\
@@ -6959,7 +6960,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`updated_at` datetime,\
 			`updated_counter` smallint unsigned,\
 			" + cdr_problems_fields_str + "\
-			" + (opt_cdr_force_primary_index_in_all_tables ? "PRIMARY KEY" : "UNIQUE KEY `comb_1`") + "(`from_time`,`side`,`addr`,`sensor_id`,`created_at`)\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "PRIMARY KEY" : "UNIQUE KEY `comb_1`") + "(`from_time`,`type`,`side`,`addr`,`sensor_id`,`created_at`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(supportPartitions != _supportPartitions_na ?
 		(opt_cdr_problems_partition_oldver[0] ? 
@@ -6973,6 +6974,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_problems_by_number` (\
 			`from_time` datetime,\
+			`type` enum('from_own_clients','from_own_servers','from_public_trunks'),\
 			`side` enum('src','dst'),\
 			`number` varchar(255) DEFAULT NULL,\
 			`sensor_id` int,\
@@ -6980,7 +6982,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`updated_at` datetime,\
 			`updated_counter` smallint unsigned,") + "\
 			" + cdr_problems_fields_str + "\
-			" + (opt_cdr_force_primary_index_in_all_tables ? "PRIMARY KEY" : "UNIQUE KEY `comb_1`") + "(`from_time`,`side`,`number`,`sensor_id`,`created_at`)\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "PRIMARY KEY" : "UNIQUE KEY `comb_1`") + "(`from_time`,`type`,`side`,`number`,`sensor_id`,`created_at`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(supportPartitions != _supportPartitions_na ?
 		(opt_cdr_problems_partition_oldver[1] ? 
@@ -6995,6 +6997,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	"CREATE TABLE IF NOT EXISTS `cdr_problems_by_comb` (\
 			`from_time` datetime,\
 			`side` enum('src','dst'),\
+			`type` enum('from_own_clients','from_own_servers','from_public_trunks'),\
 			`addr` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`number` varchar(255) DEFAULT NULL,\
 			`sensor_id` int,\
@@ -7002,10 +7005,10 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`updated_at` datetime,\
 			`updated_counter` smallint unsigned,\
 			" + cdr_problems_fields_str + "\
-			" + (opt_cdr_force_primary_index_in_all_tables ? "PRIMARY KEY" : "UNIQUE KEY `comb_1`") + "(`from_time`,`side`,`addr`,`number`,`sensor_id`,`created_at`),\
-			KEY `comb_2` (`from_time`,`side`,`number`,`addr`,`sensor_id`),\
-			KEY `comb_3` (`from_time`,`side`,`addr`,`sensor_id`),\
-			KEY `comb_4` (`from_time`,`side`,`number`,`sensor_id`)\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "PRIMARY KEY" : "UNIQUE KEY `comb_1`") + "(`from_time`,`type`,`side`,`addr`,`number`,`sensor_id`,`created_at`),\
+			KEY `comb_2` (`from_time`,`type`,`side`,`number`,`addr`,`sensor_id`),\
+			KEY `comb_3` (`from_time`,`type`,`side`,`addr`,`sensor_id`),\
+			KEY `comb_4` (`from_time`,`type`,`side`,`number`,`sensor_id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(supportPartitions != _supportPartitions_na ?
 		(opt_cdr_problems_partition_oldver[2] ? 
