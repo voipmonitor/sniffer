@@ -694,6 +694,7 @@ void cHugePagesTools::dropCachesAndCompactMemory() {
 JsonItem::JsonItem(string name, string value, bool null) {
 	this->name = name;
 	this->value = value;
+	this->type = json_type_null;
 	this->null = null;
 	this->parse(value);
 }
@@ -711,9 +712,9 @@ void JsonItem::parse(string valStr) {
 	if(!object) {
 		return;
 	}
-	json_type objectType = json_object_get_type(object);
+	type = json_object_get_type(object);
 	////cerr << "type: " << objectType << endl;
-	if(objectType == json_type_object) {
+	if(type == json_type_object) {
 		lh_table *objectItems = json_object_get_object(object);
 		struct lh_entry *objectItem = objectItems->head;
 		while(objectItem) {
@@ -734,7 +735,7 @@ void JsonItem::parse(string valStr) {
 			this->items.push_back(newItem);
 			objectItem = objectItem->next;
 		}
-	} else if(objectType == json_type_array) {
+	} else if(type == json_type_array) {
 		int length = json_object_array_length(object);
 		for(int i = 0; i < length; i++) {
 			json_object *obj = json_object_array_get_idx(object, i);

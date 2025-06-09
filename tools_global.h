@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <unicode/ucnv.h> 
+#include <json.h>
 
 #include "tools_define.h"
 #include "tools_local.h"
@@ -489,6 +490,7 @@ public:
 	void parse(string valStr);
 	JsonItem *getItem(string path, int index = -1);
 	string getValue(string path, int index = -1);
+	json_type getType() { return(type); }
 	int getCount(string path);
 	string getLocalName() { return(this->name); }
 	string getLocalValue() { return(this->value); }
@@ -500,6 +502,7 @@ private:
 	string getPathItemName(string path);
 	string name;
 	string value;
+	json_type type;
 	bool null;
 	vector<JsonItem> items;
 };
