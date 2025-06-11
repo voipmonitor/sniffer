@@ -1324,6 +1324,8 @@ struct sExistsColumns {
 	bool cdr_connect_duration_ms;
 	bool cdr_progress_time_ms;
 	bool cdr_first_rtp_time_ms;
+	bool cdr_post_bye_delay;
+	bool cdr_post_bye_delay_ms;
 	bool cdr_a_last_rtp_from_end_time_ms;
 	bool cdr_b_last_rtp_from_end_time_ms;
 	bool cdr_a_last_rtp_from_end_unsigned;

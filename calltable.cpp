@@ -5537,6 +5537,17 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 			setNull = true;
 		}
 		break;
+	case _chartType_pbd:
+		{
+		CallBranch *c_branch = branch_main();
+		if(c_branch->seenbye_time_usec && c_branch->seenbye_and_ok_time_usec && 
+		   c_branch->seenbye_and_ok_time_usec > c_branch->seenbye_time_usec) {
+			v = (c_branch->seenbye_and_ok_time_usec - c_branch->seenbye_time_usec) / 1e6;
+		} else {
+			setNull = true;
+		}
+		}
+		break;
 	case _chartType_acd_avg:
 	case _chartType_acd:
 	case _chartType_asr_avg:
@@ -5883,6 +5894,9 @@ void Call::getChartCacheValue(cDbTablesContent *tablesContent,
 		break;
 	case _chartType_pdd:
 		v = tablesContent->getValue_float(_t_cdr, "progress_time", false, &setNull);
+		break;
+	case _chartType_pbd:
+		v = tablesContent->getValue_float(_t_cdr, "post_bye_delay", false, &setNull);
 		break;
 	case _chartType_acd_avg:
 	case _chartType_acd:
@@ -7124,6 +7138,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr.add_duration(connect_duration_us(), "connect_duration", existsColumns.cdr_connect_duration_ms);
 	} else {
 		cdr.add(0, "connect_duration", true);
+	}
+	if(existsColumns.cdr_post_bye_delay) {
+		if(c_branch->seenbye_time_usec && c_branch->seenbye_and_ok_time_usec && 
+		   c_branch->seenbye_and_ok_time_usec > c_branch->seenbye_time_usec) {
+			cdr.add_duration(c_branch->seenbye_and_ok_time_usec - c_branch->seenbye_time_usec, "post_bye_delay", existsColumns.cdr_post_bye_delay_ms);
+		} else {
+			cdr.add(0, "post_bye_delay", true);
+		}
 	}
 	if(existsColumns.cdr_vlan) {
 		if(VLAN_IS_SET(c_branch->vlan)) {

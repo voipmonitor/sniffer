@@ -67,6 +67,7 @@ enum eChartType {
 	_chartType_clipping_caller,
 	_chartType_clipping_called,
 	_chartType_pdd,
+	_chartType_pbd,
 	_chartType_acd_avg,
 	_chartType_acd,
 	_chartType_asr_avg,

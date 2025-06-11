@@ -3171,6 +3171,7 @@ eChartType chartTypeFromString(string chartType) {
 	       chartType == "TCH_clipping_caller" ? _chartType_clipping_caller :
 	       chartType == "TCH_clipping_called" ? _chartType_clipping_called :
 	       chartType == "TCH_pdd" ? _chartType_pdd :
+	       chartType == "TCH_pbd" ? _chartType_pbd :
 	       chartType == "TCH_acd_avg" ? _chartType_acd_avg :
 	       chartType == "TCH_acd" ? _chartType_acd :
 	       chartType == "TCH_asr_avg" ? _chartType_asr_avg :

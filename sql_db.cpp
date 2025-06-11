@@ -5972,6 +5972,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`connect_duration` " + column_type_duration_ms() + " unsigned DEFAULT NULL,\
 			`progress_time` " + column_type_duration_ms() + " unsigned DEFAULT NULL,\
 			`first_rtp_time` " + column_type_duration_ms() + " unsigned DEFAULT NULL,\
+			`post_bye_delay` " + column_type_duration_ms() + " unsigned DEFAULT NULL,\
 			`caller` varchar(255) DEFAULT NULL,\
 			`caller_domain` varchar(255) DEFAULT NULL,\
 			`caller_reverse` varchar(255) DEFAULT NULL,\
@@ -9259,6 +9260,10 @@ void SqlDb_mysql::updateSensorState() {
 
 void SqlDb_mysql::checkColumns_cdr(bool log) {
 	map<string, u_int64_t> tableSize;
+	this->checkNeedAlterAdd("cdr", "store post bye delay", true,
+				log, &tableSize, &existsColumns.cdr_post_bye_delay,
+				"post_bye_delay", string(column_type_duration_ms() + " unsigned default null").c_str(), NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	for(int pass = 0; pass < 2; pass++) {
 		vector<string> alters_ms;
 		if(!(existsColumns.cdr_calldate_ms = this->getTypeColumn("cdr", "calldate").find("(3)") != string::npos)) {
@@ -9278,6 +9283,9 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 		}
 		if(!(existsColumns.cdr_first_rtp_time_ms = this->getTypeColumn("cdr", "first_rtp_time").find("decimal") != string::npos)) {
 			alters_ms.push_back("modify column first_rtp_time " + column_type_duration_ms() + " unsigned default null");
+		}
+		if(!(existsColumns.cdr_post_bye_delay_ms = this->getTypeColumn("cdr", "post_bye_delay").find("decimal") != string::npos)) {
+			alters_ms.push_back("modify column post_bye_delay " + column_type_duration_ms() + " unsigned default null");
 		}
 		if(this->existsColumn("cdr", "a_last_rtp_from_end") &&
 		   !(existsColumns.cdr_a_last_rtp_from_end_time_ms = this->getTypeColumn("cdr", "a_last_rtp_from_end").find("decimal") != string::npos)) {
