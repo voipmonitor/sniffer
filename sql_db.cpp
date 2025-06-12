@@ -5972,7 +5972,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`connect_duration` " + column_type_duration_ms() + " unsigned DEFAULT NULL,\
 			`progress_time` " + column_type_duration_ms() + " unsigned DEFAULT NULL,\
 			`first_rtp_time` " + column_type_duration_ms() + " unsigned DEFAULT NULL,\
-			`post_bye_delay` " + column_type_duration_ms() + " unsigned DEFAULT NULL,\
+			`post_bye_delay` " + column_type_duration_ms(NULL, true) + " unsigned DEFAULT NULL,\
 			`caller` varchar(255) DEFAULT NULL,\
 			`caller_domain` varchar(255) DEFAULT NULL,\
 			`caller_reverse` varchar(255) DEFAULT NULL,\
@@ -9262,7 +9262,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	map<string, u_int64_t> tableSize;
 	this->checkNeedAlterAdd("cdr", "store post bye delay", true,
 				log, &tableSize, &existsColumns.cdr_post_bye_delay,
-				"post_bye_delay", string(column_type_duration_ms() + " unsigned default null").c_str(), NULL_CHAR_PTR,
+				"post_bye_delay", string(column_type_duration_ms(NULL, true) + " unsigned default null").c_str(), NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 	for(int pass = 0; pass < 2; pass++) {
 		vector<string> alters_ms;
@@ -10254,8 +10254,8 @@ string SqlDb_mysql::column_type_datetime_child_ms() {
 		"datetime");
 }
 
-string SqlDb_mysql::column_type_duration_ms(const char *base_type) {
-	return(opt_time_precision_in_ms && isSupportForDatetimeMs() ?
+string SqlDb_mysql::column_type_duration_ms(const char *base_type, bool force) {
+	return((opt_time_precision_in_ms || force) && isSupportForDatetimeMs() ?
 		"decimal(9,3)" :
 		(base_type ? base_type : "mediumint"));
 }
