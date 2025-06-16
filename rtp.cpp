@@ -781,8 +781,8 @@ const int RTP::get_payload_len() {
 		extension_hdr_t *rtpext;
 		// the extension, if present, is after the CSRC list.
 		rtpext = (extension_hdr_t *)((u_int8_t *)payload_data);
-		payload_data += sizeof(extension_hdr_t) + ntohs(rtpext->length);
-		payload_len -= sizeof(extension_hdr_t) + ntohs(rtpext->length);
+		payload_data += sizeof(extension_hdr_t) + ntohs(rtpext->length) * 4;
+		payload_len -= sizeof(extension_hdr_t) + ntohs(rtpext->length) * 4;
 
 		if (payload_len < 2) {
 			payload_data = data + sizeof(RTPFixedHeader);
@@ -985,8 +985,8 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 
 			// the extension, if present, is after the CSRC list.
 			rtpext = (extension_hdr_t *)((u_int8_t *)payload_data);
-			payload_data += sizeof(extension_hdr_t) + ntohs(rtpext->length);
-			payload_len -= sizeof(extension_hdr_t) + ntohs(rtpext->length);
+			payload_data += sizeof(extension_hdr_t) + ntohs(rtpext->length) * 4;
+			payload_len -= sizeof(extension_hdr_t) + ntohs(rtpext->length) * 4;
 			if (payload_len < 4) {
 				payload_data = data + sizeof(RTPFixedHeader);
 				payload_len = 0;
