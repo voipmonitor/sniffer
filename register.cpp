@@ -1531,8 +1531,10 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 	eRegisterField duplicityOnlyById = convRegisterFieldToFieldId(duplicityOnlyBy.c_str());
 	string duplicityOnlyCheck = jsonParams.getValue("duplicity_only_check");
 	eRegisterField duplicityOnlyCheckId = convRegisterFieldToFieldId(duplicityOnlyCheck.c_str());
+	string duplicityOnlyBy2 = jsonParams.getValue("duplicity_only_by2");
+	eRegisterField duplicityOnlyById2 = convRegisterFieldToFieldId(duplicityOnlyBy2.c_str());
 	u_int32_t rrdGe = atol(jsonParams.getValue("rrd_ge").c_str());
-	
+
 	if(zip) {
 		string zipParam = jsonParams.getValue("zip");
 		std::transform(zipParam.begin(), zipParam.end(), zipParam.begin(), ::tolower);
@@ -1629,10 +1631,13 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 		}
 	}
 	if(records.size() && duplicityOnlyById && duplicityOnlyCheckId) {
-		map<RecordArrayField2, list<RecordArrayField2> > dupl_map;
-		map<RecordArrayField2, list<RecordArrayField2> >::iterator dupl_map_iter;
+		map<pair<RecordArrayField2, RecordArrayField2>, list<RecordArrayField2> > dupl_map;
+		map<pair<RecordArrayField2, RecordArrayField2>, list<RecordArrayField2> >::iterator dupl_map_iter;
 		for(list<RecordArray>::iterator iter_rec = records.begin(); iter_rec != records.end(); iter_rec++) {
-			RecordArrayField2 duplBy(&iter_rec->fields[duplicityOnlyById]);
+			pair<RecordArrayField2, RecordArrayField2> duplBy(&iter_rec->fields[duplicityOnlyById], &iter_rec->fields[duplicityOnlyById2]);
+			if(!duplicityOnlyById2) { // set fake domain, null doesn't work as a key'
+				duplBy.second.set(10);
+			}
 			RecordArrayField2 duplCheck(&iter_rec->fields[duplicityOnlyCheckId]);
 			dupl_map_iter = dupl_map.find(duplBy);
 			if(dupl_map_iter == dupl_map.end()) {
@@ -1652,7 +1657,10 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 			}
 		}
 		for(list<RecordArray>::iterator iter_rec = records.begin(); iter_rec != records.end(); ) {
-			RecordArrayField2 duplBy(&iter_rec->fields[duplicityOnlyById]);
+			pair<RecordArrayField2, RecordArrayField2> duplBy(&iter_rec->fields[duplicityOnlyById], &iter_rec->fields[duplicityOnlyById2]);
+			if(!duplicityOnlyById2) { // set fake domain, null doesn't work as a key
+				duplBy.second.set(10);
+			}
 			dupl_map_iter = dupl_map.find(duplBy);
 			if(dupl_map_iter != dupl_map.end() &&
 			   dupl_map_iter->second.size() > 1) {
