@@ -234,6 +234,7 @@ bool opt_srtp_rtp_local_instances = true;
 bool opt_srtp_use_all_keys = false;
 int opt_use_libsrtp = 0;
 bool opt_check_diff_ssrc_on_same_ip_port = true;
+bool opt_save_all_rtp_streams_to_db = false;
 unsigned int opt_ignoreRTCPjitter = 0;	// ignore RTCP over this value (0 = disabled)
 int opt_saveudptl = 0;		// if = 1 all UDPTL packets will be saved (T.38 fax)
 int opt_rtpip_find_endpoints = 1;
@@ -6711,6 +6712,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_local_instances", &opt_srtp_rtp_local_instances));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("libsrtp", &opt_use_libsrtp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("check_diff_ssrc_on_same_ip_port", &opt_check_diff_ssrc_on_same_ip_port));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save_all_rtp_streams_to_db", &opt_save_all_rtp_streams_to_db));
 		subgroup("GRAPH");
 			addConfigItem((new FILE_LINE(42218) cConfigItem_yesno("savegraph"))
 				->addValues("plain:1|p:1|gzip:2|g:2")

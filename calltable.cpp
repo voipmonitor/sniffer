@@ -83,6 +83,7 @@ extern bool opt_sip_message;
 extern int opt_sip_register;
 extern int opt_saveRTP;
 extern int opt_onlyRTPheader;
+extern bool opt_save_all_rtp_streams_to_db;
 extern int opt_saveSIP;
 extern int opt_use_libsrtp;
 extern int opt_rtcp;
@@ -2146,7 +2147,7 @@ bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 		*record_dtmf = true;
 	}
 	
-	if(!packetS->isRtpUdptlOkDataLen() && !sverb.process_rtp_header) {
+	if(!packetS->isRtpUdptlOkDataLen() && !opt_save_all_rtp_streams_to_db && !sverb.process_rtp_header) {
 		//Ignoring RTP packets without data
 		if (sverb.read_rtp) syslog(LOG_DEBUG,"RTP packet skipped because of its datalen: %i", packetS->datalen_());
 		return(false);
@@ -7359,8 +7360,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		   #if not EXPERIMENTAL_LITE_RTP_MOD
 		   !(rtp_i->stopReadProcessing && opt_rtp_check_both_sides_by_sdp == 1) &&
 		   #endif
-		   (rtp_i->received_() or !existsColumns.cdr_rtp_index || (rtp_i->received_() == 0 && rtp_zeropackets_stored == false)) &&
-		   (sverb.process_rtp_header || rtp_i->first_codec_() != -1)) {
+		   (opt_save_all_rtp_streams_to_db ||
+		    ((rtp_i->received_() or !existsColumns.cdr_rtp_index || (rtp_i->received_() == 0 && rtp_zeropackets_stored == false)) &&
+		     (sverb.process_rtp_header || rtp_i->first_codec_() != -1)))) {
 			if(rtp_i->received_() == 0 and rtp_zeropackets_stored == false) rtp_zeropackets_stored = true;
 			rtp_rows_indexes[rtp_rows_count++] = i;
 		}
