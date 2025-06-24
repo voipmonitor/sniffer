@@ -2965,6 +2965,12 @@ void cConfig::setFromJson(const char *jsonStr, bool enableReadOnlyParams) {
 		bool set = iter->second != NULL && iter->second->size() > 0;
 		if(set) {
 			map<string, cConfigItem*>::iterator iter_map = config_map.find(config_name);
+			if(iter_map == config_map.end()) {
+				string config_main_name = getMainItemName(config_name.c_str());
+				if(config_main_name != config_name) {
+					iter_map = config_map.find(config_main_name);
+				}
+			}
 			if(iter_map != config_map.end() &&
 			   (enableReadOnlyParams || !iter_map->second->readOnly)) {
 				if(set) {

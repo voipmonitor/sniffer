@@ -186,7 +186,7 @@ void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);
 static bool __config_ENABLE_TOGETHER_READ_WRITE_FILE	= false;
 
 bool opt_pcap_queue_disable = false;
-u_int opt_pcap_queue_block_max_time_ms 			= 500;
+u_int opt_pcap_queue_block_max_time_ms 			= 100;
 size_t opt_pcap_queue_block_max_size   			= 1024 * 1024;
 u_int opt_pcap_queue_file_store_max_time_ms		= 2000;
 size_t opt_pcap_queue_file_store_max_size		= 200 * 1024 * 1024;
@@ -6353,7 +6353,7 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 		case read: {
 			while(!block ||
 			      !block->get_add_hp_pointers(&pcap_header_plus2, &pcap_packet, pcap_snaplen) ||
-			      (block->count && force_push)) {
+			      (block->count && force_push && getTimeMS_rdtsc() > (block->timestampMS + opt_pcap_queue_block_max_time_ms))) {
 				if(block) {
 					#if DEBUG_PACKET_DELAY_TEST
 					int64_t system_time_ms = getTimeMS_rdtsc();
@@ -7819,6 +7819,7 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
 	this->_last_ts.tv_sec = 0;
 	this->_last_ts.tv_usec = 0;
 	this->block_counter = 0;
+	this->last_pb_send_confirmation_time_us = 0;
 	this->setEnableMainThread(opt_pcap_queue_compress || is_receiver() ||
 				  (opt_pcap_queue_disk_folder.length() && opt_pcap_queue_store_queue_max_disk_size) ||
 				  !opt_pcap_queue_suppress_t1_thread);
@@ -9216,6 +9217,9 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 			syslog(LOG_INFO, "send packetbuffer block - next attempt %u", pass);
 		}
 		if(!this->clientSocket) {
+			if(sverb.packetbuffer_send) {
+				syslog(LOG_NOTICE, "packetbuffer block - create connection");
+			}
 			this->clientSocket = new FILE_LINE(0) cSocketBlock("packetbuffer block", true);
 			this->clientSocket->setHostsPort(snifferClientOptions.hosts, snifferClientOptions.port);
 			if(!this->clientSocket->connect()) {
@@ -9274,12 +9278,38 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 		bool okSendBlock = true;
 		size_t sizeSaveBuffer = blockStore->getSizeSaveBuffer();
 		u_char *saveBuffer = blockStore->getSaveBuffer(block_counter);
-		if(!opt_pcap_queues_mirror_require_confirmation ||
+		bool require_confirmation = opt_pcap_queues_mirror_require_confirmation;
+		if(require_confirmation &&
+		   buffersControl.getPerc_pb() > 30 &&
+		   last_pb_send_confirmation_time_us > 20 * 1000) {
+			((pcap_block_store::pcap_block_store_header*)saveBuffer)->require_confirmation = false;
+			require_confirmation = false;
+		}
+		if(!require_confirmation ||
 		   buffersControl.getPerc_pb() > 70) {
 			((pcap_block_store::pcap_block_store_header*)saveBuffer)->time_s = 0;
 		}
+		u_int64_t start_write_us;
+		if(sverb.packetbuffer_send) {
+			start_write_us = getTimeUS();
+		}
 		if(!this->clientSocket->writeBlock(saveBuffer, sizeSaveBuffer, cSocket::_te_aes)) {
 			okSendBlock = false;
+		}
+		if(sverb.packetbuffer_send) {
+			u_int64_t end_write_us = getTimeUS();
+			syslog(LOG_NOTICE, "packetbuffer block - send %s - "
+					   "size %.3lfkB, "
+					   "packets: %" int_64_format_prefix "lu, "
+					   "time: %" int_64_format_prefix "luus, "
+					   "speed: %.3lfMB/s"
+					   "%s",
+			       okSendBlock ? "OK" : "FAILED",
+			       (double)sizeSaveBuffer / 1e3,
+			       blockStore->count,
+			       end_write_us - start_write_us,
+			       (double)sizeSaveBuffer / (end_write_us - start_write_us),
+			       opt_pcap_queues_mirror_require_confirmation && !require_confirmation ? ", suppress confirmation" : "");
 		}
 		delete [] saveBuffer;
 		if(!okSendBlock) {
@@ -9287,13 +9317,29 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 			pcapQueueQ->externalError = "send packetbuffer block error: failed send";
 			continue;
 		}
-		if(opt_pcap_queues_mirror_require_confirmation) {
+		if(require_confirmation) {
+			u_int64_t start_confirmation_us;
+			u_int64_t end_confirmation_us;
+			if(sverb.packetbuffer_send) {
+				start_confirmation_us = getTimeUS();
+			} else {
+				start_confirmation_us = getTimeMS_rdtsc() * 1000;
+			}
 			string response;
 			if(!this->clientSocket->readBlock(&response, cSocket::_te_aes)) {
 				syslog(LOG_ERR, "send packetbuffer block error: %s", "failed read response");
 				pcapQueueQ->externalError = "send packetbuffer block error: failed read response";
 				continue;
 			}
+			if(sverb.packetbuffer_send) {
+				end_confirmation_us = getTimeUS();
+				syslog(LOG_NOTICE, "packetbuffer block - confirmation %s - time: %" int_64_format_prefix "luus",
+				       response == "OK" ? "OK" : "FAILED",
+				       end_confirmation_us - start_confirmation_us);
+			} else {
+				end_confirmation_us = getTimeMS_rdtsc() * 1000;
+			}
+			last_pb_send_confirmation_time_us = end_confirmation_us > start_confirmation_us ? end_confirmation_us - start_confirmation_us : 0;
 			if(response == "OK") {
 				ok = true;
 				break;

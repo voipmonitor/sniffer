@@ -1328,6 +1328,7 @@ private:
 	u_int64_t lastCheckFreeSizeCachedir_timeMS;
 	volatile timeval _last_ts;
 	u_int32_t block_counter;
+	u_int64_t last_pb_send_confirmation_time_us;
 friend void *_PcapQueue_readFromFifo_destroyBlocksThreadFunction(void *arg);
 friend void *_PcapQueue_readFromFifo_socketServerThreadFunction(void *arg);
 friend void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);

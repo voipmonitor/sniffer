@@ -156,6 +156,7 @@ struct sVerbose {
 	int rdtsc;
 	int suppress_drop_partitions;
 	int whisper;
+	int packetbuffer_send;
 	int _debug1;
 	int _debug2;
 	int _debug3;

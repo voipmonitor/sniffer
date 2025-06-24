@@ -6465,7 +6465,8 @@ void cConfig::addConfigItems() {
 				->setMinor());
 			setDisableIfBegin("sniffer_mode=" + snifferMode_read_from_files_str);
 			addConfigItem(new FILE_LINE(42145) cConfigItem_yesno("mirror_nonblock_mode", &opt_pcap_queues_mirror_nonblock_mode));
-			addConfigItem(new FILE_LINE(42146) cConfigItem_yesno("mirror_require_confirmation", &opt_pcap_queues_mirror_require_confirmation));
+			addConfigItem((new FILE_LINE(42146) cConfigItem_yesno("mirror_require_confirmation", &opt_pcap_queues_mirror_require_confirmation))
+				->addAlias("packetbuffer_sender_require_confirmation"));
 			addConfigItem(new FILE_LINE(42147) cConfigItem_yesno("mirror_use_checksum", &opt_pcap_queues_mirror_use_checksum));
 			setDisableIfEnd();
 				advanced();
@@ -8237,6 +8238,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "rdtsc")				sverb.rdtsc = 1;
 	else if(verbParam == "suppress_drop_partitions")	sverb.suppress_drop_partitions = 1;
 	else if(verbParam == "whisper")				sverb.whisper = 1;
+	else if(verbParam == "packetbuffer_send")		sverb.packetbuffer_send = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
