@@ -81,7 +81,7 @@ eMgcpRequestType check_mgcp_request(char *data, unsigned long len) {
 		return(_mgcp_na);
 	}
 	for(unsigned i = 0; i < sizeof(mgcpRequestType) / sizeof(mgcpRequestType[0]); i++) {
-		if(!strncmp(data, mgcpRequestType[i].string, 4)) {
+		if(!strncasecmp(data, mgcpRequestType[i].string, 4)) {
 			 return(len == 4 || data[4] == ' ' || data[4] == '\t' ?
 				 mgcpRequestType[i].type :
 				 _mgcp_na);
