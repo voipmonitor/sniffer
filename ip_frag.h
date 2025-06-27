@@ -306,26 +306,34 @@ private:
 						len += frag->header_ip_offset;
 						iphdr = (iphdr2*)(header_packet_pqout->packet + len);
 					}
+					unsigned cpy_len = min(frag->len, 
+							       ((sHeaderPacketPQout*)frag->header_packet_pqout)->header->get_caplen() > frag->header_ip_offset ?
+								((sHeaderPacketPQout*)frag->header_packet_pqout)->header->get_caplen() - frag->header_ip_offset :
+								0);
 					memcpy_heapsafe(header_packet_pqout->packet + len, header_packet_pqout->packet,
 							((sHeaderPacketPQout*)frag->header_packet_pqout)->packet + frag->header_ip_offset, 
 							((sHeaderPacketPQout*)frag->header_packet_pqout)->block_store ?
 							 ((sHeaderPacketPQout*)frag->header_packet_pqout)->block_store->block :
 							 ((sHeaderPacketPQout*)frag->header_packet_pqout)->packet,
-							frag->len);
+							cpy_len);
 					len += frag->len;
 					pid = ((sHeaderPacketPQout*)frag->header_packet_pqout)->header->pid;
 				} else {
 					// for rest of a packets append only data 
 					if(len < totallen) {
-						unsigned cpy_len = min((unsigned)(frag->len - frag->iphdr_len), totallen - len);
+						unsigned frag_len = min((unsigned)(frag->len - frag->iphdr_len), totallen - len);
+						unsigned cpy_len = min(frag_len, 
+								       ((sHeaderPacketPQout*)frag->header_packet_pqout)->header->get_caplen() > (frag->header_ip_offset + frag->iphdr_len) ?
+									((sHeaderPacketPQout*)frag->header_packet_pqout)->header->get_caplen() - (frag->header_ip_offset + frag->iphdr_len) :
+									0);
 						memcpy_heapsafe(header_packet_pqout->packet + len, header_packet_pqout->packet,
 								((sHeaderPacketPQout*)frag->header_packet_pqout)->packet + frag->header_ip_offset + frag->iphdr_len, 
 								((sHeaderPacketPQout*)frag->header_packet_pqout)->block_store ?
 								 ((sHeaderPacketPQout*)frag->header_packet_pqout)->block_store->block :
 								 ((sHeaderPacketPQout*)frag->header_packet_pqout)->packet,
 								cpy_len);
-						len += cpy_len;
-						additionallen += cpy_len;
+						len += frag_len;
+						additionallen += frag_len;
 					}
 				}
 				if(i == frags->size() - 1) {
