@@ -306,9 +306,10 @@ friend class cChartIntervalSeriesData;
 
 
 enum eProblemType {
+	_pt_all = 0,
 	_pt_from_own_clients = 1,
 	_pt_from_own_servers,
-	_pt_from_public_trunks
+	_pt_from_public_trunks,
 };
 
 struct sProblemId {

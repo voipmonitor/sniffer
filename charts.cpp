@@ -2750,10 +2750,13 @@ void cCdrProblems::add(sChartsCallData *call) {
 		number_src = call->tables_content()->getValue_str(_t_cdr, "caller");
 		number_dst = call->tables_content()->getValue_str(_t_cdr, "called");
 	}
-	for(int pt = _pt_from_own_clients; pt <= _pt_from_public_trunks; pt++) {
+	for(int pt = _pt_all; pt <= _pt_from_public_trunks; pt++) {
 		bool ok_type = false;
 		lock_list_ip();
 		switch(pt) {
+		case _pt_all:
+			ok_type = true;
+			break;
 		case _pt_from_own_clients:
 			if(list_ip->isFromOwnClients(ip_src, ip_dst, ip_proxy)) {
 				ok_type = true;
