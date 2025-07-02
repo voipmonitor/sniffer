@@ -9284,7 +9284,8 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 		if(!(existsColumns.cdr_first_rtp_time_ms = this->getTypeColumn("cdr", "first_rtp_time").find("decimal") != string::npos)) {
 			alters_ms.push_back("modify column first_rtp_time " + column_type_duration_ms() + " unsigned default null");
 		}
-		if(!(existsColumns.cdr_post_bye_delay_ms = this->getTypeColumn("cdr", "post_bye_delay").find("decimal") != string::npos)) {
+		if(this->existsColumn("cdr", "post_bye_delay") &&
+		   !(existsColumns.cdr_post_bye_delay_ms = this->getTypeColumn("cdr", "post_bye_delay").find("decimal") != string::npos)) {
 			alters_ms.push_back("modify column post_bye_delay " + column_type_duration_ms() + " unsigned default null");
 		}
 		if(this->existsColumn("cdr", "a_last_rtp_from_end") &&
