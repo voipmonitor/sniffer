@@ -1,3 +1,21 @@
+2025.07.0 01.07.2025
+====================
+- add option to suppress adapt jitterbuffer for streams where more than a limit amount of out of order states are detected, the limit is configurable using the jitterbuffer_adapt_ooo_limit parameter (example: jitterbuffer_adapt_ooo_limit=10000)
+- the mysql.proc table doesn't exist anymore in latest mysq, check existance before trying to repair it [VS-1719]
+- fix database backup/migration - no interface definition is needed, fix problem with the creation of register_state and register_failed tables, fix problem with multiple custom headers tables [VS-1695]
+- fix pdv calculation in trends (only non-zero values were counted)
+- call problems / issues are now calculated and stored on sniffer side for instant view in the GUI 
+- fix aarch64 compilation [VS-1721]
+- add PBD (postByeDelay) metric - interval between BYE and 200 OK [VG-2955]
+- change the default configuration (config/voipmonitor.conf) to enable time resolution in databases in ms
+- added support for taking the 'To domain' value into account in multiple SIP REGISTER alerts [VG-3002]
+- fix capture rule flags for audio saving (broken since 2025-04-02) [VS-1726] 
+- fix subtraction of length of rtp extended header (fixes audio conversion for some cases) [VG-3003]
+- if mirror_require_confirmation is enabled and heap is >30% turn it off (fixes heap growing on higher latency networks) [VS-1729]
+- fix mgcp - modification of record type detection for ignore upper/lower case [VS-1733]
+- fix potential issues in udp frag (reading beyond the allocated length) if jumbo packets are fragmented and larger than snaplen or the length in the IP header is greater than the actual length
+
+
 2025.05.0 20.05.2025
 ====================
 - fix 3XX response processing - disable removal of RTP streams which caused CPU overload [VS-1701]
