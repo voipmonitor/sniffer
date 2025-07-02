@@ -1,3 +1,8 @@
+2025.07.1 02.07.2025
+====================
+- skip alter for cdr.post_bye_delay if column does not exist
+
+
 2025.07.0 01.07.2025
 ====================
 - add option to suppress adapt jitterbuffer for streams where more than a limit amount of out of order states are detected, the limit is configurable using the jitterbuffer_adapt_ooo_limit parameter (example: jitterbuffer_adapt_ooo_limit=10000)
