@@ -6764,7 +6764,6 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("whisper_native", &opt_whisper_native));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("whisper_model", &opt_whisper_model));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("whisper_rest_api_url", &opt_whisper_rest_api_url));
-				addConfigItem(new FILE_LINE(0) cConfigItem_string("whisper_rest_api_url", &opt_whisper_rest_api_url, "", "URL for whisper REST API transcription"));
 
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("whisper_language", &opt_whisper_language));
 					// auto | by_number | {language}

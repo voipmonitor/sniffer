@@ -899,21 +899,29 @@ bool Transcribe::runWhisperRestApi(const char *wav,
 	CURLcode res;
 	std::string readBuffer;
 
-	curl_global_init(CURL_GLOBAL_DEFAULT);
+	struct curl_httppost *formpost = NULL;
+	struct curl_httppost *lastptr = NULL;
+	struct curl_slist *headerlist = NULL;
+	static const char buf[] = "Expect:";
+
+	curl_global_init(CURL_GLOBAL_ALL);
+
+	// Add form data
+	curl_formadd(&formpost,
+				 &lastptr,
+				 CURLFORM_COPYNAME, "audio_file",
+				 CURLFORM_FILE, wav,
+				 CURLFORM_END);
+
 	curl = curl_easy_init();
 	if(curl) {
-		curl_mime *mime;
-		curl_mimepart *part;
-
-		mime = curl_mime_init(curl);
-		part = curl_mime_addpart(mime);
-		curl_mime_name(part, "audio_file");
-		curl_mime_filedata(part, wav);
+		headerlist = curl_slist_append(headerlist, buf);
 
 		curl_easy_setopt(curl, CURLOPT_URL, opt_whisper_rest_api_url.c_str());
-		curl_easy_setopt(curl, CURLOPT_MIMEPOST, mime);
+		curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headerlist);
 
 		if(sverb.whisper) {
 			cout << "whisper rest api url: " << opt_whisper_rest_api_url << endl;
@@ -926,39 +934,36 @@ bool Transcribe::runWhisperRestApi(const char *wav,
 			if(error) {
 				*error = "curl_easy_perform() failed: " + string(curl_easy_strerror(res));
 			}
-			curl_mime_free(mime);
-			curl_easy_cleanup(curl);
-			curl_global_cleanup();
-			return false;
-		}
+		} else {
+			if(sverb.whisper) {
+				cout << "whisper rest api response: " << readBuffer << endl;
+			}
 
-		if(sverb.whisper) {
-			cout << "whisper rest api response: " << readBuffer << endl;
-		}
-
-		JsonItem json;
-		json.parse(readBuffer);
-		
-		rslt_text = json.getValue("text");
-		rslt_language = json.getValue("language");
-		
-		JsonItem *segments_item = json.getItem("segments");
-		if (segments_item && segments_item->getType() == json_type_array) {
-			rslt_segments = "[";
-			for (size_t i = 0; i < segments_item->getLocalCount(); ++i) {
-				JsonItem *segment = segments_item->getLocalItem(i);
-				if (segment) {
-					rslt_segments += segment->getLocalValue();
-					if (i < segments_item->getLocalCount() - 1) {
-						rslt_segments += ",";
+			JsonItem json;
+			json.parse(readBuffer);
+			
+			rslt_text = json.getValue("text");
+			rslt_language = json.getValue("language");
+			
+			JsonItem *segments_item = json.getItem("segments");
+			if (segments_item && segments_item->getType() == json_type_array) {
+				rslt_segments = "[";
+				for (size_t i = 0; i < segments_item->getLocalCount(); ++i) {
+					JsonItem *segment = segments_item->getLocalItem(i);
+					if (segment) {
+						rslt_segments += segment->getLocalValue();
+						if (i < segments_item->getLocalCount() - 1) {
+							rslt_segments += ",";
+						}
 					}
 				}
+				rslt_segments += "]";
 			}
-			rslt_segments += "]";
 		}
 
-		curl_mime_free(mime);
 		curl_easy_cleanup(curl);
+		curl_formfree(formpost);
+		curl_slist_free_all(headerlist);
 	}
 	curl_global_cleanup();
 	return !rslt_text.empty();
