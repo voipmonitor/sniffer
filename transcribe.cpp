@@ -31,6 +31,7 @@ extern int opt_whisper_threads;
 extern string opt_whisper_native_lib;
 extern string opt_audio_transcribe_progress_file;
 extern string opt_audio_transcribe_control_file;
+extern string opt_whisper_rest_api_url;
 
 extern sVerbose sverb;
 
@@ -453,7 +454,16 @@ void Transcribe::transcribeCall(sCall *call) {
 			string language = opt_whisper_language == "auto" ? "" : 
 					  opt_whisper_language == "by_number" ? call->channels[i].language : opt_whisper_language;
 			string error;
-			if(opt_whisper_native) {
+			if(!opt_whisper_rest_api_url.empty()) {
+				if(runWhisperRestApi(call->channels[i].wav.c_str(), rslt_language, rslt_text, rslt_segments, &error)) {
+					call->channels[i].rslt_language = rslt_language;
+					call->channels[i].rslt_text = rslt_text;
+					call->channels[i].rslt_segments = rslt_segments;
+				} else {
+					call->channels[i].ok = false;
+					call->channels[i].error = !error.empty() ? error : "failed transcribe via whisper (rest_api)";
+				}
+			} else if(opt_whisper_native) {
 				list<sSegment> segments;
 				if(runWhisperNative(call->channels[i].wav.c_str(), language.empty() ? "auto" : language.c_str(), opt_whisper_model.c_str(), opt_whisper_threads, 
 						    &rslt_language, &segments, &error, sverb.whisper, NULL) && segments.size()) {
@@ -873,6 +883,74 @@ bool Transcribe::runWhisperNative(float *pcm_data, size_t pcm_data_samples, cons
 		segments->push_back(segment);
 	}
 	return(true);
+}
+
+// Callback function to write response data
+static size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *userp) {
+    ((std::string*)userp)->append((char*)contents, size * nmemb);
+    return size * nmemb;
+}
+
+bool Transcribe::runWhisperRestApi(const char *wav,
+								   string &rslt_language, string &rslt_text, string &rslt_segments,
+								   string *error) {
+	CURL *curl;
+	CURLcode res;
+	std::string readBuffer;
+
+	curl_global_init(CURL_GLOBAL_DEFAULT);
+	curl = curl_easy_init();
+	if(curl) {
+		curl_mime *mime;
+		curl_mimepart *part;
+
+		mime = curl_mime_init(curl);
+		part = curl_mime_addpart(mime);
+		curl_mime_name(part, "audio_file");
+		curl_mime_filedata(part, wav);
+
+		curl_easy_setopt(curl, CURLOPT_URL, opt_whisper_rest_api_url.c_str());
+		curl_easy_setopt(curl, CURLOPT_MIMEPOST, mime);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+
+		if(sverb.whisper) {
+			cout << "whisper rest api url: " << opt_whisper_rest_api_url << endl;
+			cout << "whisper rest api file: " << wav << endl;
+		}
+
+		res = curl_easy_perform(curl);
+
+		if(res != CURLE_OK) {
+			if(error) {
+				*error = "curl_easy_perform() failed: " + string(curl_easy_strerror(res));
+			}
+			curl_mime_free(mime);
+			curl_easy_cleanup(curl);
+			curl_global_cleanup();
+			return false;
+		}
+
+		if(sverb.whisper) {
+			cout << "whisper rest api response: " << readBuffer << endl;
+		}
+
+		JsonItem json;
+		json.parse(readBuffer);
+		
+		rslt_text = json.getValue("text");
+		rslt_language = json.getValue("language");
+		
+		JsonItem segments_json = json.getItem("segments");
+		if (segments_json.is_array()) {
+			rslt_segments = segments_json.get_string();
+		}
+
+		curl_mime_free(mime);
+		curl_easy_cleanup(curl);
+	}
+	curl_global_cleanup();
+	return !rslt_text.empty();
 }
 
 void Transcribe::convertSegmentsToText(list<sSegment> *segments, string *text, string *segments_json) {
