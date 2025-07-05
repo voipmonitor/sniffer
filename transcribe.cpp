@@ -2,6 +2,7 @@
 #include <sys/stat.h>
 #include <dlfcn.h>
 #include <signal.h>
+#include <curl/curl.h>
 
 #include "config.h"
 
@@ -941,9 +942,19 @@ bool Transcribe::runWhisperRestApi(const char *wav,
 		rslt_text = json.getValue("text");
 		rslt_language = json.getValue("language");
 		
-		JsonItem segments_json = json.getItem("segments");
-		if (segments_json.is_array()) {
-			rslt_segments = segments_json.get_string();
+		JsonItem *segments_item = json.getItem("segments");
+		if (segments_item && segments_item->getType() == json_type_array) {
+			rslt_segments = "[";
+			for (size_t i = 0; i < segments_item->getLocalCount(); ++i) {
+				JsonItem *segment = segments_item->getLocalItem(i);
+				if (segment) {
+					rslt_segments += segment->getLocalValue();
+					if (i < segments_item->getLocalCount() - 1) {
+						rslt_segments += ",";
+					}
+				}
+			}
+			rslt_segments += "]";
 		}
 
 		curl_mime_free(mime);
