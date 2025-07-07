@@ -593,6 +593,7 @@ LIBBLAKE3
 DPDK_LDFLAGSSTATIC
 DPDK_LDFLAGS
 DPDK_CFLAGS
+LIBSRTP
 HEAPPROF_CXXFLAG
 LIBTCMALLOC
 LIBGNUTLSSTATIC
@@ -3858,6 +3859,43 @@ else
   as_fn_error $? "Unable to find ssl library. apt-get install libssl-dev | yum install openssl-devel" "$LINENO" 5
 fi
 
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lsrtp2" >&5
+$as_echo_n "checking for main in -lsrtp2... " >&6; }
+if ${ac_cv_lib_srtp2_main+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lsrtp2  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_srtp2_main=yes
+else
+  ac_cv_lib_srtp2_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_srtp2_main" >&5
+$as_echo "$ac_cv_lib_srtp2_main" >&6; }
+if test "x$ac_cv_lib_srtp2_main" = xyes; then :
+  HAVE_LIBSRTP=1
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find srtp library. apt-get install libsrtp-dev | yum install libsrtp-devel" >&5
+$as_echo "$as_me: Unable to find srtp library. apt-get install libsrtp-dev | yum install libsrtp-devel" >&6;}
+fi
+
 # FIXME: Replace `main' with a function in `-lvorbis':
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lvorbis" >&5
 $as_echo_n "checking for main in -lvorbis... " >&6; }
@@ -5247,6 +5285,16 @@ if pkg-config --atleast-version 1.1.1 openssl; then
 $as_echo "#define HAVE_DSSL_TLS13 1" >>confdefs.h
 
 	OPENSSL111_T=yes
+fi
+
+HAVE_LIBSRTP_T=no
+if test "x$HAVE_LIBSRTP" = "x1"; then
+
+$as_echo "#define HAVE_LIBSRTP 1" >>confdefs.h
+
+	LIBSRTP="-lsrtp2"
+
+	HAVE_LIBSRTP_T=yes
 fi
 
 DPDK_T=no
@@ -6689,6 +6737,7 @@ libjpeg lib found                      : $HAVE_LIBJPEG_T
 fftw3 lib found                        : $HAVE_LIBFFT_T
 openssl >= 1.0.1 found                 : $OPENSSL101_T
 openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL111_T
+libsrtp lib found                      : $HAVE_LIBSRTP_T
 dpdk lib found                         : $DPDK_T
 
 shared binary: run make
@@ -6722,6 +6771,7 @@ libjpeg lib found                      : $HAVE_LIBJPEG_T
 fftw3 lib found                        : $HAVE_LIBFFT_T
 openssl >= 1.0.1 found                 : $OPENSSL101_T
 openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL111_T
+libsrtp lib found                      : $HAVE_LIBSRTP_T
 dpdk lib found                         : $DPDK_T
 
 shared binary: run make

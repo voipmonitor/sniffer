@@ -73,6 +73,7 @@ AC_CHECK_LIB([pthread], [main])
 AC_CHECK_LIB([rt], [main])
 # FIXME: Replace `main' with a function in `-lssl':
 AC_CHECK_LIB([ssl], [main], HAVE_OPENSSL=1 , AC_MSG_ERROR([Unable to find ssl library. apt-get install libssl-dev | yum install openssl-devel]))
+AC_CHECK_LIB([srtp2], [main], HAVE_LIBSRTP=1, AC_MSG_NOTICE([Unable to find srtp library. apt-get install libsrtp-dev | yum install libsrtp-devel]))
 # FIXME: Replace `main' with a function in `-lvorbis':
 AC_CHECK_LIB([vorbis], [main], ,AC_MSG_ERROR([Unable to find VORBIS library. Debian: apt-get install libvorbis-dev. Centos/Redhat: yum install libogg-devel libvorbis-devel]))
 # FIXME: Replace `main' with a function in `-lvorbisenc':
@@ -318,6 +319,13 @@ if pkg-config --atleast-version 1.1.1 openssl; then
 	OPENSSL111_T=yes
 fi
 
+HAVE_LIBSRTP_T=no
+if test "x$HAVE_LIBSRTP" = "x1"; then 
+	AC_DEFINE([HAVE_LIBSRTP], [1], [Define if using libsrtp])
+	AC_SUBST([LIBSRTP],["-lsrtp2"])
+	HAVE_LIBSRTP_T=yes
+fi
+
 DPDK_T=no
 if test "x$HAVE_LIBDPDK" = "x1"; then 
 	AC_DEFINE([HAVE_LIBDPDK], [1], [Define if using dpdk])
@@ -452,6 +460,7 @@ libjpeg lib found                      : $HAVE_LIBJPEG_T
 fftw3 lib found                        : $HAVE_LIBFFT_T
 openssl >= 1.0.1 found                 : $OPENSSL101_T
 openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL111_T
+libsrtp lib found                      : $HAVE_LIBSRTP_T
 dpdk lib found                         : $DPDK_T
 
 shared binary: run make 

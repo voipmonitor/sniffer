@@ -106,6 +106,9 @@
 /* Define if using openssl >= 1.0.1 */
 #undef HAVE_OPENSSL101
 
+/* Define if using libsrtp */
+#undef HAVE_LIBSRTP
+
 /* Define if using dpdk */
 #undef HAVE_LIBDPDK
 

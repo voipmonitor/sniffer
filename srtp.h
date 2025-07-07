@@ -12,8 +12,11 @@
 #include <srtp2/srtp.h>
 #endif
 
-#include "dtls.h"
+#if HAVE_OPENSSL
+#include <openssl/evp.h>
+#endif
 
+#include "dtls.h"
 
 class RTPsecure {
 public:
@@ -49,13 +52,21 @@ public:
 		bool init();
 		bool keyDecode();
 		inline unsigned sdes_ok_length() {
-			return(key_size == 128 ? 40 : 64);
+			if(is_aead) {
+				return(key_size == 128 ? 40 : 60);
+			} else {
+				return(key_size == 128 ? 40 : 64);
+			}
 		}
 		inline unsigned key_len() {
-			return(key_size == 128 ? 16 : 32);
+			if(is_aead) {
+				return(key_size == 128 ? 16 : 32);
+			} else {
+				return(key_size == 128 ? 16 : 32);
+			}
 		}
 		inline unsigned salt_len() {
-			return(14);
+			return(is_aead ? 12 : 14);
 		}
 		unsigned tag;
 		std::string suite;
@@ -68,6 +79,7 @@ public:
 		unsigned key_size;
 		int cipher;
 		int md;
+		bool is_aead;
 		eError error;
 		int attempts_rtp;
 		int attempts_rtcp;
@@ -83,6 +95,9 @@ public:
 				salt[i] = 0;
 			}
 			counter_packets = 0;
+			#if HAVE_OPENSSL
+			ctx = NULL;
+			#endif
 			#if HAVE_LIBSRTP
 			srtp_ctx = NULL;
 			memset(&policy, 0, sizeof(policy));
@@ -95,6 +110,11 @@ public:
 			}
 			if(md) {
 				gcry_md_close(md);
+			}
+			#endif
+			#if HAVE_OPENSSL
+			if(ctx) {
+				EVP_CIPHER_CTX_free(ctx);
 			}
 			#endif
 			#if HAVE_LIBSRTP
@@ -110,6 +130,11 @@ public:
 		uint64_t window;
 		uint32_t salt[4];
 		uint64_t counter_packets;
+		#if HAVE_OPENSSL
+		EVP_CIPHER_CTX *ctx;
+		u_char session_key[32];
+		u_char session_salt[14];
+		#endif
 		#if HAVE_LIBSRTP
 		srtp_t srtp_ctx;
 		srtp_policy_t policy;
@@ -152,6 +177,11 @@ private:
 	void term();
 	bool rtpDecrypt(u_char *payload, unsigned payload_len, uint16_t seq, uint32_t ssrc);
 	bool rtcpDecrypt(u_char *data, unsigned data_len);
+	bool rtpDecryptAead(u_char *data, unsigned data_len, u_char *payload, unsigned payload_len, 
+			    uint16_t seq, uint32_t ssrc, uint32_t roc,
+			    u_char *decrypted, unsigned *decrypted_len);
+	bool rtcpDecryptAead(u_char *data, unsigned data_len,
+			     u_char *decrypted, unsigned *decrypted_len);
 	int rtp_decrypt(u_char *data, unsigned data_len, uint32_t ssrc, uint32_t roc, uint16_t seq);
 	int rtcp_decrypt(u_char *data, unsigned data_len, uint32_t ssrc, uint32_t index);
 	uint32_t compute_rtp_roc(uint16_t seq);
@@ -160,6 +190,11 @@ private:
 	#if HAVE_LIBGNUTLS
 	int do_derive(gcry_cipher_hd_t cipher, u_char *r, unsigned rlen, uint8_t label, u_char *out, unsigned outlen);
 	int do_ctr_crypt (gcry_cipher_hd_t cipher, u_char *ctr, u_char *data, unsigned len);
+	#endif
+	#if HAVE_OPENSSL
+	void derive_key_aead(u_char *master_key, u_char *master_salt, uint8_t label, u_char *out, unsigned out_len);
+	void compute_aead_iv(u_char *salt, uint32_t ssrc, uint16_t seq, uint32_t roc, u_char *out_iv);
+	void compute_aead_iv_rtcp(u_char *salt, uint32_t ssrc, uint32_t index, u_char *out_iv);
 	#endif
 	uint16_t get_seq_rtp(u_char *data) {
 		return(htons(*(uint16_t*)(data + 2)));
@@ -197,6 +232,14 @@ private:
 	unsigned salt_len() {
 	       return(cryptoConfigVector[cryptoConfigActiveIndex].salt_len());
 	}
+	bool is_aead() {
+	       return(cryptoConfigVector[cryptoConfigActiveIndex].is_aead);
+	}
+	bool is_aead_aes_256_gcm() {
+		return is_aead() && key_size() == 256;
+	}
+	static void missingOpensslLogForAead();
+	static void missingLibSrtpLog();
 private:
 	eMode mode;
 	Call *call;

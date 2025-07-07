@@ -220,20 +220,30 @@ private:
 	}
 	bool cipherIsSupported(unsigned ct) {
 		return(ct == _ct_SRTP_AES128_CM_HMAC_SHA1_80 ||
-		       ct == _ct_SRTP_AES128_CM_HMAC_SHA1_32);
+		       ct == _ct_SRTP_AES128_CM_HMAC_SHA1_32 ||
+		       ct == _ct_SRTP_AEAD_AES_128_GCM ||
+		       ct == _ct_SRTP_AEAD_AES_256_GCM);
 	}
 	string cipherName(unsigned ct) {
 		return(ct == _ct_SRTP_AES128_CM_HMAC_SHA1_80 ? "AES_CM_128_HMAC_SHA1_80" :
 		       ct == _ct_SRTP_AES128_CM_HMAC_SHA1_32 ? "AES_CM_128_HMAC_SHA1_32" :
+		       ct == _ct_SRTP_AEAD_AES_128_GCM ? "AEAD_AES_128_GCM" :
+		       ct == _ct_SRTP_AEAD_AES_256_GCM ? "AEAD_AES_256_GCM" :
 		       cipherTypeIsOK(ct) ? "unsupported" :"unknown");
 	}
 	unsigned cipherSrtpKeyLen(unsigned ct) {
 		return(ct == _ct_SRTP_AES128_CM_HMAC_SHA1_80 ? 16 :
 		       ct == _ct_SRTP_AES128_CM_HMAC_SHA1_32 ? 16 :
+		       ct == _ct_SRTP_AEAD_AES_256_GCM ? 32 :
+		       ct == _ct_SRTP_AEAD_AES_128_GCM ? 16 :
 		       0);
 	}
-	unsigned cipherSrtpSaltLen(unsigned /*ct*/) {
-		return(14);
+	unsigned cipherSrtpSaltLen(unsigned ct) {
+		return(ct == _ct_SRTP_AES128_CM_HMAC_SHA1_80 ? 14 :
+		       ct == _ct_SRTP_AES128_CM_HMAC_SHA1_32 ? 14 :
+		       ct == _ct_SRTP_AEAD_AES_256_GCM ? 12 :
+		       ct == _ct_SRTP_AEAD_AES_128_GCM ? 12 :
+		       0);
 	}
 private:
 	vmIPport server;

@@ -405,10 +405,10 @@ char opt_vmcodecs_path[1024] = "";
 int opt_cdr_stat_values = 3;
 bool opt_cdr_stat_sources = false;
 int opt_cdr_stat_interval = 15;
-int opt_cdr_problems = 0;
+int opt_cdr_problems = 1;
 bool opt_cdr_problems_by_ip = false;
 bool opt_cdr_problems_by_number = false;
-bool opt_cdr_problems_by_comb = false;
+bool opt_cdr_problems_by_comb = true;
 int opt_cdr_problems_interval = 15;
 int opt_cdr_problems_list_ip_refresh_interval = 900;
 bool opt_charts_cache = false;
@@ -1597,6 +1597,9 @@ char opt_pcap_destination[1024];
 cConfigItem_net_map::t_net_map opt_anonymize_ip_map;
 cConfigItem_domain_map::t_domain_map opt_anonymize_domain_map;
 string opt_rtcp_params;
+char opt_srtp_crypto[100];
+char opt_srtp_sdes[100];
+char opt_srtp_mode[100];
 
 char opt_curl_hook_wav[256] = "";
 
@@ -8017,6 +8020,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"anonymize-pcap", 1, 0, _param_anonymize_pcap},
 	    {"prepare_rtcp_data", 1, 0, _param_prepare_rtcp_data},
 	    {"process_pcap", 1, 0, _param_process_pcap},
+	    {"srtp_decode", 1, 0, _param_srtp_decode},
 	    {"heap-profiler", 1, 0, _param_heap_profiler},
 	    {"revaluation", 1, 0, _param_revaluation},
 	    {"reassign_countries", 1, 0, _param_reassign_countries},
@@ -8734,6 +8738,21 @@ void get_command_line_arguments() {
 				strcpy_null_term(opt_process_pcap_fname, optarg);
 				opt_process_pcap_type = _pp_read_file;
 				is_gui_param = true;
+				break;
+			case _param_srtp_decode: {
+				vector<string> srtp_decode_params = split(optarg, split(",|;", '|'), true);
+				if(srtp_decode_params.size() >= 4) {
+					strcpy(opt_process_pcap_fname, srtp_decode_params[0].c_str());
+					strcpy(opt_srtp_crypto, srtp_decode_params[1].c_str());
+					strcpy(opt_srtp_sdes, srtp_decode_params[2].c_str());
+					strcpy(opt_srtp_mode, srtp_decode_params[3].c_str());
+					opt_process_pcap_type = _pp_srtp_decode;
+					is_gui_param = true;
+				} else {
+					cerr << "missing params" << endl;
+					exit(1);
+				}
+				}
 				break;
 			case _param_heap_profiler:
 				#if HAVE_LIBTCMALLOC_HEAPPROF

@@ -20,15 +20,18 @@ static struct {
 	int tag_size;
 	int cipher;
 	int md;
+	bool is_aead;
 } srtp_crypto_suites[]= {
-	{ "AES_CM_128_HMAC_SHA1_32", 128, 4, GCRY_CIPHER_AES, GCRY_MD_SHA1 },
-	{ "AES_CM_128_HMAC_SHA1_80", 128, 10, GCRY_CIPHER_AES, GCRY_MD_SHA1 },
-	{ "AES_128_CM_HMAC_SHA1_32", 128, 4, GCRY_CIPHER_AES, GCRY_MD_SHA1 },
-	{ "AES_128_CM_HMAC_SHA1_80", 128, 10, GCRY_CIPHER_AES, GCRY_MD_SHA1 },
-	{ "AES_CM_256_HMAC_SHA1_32", 256, 4, GCRY_CIPHER_AES256, GCRY_MD_SHA1 },
-	{ "AES_CM_256_HMAC_SHA1_80", 256, 10, GCRY_CIPHER_AES256, GCRY_MD_SHA1 },
-	{ "AES_256_CM_HMAC_SHA1_32", 256, 4, GCRY_CIPHER_AES256, GCRY_MD_SHA1 },
-	{ "AES_256_CM_HMAC_SHA1_80", 256, 10, GCRY_CIPHER_AES256, GCRY_MD_SHA1 }
+	{ "AES_CM_128_HMAC_SHA1_32", 128, 4, GCRY_CIPHER_AES, GCRY_MD_SHA1, false },
+	{ "AES_CM_128_HMAC_SHA1_80", 128, 10, GCRY_CIPHER_AES, GCRY_MD_SHA1, false },
+	{ "AES_128_CM_HMAC_SHA1_32", 128, 4, GCRY_CIPHER_AES, GCRY_MD_SHA1, false },
+	{ "AES_128_CM_HMAC_SHA1_80", 128, 10, GCRY_CIPHER_AES, GCRY_MD_SHA1, false },
+	{ "AES_CM_256_HMAC_SHA1_32", 256, 4, GCRY_CIPHER_AES256, GCRY_MD_SHA1, false },
+	{ "AES_CM_256_HMAC_SHA1_80", 256, 10, GCRY_CIPHER_AES256, GCRY_MD_SHA1, false },
+	{ "AES_256_CM_HMAC_SHA1_32", 256, 4, GCRY_CIPHER_AES256, GCRY_MD_SHA1, false },
+	{ "AES_256_CM_HMAC_SHA1_80", 256, 10, GCRY_CIPHER_AES256, GCRY_MD_SHA1, false },
+	{ "AEAD_AES_256_GCM", 256, 16, GCRY_CIPHER_AES256, GCRY_MD_NONE, true },
+	{ "AEAD_AES_128_GCM", 128, 16, GCRY_CIPHER_AES256, GCRY_MD_NONE, true }
 };
 #endif
 
@@ -42,6 +45,7 @@ bool RTPsecure::sCryptoConfig::init() {
 				key_size = srtp_crypto_suites[i].key_size;
 				cipher = srtp_crypto_suites[i].cipher;
 				md = srtp_crypto_suites[i].md;
+				is_aead = srtp_crypto_suites[i].is_aead;
 				return(true);
 			}
 		}
@@ -52,6 +56,11 @@ bool RTPsecure::sCryptoConfig::init() {
 }
 
 bool RTPsecure::sCryptoConfig::keyDecode() {
+	if(sverb.dtls && ssl_sessionkey_enable()) {
+		string log_str;
+		log_str += "keyDecode: SUITE: " + suite + " KEY: " + sdes;
+		ssl_sessionkey_log(log_str);
+	}
 	if(sdes.length() != sdes_ok_length()) {
 		if(sdes.length() < sdes_ok_length() && sdes.length() >= sdes_ok_length() - 2 &&
 		   sdes[sdes.length() - 1] != '=') {
@@ -83,6 +92,9 @@ RTPsecure::RTPsecure(eMode mode, Call *call, CallBranch *c_branch, int index_ip_
 	#if HAVE_LIBSRTP
 		this->mode = mode;
 	#else
+		if(mode == mode_libsrtp) {
+			missingLibSrtpLog();
+		}
 		this->mode = mode_native;
 	#endif
 	this->call = call;
@@ -114,6 +126,9 @@ RTPsecure::~RTPsecure() {
 }
 
 bool RTPsecure::setCryptoConfig(u_int64_t time_us) {
+	if(!call || !c_branch) {
+		return(false);
+	}
 	if(local && !decrypt_rtp_ok && decrypt_rtp_failed > 0 &&
 	   call->dtls_keys_count() * 2 > cryptoConfigVector.size()) {
 		unsigned call_keys_count = call->dtls_keys_count();
@@ -258,9 +273,9 @@ void RTPsecure::prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dpo
 }
 
 bool RTPsecure::is_dtls() {
-	return(call->dtls_exists ||
+	return((call && call->dtls_exists) ||
 	       (index_ip_port >= 0 &&
-		(c_branch->ip_port[index_ip_port].srtp && 
+		(c_branch && c_branch->ip_port[index_ip_port].srtp && 
 		 (c_branch->ip_port[index_ip_port].srtp_fingerprint || !c_branch->ip_port[index_ip_port].srtp_crypto_config_list))));
 }
 
@@ -271,8 +286,8 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 	if(!cryptoConfigVector.size()) {
 		#if not EXPERIMENTAL_LITE_RTP_MOD
 		++decrypt_rtp_failed;
-		++stream->decrypt_srtp_failed;
-		if(is_dtls() && sverb.dtls && ssl_sessionkey_enable() && stream->decrypt_srtp_failed < failed_log_limit) {
+		if(stream) ++stream->decrypt_srtp_failed;
+		if(is_dtls() && sverb.dtls && ssl_sessionkey_enable() && stream && stream->decrypt_srtp_failed < failed_log_limit) {
 			string log_str;
 			log_str += string("decrypt_rtp failed ") + intToString(stream->decrypt_srtp_failed) + 
 				   " (empty cryptoConfigVector) for call: " + call->call_id;
@@ -289,8 +304,8 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 	if(!isOK()) {
 		++decrypt_rtp_failed;
 		#if not EXPERIMENTAL_LITE_RTP_MOD
-		++stream->decrypt_srtp_failed;
-		if(is_dtls() && sverb.dtls && ssl_sessionkey_enable() && stream->decrypt_srtp_failed < failed_log_limit) {
+		if(stream) ++stream->decrypt_srtp_failed;
+		if(is_dtls() && sverb.dtls && ssl_sessionkey_enable() && stream && stream->decrypt_srtp_failed < failed_log_limit) {
 			string log_str;
 			log_str += string("decrypt_rtp failed ") + intToString(stream->decrypt_srtp_failed)  + 
 				   " (not isOK) for call: " + call->call_id;
@@ -307,7 +322,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 			    decrypt_rtp_native(data, data_len, payload, payload_len) :
 			    decrypt_rtp_libsrtp(data, data_len, payload, payload_len)) {
 				#if not EXPERIMENTAL_LITE_RTP_MOD
-				if(is_dtls() && sverb.dtls && ssl_sessionkey_enable() && !stream->decrypt_srtp_ok) {
+				if(call && is_dtls() && sverb.dtls && ssl_sessionkey_enable() && stream && !stream->decrypt_srtp_ok) {
 					string log_str;
 					log_str += string("decrypt_rtp ok 1 (") + (mode == mode_native ? "native" : "libsrtp") + ") for call: " + call->call_id;
 					log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + " ssrc_index " + intToString(stream->ssrc_index);
@@ -316,7 +331,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 				#endif
 				++decrypt_rtp_ok;
 				#if not EXPERIMENTAL_LITE_RTP_MOD
-				++stream->decrypt_srtp_ok;
+				if(stream) ++stream->decrypt_srtp_ok;
 				#endif
 				return(true);
 			} else {
@@ -324,7 +339,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 					term();
 				}
 				#if not EXPERIMENTAL_LITE_RTP_MOD
-				if(is_dtls() && sverb.dtls && ssl_sessionkey_enable() && stream->decrypt_srtp_failed < failed_log_limit) {
+				if(call && is_dtls() && sverb.dtls && ssl_sessionkey_enable() && stream && stream->decrypt_srtp_failed < failed_log_limit) {
 					string log_str;
 					log_str += string("decrypt_rtp failed 1/") + intToString(stream->decrypt_srtp_failed) + 
 						   " (" + (mode == mode_native ? "native" : "libsrtp") + ") for call: " + call->call_id;
@@ -356,7 +371,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 				      decrypt_rtp_libsrtp(data, data_len, payload, payload_len))) {
 					term();
 					#if not EXPERIMENTAL_LITE_RTP_MOD
-					if(is_dtls() && sverb.dtls && ssl_sessionkey_enable() && stream->decrypt_srtp_failed < failed_log_limit) {
+					if(is_dtls() && sverb.dtls && ssl_sessionkey_enable() && stream && stream->decrypt_srtp_failed < failed_log_limit) {
 						string log_str;
 						log_str += string("decrypt_rtp failed 2/") + intToString(stream->decrypt_srtp_failed) + 
 							   " (" + (mode == mode_native ? "native" : "libsrtp") + ") for call: " + call->call_id;
@@ -368,7 +383,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 					continue;
 				}
 				#if not EXPERIMENTAL_LITE_RTP_MOD
-				if(is_dtls() && sverb.dtls && ssl_sessionkey_enable() && !stream->decrypt_srtp_ok) {
+				if(is_dtls() && sverb.dtls && ssl_sessionkey_enable() && stream && !stream->decrypt_srtp_ok) {
 					string log_str;
 					log_str += string("decrypt_rtp ok 2 (") + (mode == mode_native ? "native" : "libsrtp") + ") for call: " + call->call_id;
 					log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + " ssrc_index " + intToString(stream->ssrc_index);
@@ -377,7 +392,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 				#endif
 				++decrypt_rtp_ok;
 				#if not EXPERIMENTAL_LITE_RTP_MOD
-				++stream->decrypt_srtp_ok;
+				if(stream) ++stream->decrypt_srtp_ok;
 				#endif
 				return(true);
 			}
@@ -385,8 +400,8 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 	}
 	++decrypt_rtp_failed;
 	#if not EXPERIMENTAL_LITE_RTP_MOD
-	++stream->decrypt_srtp_failed;
-	if(is_dtls() && sverb.dtls && ssl_sessionkey_enable() && stream->decrypt_srtp_failed < failed_log_limit) {
+	if(stream) ++stream->decrypt_srtp_failed;
+	if(is_dtls() && sverb.dtls && ssl_sessionkey_enable() && stream && stream->decrypt_srtp_failed < failed_log_limit) {
 		string log_str;
 		log_str += string("decrypt_rtp failed 3/") + intToString(stream->decrypt_srtp_failed) + 
 			   " (" + (mode == mode_native ? "native" : "libsrtp") + ") for call: " + call->call_id;
@@ -396,7 +411,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 	#endif
 	return(false);
 }
- 
+
 bool RTPsecure::decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len) {
 	#if HAVE_LIBGNUTLS
 	uint16_t seq = get_seq_rtp(data);
@@ -406,41 +421,84 @@ bool RTPsecure::decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *pay
 		rtp_seq_init = true;
 	}
 	uint32_t roc = compute_rtp_roc(seq);
-	u_char *tag = rtp_digest(data, *data_len - tag_size(), roc);
-	if(!memcmp(data + *data_len - tag_size(), tag, tag_size())) {
-		this->rtp_roc_ok[cryptoConfigActiveIndex] = true;
-	} else if(rtp_find_roc_attempts_max) {
-		//cout << rtp->counter_packets << " err (tag)" << endl;
-		//hexdump(data + *data_len - tag_size(), tag_size());
-		//hexdump(tag, tag_size());
-		if(!this->rtp_roc_ok[cryptoConfigActiveIndex] && this->rtp_find_roc_attempts[cryptoConfigActiveIndex] < rtp_find_roc_attempts_max) {
-			++this->rtp_find_roc_attempts[cryptoConfigActiveIndex];
-			unsigned rtp_roc_old = this->rtp_roc;
-			unsigned roc_try_max = 100;
-			for(unsigned roc_try = 0; roc_try < roc_try_max; roc_try++) {
-				this->rtp_roc = roc_try;
-				roc = compute_rtp_roc(seq);
-				tag = rtp_digest(data, *data_len - tag_size(), roc);
-				if(!memcmp(data + *data_len - tag_size(), tag, tag_size())) {
-					this->rtp_roc_ok[cryptoConfigActiveIndex] = true;
-					break;
+	if(is_aead()) {
+		u_char decrypted[*data_len];
+		unsigned decrypted_len;
+		bool rslt = rtpDecryptAead(data, *data_len, payload, *payload_len,
+					   seq, ssrc, roc,
+					   decrypted, &decrypted_len);
+		if(!rslt) {
+			if(rtp_find_roc_attempts_max) {
+				if(!rtp_roc_ok[cryptoConfigActiveIndex] && rtp_find_roc_attempts[cryptoConfigActiveIndex] < rtp_find_roc_attempts_max) {
+					++rtp_find_roc_attempts[cryptoConfigActiveIndex];
+					unsigned rtp_roc_old = rtp_roc;
+					unsigned roc_try_max = 100;
+					for(unsigned roc_try = 0; roc_try < roc_try_max; roc_try++) {
+						rtp_roc = roc_try;
+						roc = compute_rtp_roc(seq);
+						rslt = rtpDecryptAead(data, *data_len, payload, *payload_len,
+								      seq, ssrc, roc,
+								      decrypted, &decrypted_len);
+						if(rslt) {
+							rtp_roc_ok[cryptoConfigActiveIndex] = true;
+							break;
+						}
+					}
+					if(!rtp_roc_ok[cryptoConfigActiveIndex]) {
+						rtp_roc = rtp_roc_old;
+						return(false);
+					}
+				} else {
+					return(false);
 				}
-			}
-			if(!this->rtp_roc_ok[cryptoConfigActiveIndex]) {
-				this->rtp_roc = rtp_roc_old;
+			} else {
 				return(false);
 			}
-		} else {
+		}
+		memcpy(payload, decrypted, decrypted_len);
+		*data_len -= tag_size();
+		*payload_len -= tag_size();
+		rtp_seq = seq;
+		rtp_roc = roc;
+		rtp_roc_ok[cryptoConfigActiveIndex] = true;
+		return(true);
+	} else {
+		u_char *tag = rtp_digest(data, *data_len - tag_size(), roc);
+		if(!memcmp(data + *data_len - tag_size(), tag, tag_size())) {
+			this->rtp_roc_ok[cryptoConfigActiveIndex] = true;
+		} else if(rtp_find_roc_attempts_max) {
+			//cout << rtp->counter_packets << " err (tag)" << endl;
+			//hexdump(data + *data_len - tag_size(), tag_size());
+			//hexdump(tag, tag_size());
+			if(!this->rtp_roc_ok[cryptoConfigActiveIndex] && this->rtp_find_roc_attempts[cryptoConfigActiveIndex] < rtp_find_roc_attempts_max) {
+				++this->rtp_find_roc_attempts[cryptoConfigActiveIndex];
+				unsigned rtp_roc_old = this->rtp_roc;
+				unsigned roc_try_max = 100;
+				for(unsigned roc_try = 0; roc_try < roc_try_max; roc_try++) {
+					this->rtp_roc = roc_try;
+					roc = compute_rtp_roc(seq);
+					tag = rtp_digest(data, *data_len - tag_size(), roc);
+					if(!memcmp(data + *data_len - tag_size(), tag, tag_size())) {
+						this->rtp_roc_ok[cryptoConfigActiveIndex] = true;
+						break;
+					}
+				}
+				if(!this->rtp_roc_ok[cryptoConfigActiveIndex]) {
+					this->rtp_roc = rtp_roc_old;
+					return(false);
+				}
+			} else {
+				return(false);
+			}
+		}
+		//hexdump(data, *data_len - tag_size());
+		if(!rtpDecrypt(payload, *payload_len - tag_size(), seq, ssrc)) {
+			//cout << rtp->counter_packets << " err (decrypt)" << endl;
 			return(false);
 		}
+		*data_len -= tag_size();
+		*payload_len -= tag_size();
 	}
-	//hexdump(data, *data_len - tag_size());
-	if(!rtpDecrypt(payload, *payload_len - tag_size(), seq, ssrc)) {
-		//cout << rtp->counter_packets << " err (decrypt)" << endl;
-		return(false);
-	}
-	*data_len -= tag_size();
-	*payload_len -= tag_size();
 	//cout << rtp->counter_packets << " ok" << endl;
 	//hexdump(data, *data_len - tag_size());
 	return(true);
@@ -471,6 +529,8 @@ bool RTPsecure::decrypt_rtp_libsrtp(u_char *data, unsigned *data_len, u_char */*
 			rslt = true;
 		}
 	}
+	#else
+	missingLibSrtpLog();
 	#endif
 	//cout << rtp->counter_packets << (rslt ? " ok" : " err") << endl;
 	return(rslt);
@@ -536,14 +596,26 @@ bool RTPsecure::decrypt_rtcp(u_char *data, unsigned *data_len, u_int64_t time_us
 
 bool RTPsecure::decrypt_rtcp_native(u_char *data, unsigned *data_len) {
 	#if HAVE_LIBGNUTLS
-	u_char *tag = rtcp_digest(data, *data_len - tag_size());
-	if(memcmp(data + *data_len - tag_size(), tag, tag_size())) {
-		return(false);
+	if(is_aead()) {
+		u_char decrypted[*data_len];
+		unsigned decrypted_len;
+		bool rslt = rtcpDecryptAead(data, *data_len,
+					    decrypted, &decrypted_len);
+		if(!rslt) {
+			return(false);
+		}
+		memcpy(data + rtcp_unencrypt_header_len, decrypted, decrypted_len);
+		*data_len -= tag_size();
+	} else {
+		u_char *tag = rtcp_digest(data, *data_len - tag_size());
+		if(memcmp(data + *data_len - tag_size(), tag, tag_size())) {
+			return(false);
+		}
+		if(!rtcpDecrypt(data, *data_len - tag_size())) {
+			return(false);
+		}
+		*data_len -= tag_size();
 	}
-	if(!rtcpDecrypt(data, *data_len - tag_size())) {
-		return(false);
-	}
-	*data_len -= tag_size();
 	return(true);
 	#else
 	return(false);
@@ -570,6 +642,8 @@ bool RTPsecure::decrypt_rtcp_libsrtp(u_char *data, unsigned *data_len) {
 			rslt = true;
 		}
 	}
+	#else
+	missingLibSrtpLog();
 	#endif
 	return(rslt);
 }
@@ -629,64 +703,81 @@ void RTPsecure::term() {
 
 bool RTPsecure::init_native() {
 	#if HAVE_LIBGNUTLS
-	extern bool init_lib_gcrypt();
-	if(!init_lib_gcrypt()) {
-		setError(err_gcrypt_init);
-		return(false);
+	if(is_aead()) {
+		#if HAVE_OPENSSL
+		derive_key_aead(key(), salt(), 0x00, rtp->session_key, key_len());
+		derive_key_aead(key(), salt(), 0x02, rtp->session_salt, salt_len());
+		rtp->ctx = EVP_CIPHER_CTX_new();
+		EVP_DecryptInit_ex(rtp->ctx, key_size() == 256 ? EVP_aes_256_gcm() : EVP_aes_128_gcm(), NULL, NULL, NULL);
+		EVP_CIPHER_CTX_ctrl(rtp->ctx, EVP_CTRL_GCM_SET_IVLEN, 12, NULL);
+		derive_key_aead(key(), salt(), 0x03, rtcp->session_key, key_len());
+		derive_key_aead(key(), salt(), 0x04, rtcp->session_salt, salt_len());
+		rtcp->ctx = EVP_CIPHER_CTX_new();
+		EVP_DecryptInit_ex(rtcp->ctx, key_size() == 256 ? EVP_aes_256_gcm() : EVP_aes_128_gcm(), NULL, NULL, NULL);
+		EVP_CIPHER_CTX_ctrl(rtcp->ctx, EVP_CTRL_GCM_SET_IVLEN, 12, NULL);
+		#endif
+	} else {
+		extern bool init_lib_gcrypt();
+		if(!init_lib_gcrypt()) {
+			setError(err_gcrypt_init);
+			return(false);
+		}
+		if(cryptoConfigVector.size() && cryptoConfigActiveIndex < cryptoConfigVector.size() &&
+		   cryptoConfigVector[cryptoConfigActiveIndex].tag_size > gcry_md_get_algo_dlen(cryptoConfigVector[cryptoConfigActiveIndex].md)) {
+			setError(err_bad_tag_size);
+			return(false);
+		}
+		if(gcry_cipher_open(&rtp->cipher, cipher(), GCRY_CIPHER_MODE_CTR, 0)) {
+			setError(err_cipher_open);
+			return(false);
+		}
+		if(gcry_md_open(&rtp->md, md(), GCRY_MD_FLAG_HMAC)) {
+			setError(err_md_open);
+			return(false);
+		}
+		if(gcry_cipher_open(&rtcp->cipher, cipher(), GCRY_CIPHER_MODE_CTR, 0)) {
+			setError(err_cipher_open);
+			return(false);
+		}
+		if(gcry_md_open(&rtcp->md, md(), GCRY_MD_FLAG_HMAC)) {
+			setError(err_md_open);
+			return(false);
+		}
+		gcry_cipher_hd_t _cipher;
+		if(gcry_cipher_open(&_cipher, key_size() == 256 ? GCRY_CIPHER_AES256 : GCRY_CIPHER_AES, GCRY_CIPHER_MODE_CTR, 0) ||
+		   gcry_cipher_setkey(_cipher, key(), key_len())) {
+			setError(err_set_key);
+			return(false);
+		}
+		// SRTP key derivation
+		u_char r[6];
+		u_char keybuf[100];
+		memset(r, 0, sizeof(r));
+		memset(keybuf, 0, sizeof (keybuf));
+		if(do_derive(_cipher, r, 6, SRTP_CRYPT, keybuf, key_len()) ||
+		   gcry_cipher_setkey(rtp->cipher, keybuf, key_len()) ||
+		   do_derive(_cipher, r, 6, SRTP_AUTH, keybuf, 20) ||
+		   gcry_md_setkey(rtp->md, keybuf, 20) ||
+		   do_derive (_cipher, r, 6, SRTP_SALT, (u_char*)rtp->salt, salt_len())) {
+			setError(err_set_key);
+			gcry_cipher_close(_cipher);
+			return(false);
+		}
+		// SRTCP key derivation
+		uint32_t _rtcp_index = htonl(this->rtcp_index);
+		memcpy(r, &_rtcp_index, 4);
+		if(do_derive(_cipher, r, 6, SRTCP_CRYPT, keybuf, key_len()) ||
+		   gcry_cipher_setkey(rtcp->cipher, keybuf, key_len()) ||
+		   do_derive(_cipher, r, 6, SRTCP_AUTH, keybuf, 20) ||
+		   gcry_md_setkey (rtcp->md, keybuf, 20) ||
+		   do_derive (_cipher, r, 6, SRTCP_SALT, (u_char*)rtcp->salt, salt_len())) {
+			setError(err_set_key);
+			gcry_cipher_close(_cipher);
+			return(false);
+		}
+		gcry_cipher_close(_cipher);
 	}
-	if(cryptoConfigVector.size() && cryptoConfigActiveIndex < cryptoConfigVector.size() &&
-	   cryptoConfigVector[cryptoConfigActiveIndex].tag_size > gcry_md_get_algo_dlen(cryptoConfigVector[cryptoConfigActiveIndex].md)) {
-		setError(err_bad_tag_size);
-		return(false);
-	}
-	if(gcry_cipher_open(&rtp->cipher, cipher(), GCRY_CIPHER_MODE_CTR, 0)) {
-		setError(err_cipher_open);
-		return(false);
-	}
-	if(gcry_md_open(&rtp->md, md(), GCRY_MD_FLAG_HMAC)) {
-		setError(err_md_open);
-		return(false);
-	}
-	if(gcry_cipher_open(&rtcp->cipher, cipher(), GCRY_CIPHER_MODE_CTR, 0)) {
-		setError(err_cipher_open);
-		return(false);
-	}
-	if(gcry_md_open(&rtcp->md, md(), GCRY_MD_FLAG_HMAC)) {
-		setError(err_md_open);
-		return(false);
-	}
-	gcry_cipher_hd_t _cipher;
-	if(gcry_cipher_open(&_cipher, key_size() == 256 ? GCRY_CIPHER_AES256 : GCRY_CIPHER_AES, GCRY_CIPHER_MODE_CTR, 0) ||
-	   gcry_cipher_setkey(_cipher, key(), key_len())) {
-		setError(err_set_key);
-		return(false);
-	}
-	// SRTP key derivation
-	u_char r[6];
-	u_char keybuf[100];
-	memset(r, 0, sizeof(r));
-	memset(keybuf, 0, sizeof (keybuf));
-	if(do_derive(_cipher, r, 6, SRTP_CRYPT, keybuf, key_len()) ||
-	   gcry_cipher_setkey(rtp->cipher, keybuf, key_len()) ||
-	   do_derive(_cipher, r, 6, SRTP_AUTH, keybuf, 20) ||
-	   gcry_md_setkey(rtp->md, keybuf, 20) ||
-	   do_derive (_cipher, r, 6, SRTP_SALT, (u_char*)rtp->salt, salt_len())) {
-		setError(err_set_key);
-		return(false);
-	}
-	// SRTCP key derivation
-	uint32_t _rtcp_index = htonl(this->rtcp_index);
-	memcpy(r, &_rtcp_index, 4);
-	if(do_derive(_cipher, r, 6, SRTCP_CRYPT, keybuf, key_len()) ||
-	   gcry_cipher_setkey(rtcp->cipher, keybuf, key_len()) ||
-	   do_derive(_cipher, r, 6, SRTCP_AUTH, keybuf, 20) ||
-	   gcry_md_setkey (rtcp->md, keybuf, 20) ||
-	   do_derive (_cipher, r, 6, SRTCP_SALT, (u_char*)rtcp->salt, salt_len())) {
-		setError(err_set_key);
-		return(false);
-	}
-	gcry_cipher_close(_cipher);
-        return(true);
+    return(true);
 	#else
 	return(false);
 	#endif
@@ -699,31 +790,44 @@ bool RTPsecure::init_libsrtp() {
 	for(int i = 0; i < 2; i++) {
 		srtp_policy_t *policy = i == 0 ? &rtp->policy : &rtcp->policy;
 		memset(policy, 0x0, sizeof(srtp_policy_t));
-		switch(key_size()) {
-		case 128:
-			switch(tag_size()) {
-			case 10:
-				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&policy->rtp);
-				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&policy->rtcp);
+		if(is_aead()) {
+			switch (key_size()) {
+			case 128:
+				srtp_crypto_policy_set_aes_gcm_128_16_auth(&policy->rtp);
+				srtp_crypto_policy_set_aes_gcm_128_16_auth(&policy->rtcp);
 				break;
-			case 4:
-				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&policy->rtp);
-				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&policy->rtcp);
-				break;
-			}
-			break;
-		case 256:
-			switch(tag_size()) {
-			case 10:
-				srtp_crypto_policy_set_aes_cm_256_hmac_sha1_80(&policy->rtp);
-				srtp_crypto_policy_set_aes_cm_256_hmac_sha1_80(&policy->rtcp);
-				break;
-			case 4:
-				srtp_crypto_policy_set_aes_cm_256_hmac_sha1_32(&policy->rtp);
-				srtp_crypto_policy_set_aes_cm_256_hmac_sha1_32(&policy->rtcp);
+			case 256:
+				srtp_crypto_policy_set_aes_gcm_256_16_auth(&policy->rtp);
+				srtp_crypto_policy_set_aes_gcm_256_16_auth(&policy->rtcp);
 				break;
 			}
-			break;
+		} else {
+			switch(key_size()) {
+			case 128:
+				switch(tag_size()) {
+				case 10:
+					srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&policy->rtp);
+					srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&policy->rtcp);
+					break;
+				case 4:
+					srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&policy->rtp);
+					srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&policy->rtcp);
+					break;
+				}
+				break;
+			case 256:
+				switch(tag_size()) {
+				case 10:
+					srtp_crypto_policy_set_aes_cm_256_hmac_sha1_80(&policy->rtp);
+					srtp_crypto_policy_set_aes_cm_256_hmac_sha1_80(&policy->rtcp);
+					break;
+				case 4:
+					srtp_crypto_policy_set_aes_cm_256_hmac_sha1_32(&policy->rtp);
+					srtp_crypto_policy_set_aes_cm_256_hmac_sha1_32(&policy->rtcp);
+					break;
+				}
+				break;
+			}
 		}
 		policy->key = key_salt();
 		policy->ssrc.type = ssrc_specific;
@@ -790,6 +894,70 @@ bool RTPsecure::rtcpDecrypt(u_char *data, unsigned data_len) {
 	}
 	#endif
 	return(true);
+}
+
+bool RTPsecure::rtpDecryptAead(u_char *data, unsigned data_len, u_char *payload, unsigned payload_len,
+			       uint16_t seq, uint32_t ssrc, uint32_t roc,
+			       u_char *decrypted, unsigned *decrypted_len) {
+	#if HAVE_OPENSSL
+	u_char iv[12];
+	compute_aead_iv(rtp->session_salt, ssrc, seq, roc, iv);
+	/*
+	cout << "PACKET:" << endl;
+	hexdump(data, *data_len);
+	cout << "IV:" << endl;
+	hexdump(iv, 12);
+	cout << "AAD" << endl;
+	hexdump(data, 12);
+	cout << "SESSION KEY" << endl;
+	hexdump(rtp->session_key, key_len());
+	*/
+	int len;
+	EVP_DecryptInit_ex(rtp->ctx, NULL, NULL, rtp->session_key, iv);
+	EVP_DecryptUpdate(rtp->ctx, NULL, &len, data, data_len - payload_len);
+	EVP_DecryptUpdate(rtp->ctx, decrypted, &len, payload, payload_len - tag_size());
+	*decrypted_len = len;
+	EVP_CIPHER_CTX_ctrl(rtp->ctx, EVP_CTRL_GCM_SET_TAG, tag_size(), payload + payload_len - tag_size());
+	int rslt = EVP_DecryptFinal_ex(rtp->ctx, decrypted + *decrypted_len, &len);
+	*decrypted_len += len;
+	/*
+	if(rslt > 0) {
+		hexdump(decrypted, decrypted_len);
+	}
+	*/
+	return(rslt > 0);
+	#else
+	missingOpensslLogForAead();
+	return(false);
+	#endif
+}
+
+bool RTPsecure::rtcpDecryptAead(u_char *data, unsigned data_len,
+				u_char *decrypted, unsigned *decrypted_len) {
+	#if HAVE_OPENSSL
+	uint32_t index;
+	memcpy(&index, data + data_len - rtcp_unencrypt_footer_len - tag_size(), 4);
+	index = ntohl (index);
+	bool e = index & 0x80000000;
+	index &= 0x7fffffff;
+	if(!e) {
+		return(false);
+	}
+	u_char iv[12];
+	compute_aead_iv_rtcp(rtcp->session_salt, get_ssrc_rtcp(data), index, iv);
+	int len;
+	EVP_DecryptInit_ex(rtcp->ctx, NULL, NULL, rtcp->session_key, iv);
+	EVP_DecryptUpdate(rtcp->ctx, NULL, &len, data, rtcp_unencrypt_header_len);
+	EVP_DecryptUpdate(rtcp->ctx, decrypted, &len, data + rtcp_unencrypt_header_len, data_len - rtcp_unencrypt_header_len - rtcp_unencrypt_footer_len - tag_size());
+	*decrypted_len = len;
+	EVP_CIPHER_CTX_ctrl(rtcp->ctx, EVP_CTRL_GCM_SET_TAG, tag_size(), data + data_len - tag_size());
+	int rslt = EVP_DecryptFinal_ex(rtcp->ctx, decrypted + *decrypted_len, &len);
+	*decrypted_len += len;
+	return(rslt > 0);
+	#else
+	missingOpensslLogForAead();
+	return(false);
+	#endif
 }
 
 uint32_t RTPsecure::compute_rtp_roc(uint16_t seq) {
@@ -884,3 +1052,71 @@ int RTPsecure::do_ctr_crypt (gcry_cipher_hd_t cipher, u_char *ctr, u_char *data,
 	return(0);
 }
 #endif
+
+#if HAVE_OPENSSL
+void RTPsecure::derive_key_aead(u_char *master_key, u_char *master_salt, uint8_t label, u_char *out, unsigned out_len) {
+	u_char block[16] = {0};
+	AES_KEY aes_key;
+	AES_set_encrypt_key(master_key, key_size(), &aes_key);
+	for (int i = 0; i < 12; i++) block[i] ^= master_salt[i];
+	block[7] ^= label;
+	unsigned generated = 0;
+	uint8_t counter = 0;
+	while(generated < out_len) {
+		block[15] = counter++;
+		u_char encrypted[16];
+		AES_encrypt(block, encrypted, &aes_key);
+		unsigned copy = (out_len - generated > 16) ? 16 : out_len - generated;
+		memcpy(out + generated, encrypted, copy);
+		generated += copy;
+	}
+}
+
+void RTPsecure::compute_aead_iv(u_char *salt, uint32_t ssrc, uint16_t seq, uint32_t roc, u_char *out_iv) {
+	u_char input[12] = {0};
+	input[2] = (ssrc >> 24) & 0xff;
+	input[3] = (ssrc >> 16) & 0xff;
+	input[4] = (ssrc >> 8) & 0xff;
+	input[5] = ssrc & 0xff;
+	input[6] = (roc >> 24) & 0xff;
+	input[7] = (roc >> 16) & 0xff;
+	input[8] = (roc >> 8) & 0xff;
+	input[9] = roc & 0xff;
+	input[10] = (seq >> 8) & 0xff;
+	input[11] = seq & 0xff;
+	for(int i = 0; i < 12; i++) {
+		out_iv[i] = input[i] ^ salt[i];
+	}
+}
+
+void RTPsecure::compute_aead_iv_rtcp(u_char *salt, uint32_t ssrc, uint32_t index, u_char *out_iv) {
+	u_char input[12] = {0};
+	input[4] = (ssrc >> 24) & 0xff;
+	input[5] = (ssrc >> 16) & 0xff;
+	input[6] = (ssrc >> 8) & 0xff;
+	input[7] = ssrc & 0xff;
+	input[8] = (index >> 24) & 0xff;
+	input[9] = (index >> 16) & 0xff;
+	input[10] = (index >> 8) & 0xff;
+	input[11] = index & 0xff;
+	for(int i = 0; i < 12; i++) {
+		out_iv[i] = input[i] ^ salt[i];
+	}
+}
+#endif
+
+void RTPsecure::missingOpensslLogForAead() {
+	static volatile int logged;
+	if(!logged) {
+		syslog(LOG_ERR, "To decrypt aead, a build including the openssl library must be used.");
+		logged = true;
+	}
+}
+
+void RTPsecure::missingLibSrtpLog() {
+	static volatile int logged;
+	if(!logged) {
+		syslog(LOG_ERR, "To decrypt with the libsrtp=yes option, you must use a build that includes the libsrtp library.");
+		logged = true;
+	}
+}

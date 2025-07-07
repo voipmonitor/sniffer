@@ -204,6 +204,7 @@ enum eCmdLineParams {
 	_param_anonymize_pcap,
 	_param_prepare_rtcp_data,
 	_param_process_pcap,
+	_param_srtp_decode,
 	_param_heap_profiler,
 	_param_revaluation,
 	_param_reassign_countries,

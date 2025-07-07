@@ -4342,7 +4342,7 @@ static inline void parse_packet__message_content(char *message, unsigned int mes
 static inline Call *process_packet__merge(packet_s_process *packetS, char *callidstr, int *merged, bool preprocess);
 static inline bool checkEqNumbers(Call::sInviteSD_Addr *item1, Call::sInviteSD_Addr *item2);
 
-void process_ua(Call *call, CallBranch *c_branch, packet_s_process *packetS, int iscaller, int iscalled) {
+void process_ua(Call */*call*/, CallBranch *c_branch, packet_s_process *packetS, int iscaller, int iscalled) {
 	unsigned long l;
 	char *s;
 	if(iscaller > 0 && c_branch->b_ua.empty()) {
@@ -8640,6 +8640,7 @@ bool open_global_pcap_handle(const char *pcap, string *error) {
 
 bool process_pcap(const char *pcap_source, const char *pcap_destination, int process_pcap_type, string *error) {
 	if(!(process_pcap_type & _pp_prepare_rtcp_data) &&
+	   !(process_pcap_type & _pp_srtp_decode) &&
 	   (!pcap_destination || !*pcap_destination)) {
 		string _error = "missing destination filename";
 		if(error) {
@@ -8660,7 +8661,8 @@ bool process_pcap(const char *pcap_source, const char *pcap_destination, int pro
 		return(false);
 	}
 	PcapDumper *destination = NULL;
-	if(!(process_pcap_type & _pp_prepare_rtcp_data)) {
+	if(!(process_pcap_type & _pp_prepare_rtcp_data) &&
+	   !(process_pcap_type & _pp_srtp_decode)) {
 		destination = new PcapDumper;
 		if(!destination->open(tsf_na, pcap_destination, global_pcap_handle, global_pcap_dlink, &pcap_error)) {
 			if(error) {
@@ -8680,6 +8682,9 @@ bool process_pcap(const char *pcap_source, const char *pcap_destination, int pro
 }
 
 void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, PcapDumper *destination, int process_pcap_type) {
+ 
+	RTPsecure *rtp_secure = NULL;
+ 
 	if(verbosity > 2) {
 		syslog(LOG_NOTICE, "DLT: %i", handle_dlt);
 	}
@@ -8692,6 +8697,15 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 		extern string opt_rtcp_params;
 		extern void parseRtcpParams(string &rtcp_params_string);
 		parseRtcpParams(opt_rtcp_params);
+	}
+	
+	if(process_pcap_type & _pp_srtp_decode) {
+		extern char opt_srtp_crypto[];
+		extern char opt_srtp_sdes[];
+		extern char opt_srtp_mode[];
+		rtp_secure = new FILE_LINE(0) RTPsecure(!strcasecmp(opt_srtp_mode, "native") ? RTPsecure::mode_native : RTPsecure::mode_libsrtp, 
+							NULL, NULL, 0);
+		rtp_secure->addCryptoConfig(0, opt_srtp_crypto, opt_srtp_sdes, 0);
 	}
 
 	pcap_dumper_t *tmppcap = NULL;
@@ -8709,10 +8723,14 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 	}
 	
 	pcapProcessData ppd;
+	#if USE_PACKET_NUMBER
 	u_int64_t packet_counter = 0;
+	#endif
 	unsigned long lastStatTimeMS = 0;
 	sHeaderPacket *header_packet = NULL;
-	int ppf_params = ((process_pcap_type & _pp_process_calls) || (process_pcap_type & _pp_prepare_rtcp_data)) ? ppf_all :
+	int ppf_params = ((process_pcap_type & _pp_process_calls) || 
+			  (process_pcap_type & _pp_prepare_rtcp_data) ||
+			  (process_pcap_type & _pp_srtp_decode)) ? ppf_all :
 			 (process_pcap_type & _pp_dedup) ? (ppf_dedup | ppf_calcMD5) :
 			 (process_pcap_type & _pp_anonymize_ip) ? ppf_na :
 			 ppf_na;
@@ -8779,7 +8797,9 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 				pcap_next_ex_packet, NULL,
 				pcap_next_ex_header->caplen);
 		
+		#if USE_PACKET_NUMBER
 		++packet_counter;
+		#endif
 		
 		if(!(process_pcap_type & _pp_read_file) && (process_pcap_type & _pp_process_calls)) {
 			unsigned long timeMS = getTimeMS(HPH(header_packet));
@@ -8831,6 +8851,32 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 				delete [] packet_new;
 			} else {
 				destination->dump(HPH(header_packet), HPP(header_packet), handle_dlt);
+			}
+			continue;
+		} else if(process_pcap_type & _pp_srtp_decode) {
+			if(ppd.header_ip && ppd.header_ip->get_protocol() == IPPROTO_UDP &&
+			   IS_RTP((u_char*)ppd.data, ppd.datalen) &&
+			   (unsigned)ppd.datalen > sizeof(RTPFixedHeader)) {
+				unsigned data_len = ppd.datalen;
+				unsigned payload_len = ppd.datalen - sizeof(RTPFixedHeader);
+				u_char *data = new FILE_LINE(0) u_char[data_len];
+				u_char *payload = data + sizeof(RTPFixedHeader);
+				memcpy(data, ppd.data, data_len);
+				cout << "---" << endl;
+				hexdump(data, data_len);
+				hexdump(payload, payload_len);
+				bool rslt_decrypt = rtp_secure->decrypt_rtp(data, &data_len,
+									    payload, &payload_len,
+									    getTimeUS(HPH(header_packet)),
+									    ppd.header_ip->get_saddr(), ppd.header_ip->get_daddr(), 
+									    ppd.header_udp->get_source(), ppd.header_udp->get_dest(),
+									    NULL);
+				cout << "rslt_decrypt: " << (rslt_decrypt ? "✅" : "❌") << endl;
+				if(rslt_decrypt) {
+					hexdump(data, data_len);
+					hexdump(payload, payload_len);
+				}
+				delete [] data;
 			}
 			continue;
 		}
@@ -8946,6 +8992,10 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 
 	if(opt_pcapdump) {
 		pcap_dump_close(tmppcap);
+	}
+	
+	if(rtp_secure) {
+		delete rtp_secure;
 	}
 	
 	if(payload_dump.size()) {

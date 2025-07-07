@@ -230,23 +230,23 @@ bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys, Call *call,
 	rnd2.set(handshake_data.server_random, DTLS_RANDOM_SIZE);
 	SimpleBuffer out;
 	++keys_block_attempts;
-	if(!dtls_srtp_keys_block(&secret, "EXTRACTOR-dtls_srtp", &rnd1, &rnd2, &out, 60)) {
-		if(sverb.dtls && ssl_sessionkey_enable()) {
-			log_str += "; dtls_srtp_keys_block failed";
-			ssl_sessionkey_log(log_str);
-		}
-		return(false);
-	}
-	if(sverb.dtls && ssl_sessionkey_enable()) {
-		log_str += "; out: ";
-		log_str += hexdump_to_string(out.data(), 60);
-	}
 	for(list<eCipherType>::iterator iter_cipher_type = handshake_data.cipher_types.begin(); iter_cipher_type != handshake_data.cipher_types.end(); iter_cipher_type++) {
 		eCipherType cipher_type = *iter_cipher_type;
-		SimpleBuffer server_key;
-		SimpleBuffer client_key;
 		unsigned srtp_key_len = cipherSrtpKeyLen(cipher_type);
 		unsigned srtp_salt_len = cipherSrtpSaltLen(cipher_type);
+		if(!dtls_srtp_keys_block(&secret, "EXTRACTOR-dtls_srtp", &rnd1, &rnd2, &out, srtp_key_len * 2 + srtp_salt_len * 2)) {
+			if(sverb.dtls && ssl_sessionkey_enable()) {
+				log_str += "; dtls_srtp_keys_block failed";
+				ssl_sessionkey_log(log_str);
+			}
+			return(false);
+		}
+		if(sverb.dtls && ssl_sessionkey_enable()) {
+			log_str += "; out: ";
+			log_str += hexdump_to_string(out.data(), srtp_key_len * 2 + srtp_salt_len * 2);
+		}
+		SimpleBuffer server_key;
+		SimpleBuffer client_key;
 		server_key.add(out.data(), srtp_key_len);
 		client_key.add(out.data() + srtp_key_len, srtp_key_len);
 		server_key.add(out.data() + srtp_key_len * 2, srtp_salt_len);
