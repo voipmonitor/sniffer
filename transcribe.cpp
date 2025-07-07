@@ -191,51 +191,76 @@ bool Transcribe::transcribeWav(const char *wav, const char *json_params, bool ou
 		data_wav = data_wav_16;
 		data_wav_samples = data_wav_16_samples;
 	}
-	sTranscribeWavChannelParams transcribeChannelsParams[wavHeader.channels];
-	for(unsigned chi = 0; chi < wavHeader.channels; chi++) {
-		string language;
-		if(!language_type_ch[chi].empty()) {
-			language = language_type_ch[chi] == "auto" ? "" : 
-				   language_type_ch[chi] == "by_number" ? language_ch[chi] :
-				   language_type_ch[chi] == "set" ? language_ch[chi] :
-				   opt_whisper_language;
-		} else {
-			language = opt_whisper_language == "auto" ? "" : 
-				   opt_whisper_language == "by_number" ? language_ch[chi] : 
-				   opt_whisper_language;
-		}
-		transcribeChannelsParams[chi].data_wav = data_wav;
-		transcribeChannelsParams[chi].data_wav_samples = data_wav_samples;
-		transcribeChannelsParams[chi].channels = wavHeader.channels;
-		transcribeChannelsParams[chi].process_channel_i = chi;
-		transcribeChannelsParams[chi].language = language;
-		transcribeChannelsParams[chi].output_to_stdout = output_to_stdout;
-		transcribeChannelsParams[chi].thread = 0;
-		transcribeChannelsParams[chi].me = this;
-	}
-	if(wavHeader.channels > 1 && opt_audio_transcribe_parallel_channel_processing) {
-		for(unsigned chi = 0; chi < wavHeader.channels; chi++) {
-			vm_pthread_create("transcribe",
-					  &transcribeChannelsParams[chi].thread, NULL, transcribeWavChannel_thread, &transcribeChannelsParams[chi], __FILE__, __LINE__);
-		}
-		for(unsigned chi = 0; chi < wavHeader.channels; chi++) {
-			pthread_join(transcribeChannelsParams[chi].thread, NULL);
-		}
-	} else {
-		for(unsigned chi = 0; chi < wavHeader.channels; chi++) {
-			transcribeWavChannel(&transcribeChannelsParams[chi]);
-		}
-	}
 	bool rslt_rslt = false;
 	string last_rslt_error;
-	for(unsigned chi = 0; chi < wavHeader.channels; chi++) {
-		if(transcribeChannelsParams[chi].rslt.isOk()) {
-			rslt_rslt = true;
+	
+	// Check if we're using stereo mode with REST API
+	if(!opt_whisper_rest_api_url.empty() && opt_whisper_rest_api_mode == "stereo" && wavHeader.channels == 2) {
+		// Process stereo file as single request
+		sRslt stereoResults[2];
+		string error;
+		if(runWhisperRestApiStereo(wav, stereoResults, &error)) {
+			if(rslt) {
+				(*rslt)[0] = stereoResults[0];
+				(*rslt)[1] = stereoResults[1];
+			}
+			rslt_rslt = stereoResults[0].isOk() || stereoResults[1].isOk();
+			if(!stereoResults[0].isOk()) last_rslt_error = stereoResults[0].error;
+			if(!stereoResults[1].isOk()) last_rslt_error = stereoResults[1].error;
 		} else {
-			last_rslt_error = transcribeChannelsParams[chi].rslt.error;
+			if(rslt) {
+				(*rslt)[0].error = error;
+				(*rslt)[1].error = error;
+			}
+			last_rslt_error = error;
 		}
-		if(rslt) {
-			(*rslt)[chi] = transcribeChannelsParams[chi].rslt;
+	} else {
+		// Original split mode
+		sTranscribeWavChannelParams transcribeChannelsParams[wavHeader.channels];
+		for(unsigned chi = 0; chi < wavHeader.channels; chi++) {
+			string language;
+			if(!language_type_ch[chi].empty()) {
+				language = language_type_ch[chi] == "auto" ? "" : 
+					   language_type_ch[chi] == "by_number" ? language_ch[chi] :
+					   language_type_ch[chi] == "set" ? language_ch[chi] :
+					   opt_whisper_language;
+			} else {
+				language = opt_whisper_language == "auto" ? "" : 
+					   opt_whisper_language == "by_number" ? language_ch[chi] : 
+					   opt_whisper_language;
+			}
+			transcribeChannelsParams[chi].data_wav = data_wav;
+			transcribeChannelsParams[chi].data_wav_samples = data_wav_samples;
+			transcribeChannelsParams[chi].channels = wavHeader.channels;
+			transcribeChannelsParams[chi].process_channel_i = chi;
+			transcribeChannelsParams[chi].language = language;
+			transcribeChannelsParams[chi].output_to_stdout = output_to_stdout;
+			transcribeChannelsParams[chi].thread = 0;
+			transcribeChannelsParams[chi].me = this;
+		}
+		if(wavHeader.channels > 1 && opt_audio_transcribe_parallel_channel_processing) {
+			for(unsigned chi = 0; chi < wavHeader.channels; chi++) {
+				vm_pthread_create("transcribe",
+						  &transcribeChannelsParams[chi].thread, NULL, transcribeWavChannel_thread, &transcribeChannelsParams[chi], __FILE__, __LINE__);
+			}
+			for(unsigned chi = 0; chi < wavHeader.channels; chi++) {
+				pthread_join(transcribeChannelsParams[chi].thread, NULL);
+			}
+		} else {
+			for(unsigned chi = 0; chi < wavHeader.channels; chi++) {
+				transcribeWavChannel(&transcribeChannelsParams[chi]);
+			}
+		}
+		// Process results from split mode
+		for(unsigned chi = 0; chi < wavHeader.channels; chi++) {
+			if(transcribeChannelsParams[chi].rslt.isOk()) {
+				rslt_rslt = true;
+			} else {
+				last_rslt_error = transcribeChannelsParams[chi].rslt.error;
+			}
+			if(rslt) {
+				(*rslt)[chi] = transcribeChannelsParams[chi].rslt;
+			}
 		}
 	}
 	if(!rslt_rslt) {
@@ -341,7 +366,7 @@ void Transcribe::pushCall(sCall *call) {
 	}
 }
 
-Transcribe::sCall *Transcribe::createTranscribeCall(Call *call, const char *chanel1_pcm, const char *chanel2_pcm, unsigned samplerate) {
+Transcribe::sCall *Transcribe::createTranscribeCall(Call *call, const char *chanel1_pcm, const char *chanel2_pcm, unsigned samplerate, const char *stereo_wav) {
 	sCall *call_tr = new FILE_LINE(0) sCall;
 	call_tr->calltime_us = call->calltime_us();
 	call_tr->callid = call->fbasename;
@@ -361,6 +386,9 @@ Transcribe::sCall *Transcribe::createTranscribeCall(Call *call, const char *chan
 		call_tr->channels[call_tr->channels_count].country = getCountryByPhoneNumber(call->get_called(c_branch), c_branch->sipcalledip_rslt, true);
 		call_tr->channels[call_tr->channels_count].language = countryToLanguage(call_tr->channels[call_tr->channels_count].country.c_str());
 		++call_tr->channels_count;
+	}
+	if(stereo_wav) {
+		call_tr->stereo_wav = stereo_wav;
 	}
 	return(call_tr);
 }
@@ -447,52 +475,76 @@ void Transcribe::transcribeCall(sCall *call) {
 			continue;
 		}
 	}
-	for(unsigned i = 0; i < call->channels_count; i++) {
-		if(call->channels[i].ok) {
-			string rslt_language;
-			string rslt_text;
-			string rslt_segments;
-			string language = opt_whisper_language == "auto" ? "" : 
-					  opt_whisper_language == "by_number" ? call->channels[i].language : opt_whisper_language;
-			string error;
-			if(!opt_whisper_rest_api_url.empty()) {
-				if(runWhisperRestApi(call->channels[i].wav.c_str(), rslt_language, rslt_text, rslt_segments, &error)) {
-					call->channels[i].rslt_language = rslt_language;
-					call->channels[i].rslt_text = rslt_text;
-					call->channels[i].rslt_segments = rslt_segments;
+	// Check if we should use stereo mode
+	if(!opt_whisper_rest_api_url.empty() && opt_whisper_rest_api_mode == "stereo" && call->channels_count == 2 && 
+	   call->channels[0].ok && call->channels[1].ok && !call->stereo_wav.empty()) {
+		// Use existing stereo WAV file
+		string error;
+		sRslt stereoResults[2];
+		if(runWhisperRestApiStereo(call->stereo_wav.c_str(), stereoResults, &error)) {
+			// Apply results to channels
+			call->channels[0].rslt_language = stereoResults[0].language;
+			call->channels[0].rslt_text = stereoResults[0].text;
+			call->channels[0].rslt_segments = stereoResults[0].segments;
+			
+			call->channels[1].rslt_language = stereoResults[1].language;
+			call->channels[1].rslt_text = stereoResults[1].text;
+			call->channels[1].rslt_segments = stereoResults[1].segments;
+		} else {
+			call->channels[0].ok = false;
+			call->channels[0].error = !error.empty() ? error : "failed transcribe via whisper (rest_api stereo)";
+			call->channels[1].ok = false;
+			call->channels[1].error = !error.empty() ? error : "failed transcribe via whisper (rest_api stereo)";
+		}
+	} else {
+		// Original split mode processing
+		for(unsigned i = 0; i < call->channels_count; i++) {
+			if(call->channels[i].ok) {
+				string rslt_language;
+				string rslt_text;
+				string rslt_segments;
+				string language = opt_whisper_language == "auto" ? "" : 
+						  opt_whisper_language == "by_number" ? call->channels[i].language : opt_whisper_language;
+				string error;
+				if(!opt_whisper_rest_api_url.empty()) {
+					if(runWhisperRestApi(call->channels[i].wav.c_str(), rslt_language, rslt_text, rslt_segments, &error)) {
+						call->channels[i].rslt_language = rslt_language;
+						call->channels[i].rslt_text = rslt_text;
+						call->channels[i].rslt_segments = rslt_segments;
+					} else {
+						call->channels[i].ok = false;
+						call->channels[i].error = !error.empty() ? error : "failed transcribe via whisper (rest_api)";
+					}
+				} else if(opt_whisper_native) {
+					list<sSegment> segments;
+					if(runWhisperNative(call->channels[i].wav.c_str(), language.empty() ? "auto" : language.c_str(), opt_whisper_model.c_str(), opt_whisper_threads, 
+							    &rslt_language, &segments, &error, sverb.whisper, NULL) && segments.size()) {
+						call->channels[i].rslt_language = rslt_language;
+						convertSegmentsToText(&segments, &call->channels[i].rslt_text, &call->channels[i].rslt_segments);
+					} else {
+						call->channels[i].ok = false;
+						call->channels[i].error = !error.empty() ? error : "failed transcribe via whisper (native)";
+					}
 				} else {
-					call->channels[i].ok = false;
-					call->channels[i].error = !error.empty() ? error : "failed transcribe via whisper (rest_api)";
-				}
-			} else if(opt_whisper_native) {
-				list<sSegment> segments;
-				if(runWhisperNative(call->channels[i].wav.c_str(), language.empty() ? "auto" : language.c_str(), opt_whisper_model.c_str(), opt_whisper_threads, 
-						    &rslt_language, &segments, &error, sverb.whisper, NULL) && segments.size()) {
-					call->channels[i].rslt_language = rslt_language;
-					convertSegmentsToText(&segments, &call->channels[i].rslt_text, &call->channels[i].rslt_segments);
-				} else {
-					call->channels[i].ok = false;
-					call->channels[i].error = !error.empty() ? error : "failed transcribe via whisper (native)";
-				}
-			} else {
-				if(runWhisperPython(call->channels[i].wav, "", opt_whisper_python,
-						    opt_whisper_model, language, opt_whisper_timeout, opt_whisper_deterministic_mode, opt_whisper_threads,
-						    rslt_language, rslt_text, rslt_segments,
-						    &error) &&
-				   !rslt_language.empty() &&
-				   !rslt_text.empty() &&
-				   !rslt_segments.empty()) {
-					call->channels[i].rslt_language = rslt_language;
-					call->channels[i].rslt_text = rslt_text;
-					call->channels[i].rslt_segments = rslt_segments;
-				} else {
-					call->channels[i].ok = false;
-					call->channels[i].error = !error.empty() ? error : "failed transcribe via whisper (python)";
+					if(runWhisperPython(call->channels[i].wav, "", opt_whisper_python,
+							    opt_whisper_model, language, opt_whisper_timeout, opt_whisper_deterministic_mode, opt_whisper_threads,
+							    rslt_language, rslt_text, rslt_segments,
+							    &error) &&
+					   !rslt_language.empty() &&
+					   !rslt_text.empty() &&
+					   !rslt_segments.empty()) {
+						call->channels[i].rslt_language = rslt_language;
+						call->channels[i].rslt_text = rslt_text;
+						call->channels[i].rslt_segments = rslt_segments;
+					} else {
+						call->channels[i].ok = false;
+						call->channels[i].error = !error.empty() ? error : "failed transcribe via whisper (python)";
+					}
 				}
 			}
-		}
-		if(!call->channels[i].ok) {
-			syslog(LOG_ERR, "transcribe call [%s]: %s", call->callid.c_str(), call->channels[i].error.c_str());
+			if(!call->channels[i].ok) {
+				syslog(LOG_ERR, "transcribe call [%s]: %s", call->callid.c_str(), call->channels[i].error.c_str());
+			}
 		}
 	}
 	saveCallToDb(call);
@@ -996,6 +1048,112 @@ bool Transcribe::runWhisperRestApi(const char *wav,
 	}
 	curl_global_cleanup();
 	return !rslt_text.empty();
+}
+
+bool Transcribe::runWhisperRestApiStereo(const char *wav,
+										  sRslt results[2],
+										  string *error) {
+	CURL *curl;
+	CURLcode res;
+	std::string readBuffer;
+
+	struct curl_httppost *formpost = NULL;
+	struct curl_httppost *lastptr = NULL;
+	struct curl_slist *headerlist = NULL;
+	static const char buf[] = "Expect:";
+
+	curl_global_init(CURL_GLOBAL_ALL);
+
+	// Add form data
+	curl_formadd(&formpost,
+				 &lastptr,
+				 CURLFORM_COPYNAME, "audio_file",
+				 CURLFORM_FILE, wav,
+				 CURLFORM_END);
+
+	curl = curl_easy_init();
+	if(curl) {
+		headerlist = curl_slist_append(headerlist, buf);
+
+		curl_easy_setopt(curl, CURLOPT_URL, opt_whisper_rest_api_url.c_str());
+		curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headerlist);
+
+		if(sverb.whisper) {
+			cout << "whisper rest api url (stereo mode): " << opt_whisper_rest_api_url << endl;
+			cout << "whisper rest api file: " << wav << endl;
+		}
+
+		res = curl_easy_perform(curl);
+
+		if(res != CURLE_OK) {
+			if(error) {
+				*error = "curl_easy_perform() failed: " + string(curl_easy_strerror(res));
+			}
+		} else {
+			if(sverb.whisper) {
+				cout << "whisper rest api response: " << readBuffer << endl;
+			}
+
+			// Parse the response - expected format:
+			// {"detected_language":{"language":"czech","language_code":"cs","confidence":1.0},"left_channel":{...},"right_channel":{...}}
+			JsonItem json;
+			json.parse(readBuffer);
+			
+			// Get detected language info
+			JsonItem *detectedLang = json.getItem("detected_language");
+			string detectedLanguageCode;
+			if(detectedLang) {
+				detectedLanguageCode = detectedLang->getValue("language_code");
+			}
+			
+			// Process left channel (a_*)
+			JsonItem *leftChannel = json.getItem("left_channel");
+			if(leftChannel) {
+				results[0].language = !detectedLanguageCode.empty() ? detectedLanguageCode : leftChannel->getValue("language");
+				results[0].text = leftChannel->getValue("text");
+				
+				JsonItem *segments_item = leftChannel->getItem("segments");
+				if (segments_item && segments_item->getType() == json_type_array) {
+					string text_from_segments;
+					convertJsonSegmentsToText(segments_item, &text_from_segments, &results[0].segments);
+					if(results[0].text.empty()) {
+						results[0].text = text_from_segments;
+					}
+				}
+			}
+			
+			// Process right channel (b_*)
+			JsonItem *rightChannel = json.getItem("right_channel");
+			if(rightChannel) {
+				results[1].language = !detectedLanguageCode.empty() ? detectedLanguageCode : rightChannel->getValue("language");
+				results[1].text = rightChannel->getValue("text");
+				
+				JsonItem *segments_item = rightChannel->getItem("segments");
+				if (segments_item && segments_item->getType() == json_type_array) {
+					string text_from_segments;
+					convertJsonSegmentsToText(segments_item, &text_from_segments, &results[1].segments);
+					if(results[1].text.empty()) {
+						results[1].text = text_from_segments;
+					}
+				}
+			}
+			
+			if(!leftChannel && !rightChannel) {
+				if(error) {
+					*error = "Expected left_channel and right_channel in JSON response for stereo mode";
+				}
+			}
+		}
+
+		curl_easy_cleanup(curl);
+		curl_formfree(formpost);
+		curl_slist_free_all(headerlist);
+	}
+	curl_global_cleanup();
+	return !results[0].text.empty() || !results[1].text.empty();
 }
 
 void Transcribe::convertSegmentsToText(list<sSegment> *segments, string *text, string *segments_json) {

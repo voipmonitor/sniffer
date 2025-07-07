@@ -54,6 +54,7 @@ public:
 		string callid;
 		sCallChannel channels[2];
 		unsigned channels_count;
+		string stereo_wav;
 	};
 	struct sThread {
 		sThread() {
@@ -141,7 +142,7 @@ public:
 	bool transcribeWavChannel(sTranscribeWavChannelParams *params);
 	static void *transcribeWavChannel_thread(void *params);
 	void pushCall(sCall *call);
-	static sCall *createTranscribeCall(class Call *call, const char *chanel1_pcm, const char *chanel2_pcm, unsigned samplerate);
+	static sCall *createTranscribeCall(class Call *call, const char *chanel1_pcm, const char *chanel2_pcm, unsigned samplerate, const char *stereo_wav = NULL);
 	void processCall();
 	static void *processThread(void *thread);
 	void transcribeCall(sCall *call);
@@ -179,6 +180,9 @@ public:
 	bool runWhisperRestApi(const char *wav,
 			       string &rslt_language, string &rslt_text, string &rslt_segments,
 			       string *error = NULL);
+	bool runWhisperRestApiStereo(const char *wav,
+				     sRslt results[2],
+				     string *error = NULL);
 	void convertSegmentsToText(list<sSegment> *segments, string *text, string *segments_json);
 	static string countryToLanguage(const char *country);
 	static bool initNativeLib();

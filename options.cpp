@@ -30,6 +30,7 @@ extern int opt_save_sip_subscribe;
 extern int opt_save_sip_notify;
 extern cSqlDbData *dbData;
 extern bool opt_time_precision_in_ms;
+extern string opt_whisper_rest_api_mode;
 
 cSipMsgRelations *sipMsgRelations;
 
