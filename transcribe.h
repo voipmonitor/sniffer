@@ -8,6 +8,8 @@
 
 #include "sync.h"
 
+#include <curl/curl.h>
+
 
 class Transcribe {
 public:
@@ -174,6 +176,9 @@ public:
 	bool runWhisperNative(float *pcm_data, size_t pcm_data_samples, const char *language, const char *model, int threads, 
 			      string *language_detect, list<sSegment> *segments, string *error, 
 			      bool log, sTranscribeWavChannelParams *params);
+	bool runWhisperRestApi(const char *wav,
+			       string &rslt_language, string &rslt_text, string &rslt_segments,
+			       string *error = NULL);
 	void convertSegmentsToText(list<sSegment> *segments, string *text, string *segments_json);
 	static string countryToLanguage(const char *country);
 	static bool initNativeLib();
@@ -212,6 +217,7 @@ private:
 	volatile int progress_file_sync;
 	static sWhisperLib nativeLib;
 };
+
 
 
 void transcribePushCall(Transcribe::sCall *call);

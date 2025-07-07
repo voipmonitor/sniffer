@@ -2,6 +2,7 @@
 #include <sys/stat.h>
 #include <dlfcn.h>
 #include <signal.h>
+#include <curl/curl.h>
 
 #include "config.h"
 
@@ -31,6 +32,7 @@ extern int opt_whisper_threads;
 extern string opt_whisper_native_lib;
 extern string opt_audio_transcribe_progress_file;
 extern string opt_audio_transcribe_control_file;
+extern string opt_whisper_rest_api_url;
 
 extern sVerbose sverb;
 
@@ -453,7 +455,16 @@ void Transcribe::transcribeCall(sCall *call) {
 			string language = opt_whisper_language == "auto" ? "" : 
 					  opt_whisper_language == "by_number" ? call->channels[i].language : opt_whisper_language;
 			string error;
-			if(opt_whisper_native) {
+			if(!opt_whisper_rest_api_url.empty()) {
+				if(runWhisperRestApi(call->channels[i].wav.c_str(), rslt_language, rslt_text, rslt_segments, &error)) {
+					call->channels[i].rslt_language = rslt_language;
+					call->channels[i].rslt_text = rslt_text;
+					call->channels[i].rslt_segments = rslt_segments;
+				} else {
+					call->channels[i].ok = false;
+					call->channels[i].error = !error.empty() ? error : "failed transcribe via whisper (rest_api)";
+				}
+			} else if(opt_whisper_native) {
 				list<sSegment> segments;
 				if(runWhisperNative(call->channels[i].wav.c_str(), language.empty() ? "auto" : language.c_str(), opt_whisper_model.c_str(), opt_whisper_threads, 
 						    &rslt_language, &segments, &error, sverb.whisper, NULL) && segments.size()) {
@@ -873,6 +884,118 @@ bool Transcribe::runWhisperNative(float *pcm_data, size_t pcm_data_samples, cons
 		segments->push_back(segment);
 	}
 	return(true);
+}
+
+static void convertJsonSegmentsToText(JsonItem *segments_item, string *text, string *segments_json) {
+	if (!segments_item || segments_item->getType() != json_type_array) {
+		return;
+	}
+	if(text) {
+		text->clear();
+	}
+	if(segments_json) {
+		*segments_json = "[";
+	}
+	for (size_t i = 0; i < segments_item->getLocalCount(); ++i) {
+		JsonItem *segment_item = segments_item->getLocalItem(i);
+		if (segment_item) {
+			if(segments_json) {
+				*segments_json += segment_item->getLocalValue();
+			}
+			if(text) {
+				string segment_text = segment_item->getValue("text");
+				if(!segment_text.empty()) {
+					if(!text->empty()) {
+						*text += " ";
+					}
+					*text += segment_text;
+				}
+			}
+			if(segments_json && i < segments_item->getLocalCount() - 1) {
+				*segments_json += ",";
+			}
+		}
+	}
+	if(segments_json) {
+		*segments_json += "]";
+	}
+}
+
+// Callback function to write response data
+static size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *userp) {
+    ((std::string*)userp)->append((char*)contents, size * nmemb);
+    return size * nmemb;
+}
+
+bool Transcribe::runWhisperRestApi(const char *wav,
+								   string &rslt_language, string &rslt_text, string &rslt_segments,
+								   string *error) {
+	CURL *curl;
+	CURLcode res;
+	std::string readBuffer;
+
+	struct curl_httppost *formpost = NULL;
+	struct curl_httppost *lastptr = NULL;
+	struct curl_slist *headerlist = NULL;
+	static const char buf[] = "Expect:";
+
+	curl_global_init(CURL_GLOBAL_ALL);
+
+	// Add form data
+	curl_formadd(&formpost,
+				 &lastptr,
+				 CURLFORM_COPYNAME, "audio_file",
+				 CURLFORM_FILE, wav,
+				 CURLFORM_END);
+
+	curl = curl_easy_init();
+	if(curl) {
+		headerlist = curl_slist_append(headerlist, buf);
+
+		curl_easy_setopt(curl, CURLOPT_URL, opt_whisper_rest_api_url.c_str());
+		curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headerlist);
+
+		if(sverb.whisper) {
+			cout << "whisper rest api url: " << opt_whisper_rest_api_url << endl;
+			cout << "whisper rest api file: " << wav << endl;
+		}
+
+		res = curl_easy_perform(curl);
+
+		if(res != CURLE_OK) {
+			if(error) {
+				*error = "curl_easy_perform() failed: " + string(curl_easy_strerror(res));
+			}
+		} else {
+			if(sverb.whisper) {
+				cout << "whisper rest api response: " << readBuffer << endl;
+			}
+
+			JsonItem json;
+			json.parse(readBuffer);
+			
+			rslt_text = json.getValue("text");
+			rslt_language = json.getValue("language");
+			
+			JsonItem *segments_item = json.getItem("segments");
+			if (segments_item && segments_item->getType() == json_type_array) {
+				string text_from_segments;
+				convertJsonSegmentsToText(segments_item, &text_from_segments, &rslt_segments);
+				if(rslt_text.empty()) {
+					rslt_text = text_from_segments;
+				}
+			}
+		}
+
+		curl_easy_cleanup(curl);
+		curl_formfree(formpost);
+		curl_slist_free_all(headerlist);
+	}
+	curl_global_cleanup();
+	return !rslt_text.empty();
 }
 
 void Transcribe::convertSegmentsToText(list<sSegment> *segments, string *text, string *segments_json) {
