@@ -477,24 +477,67 @@ void Transcribe::transcribeCall(sCall *call) {
 	}
 	// Check if we should use stereo mode
 	if(!opt_whisper_rest_api_url.empty() && opt_whisper_rest_api_mode == "stereo" && call->channels_count == 2 && 
-	   call->channels[0].ok && call->channels[1].ok && !call->stereo_wav.empty()) {
-		// Use existing stereo WAV file
-		string error;
-		sRslt stereoResults[2];
-		if(runWhisperRestApiStereo(call->stereo_wav.c_str(), stereoResults, &error)) {
-			// Apply results to channels
-			call->channels[0].rslt_language = stereoResults[0].language;
-			call->channels[0].rslt_text = stereoResults[0].text;
-			call->channels[0].rslt_segments = stereoResults[0].segments;
-			
-			call->channels[1].rslt_language = stereoResults[1].language;
-			call->channels[1].rslt_text = stereoResults[1].text;
-			call->channels[1].rslt_segments = stereoResults[1].segments;
+	   call->channels[0].ok && call->channels[1].ok) {
+		string stereoWav;
+		bool createdTempFile = false;
+		
+		if(!call->stereo_wav.empty()) {
+			// Use existing stereo WAV file
+			stereoWav = call->stereo_wav;
 		} else {
-			call->channels[0].ok = false;
-			call->channels[0].error = !error.empty() ? error : "failed transcribe via whisper (rest_api stereo)";
-			call->channels[1].ok = false;
-			call->channels[1].error = !error.empty() ? error : "failed transcribe via whisper (rest_api stereo)";
+			// Create stereo WAV from mono files
+			// Use base name without channel suffix for stereo file
+			string basePath = call->channels[0].pcm;
+			size_t pos = basePath.rfind(".i0");
+			if(pos != string::npos) {
+				basePath = basePath.substr(0, pos);
+			}
+			stereoWav = basePath + "_stereo.WAV";
+			createdTempFile = true;
+			
+			bool mergeSuccess = ac_file_mix((char*)call->channels[0].wav.c_str(), 
+			                                (char*)call->channels[1].wav.c_str(), 
+			                                (char*)stereoWav.c_str(), 
+			                                cAudioConvert::_format_wav, 
+			                                16000, // sampleRate
+			                                true,  // stereo
+			                                false, // swap
+			                                0.4,   // quality
+			                                false); // destInSpool
+			if(!mergeSuccess) {
+				call->channels[0].ok = false;
+				call->channels[0].error = "failed to merge WAV files for stereo mode";
+				call->channels[1].ok = false;
+				call->channels[1].error = "failed to merge WAV files for stereo mode";
+			}
+		}
+		
+		if(call->channels[0].ok && call->channels[1].ok) {
+			string error;
+			sRslt stereoResults[2];
+			if(runWhisperRestApiStereo(stereoWav.c_str(), stereoResults, &error)) {
+				// Apply results to channels
+				call->channels[0].rslt_language = stereoResults[0].language;
+				call->channels[0].rslt_text = stereoResults[0].text;
+				call->channels[0].rslt_segments = stereoResults[0].segments;
+				
+				call->channels[1].rslt_language = stereoResults[1].language;
+				call->channels[1].rslt_text = stereoResults[1].text;
+				call->channels[1].rslt_segments = stereoResults[1].segments;
+			} else {
+				call->channels[0].ok = false;
+				call->channels[0].error = !error.empty() ? error : "failed transcribe via whisper (rest_api stereo)";
+				call->channels[1].ok = false;
+				call->channels[1].error = !error.empty() ? error : "failed transcribe via whisper (rest_api stereo)";
+			}
+		}
+		
+		// Clean up temporary stereo file if we created it
+		if(createdTempFile && !sverb.noaudiounlink) {
+			if(sverb.whisper) {
+				cout << "whisper rest api stereo - removing temporary file: " << stereoWav << endl;
+			}
+			unlink(stereoWav.c_str());
 		}
 	} else {
 		// Original split mode processing
@@ -1054,8 +1097,9 @@ bool Transcribe::runWhisperRestApiStereo(const char *wav,
 										  sRslt results[2],
 										  string *error) {
 	CURL *curl;
-	CURLcode res;
+	CURLcode res = CURLE_FAILED_INIT;
 	std::string readBuffer;
+	bool success = false;
 
 	struct curl_httppost *formpost = NULL;
 	struct curl_httppost *lastptr = NULL;
@@ -1145,6 +1189,13 @@ bool Transcribe::runWhisperRestApiStereo(const char *wav,
 				if(error) {
 					*error = "Expected left_channel and right_channel in JSON response for stereo mode";
 				}
+			} else {
+				if(sverb.whisper) {
+					cout << "whisper rest api stereo - parsed successfully" << endl;
+					cout << "  left channel: text=" << (results[0].text.empty() ? "(empty)" : results[0].text.substr(0, 50) + "...") << endl;
+					cout << "  right channel: text=" << (results[1].text.empty() ? "(empty)" : results[1].text.substr(0, 50) + "...") << endl;
+				}
+				success = true;
 			}
 		}
 
@@ -1153,7 +1204,8 @@ bool Transcribe::runWhisperRestApiStereo(const char *wav,
 		curl_slist_free_all(headerlist);
 	}
 	curl_global_cleanup();
-	return !results[0].text.empty() || !results[1].text.empty();
+	// Return true if we successfully parsed the response
+	return success;
 }
 
 void Transcribe::convertSegmentsToText(list<sSegment> *segments, string *text, string *segments_json) {
