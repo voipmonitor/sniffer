@@ -886,6 +886,41 @@ bool Transcribe::runWhisperNative(float *pcm_data, size_t pcm_data_samples, cons
 	return(true);
 }
 
+static void convertJsonSegmentsToText(JsonItem *segments_item, string *text, string *segments_json) {
+	if (!segments_item || segments_item->getType() != json_type_array) {
+		return;
+	}
+	if(text) {
+		text->clear();
+	}
+	if(segments_json) {
+		*segments_json = "[";
+	}
+	for (size_t i = 0; i < segments_item->getLocalCount(); ++i) {
+		JsonItem *segment_item = segments_item->getLocalItem(i);
+		if (segment_item) {
+			if(segments_json) {
+				*segments_json += segment_item->getLocalValue();
+			}
+			if(text) {
+				string segment_text = segment_item->getValue("text");
+				if(!segment_text.empty()) {
+					if(!text->empty()) {
+						*text += " ";
+					}
+					*text += segment_text;
+				}
+			}
+			if(segments_json && i < segments_item->getLocalCount() - 1) {
+				*segments_json += ",";
+			}
+		}
+	}
+	if(segments_json) {
+		*segments_json += "]";
+	}
+}
+
 // Callback function to write response data
 static size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *userp) {
     ((std::string*)userp)->append((char*)contents, size * nmemb);
@@ -947,17 +982,11 @@ bool Transcribe::runWhisperRestApi(const char *wav,
 			
 			JsonItem *segments_item = json.getItem("segments");
 			if (segments_item && segments_item->getType() == json_type_array) {
-				rslt_segments = "[";
-				for (size_t i = 0; i < segments_item->getLocalCount(); ++i) {
-					JsonItem *segment = segments_item->getLocalItem(i);
-					if (segment) {
-						rslt_segments += segment->getLocalValue();
-						if (i < segments_item->getLocalCount() - 1) {
-							rslt_segments += ",";
-						}
-					}
+				string text_from_segments;
+				convertJsonSegmentsToText(segments_item, &text_from_segments, &rslt_segments);
+				if(rslt_text.empty()) {
+					rslt_text = text_from_segments;
 				}
-				rslt_segments += "]";
 			}
 		}
 
