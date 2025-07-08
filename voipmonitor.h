@@ -510,5 +510,7 @@ void debug_alloc_packet_set(const void *packet, const char *set = NULL);
 void debug_alloc_packet_list();
 #endif
 
+extern string opt_whisper_rest_api_url;
+extern string opt_whisper_rest_api_mode;
 
 #endif //VOIPMONITOR_H

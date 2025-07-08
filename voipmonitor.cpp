@@ -256,6 +256,7 @@ string opt_audio_transcribe_control_file;
 bool opt_whisper_native = false;
 string opt_whisper_model = "";
 string opt_whisper_rest_api_url = "";
+string opt_whisper_rest_api_mode = "stereo";
 
 string opt_whisper_language = "auto";
 int opt_whisper_timeout = 5 * 60;
@@ -6767,6 +6768,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("whisper_native", &opt_whisper_native));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("whisper_model", &opt_whisper_model));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("whisper_rest_api_url", &opt_whisper_rest_api_url));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("whisper_rest_api_mode", &opt_whisper_rest_api_mode));
 
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("whisper_language", &opt_whisper_language));
 					// auto | by_number | {language}

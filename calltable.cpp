@@ -4368,7 +4368,11 @@ Call::convertRawToWav(void **transcribe_call, int thread_index) {
 	}
 	
 	if(_enable_audio_transcribe) {
-		*transcribe_call = Transcribe::createTranscribeCall(this, adir ? wav0 : NULL, bdir ? wav1 : NULL, maxsamplerate);
+		const char *stereo_wav_for_transcribe = NULL;
+		if(_enable_save_audio && adir == 1 && bdir == 1 && opt_saveaudio_stereo) {
+			stereo_wav_for_transcribe = out;
+		}
+		*transcribe_call = Transcribe::createTranscribeCall(this, adir ? wav0 : NULL, bdir ? wav1 : NULL, maxsamplerate, stereo_wav_for_transcribe);
 	}
 	
 	if(!_enable_save_audio && !_enable_audio_transcribe) {
