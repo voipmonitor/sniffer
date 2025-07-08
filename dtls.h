@@ -87,6 +87,7 @@ public:
 		vmIPport server;
 		vmIPport client;
 		string cipher;
+		u_int64_t client_random_at_us;
 		inline bool operator == (const sSrtpKeys& other) const {
 			return(this->server_key == other.server_key &&
 			       this->client_key == other.client_key &&
@@ -180,22 +181,22 @@ public:
 	};
 	struct sHandshakeData {
 		sHandshakeData() {
-			client_random_set = false;
-			server_random_set = false;
+			client_random_at_us = 0;
+			server_random_at_us = 0;
 		}
 		void init() {
-			client_random_set = false;
-			server_random_set = false;
+			client_random_at_us = 0;
+			server_random_at_us = 0;
 			cipher_types.clear();
 		}
 		bool isComplete() {
-			return(client_random_set && server_random_set &&
+			return(client_random_at_us && server_random_at_us &&
 			       cipher_types.size() > 0);
 		}
 		u_char client_random[DTLS_RANDOM_SIZE];
-		bool client_random_set;
+		u_int64_t client_random_at_us;
 		u_char server_random[DTLS_RANDOM_SIZE];
-		bool server_random_set;
+		u_int64_t server_random_at_us;
 		list<eCipherType> cipher_types;
 	};
 public:
@@ -207,8 +208,8 @@ public:
 			  bool enable_handshake_safe, bool use_handshake_safe);
 private:
 	void init();
-	void setClientRandom(u_char *client_random);
-	void setServerRandom(u_char *server_random);
+	void setClientRandom(u_char *client_random, u_int64_t time_us);
+	void setServerRandom(u_char *server_random, u_int64_t time_us);
 	bool findMasterSecret();
 	bool cipherTypeIsOK(unsigned ct) {
 		return(ct == _ct_SRTP_AES128_CM_HMAC_SHA1_80 ||
@@ -277,6 +278,9 @@ public:
 			      vmIP client_ip, vmPort client_port,
 			      cDtlsLink::sHandshakeData *handshake_data);
 	void cleanup();
+	u_int64_t getLastClientRandomAt_us() {
+		return(last_client_random_at_us);
+	}
 private:
 	void lock();
 	void unlock();
@@ -285,6 +289,7 @@ private:
 	map<cDtlsLink::sDtlsLinkId, cDtlsLink*> links_by_link_id;
 	map<cDtlsLink::sDtlsServerId, cDtlsLink*> links_by_server_id;
 	map<cDtlsLink::sDtlsClientId, cDtlsLink*> links_by_client_id;
+	u_int64_t last_client_random_at_us;
 	int debug_flags[2];
 	bool need_lock;
 	volatile int _sync;

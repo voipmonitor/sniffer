@@ -22,7 +22,7 @@ cDtlsLink::cDtlsLink(vmIP server_ip, vmPort server_port,
 }
 
 cDtlsLink::~cDtlsLink() {
-	if(handshake_data.client_random_set) {
+	if(handshake_data.client_random_at_us) {
 		erase_client_random(handshake_data.client_random);
 	}
 }
@@ -50,7 +50,7 @@ void cDtlsLink::processHandshake(sHeaderHandshake *handshake, u_int64_t time_us)
 	}
 	if(handshake->handshake_type == DTLS_HANDSHAKE_TYPE_CLIENT_HELLO) {
 		cDtlsLink::sHeaderHandshakeHello *handshake_hello = (cDtlsLink::sHeaderHandshakeHello*)handshake;
-		setClientRandom(handshake_hello->random);
+		setClientRandom(handshake_hello->random, time_us);
 		unsigned len = handshake->length_() + sizeof(cDtlsLink::sHeaderHandshake);
 		unsigned offset = sizeof(sHeaderHandshakeHello);
 		unsigned i = 0;
@@ -116,18 +116,18 @@ void cDtlsLink::processHandshake(sHeaderHandshake *handshake, u_int64_t time_us)
 		}
 	} else if(handshake->handshake_type == DTLS_HANDSHAKE_TYPE_SERVER_HELLO) {
 		cDtlsLink::sHeaderHandshakeHello *handshake_hello = (cDtlsLink::sHeaderHandshakeHello*)handshake;
-		setServerRandom(handshake_hello->random);
+		setServerRandom(handshake_hello->random, time_us);
 	}
 	if(sverb.dtls && ssl_sessionkey_enable()) {
-		if((handshake->handshake_type == DTLS_HANDSHAKE_TYPE_CLIENT_HELLO && handshake_data.client_random_set) ||
-		   (handshake->handshake_type == DTLS_HANDSHAKE_TYPE_SERVER_HELLO && handshake_data.server_random_set)) {
+		if((handshake->handshake_type == DTLS_HANDSHAKE_TYPE_CLIENT_HELLO && handshake_data.client_random_at_us) ||
+		   (handshake->handshake_type == DTLS_HANDSHAKE_TYPE_SERVER_HELLO && handshake_data.server_random_at_us)) {
 			string log_str;
 			log_str += string(handshake->handshake_type == DTLS_HANDSHAKE_TYPE_CLIENT_HELLO ? "detect client random" : "detect server random");
-			if(handshake_data.client_random_set) {
+			if(handshake_data.client_random_at_us) {
 				log_str += "; client random: ";
 				log_str += hexdump_to_string(handshake_data.client_random, DTLS_RANDOM_SIZE);
 			}
-			if(handshake_data.server_random_set) {
+			if(handshake_data.server_random_at_us) {
 				log_str += "; server random: ";
 				log_str += hexdump_to_string(handshake_data.server_random, DTLS_RANDOM_SIZE);
 			}
@@ -150,20 +150,20 @@ bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys, Call *call,
 		}
 	}
 	if(opt_ssl_dtls_handshake_safe && enable_handshake_safe) {
-		if((opt_ssl_dtls_handshake_safe >= 2 || handshake_data.client_random_set || handshake_data.server_random_set) &&
-		   (!handshake_data.client_random_set || !handshake_data.server_random_set)) {
+		if((opt_ssl_dtls_handshake_safe >= 2 || handshake_data.client_random_at_us || handshake_data.server_random_at_us) &&
+		   (!handshake_data.client_random_at_us || !handshake_data.server_random_at_us)) {
 			sHandshakeData handshake_data_;
 			if(dtls_handshake_safe_links.getHandshakeData(server.ip, server.port,
 								      client.ip, client.port,
 								      &handshake_data_)) {
-				if(handshake_data.client_random_set) {
+				if(handshake_data.client_random_at_us) {
 					if(!memcmp(handshake_data.client_random, handshake_data_.client_random, DTLS_RANDOM_SIZE)) {
 						handshake_data = handshake_data_;
 						if(sverb.dtls && ssl_sessionkey_enable()) {
 							log_str += "; apply server random from safe handshake";
 						}
 					}
-				} else if(handshake_data.server_random_set) {
+				} else if(handshake_data.server_random_at_us) {
 					if(!memcmp(handshake_data.server_random, handshake_data_.server_random, DTLS_RANDOM_SIZE)) {
 						handshake_data = handshake_data_;
 						if(sverb.dtls && ssl_sessionkey_enable()) {
@@ -179,12 +179,12 @@ bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys, Call *call,
 			}
 		}
 	}
-	if(!handshake_data.client_random_set || !handshake_data.server_random_set) {
+	if(!handshake_data.client_random_at_us || !handshake_data.server_random_at_us) {
 		if(sverb.dtls && ssl_sessionkey_enable()) {
-			if(!handshake_data.client_random_set) {
+			if(!handshake_data.client_random_at_us) {
 				log_str += "; missing client_random";
 			}
-			if(!handshake_data.server_random_set) {
+			if(!handshake_data.server_random_at_us) {
 				log_str += "; missing server_random";
 			}
 			ssl_sessionkey_log(log_str);
@@ -263,6 +263,7 @@ bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys, Call *call,
 		keys_item->server = server;
 		keys_item->client = client;
 		keys_item->cipher = cipherName(cipher_type);
+		keys_item->client_random_at_us = handshake_data.client_random_at_us;
 		bool exists = false;
 		for(list<cDtlsLink::sSrtpKeys*>::iterator iter = keys->begin(); iter != keys->end(); iter++) {
 			if(*(*iter) == *keys_item) {
@@ -291,28 +292,30 @@ void cDtlsLink::init() {
 	last_time_us = 0;
 }
 
-void cDtlsLink::setClientRandom(u_char *client_random) {
-	if(!handshake_data.client_random_set) {
+void cDtlsLink::setClientRandom(u_char *client_random, u_int64_t time_us) {
+	if(!handshake_data.client_random_at_us) {
 		memcpy(handshake_data.client_random, client_random, DTLS_RANDOM_SIZE);
-		handshake_data.client_random_set = true;
+		handshake_data.client_random_at_us = time_us;
 	} else if(memcmp(handshake_data.client_random, client_random, DTLS_RANDOM_SIZE)) {
 		memcpy(handshake_data.client_random, client_random, DTLS_RANDOM_SIZE);
+		handshake_data.client_random_at_us = time_us;
 		master_secret_length = 0;
 	}
 }
 
-void cDtlsLink::setServerRandom(u_char *server_random) {
-	if(!handshake_data.server_random_set) {
+void cDtlsLink::setServerRandom(u_char *server_random, u_int64_t time_us) {
+	if(!handshake_data.server_random_at_us) {
 		memcpy(handshake_data.server_random, server_random, DTLS_RANDOM_SIZE);
-		handshake_data.server_random_set = true;
+		handshake_data.server_random_at_us = time_us;
 	} else if(memcmp(handshake_data.server_random, server_random, DTLS_RANDOM_SIZE)) {
 		memcpy(handshake_data.server_random, server_random, DTLS_RANDOM_SIZE);
+		handshake_data.server_random_at_us = time_us;
 		master_secret_length = 0;
 	}
 }
 
 bool cDtlsLink::findMasterSecret() {
-	if(!handshake_data.client_random_set || !handshake_data.server_random_set) {
+	if(!handshake_data.client_random_at_us || !handshake_data.server_random_at_us) {
 		return(false);
 	}
 	unsigned _master_secret_length;
@@ -324,6 +327,7 @@ bool cDtlsLink::findMasterSecret() {
 }
 
 cDtls::cDtls() {
+	last_client_random_at_us = 0;
 	memset(debug_flags, 0, sizeof(debug_flags));
 	need_lock = false;
 	_sync = 0;
@@ -390,6 +394,9 @@ bool cDtls::processHandshake(vmIP src_ip, vmPort src_port,
 						links.push_back(link);
 					}
 					link->processHandshake(hs_header, time_us);
+					if(link->handshake_data.client_random_at_us > last_client_random_at_us) {
+						last_client_random_at_us = link->handshake_data.client_random_at_us;
+					}
 					unlock();
 				} else if(hs_header->handshake_type == DTLS_HANDSHAKE_TYPE_SERVER_HELLO) {
 					lock();
@@ -415,6 +422,9 @@ bool cDtls::processHandshake(vmIP src_ip, vmPort src_port,
 					}
 					if(link) {
 						link->processHandshake(hs_header, time_us);
+						if(link->handshake_data.client_random_at_us > last_client_random_at_us) {
+							last_client_random_at_us = link->handshake_data.client_random_at_us;
+						}
 					}
 					unlock();
 				}

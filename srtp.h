@@ -267,6 +267,7 @@ private:
 	unsigned decrypt_rtp_failed;
 	unsigned decrypt_rtcp_ok;
 	unsigned decrypt_rtcp_failed;
+	u_int64_t last_client_random_at_us;
 friend class RTP;
 friend class Call;
 };
