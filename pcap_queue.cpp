@@ -664,7 +664,10 @@ void pcap_block_store::destroy(bool init) {
 
 void pcap_block_store::double_destroy_log() {
 	#if DEBUG_DESTROY_PCAP_BLOCK_STORE
-	syslog(LOG_NOTICE, "double call pcap_block_store::destroy() backtrace: %s, destroy bt: %s", get_backtrace().c_str(), destroy_bt);
+	syslog(LOG_NOTICE, "double call pcap_block_store::destroy() backtrace: %s, destroy_src_flag: %i,  destroy bt: %s", 
+	       get_backtrace().c_str(),
+	       destroy_src_flag,
+	       destroy_bt);
 	#else
 	syslog(LOG_NOTICE, "double call pcap_block_store::destroy() backtrace: %s", get_backtrace().c_str());
 	#endif
@@ -1358,6 +1361,9 @@ bool pcap_store_queue::pop(pcap_block_store **blockStore) {
 		if((*blockStore)->idFileStore) {
 			pcap_file_store *_fileStore = this->findFileStoreById((*blockStore)->idFileStore);
 			if(!_fileStore) {
+				#if DEBUG_DESTROY_PCAP_BLOCK_STORE
+				(*blockStore)->destroy_src_flag = 2;
+				#endif
 				delete *blockStore;
 				return(false);
 			}
@@ -1366,6 +1372,9 @@ bool pcap_store_queue::pop(pcap_block_store **blockStore) {
 				USLEEP_C(100, usleepCounter++);
 			}
 			if(!_fileStore->pop(*blockStore)) {
+				#if DEBUG_DESTROY_PCAP_BLOCK_STORE
+				(*blockStore)->destroy_src_flag = 3;
+				#endif
 				delete *blockStore;
 				return(false);
 			}
@@ -9312,7 +9321,7 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 		   buffersControl.getPerc_pb() > 70) {
 			((pcap_block_store::pcap_block_store_header*)saveBuffer)->time_s = 0;
 		}
-		u_int64_t start_write_us;
+		u_int64_t start_write_us = 0;
 		if(sverb.packetbuffer_send) {
 			start_write_us = getTimeUS();
 		}
@@ -10101,6 +10110,9 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 				unlock_blockStorePool();
 			} else {
 				if(__atomic_load_n(&block->_destroy_flag, __ATOMIC_SEQ_CST) == 0) {
+					#if DEBUG_DESTROY_PCAP_BLOCK_STORE
+					block->destroy_src_flag = 1;
+					#endif
 					delete block;
 				} else {
 					block->double_destroy_log();
