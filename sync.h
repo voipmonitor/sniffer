@@ -25,5 +25,10 @@
 #define __SYNC_SUB(vint, sub) __sync_sub_and_fetch(&vint, sub);
 #define __SYNC_INCR(vint, length) if((vint + 1) == length) { __SYNC_NULL(vint); } else { __SYNC_INC(vint); }
 
+#if defined(__arm__) || defined(__aarch64__)
+    #define MEMORY_BARRIER_ARM __sync_synchronize()
+#else
+    #define MEMORY_BARRIER_ARM
+#endif
 
 #endif //SYNC_H

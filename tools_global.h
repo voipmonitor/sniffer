@@ -1431,5 +1431,7 @@ private:
 	static void rtrim(string &v, const char *trim_chars = " ");
 };
 
+string get_backtrace();
+
 
 #endif

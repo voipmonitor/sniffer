@@ -7107,7 +7107,7 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 					call_info->calls[call_info->length].use_sync = false;
 					call_info->calls[call_info->length].multiple_calls = false;
 					call_info->calls[call_info->length].thread_num_rd = call->thread_num_rd;
-					++call_info->length;
+					__SYNC_INC(call_info->length);
 					if(call_info->length >= packet_s_process_calls_info::max_calls()) {
 						break;
 					}
@@ -13448,6 +13448,13 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 			int threads_rd[MAX_PROCESS_RTP_PACKET_THREADS];
 			threads_rd[0] = packetS->call_info.calls[0].thread_num_rd;
 			int threads_rd_count = 1;
+			#if DEBUG_RTP_PACKET_DISTR
+			string log_str = " *** SDP MULTI: " + intToString(packetS->call_info.length);
+			for(int i = 0; i < packetS->call_info.length; i++) {
+				log_str += " " + packetS->call_info.calls[i].c_branch->call->call_id;
+			}
+			log_str += " " + intToString(packetS->call_info.length);
+			#endif
 			for(int i = 1; i < packetS->call_info.length; i++) {
 				int thread_rd = packetS->call_info.calls[i].thread_num_rd;
 				if(thread_rd != threads_rd[0]) {
@@ -13463,6 +13470,12 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 					}
 				}
 			}
+			#if DEBUG_RTP_PACKET_DISTR
+			if(packetS->insert_packets) {
+				log_str += " exists insert_packets";
+			}
+			syslog(LOG_NOTICE, "%s", log_str.c_str());
+			#endif
 			packetS->set_reuse_counter_with_insert_packets(packetS->call_info.length,
 								       packetS->call_info.length - (opt_ssl_dtls_queue_keep || opt_ssl_enable_dtls_queue == 2 ? 1 : 0));
 			for(int i = 0; i < threads_rd_count; i++) {
@@ -13606,7 +13619,7 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, unsigned *counters
 					packetS->call_info.calls[packetS->call_info.length].multiple_calls = false;
 					packetS->call_info.calls[packetS->call_info.length].thread_num_rd = call->thread_num_rd;
 					__SYNC_INC(call->rtppacketsinqueue);
-					++packetS->call_info.length;
+					__SYNC_INC(packetS->call_info.length);
 					if(packetS->call_info.length >= packet_s_process_calls_info::max_calls()) {
 						break;
 					}

@@ -606,6 +606,11 @@ bool pcap_block_store::isTimeout() {
 }
 
 void pcap_block_store::destroy() {
+	if(__sync_lock_test_and_set(&this->_destroy_flag, 1)) {
+		syslog(LOG_NOTICE, "double call pcap_block_store::destroy() backtrace: %s", get_backtrace().c_str());
+		return;
+	}
+	MEMORY_BARRIER_ARM;
 	if(this->offsets) {
 		delete [] this->offsets;
 		this->offsets = NULL;
@@ -647,6 +652,7 @@ void pcap_block_store::destroy() {
 	}
 	#endif
 	#endif
+	MEMORY_BARRIER_ARM;
 }
 
 void pcap_block_store::destroyRestoreBuffer() {
@@ -10057,26 +10063,27 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 	u_int64_t time_ms = getTimeMS_rdtsc();
 	for(int i = 0; i < ((int)this->blockStoreTrash.size() - (all ? 0 : 5)); i++) {
 		bool del = false;
+		pcap_block_store *block = this->blockStoreTrash[i];
 		if(all || 
-		   (this->blockStoreTrash[i]->enableDestroy() &&
-		    time_ms > this->blockStoreTrash[i]->pushToTrashMS + 100)) {
+		   (time_ms > block->pushToTrashMS + 100 &&
+		    block->enableDestroy())) {
 			del = true;
 		} else if(opt_pcap_queue_block_timeout &&
-			  (this->blockStoreTrash[this->blockStoreTrash.size() - 1]->timestampMS - this->blockStoreTrash[i]->timestampMS) > (unsigned)opt_pcap_queue_block_timeout * 1000) {
-			syslog(LOG_NOTICE, "force destroy packetbuffer blok - use packets: %i", this->blockStoreTrash[i]->_sync_packet_lock);
+			  (this->blockStoreTrash[this->blockStoreTrash.size() - 1]->timestampMS - block->timestampMS) > (unsigned)opt_pcap_queue_block_timeout * 1000) {
+			syslog(LOG_NOTICE, "force destroy packetbuffer blok - use packets: %i", block->_sync_packet_lock);
 			del = true;
 		}
 		if(del) {
-			buffersControl.sub__pb_trash_size(this->blockStoreTrash[i]->getUseAllSize());
+			buffersControl.sub__pb_trash_size(block->getUseAllSize());
 			if(opt_use_dpdk && opt_dpdk_rotate_packetbuffer &&
 			   (opt_dpdk_copy_packetbuffer || opt_dpdk_prealloc_packetbuffer) &&
-			   buffersControl.check__pb__add_pool(this->blockStoreTrash[i]->getUseAllSize())) {
-				buffersControl.add__pb_pool_size(this->blockStoreTrash[i]->getUseAllSize());
+			   buffersControl.check__pb__add_pool(block->getUseAllSize())) {
+				buffersControl.add__pb_pool_size(block->getUseAllSize());
 				lock_blockStorePool();
-				blockStorePool.push_back(this->blockStoreTrash[i]);
+				blockStorePool.push_back(block);
 				unlock_blockStorePool();
 			} else {
-				delete this->blockStoreTrash[i];
+				delete block;
 			}
 			this->blockStoreTrash.erase(this->blockStoreTrash.begin() + i);
 			--i;

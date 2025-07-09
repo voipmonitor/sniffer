@@ -11,6 +11,7 @@
 #include <sys/statfs.h>
 #include <unicode/utf8.h>
 #include <unicode/ustring.h>
+#include <execinfo.h>
 
 #include "tools_global.h"
 
@@ -3246,4 +3247,20 @@ void cNormReftabs::rtrim(string &v, const char *trim_chars) {
 	if(t) {
 		v = v.substr(0, l - t);
 	}
+}
+
+
+string get_backtrace() {
+	void *buffer[1000];
+	int nptrs = backtrace(buffer, 100);
+	char **symbols = backtrace_symbols(buffer, nptrs);
+	if(symbols == NULL) {
+		return("backtrace_symbols() failed");
+	}
+	string result;
+	for(int i = 0; i < nptrs; i++) {
+		result += symbols[i];
+		result += "\n";
+	}
+	return(result);
 }

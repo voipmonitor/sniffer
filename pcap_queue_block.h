@@ -308,9 +308,14 @@ struct pcap_block_store {
 		this->timestampMS = getTimeMS_rdtsc();
 		this->pushToTrashMS = 0;
 		this->_sync_packet_lock = 0;
+		this->_destroy_flag = 0;
 	}
 	~pcap_block_store() {
-		this->destroy();
+		if(__atomic_load_n(&this->_destroy_flag, __ATOMIC_SEQ_CST) == 0) {
+			this->destroy();
+		} else {
+			syslog(LOG_NOTICE, "double call pcap_block_store::destroy() backtrace: %s", get_backtrace().c_str());
+		}
 		this->destroyRestoreBuffer();
 	}
 	inline void init(bool prefetch);
@@ -517,7 +522,7 @@ struct pcap_block_store {
 			return(false);
 		}
 		#else
-		return(this->_sync_packet_lock == 0);
+		return(__atomic_load_n(&this->_sync_packet_lock, __ATOMIC_SEQ_CST) == 0);
 		#endif
 	}
 	void setVoipPacket(int index) {
@@ -563,6 +568,7 @@ struct pcap_block_store {
 	u_int64_t timestampMS;
 	u_int64_t pushToTrashMS;
 	volatile int _sync_packet_lock;
+	volatile int _destroy_flag;
 	#if DEBUG_SYNC_PCAP_BLOCK_STORE
 	volatile int8_t *_sync_packets_lock;
 	#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH

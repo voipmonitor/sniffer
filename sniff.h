@@ -612,7 +612,7 @@ struct packet_s_process_rtp_call_info {
 };
 
 struct packet_s_process_calls_info {
-	int length;
+	volatile int length;
 	bool find_by_dest;
 	#if EXPERIMENTAL_PROCESS_RTP_MOD_01
 	u_int8_t threads_rd[MAX_PROCESS_RTP_PACKET_THREADS];
