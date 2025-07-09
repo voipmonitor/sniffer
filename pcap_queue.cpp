@@ -605,10 +605,12 @@ bool pcap_block_store::isTimeout() {
 	return(getTimeMS_rdtsc() > (this->timestampMS + opt_pcap_queue_block_max_time_ms));
 }
 
-void pcap_block_store::destroy() {
-	if(__sync_lock_test_and_set(&this->_destroy_flag, 1)) {
-		syslog(LOG_NOTICE, "double call pcap_block_store::destroy() backtrace: %s", get_backtrace().c_str());
-		return;
+void pcap_block_store::destroy(bool init) {
+	if(!init) {
+		if(__sync_lock_test_and_set(&this->_destroy_flag, 1)) {
+			syslog(LOG_NOTICE, "double call pcap_block_store::destroy() backtrace: %s", get_backtrace().c_str());
+			return;
+		}
 	}
 	MEMORY_BARRIER_ARM;
 	if(this->offsets) {

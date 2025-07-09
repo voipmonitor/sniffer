@@ -300,7 +300,7 @@ struct pcap_block_store {
 		this->_sync_packets_flag = NULL;
 		#endif
 		#endif
-		this->destroy();
+		this->destroy(true);
 		this->restoreBuffer = NULL;
 		this->destroyRestoreBuffer();
 		this->idFileStore = 0;
@@ -370,7 +370,7 @@ struct pcap_block_store {
 			this->dpdk_data[indexItem].mbuf = NULL;
 		}
 	}
-	void destroy();
+	void destroy(bool init = false);
 	void destroyRestoreBuffer();
 	bool isEmptyRestoreBuffer();
 	void freeBlock();
