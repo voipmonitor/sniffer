@@ -608,9 +608,14 @@ bool pcap_block_store::isTimeout() {
 void pcap_block_store::destroy(bool init) {
 	if(!init) {
 		if(__sync_lock_test_and_set(&this->_destroy_flag, 1)) {
-			syslog(LOG_NOTICE, "double call pcap_block_store::destroy() backtrace: %s", get_backtrace().c_str());
+			double_destroy_log();
 			return;
 		}
+		#if DEBUG_DESTROY_PCAP_BLOCK_STORE
+		string bt = get_backtrace();
+		strncpy(destroy_bt, bt.c_str(), sizeof(destroy_bt));
+		destroy_bt[sizeof(destroy_bt) - 1] = 0;
+		#endif
 	}
 	MEMORY_BARRIER_ARM;
 	if(this->offsets) {
@@ -655,6 +660,14 @@ void pcap_block_store::destroy(bool init) {
 	#endif
 	#endif
 	MEMORY_BARRIER_ARM;
+}
+
+void pcap_block_store::double_destroy_log() {
+	#if DEBUG_DESTROY_PCAP_BLOCK_STORE
+	syslog(LOG_NOTICE, "double call pcap_block_store::destroy() backtrace: %s, destroy bt: %s", get_backtrace().c_str(), destroy_bt);
+	#else
+	syslog(LOG_NOTICE, "double call pcap_block_store::destroy() backtrace: %s", get_backtrace().c_str());
+	#endif
 }
 
 void pcap_block_store::destroyRestoreBuffer() {
@@ -1339,7 +1352,9 @@ bool pcap_store_queue::pop(pcap_block_store **blockStore) {
 		this->queueStore.pop_front();
 	}
 	this->unlock_queue();
-	if(*blockStore) {
+	if(*blockStore && 
+	   opt_pcap_queue_store_queue_max_disk_size &&
+	   this->fileStoreFolder.length()) {
 		if((*blockStore)->idFileStore) {
 			pcap_file_store *_fileStore = this->findFileStoreById((*blockStore)->idFileStore);
 			if(!_fileStore) {
@@ -10085,7 +10100,11 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 				blockStorePool.push_back(block);
 				unlock_blockStorePool();
 			} else {
-				delete block;
+				if(__atomic_load_n(&block->_destroy_flag, __ATOMIC_SEQ_CST) == 0) {
+					delete block;
+				} else {
+					block->double_destroy_log();
+				}
 			}
 			this->blockStoreTrash.erase(this->blockStoreTrash.begin() + i);
 			--i;

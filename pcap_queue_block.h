@@ -309,14 +309,17 @@ struct pcap_block_store {
 		this->pushToTrashMS = 0;
 		this->_sync_packet_lock = 0;
 		this->_destroy_flag = 0;
+		#if DEBUG_DESTROY_PCAP_BLOCK_STORE
+		strcpy(destroy_bt, "empty");
+		#endif
 	}
 	~pcap_block_store() {
 		if(__atomic_load_n(&this->_destroy_flag, __ATOMIC_SEQ_CST) == 0) {
 			this->destroy();
+			this->destroyRestoreBuffer();
 		} else {
-			syslog(LOG_NOTICE, "double call pcap_block_store::destroy() backtrace: %s", get_backtrace().c_str());
+			double_destroy_log();
 		}
-		this->destroyRestoreBuffer();
 	}
 	inline void init(bool prefetch);
 	inline void clear(bool prefetch);
@@ -371,6 +374,7 @@ struct pcap_block_store {
 		}
 	}
 	void destroy(bool init = false);
+	void double_destroy_log();
 	void destroyRestoreBuffer();
 	bool isEmptyRestoreBuffer();
 	void freeBlock();
@@ -569,6 +573,9 @@ struct pcap_block_store {
 	u_int64_t pushToTrashMS;
 	volatile int _sync_packet_lock;
 	volatile int _destroy_flag;
+	#if DEBUG_DESTROY_PCAP_BLOCK_STORE
+	char destroy_bt[1000];
+	#endif
 	#if DEBUG_SYNC_PCAP_BLOCK_STORE
 	volatile int8_t *_sync_packets_lock;
 	#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
