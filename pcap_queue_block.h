@@ -310,7 +310,8 @@ struct pcap_block_store {
 		this->_sync_packet_lock = 0;
 		this->_destroy_flag = 0;
 		#if DEBUG_DESTROY_PCAP_BLOCK_STORE
-		destroy_src_flag = 0;
+		destroy_src_flag[0] = 0;
+		destroy_src_flag[1] = 0;
 		strcpy(destroy_bt, "empty");
 		#endif
 	}
@@ -575,7 +576,7 @@ struct pcap_block_store {
 	volatile int _sync_packet_lock;
 	volatile int _destroy_flag;
 	#if DEBUG_DESTROY_PCAP_BLOCK_STORE
-	int destroy_src_flag;
+	volatile int destroy_src_flag[2];
 	char destroy_bt[1000];
 	#endif
 	#if DEBUG_SYNC_PCAP_BLOCK_STORE
