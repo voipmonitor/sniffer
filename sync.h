@@ -25,6 +25,12 @@
 #define __SYNC_SUB(vint, sub) __sync_sub_and_fetch(&vint, sub);
 #define __SYNC_INCR(vint, length) if((vint + 1) == length) { __SYNC_NULL(vint); } else { __SYNC_INC(vint); }
 
+#if defined __ATOMIC_SEQ_CST
+#define SAFE_ATOMIC_LOAD(vint) __atomic_load_n(&vint, __ATOMIC_SEQ_CST)
+#else
+#define SAFE_ATOMIC_LOAD(vint) (vint)
+#endif
+
 #if defined(__arm__) || defined(__aarch64__)
     #define IS_ARM true
 #else

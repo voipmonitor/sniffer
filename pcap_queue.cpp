@@ -10162,7 +10162,7 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 				blockStorePool.push_back(block);
 				unlock_blockStorePool();
 			} else {
-				if(__atomic_load_n(&block->_destroy_flag, __ATOMIC_SEQ_CST) == 0) {
+				if(SAFE_ATOMIC_LOAD(block->_destroy_flag) == 0) {
 					#if DEBUG_DESTROY_PCAP_BLOCK_STORE
 					block->destroy_src_flag[0] = 1;
 					#endif

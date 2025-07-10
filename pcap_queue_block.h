@@ -320,7 +320,7 @@ struct pcap_block_store {
 		#endif
 	}
 	~pcap_block_store() {
-		if(__atomic_load_n(&this->_destroy_flag, __ATOMIC_SEQ_CST) == 0) {
+		if(SAFE_ATOMIC_LOAD(this->_destroy_flag) == 0) {
 			this->destroy();
 			this->destroyRestoreBuffer();
 		} else {
@@ -532,7 +532,7 @@ struct pcap_block_store {
 			return(false);
 		}
 		#else
-		return(__atomic_load_n(&this->_sync_packet_lock, __ATOMIC_SEQ_CST) == 0);
+		return(SAFE_ATOMIC_LOAD(this->_sync_packet_lock) == 0);
 		#endif
 	}
 	void setVoipPacket(int index) {
