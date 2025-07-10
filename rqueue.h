@@ -42,6 +42,9 @@ public:
 		delete [] free;
 	}
 	bool push(typeItem *item, bool waitForFree, bool useLock = false) {
+		#if IS_ARM
+		useLock = true;
+		#endif
 		if(useLock) lock();
 		while(free[writeit] != 1) {
 			if(waitForFree) {
@@ -77,6 +80,9 @@ public:
 		return(true);
 	}
 	bool pop(typeItem *item, bool waitForFree, bool useLock = false) {
+		#if IS_ARM
+		useLock = true;
+		#endif
 		if(useLock) lock();
 		while(free[readit] != 0) {
 			if(waitForFree) {
@@ -109,8 +115,13 @@ public:
 		if(useLock) unlock();
 		return(true);
 	}
-	u_int8_t popq(typeItem *item) {
+	u_int8_t popq(typeItem *item, bool useLock = false) {
+		#if IS_ARM
+		useLock = true;
+		#endif
+		if(useLock) lock();
 		if(free[readit] != 0) {
+			if(useLock) unlock();
 			return(false);
 		}
 		*item = buffer[readit];
@@ -125,10 +136,16 @@ public:
 				readit++;
 			}
 		#endif
+		if(useLock) unlock();
 		return(true);
 	}
-	bool get(typeItem *item) {
+	bool get(typeItem *item, bool useLock = false) {
+		#if IS_ARM
+		useLock = true;
+		#endif
+		if(useLock) lock();
 		while(free[readit] != 0) {
+			if(useLock) unlock();
 			return(false);
 		}
 		if(binaryBuffer) {
@@ -136,9 +153,14 @@ public:
 		} else {
 			*item = buffer[readit];
 		}
+		if(useLock) unlock();
 		return(true);
 	}
-	void moveReadit() {
+	void moveReadit(bool useLock = false) {
+		#if IS_ARM
+		useLock = true;
+		#endif
+		if(useLock) lock();
 		#if RQUEUE_SAFE
 			__SYNC_SET(free[readit]);
 			__SYNC_INCR(readit, length);
@@ -150,6 +172,7 @@ public:
 				readit++;
 			}
 		#endif
+		if(useLock) unlock();
 	}
 	void lock() {
 		__SYNC_LOCK(this->_sync_lock);

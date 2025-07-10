@@ -844,8 +844,9 @@ private:
 	pcap_block_store **qring_blocks;
 	volatile int *qring_blocks_used;
 	unsigned int qringmax;
-	unsigned int readit;
-	unsigned int writeit;
+	volatile unsigned int readit;
+	volatile unsigned int writeit;
+	volatile int qring_sync;
 	unsigned int readIndex;
 	unsigned int readIndexPos;
 	unsigned int readIndexCount;
@@ -889,6 +890,9 @@ private:
 	pcap_dispatch_data dispatch_data;
 	#if SNIFFER_THREADS_EXT
 	cThreadMonitor::sThread *thread_data;
+	#endif
+	#if DEBUG_PB_BLOCKS_SEQUENCE
+	u_int64_t pb_blocks_sequence_last;
 	#endif
 friend void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg);
 friend class PcapQueue_readFromInterface;

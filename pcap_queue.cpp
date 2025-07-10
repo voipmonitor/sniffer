@@ -613,7 +613,7 @@ void pcap_block_store::destroy(bool init) {
 		}
 		#if DEBUG_DESTROY_PCAP_BLOCK_STORE
 		string bt = get_backtrace();
-		strncpy(destroy_bt, bt.c_str(), sizeof(destroy_bt));
+		strncpy(destroy_bt, bt.c_str(), sizeof(destroy_bt) - 1);
 		destroy_bt[sizeof(destroy_bt) - 1] = 0;
 		destroy_src_flag[1] = destroy_src_flag[0];
 		#endif
@@ -4790,6 +4790,7 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(sInterface 
 	}
 	this->readit = 0;
 	this->writeit = 0;
+	this->qring_sync = 0;
 	this->readIndex = 0;
 	this->readIndexPos = 0;
 	this->readIndexCount = 0;
@@ -4862,6 +4863,9 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(sInterface 
 	prepareHeaderPacketPool = false; // experimental option
 	#if SNIFFER_THREADS_EXT
 	thread_data = NULL;
+	#endif
+	#if DEBUG_PB_BLOCKS_SEQUENCE
+	pb_blocks_sequence_last = 0;
 	#endif
 	vm_pthread_create(("pb - read thread " + getInterfaceAlias() + " " + getTypeThreadName()).c_str(),
 			  &this->threadHandle, NULL, _PcapQueue_readFromInterfaceThread_threadFunction, this, __FILE__, __LINE__);
@@ -5038,6 +5042,7 @@ inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packe
 }
 
 inline void PcapQueue_readFromInterfaceThread::push_block(pcap_block_store *block) {
+	__SYNC_LOCK_ARM_ONLY(qring_sync);
 	bool useDiskBuffer = opt_pcap_queue_store_queue_max_disk_size && !opt_pcap_queue_disk_folder.empty();
 	if(!useDiskBuffer ?
 	    pcapQueueQ->checkIfMemoryBufferIsFull(block->getUseAllSize(), true) :
@@ -5045,9 +5050,12 @@ inline void PcapQueue_readFromInterfaceThread::push_block(pcap_block_store *bloc
 		unsigned int usleepCounter = 0;
 		do {
 			if(is_terminating()) {
+				__SYNC_UNLOCK_ARM_ONLY(qring_sync);
 				return;
 			}
+			__SYNC_UNLOCK_ARM_ONLY(qring_sync);
 			USLEEP_C(100, usleepCounter++);
+			__SYNC_LOCK_ARM_ONLY(qring_sync);
 		} while(!useDiskBuffer ?
 			 pcapQueueQ->checkIfMemoryBufferIsFull(block->getUseAllSize(), true) :
 			 pcapQueueQ->checkIfDiskBufferIsFull(true));
@@ -5056,9 +5064,12 @@ inline void PcapQueue_readFromInterfaceThread::push_block(pcap_block_store *bloc
 	unsigned int usleepCounter = 0;
 	while(qring_blocks_used[_writeIndex]) {
 		if(is_terminating()) {
+			__SYNC_UNLOCK_ARM_ONLY(qring_sync);
 			return;
 		}
+		__SYNC_UNLOCK_ARM_ONLY(qring_sync);
 		USLEEP_C(100, usleepCounter++);
+		__SYNC_LOCK_ARM_ONLY(qring_sync);
 	}
 	qring_blocks[_writeIndex] = block;
 	qring_blocks_used[_writeIndex] = 1;
@@ -5068,6 +5079,7 @@ inline void PcapQueue_readFromInterfaceThread::push_block(pcap_block_store *bloc
 	} else {
 		writeit++;
 	}
+	__SYNC_UNLOCK_ARM_ONLY(qring_sync);
 }
 
 inline void PcapQueue_readFromInterfaceThread::tryForcePush() {
@@ -5177,8 +5189,10 @@ inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread:
 }
 
 inline pcap_block_store *PcapQueue_readFromInterfaceThread::pop_block() {
+	__SYNC_LOCK_ARM_ONLY(qring_sync);
 	unsigned int _readIndex = readit % qringmax;
 	if(!qring_blocks_used[_readIndex]) {
+		__SYNC_UNLOCK_ARM_ONLY(qring_sync);
 		return(NULL);
 	}
 	pcap_block_store *block = qring_blocks[_readIndex];
@@ -5188,6 +5202,18 @@ inline pcap_block_store *PcapQueue_readFromInterfaceThread::pop_block() {
 	} else {
 		readit++;
 	}
+	#if DEBUG_PB_BLOCKS_SEQUENCE
+	if(block) {
+		if(block->pb_blocks_sequence != pb_blocks_sequence_last + 1) {
+			syslog(LOG_NOTICE, "bad pb_blocks_sequence: %lu / %lu (%i,%i) %s:%i", 
+			       block->pb_blocks_sequence, pb_blocks_sequence_last + 1, 
+			       typeThread, threadId,
+			       __FILE__, __LINE__);
+		}
+		pb_blocks_sequence_last = block->pb_blocks_sequence;
+	}
+	#endif
+	__SYNC_UNLOCK_ARM_ONLY(qring_sync);
 	return(block);
 }
 
@@ -8455,12 +8481,25 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 		if(opt_pcap_queue_compress || !opt_pcap_queue_suppress_t1_thread) {
 			pcap_block_store *blockStore;
 			unsigned int usleepCounter = 0;
+			#if DEBUG_PB_BLOCKS_SEQUENCE
+			u_int64_t pb_blocks_sequence_last = 0;
+			#endif
 			while(!TERMINATING) {
 				blockStore = blockStoreBypassQueue->pop(false);
 				if(!blockStore) {
 					USLEEP_C(100, usleepCounter++);
 					continue;
 				}
+				#if DEBUG_PB_BLOCKS_SEQUENCE
+				if(blockStore) {
+					if(blockStore->pb_blocks_sequence != pb_blocks_sequence_last + 1) {
+						syslog(LOG_NOTICE, "bad pb_blocks_sequence: %lu / %lu %s:%i", 
+						       blockStore->pb_blocks_sequence, pb_blocks_sequence_last + 1, 
+						       __FILE__, __LINE__);
+					}
+					pb_blocks_sequence_last = blockStore->pb_blocks_sequence;
+				}
+				#endif
 				size_t blockSize = blockStore->size;
 				size_t blockSizePackets = blockStore->size_packets;
 				#if LOG_PACKETS_PER_SEC or LOG_PACKETS_SUM
@@ -8564,6 +8603,9 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 	unsigned long usleepSumTime_lastPush = 0;
 	sHeaderPacketPQout hp_out;
 	u_int64_t cleanupBlockStoreTrash_at_ms = 0;
+	#if DEBUG_PB_BLOCKS_SEQUENCE
+	u_int64_t pb_blocks_sequence_last = 0;
+	#endif
 	//
 	while(!TERMINATING) {
 		if(DEBUG_SLEEP && access((this->pcapStoreQueue.fileStoreFolder + "/__/sleep").c_str(), F_OK ) != -1) {
@@ -8580,6 +8622,16 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 				this->checkFreeSizeCachedir();
 			}
 			++sumBlocksCounterOut[0];
+			#if DEBUG_PB_BLOCKS_SEQUENCE
+			if(blockStore) {
+				if(blockStore->pb_blocks_sequence != pb_blocks_sequence_last + 1) {
+					syslog(LOG_NOTICE, "bad pb_blocks_sequence: %lu / %lu %s:%i", 
+					       blockStore->pb_blocks_sequence, pb_blocks_sequence_last + 1, 
+					       __FILE__, __LINE__);
+				}
+				pb_blocks_sequence_last = blockStore->pb_blocks_sequence;
+			}
+			#endif
 		}
 		if(this->packetServerDirection == directionWrite || is_client_packetbuffer_sender()) {
 			if(blockStore) {

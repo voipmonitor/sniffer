@@ -314,6 +314,10 @@ struct pcap_block_store {
 		destroy_src_flag[1] = 0;
 		strcpy(destroy_bt, "empty");
 		#endif
+		#if DEBUG_PB_BLOCKS_SEQUENCE
+		static u_int64_t pb_blocks_sequence_init = 0;
+		pb_blocks_sequence = ++pb_blocks_sequence_init;
+		#endif
 	}
 	~pcap_block_store() {
 		if(__atomic_load_n(&this->_destroy_flag, __ATOMIC_SEQ_CST) == 0) {
@@ -586,6 +590,9 @@ struct pcap_block_store {
 	#endif
 	#endif
 	u_int8_t *is_voip;
+	#if DEBUG_PB_BLOCKS_SEQUENCE
+	u_int64_t pb_blocks_sequence;
+	#endif
 };
 
 

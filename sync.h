@@ -26,9 +26,19 @@
 #define __SYNC_INCR(vint, length) if((vint + 1) == length) { __SYNC_NULL(vint); } else { __SYNC_INC(vint); }
 
 #if defined(__arm__) || defined(__aarch64__)
-    #define MEMORY_BARRIER_ARM __sync_synchronize()
+    #define IS_ARM true
 #else
-    #define MEMORY_BARRIER_ARM
+    #define IS_ARM false
+#endif
+
+#if IS_ARM
+#define __SYNC_LOCK_ARM_ONLY(vint)  __SYNC_LOCK(vint)
+#define __SYNC_UNLOCK_ARM_ONLY(vint)  __SYNC_UNLOCK(vint)
+#define MEMORY_BARRIER_ARM __sync_synchronize()
+#else
+#define __SYNC_LOCK_ARM_ONLY(vint)
+#define __SYNC_UNLOCK_ARM_ONLY(vint)
+#define MEMORY_BARRIER_ARM
 #endif
 
 #endif //SYNC_H
