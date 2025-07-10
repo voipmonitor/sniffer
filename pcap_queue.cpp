@@ -5000,6 +5000,12 @@ inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packe
 	if(writeIndexCount == qring[_writeIndex]->max_count ||
 	   (writeIndexCount && force_push)) {
 		force_push = false;
+		#if RQUEUE_SAFE
+		__SYNC_SET_TO(qring[_writeIndex]->count, writeIndexCount);
+		__SYNC_SET(qring[_writeIndex]->used);
+		writeIndex = 0;
+		__SYNC_INCR(writeit, qringmax);
+		#else
 		qring[_writeIndex]->count = writeIndexCount;
 		qring[_writeIndex]->used = 1;
 		writeIndex = 0;
@@ -5008,6 +5014,7 @@ inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packe
 		} else {
 			writeit++;
 		}
+		#endif
 	}
 	/****
 	uint32_t writeIndex = this->writeit[index] % this->qringmax;
@@ -5072,6 +5079,11 @@ inline void PcapQueue_readFromInterfaceThread::push_block(pcap_block_store *bloc
 		__SYNC_LOCK_ARM_ONLY(qring_sync);
 	}
 	qring_blocks[_writeIndex] = block;
+	#if RQUEUE_SAFE
+	__SYNC_SET(qring_blocks_used[_writeIndex]);
+	writeIndex = 0;
+	__SYNC_INCR(writeit, qringmax);
+	#else
 	qring_blocks_used[_writeIndex] = 1;
 	writeIndex = 0;
 	if((writeit + 1) == qringmax) {
@@ -5079,6 +5091,7 @@ inline void PcapQueue_readFromInterfaceThread::push_block(pcap_block_store *bloc
 	} else {
 		writeit++;
 	}
+	#endif
 	__SYNC_UNLOCK_ARM_ONLY(qring_sync);
 }
 
@@ -5089,6 +5102,12 @@ inline void PcapQueue_readFromInterfaceThread::tryForcePush() {
 		*/
 		unsigned int _writeIndex = writeIndex - 1;
 		force_push = false;
+		#if RQUEUE_SAFE
+		__SYNC_SET_TO(qring[_writeIndex]->count, writeIndexCount);
+		__SYNC_SET(qring[_writeIndex]->used);
+		writeIndex = 0;
+		__SYNC_INCR(writeit, qringmax);
+		#else
 		qring[_writeIndex]->count = writeIndexCount;
 		qring[_writeIndex]->used = 1;
 		writeIndex = 0;
@@ -5097,6 +5116,7 @@ inline void PcapQueue_readFromInterfaceThread::tryForcePush() {
 		} else {
 			writeit++;
 		}
+		#endif
 	}
 }
 
@@ -5143,6 +5163,11 @@ inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread:
 	#endif
 	++readIndexPos;
 	if(readIndexPos == readIndexCount) {
+		#if RQUEUE_SAFE
+		__SYNC_NULL(qring[_readIndex]->used);
+		readIndex = 0;
+		__SYNC_INCR(readit, qringmax);
+		#else
 		qring[_readIndex]->used = 0;
 		readIndex = 0;
 		if((readit + 1) == qringmax) {
@@ -5150,6 +5175,7 @@ inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread:
 		} else {
 			readit++;
 		}
+		#endif
 	}
 	return(rslt_hpi);
 	/****
@@ -5196,12 +5222,17 @@ inline pcap_block_store *PcapQueue_readFromInterfaceThread::pop_block() {
 		return(NULL);
 	}
 	pcap_block_store *block = qring_blocks[_readIndex];
+	#if RQUEUE_SAFE
+	__SYNC_NULL(qring_blocks_used[_readIndex]);
+	__SYNC_INCR(readit, qringmax);
+	#else
 	qring_blocks_used[_readIndex] = 0;
 	if((readit + 1) == qringmax) {
 		readit = 0;
 	} else {
 		readit++;
 	}
+	#endif
 	#if DEBUG_PB_BLOCKS_SEQUENCE
 	if(block) {
 		if(block->pb_blocks_sequence != pb_blocks_sequence_last + 1) {
@@ -10427,6 +10458,11 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 	++qring_push_index_count;
 	if(qring_push_index_count == qring_active_push_item->max_count ||
 	   time_us > qring_active_push_item_limit_us) {
+		#if RQUEUE_SAFE
+		__SYNC_SET_TO(qring_active_push_item->count, qring_push_index_count);
+		__SYNC_SET(qring_active_push_item->used);
+		__SYNC_INCR(this->writeit, this->qring_length);
+		#else
 		qring_active_push_item->count = qring_push_index_count;
 		qring_active_push_item->used = 1;
 		if((this->writeit + 1) == this->qring_length) {
@@ -10434,6 +10470,7 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 		} else {
 			this->writeit++;
 		}
+		#endif
 		qring_push_index = 0;
 		qring_push_index_count = 0;
 	}
@@ -10455,6 +10492,11 @@ void PcapQueue_outputThread::push_batch() {
 	}
 	#endif
 	if(qring_push_index && qring_push_index_count) {
+		#if RQUEUE_SAFE
+		__SYNC_SET_TO(qring_active_push_item->count, qring_push_index_count);
+		__SYNC_SET(qring_active_push_item->used);
+		__SYNC_INCR(this->writeit, this->qring_length);
+		#else
 		qring_active_push_item->count = qring_push_index_count;
 		qring_active_push_item->used = 1;
 		if((this->writeit + 1) == this->qring_length) {
@@ -10462,6 +10504,7 @@ void PcapQueue_outputThread::push_batch() {
 		} else {
 			this->writeit++;
 		}
+		#endif
 		qring_push_index = 0;
 		qring_push_index_count = 0;
 	}
@@ -10786,6 +10829,11 @@ void *PcapQueue_outputThread::outThreadFunction() {
 			if(typeOutputThread == defrag) {
 				this->processDefrag_cleanup(firstHeaderTimeS);
 			}
+			#if RQUEUE_SAFE
+			__SYNC_NULL(batch->count);
+			__SYNC_NULL(batch->used);
+			__SYNC_INCR(readit, this->qring_length);
+			#else
 			batch->count = 0;
 			batch->used = 0;
 			if((this->readit + 1) == this->qring_length) {
@@ -10793,6 +10841,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 			} else {
 				this->readit++;
 			}
+			#endif
 			usleepCounter = 0;
 			usleepSumTime = 0;
 			usleepSumTime_lastPush = 0;
