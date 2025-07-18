@@ -225,7 +225,7 @@ private:
 	int freeHead;
 	int usedHead;
 	int usedCount;
-friend sgMaster;
+friend class sgMaster;
 };
 
 class sgMaster {
@@ -273,7 +273,7 @@ private:
 	pthread_t destroy_queue_thread;
 	pthread_t stat_thread;
 	volatile bool terminating;
-friend sgCalls;
+friend class sgCalls;
 };
 
 class sgCalls {
@@ -324,9 +324,9 @@ private:
 	volatile bool end;
 	unsigned packets_counter;
 	u_int64_t packets_counter_last_time;
-friend sgMaster;
-friend sgCall;
-friend sgStream;
+friend class sgMaster;
+friend class sgCall;
+friend class sgStream;
 };
 
 class sgCall {
@@ -398,8 +398,8 @@ private:
 	u_int64_t invite_at;
 	u_int64_t begin_streams_at;
 	u_int64_t streams_duration;
-friend sgCalls;
-friend sgStream;
+friend class sgCalls;
+friend class sgStream;
 };
 
 class sgStream {
