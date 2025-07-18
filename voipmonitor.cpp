@@ -1092,6 +1092,7 @@ int opt_dpdk_worker_usleep_if_no_packet = 1;
 int opt_dpdk_worker_usleep_type = 0;
 int opt_dpdk_nb_rx = 4096;
 int opt_dpdk_nb_rxq = 2;
+bool opt_dpdk_rxq_per_thread = false;
 bool opt_dpdk_nb_rxq_rss = true;
 int opt_dpdk_nb_tx = 1024;
 int opt_dpdk_nb_mbufs = 1024;
@@ -1123,6 +1124,7 @@ bool opt_other_thread_affinity_set = false;
 int opt_dpdk_timer_reset_interval = 60;
 int opt_dpdk_mtu = 0;
 vector<string> opt_dpdk_vdev;
+bool opt_dpdk_ignore_ierrors;
 
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
 bool opt_scanpcapdir_disable_inotify = false;
@@ -6414,6 +6416,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_nb_rx", &opt_dpdk_nb_rx));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_nb_tx", &opt_dpdk_nb_tx));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_nb_rxq", &opt_dpdk_nb_rxq));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_rxq_per_thread", &opt_dpdk_rxq_per_thread));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_nb_rxq_rss", &opt_dpdk_nb_rxq_rss));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_nb_mbufs", &opt_dpdk_nb_mbufs));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_nb_mbufs_strictly", &opt_dpdk_nb_mbufs_strictly));
@@ -6444,6 +6447,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_timer_reset_interval", &opt_dpdk_timer_reset_interval));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_mtu", &opt_dpdk_mtu));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_vdev", &opt_dpdk_vdev));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_ignore_ierrors", &opt_dpdk_ignore_ierrors));
 			normal();
 			addConfigItem(new FILE_LINE(42135) cConfigItem_yesno("promisc", &opt_promisc));
 			addConfigItem(new FILE_LINE(42136) cConfigItem_string("filter", user_filter, sizeof(user_filter)));
@@ -8039,6 +8043,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"load-rtp-pcap", 1, 0, _param_load_rtp_pcap},
 	    {"check_bad_ether_type", 1, 0, _param_check_bad_ether_type},
 	    {"manager_enable_unencrypted", 0, 0, _param_manager_enable_unencrypted},
+	    {"sipgen", 2, 0, _param_sipgen},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -8058,6 +8063,9 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 			if(long_options[i].has_arg == 1) {
 				argOptions += (char)long_options[i].val;
 				argOptions += ':';
+			} else if(long_options[i].has_arg == 2) {
+				argOptions += (char)long_options[i].val;
+				argOptions += "::";
 			} else {
 				noArgOptions += (char)long_options[i].val;
 			}
@@ -8846,6 +8854,13 @@ void get_command_line_arguments() {
 				break;
 			case _param_manager_enable_unencrypted:
 				opt_manager_enable_unencrypted = true;
+				break;
+			case _param_sipgen:
+				{
+				extern void sg(const char *params);
+				sg(optarg);
+				exit(0);
+				}
 				break;
 		}
 		if(optarg) {

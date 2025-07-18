@@ -216,7 +216,8 @@ enum eCmdLineParams {
 	_param_extract_rtp_payload,
 	_param_load_rtp_pcap,
 	_param_check_bad_ether_type,
-	_param_manager_enable_unencrypted
+	_param_manager_enable_unencrypted,
+	_param_sipgen
 };
 
 struct portMatrixDefaultPort {

@@ -76,6 +76,7 @@ inline unsigned int get_unix_tid(void) {
 
 
 #define TIME_S_TO_US(s) ((u_int64_t)((s) * 1000000ull))
+#define TIME_MS_TO_US(s) ((u_int64_t)((s) * 1000ull))
 #define TIME_US_TO_S(us) ((u_int32_t)((us) / 1000000ull))
 #define TIME_US_TO_S_signed(us) ((int32_t)((us) / 1000000ll))
 #define TIME_US_TO_MS(us) ((u_int64_t)((us) / 1000ull))
@@ -1432,6 +1433,52 @@ private:
 };
 
 string get_backtrace();
+
+
+class cBitSet {
+public:
+	cBitSet(unsigned max, unsigned begin = 0) : max(max), begin(begin) {
+		words = ((max - begin) + 63) / 64;
+		bits = new u_int64_t[words];
+		memset(bits, 0, sizeof(u_int64_t) * words);
+	}
+	~cBitSet() {
+		delete [] bits;
+	}
+	cBitSet(const cBitSet&) = delete;
+	cBitSet& operator = (const cBitSet&) = delete;
+	int get() {
+		for(unsigned i = 0; i < words; ++i) {
+			if(bits[i] != UINT64_MAX) {
+				u_int64_t bits_inverted = ~bits[i];
+				int bit = __builtin_ffsll(bits_inverted);
+				if(bit > 0) {
+					int bit_index = bit - 1;
+					int v = i * 64 + bit_index;
+					if(v >= (int)(max -  begin)) continue;
+					bits[i] |= (1ULL << bit_index);
+					return(v + begin);
+				}
+			}
+		}
+		return(-1);
+	}
+	bool free(int v) {
+		if(v < (int)begin || v >= (int)max) {
+			return(false);
+		}
+		v -= begin;
+		int word_index = v / 64;
+		int bit_index = v % 64;
+		bits[word_index] &= ~(1ULL << bit_index);
+		return(true);
+	}
+private:
+	unsigned max;
+	unsigned begin;
+	unsigned words;
+	u_int64_t *bits;
+};
 
 
 #endif

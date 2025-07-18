@@ -9,6 +9,7 @@
 #include "tools_global.h"
 #include "sync.h"
 #include "pcap_queue.h"
+#include "voipmonitor_define.h"
 
 #include "dpdk.h"
 
@@ -65,6 +66,7 @@ extern int opt_dpdk_mbufs_in_packetbuffer;
 extern int opt_dpdk_timer_reset_interval;
 extern int opt_dpdk_mtu;
 extern vector<string> opt_dpdk_vdev;
+extern bool opt_dpdk_ignore_ierrors;
 
 
 #define MAXIMUM_SNAPLEN		262144
@@ -107,6 +109,8 @@ extern vector<string> opt_dpdk_vdev;
 #define WORKER2_THREAD_SUPPORT 0
 #define DPDK_ZC_SUPPORT 0
 
+#define DPDK_MAX_COUNT_RTE_READ_THREADS 16
+
 #define DEBUG_CYCLES false
 #define DEBUG_CYCLES_MAX_LT_MS 100
 #define DEBUG_EXT_STAT false
@@ -114,6 +118,11 @@ extern vector<string> opt_dpdk_vdev;
 #define ENABLE_WORKER_SLAVE (opt_dpdk_worker_slave_thread && opt_dpdk_copy_packetbuffer && !opt_dpdk_mbufs_in_packetbuffer)
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
+
+
+#if TEST_RTE_READ_MULTI_THREADS
+volatile int rte_read_sync;
+#endif
 
 
 #if DEBUG_CYCLES
@@ -209,13 +218,13 @@ struct sDpdk {
 	uint64_t ring2_full_drop;
 	#endif
 	bool terminating;
-	int rte_read_thread_pid;
+	int rte_read_thread_pid[DPDK_MAX_COUNT_RTE_READ_THREADS];
 	int rte_worker_thread_pid;
 	int rte_worker_slave_thread_pid;
 	#if WORKER2_THREAD_SUPPORT
 	int rte_worker2_thread_pid;
 	#endif
-	pstat_data rte_read_thread_pstat_data[2];
+	pstat_data rte_read_thread_pstat_data[DPDK_MAX_COUNT_RTE_READ_THREADS][2];
 	pstat_data rte_worker_thread_pstat_data[2];
 	pstat_data rte_worker_slave_thread_pstat_data[2];
 	#if WORKER2_THREAD_SUPPORT
@@ -273,6 +282,12 @@ struct sDpdk {
 		}
 		delete [] pkts_burst;
 	}
+};
+
+struct sRteReadThreadArg {
+	sDpdk *dpdk;
+	int read_thread_id;
+	int rxq;
 };
 
 
@@ -352,8 +367,10 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 	uint16_t portid = DPDK_PORTID_MAX;
 	struct rte_eth_rxconf rxq_conf;
 	struct rte_eth_txconf txq_conf;
+	port_conf.rxmode.offloads = 0;
 	// port_conf.rxmode.split_hdr_size = 0; // obsolete
 	port_conf.txmode.mq_mode = RTE_ETH_MQ_TX_NONE;
+	port_conf.txmode.offloads = 0;
 	struct rte_eth_conf local_port_conf = port_conf;
 	struct rte_eth_dev_info dev_info;
 	int is_port_up = 0;
@@ -437,12 +454,12 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 		local_port_conf.txmode.offloads |= RTE_ETH_TX_OFFLOAD_MBUF_FAST_FREE;
 	}
 	extern int opt_dpdk_nb_rxq;
+	extern bool opt_dpdk_nb_rxq_rss;
 	uint16_t nb_rxq = opt_dpdk_nb_rxq > 0 ? opt_dpdk_nb_rxq : 1;
 	if(nb_rxq > 1) {
-		extern bool opt_dpdk_nb_rxq_rss;
 		if(opt_dpdk_nb_rxq_rss) {
 			local_port_conf.rxmode.mq_mode = RTE_ETH_MQ_RX_RSS;
-			local_port_conf.rx_adv_conf.rss_conf.rss_hf = dev_info.flow_type_rss_offloads & RTE_ETH_RSS_IP;
+			local_port_conf.rx_adv_conf.rss_conf.rss_hf = dev_info.flow_type_rss_offloads & (RTE_ETH_RSS_IP | RTE_ETH_RSS_UDP | RTE_ETH_RSS_TCP);
 		}
 	}
 	ret = rte_eth_dev_configure(portid, nb_rxq, 1, &local_port_conf);
@@ -479,8 +496,8 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 					     &rxq_conf,
 					     dpdk->pktmbuf_pool);
 		dpdk_eval_res(ret, NULL, 2, error,
-			      "dpdk_activate(%s) - rte_eth_rx_queue_setup(queue:%i)",
-			      config->device, q);
+			      "dpdk_activate(%s) - rte_eth_rx_queue_setup(queue:%i, nb_rx: %i)",
+			      config->device, q, nb_rx);
 		if(ret < 0) {
 			return(PCAP_ERROR);
 		}
@@ -517,7 +534,8 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 		return(PCAP_ERROR);
 	}
 	if(config->type_worker_thread != _dpdk_twt_na) {
-		dpdk->rx_to_worker_ring = rte_ring_create((string("rx_to_worker") + "_" + config->device).c_str(), RING_SIZE, rte_socket_id(), RING_F_SP_ENQ | RING_F_SC_DEQ);
+		dpdk->rx_to_worker_ring = rte_ring_create((string("rx_to_worker") + "_" + config->device).c_str(), RING_SIZE, rte_socket_id(), 
+							  count_rte_read_threads() > 1 ? RING_F_MP_RTS_ENQ | RING_F_SC_DEQ : RING_F_SP_ENQ | RING_F_SC_DEQ);
 		dpdk_eval_res(dpdk->rx_to_worker_ring == NULL ? -rte_errno : 0, NULL, 2, error,
 			      "dpdk_activate(%s) - rte_ring_create(rx_to_worker)",
 			      config->device);
@@ -622,14 +640,25 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 	}
 	#endif
 	if(config->type_read_thread == _dpdk_trt_rte) {
-		int lcore_id = dpdk_tools->getFreeLcore(cDpdkTools::_tlc_read, numa_node);
-		dpdk_eval_res(lcore_id, lcore_id < 0 ? "not available free lcore for read thread" : NULL, 2, error,
-			      "dpdk_activate(%s) - getFreeLcore(cDpdkTools::_tlc_read)",
-			      config->device);
-		if(lcore_id < 0) {
-			return(PCAP_ERROR);
-		} else {
-			ret = rte_eal_remote_launch(rte_read_thread, dpdk, lcore_id);
+		u_int16_t nb_rte_read_threads = count_rte_read_threads();
+		for(uint16_t rte_read_thread_id = 0; rte_read_thread_id < nb_rte_read_threads; rte_read_thread_id++) {
+			int lcore_id = dpdk_tools->getFreeLcore(cDpdkTools::_tlc_read, numa_node);
+			dpdk_eval_res(lcore_id, lcore_id < 0 ? "not available free lcore for read thread" : NULL, 2, error,
+				      "dpdk_activate(%s) - getFreeLcore(cDpdkTools::_tlc_read)",
+				      config->device);
+			if(lcore_id < 0) {
+				return(PCAP_ERROR);
+			}
+			sRteReadThreadArg *arg = new FILE_LINE(0) sRteReadThreadArg;
+			arg->dpdk = dpdk;
+			arg->read_thread_id = rte_read_thread_id;
+			arg->rxq = nb_rte_read_threads > 1 ? rte_read_thread_id : -1;
+			#if TEST_RTE_READ_MULTI_THREADS
+			arg->rxq = 0;
+			#endif
+			syslog(LOG_INFO, "DPDK: Launching read thread %d on lcore %d with rxq %d", 
+				   rte_read_thread_id, lcore_id, arg->rxq);
+			ret = rte_eal_remote_launch(rte_read_thread, arg, lcore_id);
 			string cores_info;
 			if(ret >= 0) {
 				cores_info = dpdk_tools->getCoresForLcore(lcore_id);
@@ -695,6 +724,19 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 	}
 	if(!is_port_up) {
 		return(PCAP_ERROR_IFACE_NOT_UP);
+	}
+	if(nb_rxq > 1 && opt_dpdk_nb_rxq_rss) {
+		struct rte_eth_rss_conf rss_conf;
+		memset(&rss_conf, 0, sizeof(rss_conf));
+		ret = rte_eth_dev_rss_hash_conf_get(portid, &rss_conf);
+		if(ret == 0) {
+			syslog(LOG_INFO, "DPDK RSS: Active RSS hash functions after start: 0x%lx", (unsigned long)rss_conf.rss_hf);
+			if(rss_conf.rss_hf == 0) {
+				syslog(LOG_WARNING, "DPDK RSS: WARNING! RSS is not active despite configuration!");
+			}
+		} else {
+			syslog(LOG_WARNING, "DPDK RSS: Failed to get RSS configuration: %d", ret);
+		}
 	}
 	// reset statistics
 	dpdk_reset_statistics(dpdk, true);
@@ -862,8 +904,7 @@ int pcap_dpdk_stats(sDpdk *dpdk, pcap_stat *ps, string *str_out) {
 	rte_eth_stats_get(dpdk->portid,&(dpdk->curr_stats));
 	if(ps) {
 		ps->ps_recv = dpdk->curr_stats.ipackets;
-		ps->ps_drop = dpdk->curr_stats.ierrors;
-		ps->ps_drop += dpdk->bpf_drop;
+		ps->ps_drop = dpdk->curr_stats.rx_nombuf + (opt_dpdk_ignore_ierrors ? 0 : dpdk->curr_stats.ierrors) + dpdk->bpf_drop;
 		ps->ps_ifdrop = dpdk->curr_stats.imissed;
 	}
 	uint64_t delta_pkt = dpdk->curr_stats.ipackets - dpdk->prev_stats.ipackets;
@@ -879,12 +920,16 @@ int pcap_dpdk_stats(sDpdk *dpdk, pcap_stat *ps, string *str_out) {
 		       << " portid " << dpdk->portid
 		       << " ["
 		       << setprecision(2) << dpdk->bps/1e6f << "Mb/s"
-		       << "; packets: " << (dpdk->curr_stats.ipackets - dpdk->last_stat_ipackets)
-		       << "; errors: " << (dpdk->curr_stats.ierrors - dpdk->last_stat_ierrors)
-		       << "; imissed: " << (dpdk->curr_stats.imissed - dpdk->last_stat_imissed)
+		       << "; packets: " << (dpdk->curr_stats.ipackets - dpdk->last_stat_ipackets);
+		if(!opt_dpdk_ignore_ierrors) {
+			outStr << "; errors: " << (dpdk->curr_stats.ierrors - dpdk->last_stat_ierrors);
+		}
+		outStr << "; imissed: " << (dpdk->curr_stats.imissed - dpdk->last_stat_imissed)
 		       << "; nombuf: " << (dpdk->curr_stats.rx_nombuf - dpdk->last_stat_nombuf);
 		dpdk->last_stat_ipackets = dpdk->curr_stats.ipackets;
-		dpdk->last_stat_ierrors = dpdk->curr_stats.ierrors;
+		if(!opt_dpdk_ignore_ierrors) {
+			dpdk->last_stat_ierrors = dpdk->curr_stats.ierrors;
+		}
 		dpdk->last_stat_imissed = dpdk->curr_stats.imissed;
 		dpdk->last_stat_nombuf = dpdk->curr_stats.rx_nombuf;
 		#if LOG_PACKETS_SUM
@@ -909,7 +954,7 @@ int pcap_dpdk_stats(sDpdk *dpdk, pcap_stat *ps, string *str_out) {
 			dpdk->last_stat_ring2_full_drop = dpdk->ring2_full_drop;
 		}
 		#endif
-		#if DEBUG_EXT_STAT	
+		#if DEBUG_EXT_STAT
 		int len = rte_eth_xstats_get(dpdk->portid, NULL, 0);
 		if(len < 0) {
 			outStr << "; error: " << "rte_eth_xstats_get failed";
@@ -918,7 +963,7 @@ int pcap_dpdk_stats(sDpdk *dpdk, pcap_stat *ps, string *str_out) {
 			if(xstats == NULL) {
 				outStr << "; error: " << "failed to calloc memory for xstats";
 			} else {
-				int ret = rte_eth_xstats_get(portid, xstats, len);
+				int ret = rte_eth_xstats_get(dpdk->portid, xstats, len);
 				if(ret < 0 || ret > len) {
 					outStr << "; error: " << "rte_eth_xstats_get failed";
 				} else {
@@ -926,7 +971,7 @@ int pcap_dpdk_stats(sDpdk *dpdk, pcap_stat *ps, string *str_out) {
 					if(xstats_names == NULL) {
 						outStr << "; error: " << "failed to calloc memory for xstats_names";
 					} else {
-						ret = rte_eth_xstats_get_names(portid, xstats_names, len);
+						ret = rte_eth_xstats_get_names(dpdk->portid, xstats_names, len);
 						if(ret < 0 || ret > len) {
 							outStr << "; error: " << "rte_eth_xstats_get_names failed";
 						} else {
@@ -975,19 +1020,34 @@ void dpdk_terminating(sDpdk *dpdk) {
 	dpdk->terminating = true;
 }
 
+void dpdk_check_params() {
+	extern int opt_dpdk_nb_rxq;
+	if(count_rte_read_threads() > DPDK_MAX_COUNT_RTE_READ_THREADS) {
+		opt_dpdk_nb_rxq = DPDK_MAX_COUNT_RTE_READ_THREADS;
+	}
+}
 
-double rte_read_thread_cpu_usage(sDpdk *dpdk) {
-	if(!dpdk->rte_read_thread_pid) {
+u_int16_t count_rte_read_threads() {
+	#if TEST_RTE_READ_MULTI_THREADS
+	return(2);
+	#endif
+	extern int opt_dpdk_nb_rxq;
+	extern bool opt_dpdk_rxq_per_thread;
+	return(opt_dpdk_rxq_per_thread && opt_dpdk_nb_rxq > 1 ? opt_dpdk_nb_rxq : 1);
+}
+
+double rte_read_thread_cpu_usage(sDpdk *dpdk, u_int16_t rte_read_thread_id) {
+	if(!dpdk->rte_read_thread_pid[rte_read_thread_id]) {
 		return(-1);
 	}
-	if(dpdk->rte_read_thread_pstat_data[0].cpu_total_time) {
-		dpdk->rte_read_thread_pstat_data[1] = dpdk->rte_read_thread_pstat_data[0];
+	if(dpdk->rte_read_thread_pstat_data[rte_read_thread_id][0].cpu_total_time) {
+		dpdk->rte_read_thread_pstat_data[rte_read_thread_id][1] = dpdk->rte_read_thread_pstat_data[rte_read_thread_id][0];
 	}
-	pstat_get_data(dpdk->rte_read_thread_pid, dpdk->rte_read_thread_pstat_data);
+	pstat_get_data(dpdk->rte_read_thread_pid[rte_read_thread_id], dpdk->rte_read_thread_pstat_data[rte_read_thread_id]);
 	double ucpu_usage, scpu_usage;
-	if(dpdk->rte_read_thread_pstat_data[0].cpu_total_time && dpdk->rte_read_thread_pstat_data[1].cpu_total_time) {
+	if(dpdk->rte_read_thread_pstat_data[rte_read_thread_id][0].cpu_total_time && dpdk->rte_read_thread_pstat_data[rte_read_thread_id][1].cpu_total_time) {
 		pstat_calc_cpu_usage_pct(
-			&dpdk->rte_read_thread_pstat_data[0], &dpdk->rte_read_thread_pstat_data[1],
+			&dpdk->rte_read_thread_pstat_data[rte_read_thread_id][0], &dpdk->rte_read_thread_pstat_data[rte_read_thread_id][1],
 			&ucpu_usage, &scpu_usage);
 		return(ucpu_usage + scpu_usage);
 	}
@@ -1061,10 +1121,15 @@ string get_dpdk_cpu_cores(bool without_main, bool detect_ht) {
 
 
 static int rte_read_thread(void *arg) {
-	sDpdk *dpdk = (sDpdk*)arg;
-	dpdk->rte_read_thread_pid = get_unix_tid();
-	setpriority(PRIO_PROCESS, dpdk->rte_read_thread_pid, -19);
-	syslog(LOG_INFO, "DPDK - READ (rte) THREAD %i\n", dpdk->rte_read_thread_pid);
+	sRteReadThreadArg *rte_read_thread_arg = (sRteReadThreadArg*)arg;
+	sDpdk *dpdk = rte_read_thread_arg->dpdk;
+	int read_thread_id = rte_read_thread_arg->read_thread_id;
+	int rxq = rte_read_thread_arg->rxq;
+	delete rte_read_thread_arg;
+	dpdk->rte_read_thread_pid[read_thread_id] = get_unix_tid();
+	setpriority(PRIO_PROCESS, dpdk->rte_read_thread_pid[read_thread_id], -19);
+	syslog(LOG_INFO, "DPDK - READ (rte) THREAD %i (thread_id=%d, rxq=%d)\n", 
+	       dpdk->rte_read_thread_pid[read_thread_id], read_thread_id, rxq);
 	while(!dpdk->initialized) {
 		USLEEP(1000);
 	}
@@ -1110,26 +1175,32 @@ static int rte_read_thread(void *arg) {
 	}
 	#endif
 	if(opt_dpdk_batch_read > 1) {
+		extern int opt_dpdk_nb_rxq;
+		uint16_t nb_rxq = opt_dpdk_nb_rxq > 0 ? opt_dpdk_nb_rxq : 1;
 		unsigned pkts_burst_cnt;
 		rte_mbuf *pkts_burst[opt_dpdk_batch_read][MAX_PKT_BURST];
-		uint16_t nb_rx[opt_dpdk_batch_read];
+		uint16_t nb_rx[opt_dpdk_batch_read * nb_rxq];
 		u_int64_t timestamp_us[opt_dpdk_batch_read];
 		uint16_t nb_rx_enqueue;
 		if(dpdk->rx_to_worker_ring) {
+			uint16_t rxq_begin = rxq >= 0 ? rxq : 0;
+			uint16_t rxq_end = rxq >= 0 ? rxq : nb_rxq - 1;
 			while(!dpdk->terminating) {
 				pkts_burst_cnt = 0;
 				while(pkts_burst_cnt < (unsigned)opt_dpdk_batch_read) {
-					nb_rx[pkts_burst_cnt] = rte_eth_rx_burst(dpdk->portid, 0, pkts_burst[pkts_burst_cnt], MAX_PKT_BURST);
-					if(!nb_rx[pkts_burst_cnt]) {
-						break;
+					for(uint16_t q = rxq_begin; q <= rxq_end; q++) {
+						nb_rx[pkts_burst_cnt] = rte_eth_rx_burst(dpdk->portid, q, pkts_burst[pkts_burst_cnt], MAX_PKT_BURST);
+						if(!nb_rx[pkts_burst_cnt]) {
+							break;
+						}
+						#if LOG_PACKETS_SUM
+						dpdk->count_packets[0] += nb_rx[pkts_burst_cnt];
+						#endif
+						#if DPDK_TIMESTAMP_IN_MBUF
+						timestamp_us[pkts_burst_cnt] = get_timestamp_us(dpdk);
+						#endif
+						++pkts_burst_cnt;
 					}
-					#if LOG_PACKETS_SUM
-					dpdk->count_packets[0] += nb_rx[pkts_burst_cnt];
-					#endif
-					#if DPDK_TIMESTAMP_IN_MBUF
-					timestamp_us[pkts_burst_cnt] = get_timestamp_us(dpdk);
-					#endif
-					++pkts_burst_cnt;
 				}
 				if(likely(pkts_burst_cnt)) {
 					for(unsigned i = 0; i < pkts_burst_cnt; i++) {
@@ -1202,13 +1273,23 @@ static int rte_read_thread(void *arg) {
 		if(dpdk->rx_to_worker_ring) {
 			extern int opt_dpdk_nb_rxq;
 			uint16_t nb_rxq = opt_dpdk_nb_rxq > 0 ? opt_dpdk_nb_rxq : 1;
+			uint16_t rxq_begin = rxq >= 0 ? rxq : 0;
+			uint16_t rxq_end = rxq >= 0 ? rxq : nb_rxq - 1;
+			syslog(LOG_INFO, "DPDK - READ THREAD %d: reading from queues %d to %d (rxq=%d, nb_rxq=%d)", 
+			       read_thread_id, rxq_begin, rxq_end, rxq, nb_rxq);
 			while(!dpdk->terminating) {
 				#if DEBUG_CYCLES
 				dpdk->cycles[0].setBegin();
 				dpdk->cycles[1].setBegin();
 				#endif
-				for(uint16_t q = 0; q < nb_rxq; q++) {
+				for(uint16_t q = rxq_begin; q <= rxq_end; q++) {
+					#if TEST_RTE_READ_MULTI_THREADS
+					__SYNC_LOCK(rte_read_sync);
+					#endif
 					nb_rx = rte_eth_rx_burst(dpdk->portid, q, pkts_burst, MAX_PKT_BURST);
+					#if TEST_RTE_READ_MULTI_THREADS
+					__SYNC_UNLOCK(rte_read_sync);
+					#endif
 					#if DEBUG_CYCLES
 					dpdk->cycles[1].setEnd();
 					dpdk->cycles[2].setBegin();
@@ -1765,6 +1846,7 @@ static int dpdk_pre_init(string *error_str) {
 			return(is_dpdk_pre_inited == -ENOTSUP ? 0 : is_dpdk_pre_inited);
 		}
 	}
+	dpdk_check_params();
 	#if DPDK_ENV_CFG
 	ptr_dpdk_cfg = getenv(DPDK_CFG_ENV_NAME);
 	if(ptr_dpdk_cfg == NULL) {
@@ -2474,7 +2556,14 @@ sDpdkConfig *dpdk_config(sDpdk *dpdk) {
 void dpdk_terminating(sDpdk *dpdk) {
 }
 
-double rte_read_thread_cpu_usage(sDpdk *dpdk) {
+void dpdk_check_params() {
+}
+
+u_int16_t count_rte_read_threads() {
+	return(1);
+}
+
+double rte_read_thread_cpu_usage(sDpdk *dpdk, u_int16_t rte_read_thread_id) {
 	return(-1);
 }
 
@@ -2593,11 +2682,13 @@ bool cGlobalDpdkTools::setThreadsAffinity(string *read, string *worker, string *
 	for(map<unsigned, unsigned>::iterator iter = ci.begin(); iter != ci.end() && rslt; iter++) {
 		if(opt_dpdk_read_thread == _dpdk_trt_rte) {
 			for(unsigned i = 0; i < iter->second && rslt; i++) {
-				int cpu = coreInfo.getFreeCpu(iter->first, true);
-				if(cpu >= 0) {
-					read_affinity.push_back(cpu);
-				} else {
-					rslt = false;
+				for(unsigned j = 0; j < count_rte_read_threads(); j++) {
+					int cpu = coreInfo.getFreeCpu(iter->first, true);
+					if(cpu >= 0) {
+						read_affinity.push_back(cpu);
+					} else {
+						rslt = false;
+					}
 				}
 			}
 		}

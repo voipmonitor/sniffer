@@ -7683,11 +7683,13 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				}
 			}
 			if(this->readThreads[i]->dpdkHandle && dpdk_config(this->readThreads[i]->dpdkHandle)->type_read_thread == _dpdk_trt_rte) {
-				++countThreads;
-				double tid_cpu = rte_read_thread_cpu_usage(this->readThreads[i]->dpdkHandle);
-				if(tid_cpu >= 0) {
-					sum += tid_cpu;
-					outStrStat << "%/dpdk_rte_read:" << setprecision(1) << tid_cpu;
+				for(unsigned rte_read_thread_id = 0; rte_read_thread_id < count_rte_read_threads(); rte_read_thread_id++) {
+					++countThreads;
+					double tid_cpu = rte_read_thread_cpu_usage(this->readThreads[i]->dpdkHandle, rte_read_thread_id);
+					if(tid_cpu >= 0) {
+						sum += tid_cpu;
+						outStrStat << "%/dpdk_rte_read:" << setprecision(1) << tid_cpu;
+					}
 				}
 			}
 			if(this->readThreads[i]->dpdkHandle && dpdk_config(this->readThreads[i]->dpdkHandle)->type_worker_thread == _dpdk_twt_rte) {
