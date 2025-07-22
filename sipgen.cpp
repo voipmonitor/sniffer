@@ -33,6 +33,7 @@ void sgParams::parse(const char *params) {
 	if(jsonData.getItem("time_183_ms_max")) time_183_ms_max = atoi(jsonData.getValue("time_183_ms_max").c_str());
 	if(jsonData.getItem("time_200_ms_min")) time_200_ms_min = atoi(jsonData.getValue("time_200_ms_min").c_str());
 	if(jsonData.getItem("time_200_ms_max")) time_200_ms_max = atoi(jsonData.getValue("time_200_ms_max").c_str());
+	if(jsonData.getItem("log_period")) log_period = atoi(jsonData.getValue("log_period").c_str());
 }
 
 void sgParams::check() {
@@ -73,7 +74,8 @@ void sgParams::printParams() {
 	<< " - time_183_ms_min (default 50ms)" << endl
 	<< " - time_183_ms_max (default 1000ms)" << endl
 	<< " - time_200_ms_min (default 100ms)" << endl
-	<< " - time_200_ms_max (default 5000ms)" << endl;
+	<< " - time_200_ms_max (default 5000ms)" << endl
+	<< " - log_period (default 2s)" << endl;
 }
 
 sgPackets::sgPackets() {
@@ -344,7 +346,7 @@ void sgMaster::stat_thread_proc() {
 		u_int64_t time = TIME_MS_TO_US(getTimeMS_rdtsc());
 		if(!print_stat_last_at) {
 			print_stat_last_at = time;
-		} else if(time >= print_stat_last_at + TIME_S_TO_US(1)) {
+		} else if(time >= print_stat_last_at + TIME_S_TO_US(sg_params.log_period)) {
 			printStat();
 			print_stat_last_at = time;
 		}

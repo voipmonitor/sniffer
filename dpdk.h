@@ -37,7 +37,7 @@ struct sDpdkHeaderPacket {
 struct sDpdkCallback {
 	void *packet_user;
 	sDpdkHeaderPacket *header_packet;
-	u_char* (*packet_allocation)(void *user, u_int32_t caplen);
+	u_char* (*packet_allocation)(void *user, u_int32_t caplen, bool force, bool pb_init);
 	void (*packet_completion)(void *user, pcap_pkthdr *pcap_header, u_char *packet);
 	bool (*packet_completion_plus)(void *user, pcap_pkthdr *pcap_header, u_char *packet, void *pcap_header_plus2,
 				       void *checkProtocolData);

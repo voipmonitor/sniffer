@@ -730,11 +730,11 @@ private:
 		dd->me->pcap_dispatch_handler(dd, header, packet);
 	}
 	void pcap_dispatch_handler(pcap_dispatch_data *dd, const struct pcap_pkthdr *header, const u_char *packet);
-	inline static u_char* _dpdk_packet_allocation(void *user, u_int32_t caplen) {
+	inline static u_char* _dpdk_packet_allocation(void *user, u_int32_t caplen, bool force, bool pb_init) {
 		PcapQueue_readFromInterfaceThread::pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
-		return(dd->me->dpdk_packet_allocation(dd, caplen));
+		return(dd->me->dpdk_packet_allocation(dd, caplen, force, pb_init));
 	}
-	u_char* dpdk_packet_allocation(pcap_dispatch_data *dd, u_int32_t caplen);
+	u_char* dpdk_packet_allocation(pcap_dispatch_data *dd, u_int32_t caplen, bool force, bool pb_init);
 	inline static void _dpdk_packet_completion(void *user, pcap_pkthdr *pcap_header, u_char *packet) {
 		PcapQueue_readFromInterfaceThread::pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
 		dd->me->dpdk_packet_completion(dd, pcap_header, packet);
@@ -810,9 +810,19 @@ private:
 		dd->copy_block_full[dd->copy_block_active_index] = 1;
 		int copy_block_no_active_index = (dd->copy_block_active_index + 1) % 2;
 		if(dd->copy_block_full[copy_block_no_active_index]) {
-			printf("wait for send no-active block\n");
+			u_int64_t wait_start = 0;
+			if(sverb.dpdk) {
+				wait_start = getTimeMS_rdtsc();
+				cout << "wait for send no-active block - tid: "
+				     << get_unix_tid() << ", " << __FILE__ << ":" << __LINE__ << flush;
+			}
 			while(dd->copy_block_full[copy_block_no_active_index]) {
-				USLEEP(1);
+				__ASM_PAUSE;
+			}
+			if(sverb.dpdk) {
+				u_int64_t wait_stop = getTimeMS_rdtsc();
+				if(wait_stop > wait_start) cout << " : " << (wait_stop - wait_start) << "ms";
+				cout << endl;
 			}
 		}
 		dd->block = dd->copy_block[copy_block_no_active_index];

@@ -67,6 +67,7 @@ extern int opt_dpdk_timer_reset_interval;
 extern int opt_dpdk_mtu;
 extern vector<string> opt_dpdk_vdev;
 extern bool opt_dpdk_ignore_ierrors;
+extern cThreadMonitor threadMonitor;
 
 
 #define MAXIMUM_SNAPLEN		262144
@@ -115,7 +116,8 @@ extern bool opt_dpdk_ignore_ierrors;
 #define DEBUG_CYCLES_MAX_LT_MS 100
 #define DEBUG_EXT_STAT false
 
-#define ENABLE_WORKER_SLAVE (opt_dpdk_worker_slave_thread && opt_dpdk_copy_packetbuffer && !opt_dpdk_mbufs_in_packetbuffer)
+#define ENABLE_WORKER_SLAVE (opt_dpdk_worker_slave_thread && !opt_dpdk_mbufs_in_packetbuffer)
+#define NEED_INIT_PB_BLOCK (ENABLE_WORKER_SLAVE && !opt_dpdk_copy_packetbuffer)
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
 
@@ -921,11 +923,16 @@ int pcap_dpdk_stats(sDpdk *dpdk, pcap_stat *ps, string *str_out) {
 		       << " ["
 		       << setprecision(2) << dpdk->bps/1e6f << "Mb/s"
 		       << "; packets: " << (dpdk->curr_stats.ipackets - dpdk->last_stat_ipackets);
-		if(!opt_dpdk_ignore_ierrors) {
+		if(!opt_dpdk_ignore_ierrors &&
+		   dpdk->curr_stats.ierrors > dpdk->last_stat_ierrors) {
 			outStr << "; errors: " << (dpdk->curr_stats.ierrors - dpdk->last_stat_ierrors);
 		}
-		outStr << "; imissed: " << (dpdk->curr_stats.imissed - dpdk->last_stat_imissed)
-		       << "; nombuf: " << (dpdk->curr_stats.rx_nombuf - dpdk->last_stat_nombuf);
+		if(dpdk->curr_stats.imissed > dpdk->last_stat_imissed) {
+			outStr << "; missed: " << (dpdk->curr_stats.imissed - dpdk->last_stat_imissed);
+		}
+		if(dpdk->curr_stats.rx_nombuf > dpdk->last_stat_nombuf) {
+			outStr << "; nombuf: " << (dpdk->curr_stats.rx_nombuf - dpdk->last_stat_nombuf);
+		}
 		dpdk->last_stat_ipackets = dpdk->curr_stats.ipackets;
 		if(!opt_dpdk_ignore_ierrors) {
 			dpdk->last_stat_ierrors = dpdk->curr_stats.ierrors;
@@ -943,8 +950,13 @@ int pcap_dpdk_stats(sDpdk *dpdk, pcap_stat *ps, string *str_out) {
 		}
 		#endif
 		if(dpdk->rx_to_worker_ring) {
-			outStr << "; ring count: " << rte_ring_count(dpdk->rx_to_worker_ring);
-			outStr << "; ring full: " << (dpdk->ring_full_drop - dpdk->last_stat_ring_full_drop);
+			unsigned int ring_count = rte_ring_count(dpdk->rx_to_worker_ring);
+			if(ring_count > 0) {
+				outStr << "; ring count: " << ring_count;
+			}
+			if(dpdk->ring_full_drop > dpdk->last_stat_ring_full_drop) {
+				outStr << "; ring full: " << (dpdk->ring_full_drop - dpdk->last_stat_ring_full_drop);
+			}
 			dpdk->last_stat_ring_full_drop = dpdk->ring_full_drop;
 		}
 		#if WORKER2_THREAD_SUPPORT
@@ -1130,6 +1142,7 @@ static int rte_read_thread(void *arg) {
 	setpriority(PRIO_PROCESS, dpdk->rte_read_thread_pid[read_thread_id], -19);
 	syslog(LOG_INFO, "DPDK - READ (rte) THREAD %i (thread_id=%d, rxq=%d)\n", 
 	       dpdk->rte_read_thread_pid[read_thread_id], read_thread_id, rxq);
+	threadMonitor.registerThread(dpdk->rte_read_thread_pid[read_thread_id], ("DPDK - READ (rte) - rxq=" + intToString(rxq)).c_str());
 	while(!dpdk->initialized) {
 		USLEEP(1000);
 	}
@@ -1171,6 +1184,7 @@ static int rte_read_thread(void *arg) {
 				++dpdk->ring_full_drop;
 			}
 		}
+		threadMonitor.unregisterThread(dpdk->rte_read_thread_pid[read_thread_id]);
 		return 0;
 	}
 	#endif
@@ -1376,6 +1390,7 @@ static int rte_read_thread(void *arg) {
 			}
 		}
 	}
+	threadMonitor.unregisterThread(dpdk->rte_read_thread_pid[read_thread_id]);
 	return 0;
 }
 
@@ -1386,6 +1401,7 @@ static int rte_worker_thread(void *arg) {
 	sDpdk *dpdk = (sDpdk*)arg;
 	dpdk->rte_worker_thread_pid = get_unix_tid();
 	syslog(LOG_INFO, "DPDK - WORKER (rte) THREAD %i\n", dpdk->rte_worker_thread_pid);
+	threadMonitor.registerThread(dpdk->rte_worker_thread_pid, "DPDK - WORKER (rte)");
 	void (*dpdk_process_packet_2)(sDpdk *dpdk, rte_mbuf *mbuff, u_int64_t timestamp_us
 				      #if WORKER2_THREAD_SUPPORT
 				      ,bool free_mbuff
@@ -1409,6 +1425,9 @@ static int rte_worker_thread(void *arg) {
 	PcapQueue_readFromInterfaceThread::pcap_dispatch_data *_dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)dpdk->config.callback.packet_user;
 	#endif
 	u_int32_t batch_count = 0;
+	if(NEED_INIT_PB_BLOCK) {
+		dpdk->config.callback.packet_allocation(dpdk->config.callback.packet_user, 0, true, true);
+	}
 	while(!dpdk->terminating) {
 		nb_rx = rte_ring_dequeue_burst(dpdk->rx_to_worker_ring, (void**)dpdk->pkts_burst, MAX_PKT_BURST, NULL);
 		if(likely(nb_rx)) {
@@ -1526,7 +1545,11 @@ static int rte_worker_thread(void *arg) {
 					}
 					#endif
 					if(filled) {
-						dpdk->config.callback.packets_push(dpdk->config.callback.packet_user);
+						if(opt_dpdk_copy_packetbuffer) {
+							dpdk->config.callback.packets_push(dpdk->config.callback.packet_user);
+						} else {
+							dpdk->config.callback.packet_allocation(dpdk->config.callback.packet_user, 0, true, true);
+						}
 						#if DPDK_DEBUG
 						//static int _cf = 0;
 						//cout << "push block " << (++_cf) << endl;
@@ -1574,6 +1597,7 @@ static int rte_worker_thread(void *arg) {
 		}
 	}
 	dpdk->worker_free();
+	threadMonitor.unregisterThread(dpdk->rte_worker_thread_pid);
 	return 0;
 }
 
@@ -1581,6 +1605,7 @@ static int rte_worker_slave_thread(void *arg) {
 	sDpdk *dpdk = (sDpdk*)arg;
 	dpdk->rte_worker_slave_thread_pid = get_unix_tid();
 	syslog(LOG_INFO, "DPDK - WORKER SLAVE (rte) THREAD %i\n", dpdk->rte_worker_slave_thread_pid);
+	threadMonitor.registerThread(dpdk->rte_worker_slave_thread_pid, "DPDK - WORKER SLAVE (rte)");
 	pcap_pkthdr header;
 	unsigned caplen;
 	PcapQueue_readFromInterface_base::sCheckProtocolData checkProtocolData;
@@ -1622,6 +1647,7 @@ static int rte_worker_slave_thread(void *arg) {
 		}
 		__SYNC_SET_TO(dpdk->worker_slave_state, 2);
 	}
+	threadMonitor.unregisterThread(dpdk->rte_worker_slave_thread_pid);
 	return 0;
 }
 
@@ -1631,6 +1657,7 @@ static int rte_worker2_thread(void *arg) {
 	sDpdk *dpdk = (sDpdk*)arg;
 	dpdk->rte_worker2_thread_pid = get_unix_tid();
 	syslog(LOG_INFO, "DPDK - WORKER 2 (rte) THREAD %i\n", dpdk->rte_worker2_thread_pid);
+	threadMonitor.registerThread(dpdk->rte_worker2_thread_pid, "DPDK - WORKER 2 (rte)");
 	rte_mbuf *pkts_burst[MAX_PKT_BURST];
 	uint16_t nb_rx;
 	while(!dpdk->terminating) {
@@ -1649,6 +1676,7 @@ static int rte_worker2_thread(void *arg) {
 			}
 		}
 	}
+	threadMonitor.unregisterThread(dpdk->rte_worker2_thread_pid);
 	return 0;
 }
 #endif
@@ -1672,7 +1700,7 @@ static inline void dpdk_process_packet(sDpdk *dpdk, rte_mbuf *mbuff, u_int64_t t
 	dpdk->cycles[4].setEnd();
 	dpdk->cycles[5].setBegin();
 	#endif
-	u_char *packet = dpdk->config.callback.packet_allocation(dpdk->config.callback.packet_user, caplen);
+	u_char *packet = dpdk->config.callback.packet_allocation(dpdk->config.callback.packet_user, caplen, false, NEED_INIT_PB_BLOCK);
 	#if DEBUG_CYCLES
 	dpdk->cycles[5].setEnd();
 	dpdk->cycles[6].setBegin();
@@ -1735,7 +1763,7 @@ static inline void dpdk_process_packet_2__std_2(sDpdk *dpdk, rte_mbuf *mbuff, u_
 						) {
 	uint32_t pkt_len = get_len(mbuff);
 	uint32_t caplen = get_caplen(pkt_len, dpdk);
-	dpdk->config.callback.packet_allocation(dpdk->config.callback.packet_user, caplen);
+	dpdk->config.callback.packet_allocation(dpdk->config.callback.packet_user, caplen, false, NEED_INIT_PB_BLOCK);
 	sDpdkHeaderPacket *hp = dpdk->config.callback.header_packet;
 	hp->header.ts.tv_sec = timestamp_us / 1000000;
 	hp->header.ts.tv_usec = timestamp_us % 1000000;

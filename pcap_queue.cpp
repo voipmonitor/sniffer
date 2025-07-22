@@ -5956,8 +5956,9 @@ void PcapQueue_readFromInterfaceThread::pcap_dispatch_handler(pcap_dispatch_data
 }
 */
 
-u_char* PcapQueue_readFromInterfaceThread::dpdk_packet_allocation(pcap_dispatch_data *dd, u_int32_t caplen) {
-	while(!dd->block ||
+u_char* PcapQueue_readFromInterfaceThread::dpdk_packet_allocation(pcap_dispatch_data *dd, u_int32_t caplen, bool force, bool pb_init) {
+	while(force ||
+	      !dd->block ||
 	      !dd->block->get_add_hp_pointers(&dd->pcap_header_plus2, &dd->headerPacket.packet, caplen)
 	      #if not DPDK_DEBUG_DISABLE_FORCE_FLUSH
 	      || (dd->block->count && force_push)
@@ -5965,9 +5966,18 @@ u_char* PcapQueue_readFromInterfaceThread::dpdk_packet_allocation(pcap_dispatch_
 	      ) {
 		if(opt_dpdk_copy_packetbuffer) {
 			if(!dd->block) {
-				printf("wait for init first block\n");
+				u_int64_t wait_start = 0;
+				if(sverb.dpdk) {
+					wait_start = getTimeMS_rdtsc();
+					cout << "wait for init first block" << flush;
+				}
 				while(!dd->block) {
-					USLEEP(1);
+					__ASM_PAUSE;
+				}
+				if(sverb.dpdk) {
+					u_int64_t wait_stop = getTimeMS_rdtsc();
+					if(wait_stop > wait_start) cout << " : " << (wait_stop - wait_start) << "ms";
+					cout << endl;
 				}
 			} else {
 				#if DPDK_DEBUG
@@ -5992,9 +6002,19 @@ u_char* PcapQueue_readFromInterfaceThread::dpdk_packet_allocation(pcap_dispatch_
 				dd->copy_block_full[dd->copy_block_active_index] = 1;
 				int copy_block_no_active_index = (dd->copy_block_active_index + 1) % 2;
 				if(dd->copy_block_full[copy_block_no_active_index]) {
-					printf("wait for send no-active block\n");
+					u_int64_t wait_start = 0;
+					if(sverb.dpdk) {
+						wait_start = getTimeMS_rdtsc();
+						cout << "wait for send no-active block - tid: "
+						     << get_unix_tid() << ", " << __FILE__ << ":" << __LINE__ << flush;
+					}
 					while(dd->copy_block_full[copy_block_no_active_index]) {
-						USLEEP(1);
+						__ASM_PAUSE;
+					}
+					if(sverb.dpdk) {
+						u_int64_t wait_stop = getTimeMS_rdtsc();
+						if(wait_stop > wait_start) cout << " : " << (wait_stop - wait_start) << "ms";
+						cout << endl;
 					}
 				}
 				dd->block = dd->copy_block[copy_block_no_active_index];
@@ -6004,9 +6024,18 @@ u_char* PcapQueue_readFromInterfaceThread::dpdk_packet_allocation(pcap_dispatch_
 			if(dd->block) {
 				if(opt_dpdk_defer_send_packetbuffer) {
 					if(dd->last_full_block) {
-						printf("wait for free last block\n");
+						u_int64_t wait_start = 0;
+						if(sverb.dpdk) {
+							wait_start = getTimeMS_rdtsc();
+							cout << "wait for free last block" << flush;
+						}
 						while(dd->last_full_block) {
-							USLEEP(10);
+							__ASM_PAUSE;
+						}
+						if(sverb.dpdk) {
+							u_int64_t wait_stop = getTimeMS_rdtsc();
+							if(wait_stop > wait_start) cout << " : " << (wait_stop - wait_start) << "ms";
+							cout << endl;
 						}
 					}
 					dd->last_full_block = dd->block;
@@ -6016,18 +6045,33 @@ u_char* PcapQueue_readFromInterfaceThread::dpdk_packet_allocation(pcap_dispatch_
 			}
 			if(opt_dpdk_prealloc_packetbuffer) {
 				if(!dd->next_free_block) {
-					printf("wait for next free block\n");
+					u_int64_t wait_start = 0;
+					if(sverb.dpdk) {
+						wait_start = getTimeMS_rdtsc();
+						cout << "wait for next free block" << flush;
+					}
 					while(!dd->next_free_block) {
-						USLEEP(10);
+						__ASM_PAUSE;
+					}
+					if(sverb.dpdk) {
+						u_int64_t wait_stop = getTimeMS_rdtsc();
+						if(wait_stop > wait_start) cout << " : " << (wait_stop - wait_start) << "ms";
+						cout << endl;
 					}
 				}
 				dd->block = (pcap_block_store*)dd->next_free_block;
 				dd->next_free_block = NULL;
 			} else {
 				dd->block = new FILE_LINE(0) pcap_block_store(pcap_block_store::plus2);
+				if(pb_init) {
+					dd->block->init(true);
+				}
 			}
 		}
 		force_push = false;
+		if(force && dd->block) {
+			break;
+		}
 	}
 	return(dd->headerPacket.packet);
 }
@@ -6069,9 +6113,18 @@ void PcapQueue_readFromInterfaceThread::dpdk_packet_process(pcap_dispatch_data *
 	      ) {
 		if(opt_dpdk_copy_packetbuffer) {
 			if(!dd->block) {
-				printf("wait for init first block\n");
+				u_int64_t wait_start = 0;
+				if(sverb.dpdk) {
+					wait_start = getTimeMS_rdtsc();
+					cout << "wait for init first block" << flush;
+				}
 				while(!dd->block) {
-					USLEEP(1);
+					__ASM_PAUSE;
+				}
+				if(sverb.dpdk) {
+					u_int64_t wait_stop = getTimeMS_rdtsc();
+					if(wait_stop > wait_start) cout << " : " << (wait_stop - wait_start) << "ms";
+					cout << endl;
 				}
 			} else {
 				#if DPDK_DEBUG
@@ -6096,9 +6149,19 @@ void PcapQueue_readFromInterfaceThread::dpdk_packet_process(pcap_dispatch_data *
 				dd->copy_block_full[dd->copy_block_active_index] = 1;
 				int copy_block_no_active_index = (dd->copy_block_active_index + 1) % 2;
 				if(dd->copy_block_full[copy_block_no_active_index]) {
-					printf("wait for send no-active block\n");
+					u_int64_t wait_start = 0;
+					if(sverb.dpdk) {
+						wait_start = getTimeMS_rdtsc();
+						cout << "wait for send no-active block - tid: "
+						     << get_unix_tid() << ", " << __FILE__ << ":" << __LINE__ << flush;
+					}
 					while(dd->copy_block_full[copy_block_no_active_index]) {
-						USLEEP(1);
+						__ASM_PAUSE;
+					}
+					if(sverb.dpdk) {
+						u_int64_t wait_stop = getTimeMS_rdtsc();
+						if(wait_stop > wait_start) cout << " : " << (wait_stop - wait_start) << "ms";
+						cout << endl;
 					}
 				}
 				dd->block = dd->copy_block[copy_block_no_active_index];
@@ -6108,9 +6171,18 @@ void PcapQueue_readFromInterfaceThread::dpdk_packet_process(pcap_dispatch_data *
 			if(dd->block) {
 				if(opt_dpdk_defer_send_packetbuffer) {
 					if(dd->last_full_block) {
-						printf("wait for free last block\n");
+						u_int64_t wait_start = 0;
+						if(sverb.dpdk) {
+							wait_start = getTimeMS_rdtsc();
+							cout << "wait for free last block" << flush;
+						}
 						while(dd->last_full_block) {
-							USLEEP(10);
+							__ASM_PAUSE;
+						}
+						if(sverb.dpdk) {
+							u_int64_t wait_stop = getTimeMS_rdtsc();
+							if(wait_stop > wait_start) cout << " : " << (wait_stop - wait_start) << "ms";
+							cout << endl;
 						}
 					}
 					dd->last_full_block = dd->block;
@@ -6121,9 +6193,18 @@ void PcapQueue_readFromInterfaceThread::dpdk_packet_process(pcap_dispatch_data *
 			}
 			if(opt_dpdk_prealloc_packetbuffer) {
 				if(!dd->next_free_block) {
-					printf("wait for next free block\n");
+					u_int64_t wait_start = 0;
+					if(sverb.dpdk) {
+						wait_start = getTimeMS_rdtsc();
+						cout << "wait for next free block" << flush;
+					}
 					while(!dd->next_free_block) {
-						USLEEP(10);
+						__ASM_PAUSE;
+					}
+					if(sverb.dpdk) {
+						u_int64_t wait_stop = getTimeMS_rdtsc();
+						if(wait_stop > wait_start) cout << " : " << (wait_stop - wait_start) << "ms";
+						cout << endl;
 					}
 				}
 				dd->block = (pcap_block_store*)dd->next_free_block;
@@ -6139,9 +6220,18 @@ void PcapQueue_readFromInterfaceThread::dpdk_packet_process(pcap_dispatch_data *
 void PcapQueue_readFromInterfaceThread::dpdk_packets_get_pointers(pcap_dispatch_data *dd, u_int32_t start, u_int32_t max, u_int32_t *pkts_len, u_int32_t snaplen,
 								  void **headers, void **packets, u_int32_t *count, bool *filled) {
 	if(!dd->block) {
-		printf("wait for init first block\n");
+		u_int64_t wait_start = 0;
+		if(sverb.dpdk) {
+			wait_start = getTimeMS_rdtsc();
+			cout << "wait for init first block" << flush;
+		}
 		while(!dd->block) {
-			USLEEP(1);
+			__ASM_PAUSE;
+		}
+		if(sverb.dpdk) {
+			u_int64_t wait_stop = getTimeMS_rdtsc();
+			if(wait_stop > wait_start) cout << " : " << (wait_stop - wait_start) << "ms";
+			cout << endl;
 		}
 	}
 	*count = 0;
@@ -6168,9 +6258,18 @@ void PcapQueue_readFromInterfaceThread::dpdk_packet_process__mbufs_in_packetbuff
 	if(!dd->block) {
 		if(opt_dpdk_prealloc_packetbuffer) {
 			if(!dd->next_free_block) {
-				printf("wait for next free block\n");
+				u_int64_t wait_start = 0;
+				if(sverb.dpdk) {
+					wait_start = getTimeMS_rdtsc();
+					cout << "wait for next free block" << flush;
+				}
 				while(!dd->next_free_block) {
-					USLEEP(10);
+					__ASM_PAUSE;
+				}
+				if(sverb.dpdk) {
+					u_int64_t wait_stop = getTimeMS_rdtsc();
+					if(wait_stop > wait_start) cout << " : " << (wait_stop - wait_start) << "ms";
+					cout << endl;
 				}
 			}
 			dd->block = (pcap_block_store*)dd->next_free_block;
@@ -6192,9 +6291,18 @@ void PcapQueue_readFromInterfaceThread::dpdk_packet_process__mbufs_in_packetbuff
 	if(dd->block->is_dpkd_data_full()) {
 		if(opt_dpdk_defer_send_packetbuffer) {
 			if(dd->last_full_block) {
-				printf("wait for free last block\n");
+				u_int64_t wait_start = 0;
+				if(sverb.dpdk) {
+					wait_start = getTimeMS_rdtsc();
+					cout << "wait for free last block" << flush;
+				}
 				while(dd->last_full_block) {
-					USLEEP(10);
+					__ASM_PAUSE;
+				}
+				if(sverb.dpdk) {
+					u_int64_t wait_stop = getTimeMS_rdtsc();
+					if(wait_stop > wait_start) cout << " : " << (wait_stop - wait_start) << "ms";
+					cout << endl;
 				}
 			}
 			dd->last_full_block = dd->block;
@@ -6220,7 +6328,7 @@ bool PcapQueue_readFromInterfaceThread::dpdk_check_block(pcap_dispatch_data *dd,
 		if(i < dd->block->count - 1) {
 			if(size_packet_a + size_header_a != (dd->block->offsets[i + 1] - dd->block->offsets[i])) {
 				rslt = false;
-				if(!only_check) {
+				if(!only_check && sverb.dpdk) {
 					cout << " * dpdk_check_block "
 					     << "bad caplen/offset " << i << "/" << size_packet_a << "/" << (dd->block->offsets[i + 1] - dd->block->offsets[i]) << endl;
 				}
@@ -6228,7 +6336,7 @@ bool PcapQueue_readFromInterfaceThread::dpdk_check_block(pcap_dispatch_data *dd,
 		} else {
 			if(size_packet_a + size_header_a != (dd->block->size - dd->block->offsets[i])) {
 				rslt = false;
-				if(!only_check) {
+				if(!only_check && sverb.dpdk) {
 					cout << " * dpdk_check_block "
 					     << "bad caplen/size " << i << "/" << size_packet_a << "/" << (dd->block->size - dd->block->offsets[i]) << endl;
 				}

@@ -31,6 +31,7 @@ struct sgParams {
 		time_183_ms_max = 1000;
 		time_200_ms_min = 100;
 		time_200_ms_max = 5000;
+		log_period = 2;
 	}
 	void parse(const char *params);
 	void check();
@@ -46,6 +47,7 @@ struct sgParams {
 	unsigned time_183_ms_max;
 	unsigned time_200_ms_min;
 	unsigned time_200_ms_max;
+	unsigned log_period;
 };
 
 class sgPackets {

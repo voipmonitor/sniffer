@@ -1102,7 +1102,7 @@ int opt_dpdk_ring_size = 0;
 int opt_dpdk_mempool_cache_size = 512;
 int opt_dpdk_zc = 0;
 int opt_dpdk_mbufs_in_packetbuffer = 0;
-int opt_dpdk_prealloc_packetbuffer = 0;
+int opt_dpdk_prealloc_packetbuffer = 1;
 int opt_dpdk_defer_send_packetbuffer = 0;
 int opt_dpdk_rotate_packetbuffer = 1;
 int opt_dpdk_rotate_packetbuffer_pool_max_perc = 25;
@@ -8257,6 +8257,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "suppress_drop_partitions")	sverb.suppress_drop_partitions = 1;
 	else if(verbParam == "whisper")				sverb.whisper = 1;
 	else if(verbParam == "packetbuffer_send")		sverb.packetbuffer_send = 1;
+	else if(verbParam == "dpdk")				sverb.dpdk = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
