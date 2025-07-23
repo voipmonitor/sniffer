@@ -107,6 +107,20 @@ else
 fi
 AC_CHECK_DECLS([LN_aes_128_gcm], HAVE_OPENSSL101=1, AC_MSG_WARN([disabling tls - ssl is too old - you need >= 1.0.1]), [[#include <openssl/obj_mac.h>]])
 AC_CHECK_LIB([rrd], [main], , AC_MSG_ERROR([Unable to find librrd library. apt-get install librrd-dev | yum install rrdtool-devel | or compile from source http://oss.oetiker.ch/rrdtool/doc/librrd.en.html]))
+
+RRDTOOL_VERSION=`pkg-config --modversion librrd 2>/dev/null`
+if test -z "$RRDTOOL_VERSION"; then
+    AC_MSG_WARN([Unable to detect RRDTool version via pkg-config.])
+else
+    AC_MSG_NOTICE([Found RRDTool version: $RRDTOOL_VERSION])
+    RRD_VERSION_MAJOR=`echo $RRDTOOL_VERSION | cut -d. -f1`
+    RRD_VERSION_MINOR=`echo $RRDTOOL_VERSION | cut -d. -f2`
+    RRD_VERSION_PATCH=`echo $RRDTOOL_VERSION | cut -d. -f3`
+    AC_DEFINE_UNQUOTED([RRD_VERSION_MAJOR], [$RRD_VERSION_MAJOR], [RRDTool major version])
+    AC_DEFINE_UNQUOTED([RRD_VERSION_MINOR], [$RRD_VERSION_MINOR], [RRDTool minor version])
+    AC_DEFINE_UNQUOTED([RRD_VERSION_PATCH], [$RRD_VERSION_PATCH], [RRDTool patch version])
+fi
+
 AC_CHECK_LIB([glib-2.0], [main], , AC_MSG_ERROR([Unable to find libglib library. apt-get install  libglib2.0-dev | yum install glib2-devel]))
 AC_CHECK_LIB([xml2], [main], , AC_MSG_ERROR([Unable to find xml2 library. apt-get install libxml2-dev | yum install libxml2-devel]))
 AC_CHECK_LIB([blake3], [blake3_hasher_init], HAVE_LIBBLAKE3=1, AC_MSG_NOTICE([Unable to find blake3 library. yum install blake3-devel or compile from source]))

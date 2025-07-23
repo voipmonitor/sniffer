@@ -4362,6 +4362,34 @@ else
   as_fn_error $? "Unable to find librrd library. apt-get install librrd-dev | yum install rrdtool-devel | or compile from source http://oss.oetiker.ch/rrdtool/doc/librrd.en.html" "$LINENO" 5
 fi
 
+
+RRDTOOL_VERSION=`pkg-config --modversion librrd 2>/dev/null`
+if test -z "$RRDTOOL_VERSION"; then
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: Unable to detect RRDTool version via pkg-config." >&5
+$as_echo "$as_me: WARNING: Unable to detect RRDTool version via pkg-config." >&2;}
+else
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: Found RRDTool version: $RRDTOOL_VERSION" >&5
+$as_echo "$as_me: Found RRDTool version: $RRDTOOL_VERSION" >&6;}
+	RRD_VERSION_MAJOR=`echo $RRDTOOL_VERSION | cut -d. -f1`
+	RRD_VERSION_MINOR=`echo $RRDTOOL_VERSION | cut -d. -f2`
+	RRD_VERSION_PATCH=`echo $RRDTOOL_VERSION | cut -d. -f3`
+
+cat >>confdefs.h <<_ACEOF
+#define RRD_VERSION_MAJOR $RRD_VERSION_MAJOR
+_ACEOF
+
+
+cat >>confdefs.h <<_ACEOF
+#define RRD_VERSION_MINOR $RRD_VERSION_MINOR
+_ACEOF
+
+
+cat >>confdefs.h <<_ACEOF
+#define RRD_VERSION_PATCH $RRD_VERSION_PATCH
+_ACEOF
+
+fi
+
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lglib-2.0" >&5
 $as_echo_n "checking for main in -lglib-2.0... " >&6; }
 if ${ac_cv_lib_glib_2_0_main+:} false; then :

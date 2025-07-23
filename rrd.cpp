@@ -638,6 +638,12 @@ void RrdCharts::updateAll() {
 	unlock_values();
 }
 
+#if RRD_VERSION_MAJOR * 100 + RRD_VERSION_MINOR >= 109
+#define RRD_CREATE_ARGV_TYPE (const char **)
+#else
+#define RRD_CREATE_ARGV_TYPE (char **)
+#endif
+
 bool RrdCharts::doRrdCmd(string cmd, string *error, bool syslogError) {
 	if(cmd.empty()) {
 		return(false);
@@ -666,13 +672,13 @@ bool RrdCharts::doRrdCmd(string cmd, string *error, bool syslogError) {
 	bool dllRun = false;
 	rrd_lock();
 	if(cmd_args[0] == "create") {
-		rrd_create(_cmd_args_length, (char**)_cmd_args);
+		rrd_create(_cmd_args_length, RRD_CREATE_ARGV_TYPE _cmd_args);
 		dllRun = true;
 	} else if(cmd_args[0] == "update") {
-		rrd_update(_cmd_args_length, (char**)_cmd_args);
+		rrd_update(_cmd_args_length, RRD_CREATE_ARGV_TYPE _cmd_args);
 		dllRun = true;
 	} else if(cmd_args[0] == "tune") {
-		rrd_tune(_cmd_args_length, (char**)_cmd_args);
+		rrd_tune(_cmd_args_length, RRD_CREATE_ARGV_TYPE _cmd_args);
 		dllRun = true;
 	}
 	rrd_unlock();

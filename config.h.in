@@ -76,6 +76,15 @@
 /* Define to 1 if you have the `rrd' library (-lrrd). */
 #undef HAVE_LIBRRD
 
+/* rrd major version */
+#undef RRD_VERSION_MAJOR
+
+/* rrd minor version */
+#undef RRD_VERSION_MINOR
+
+/* rrd patch version */
+#undef RRD_VERSION_PATCH
+
 /* Define to 1 if you have the `rt' library (-lrt). */
 #undef HAVE_LIBRT
 
