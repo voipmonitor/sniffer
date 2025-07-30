@@ -1275,6 +1275,7 @@ int opt_enable_semicolon_in_number = false;
 bool opt_response_time_from_first_invite = false;
 bool opt_redirect_publish_to_call = true;
 bool opt_remove_rtp_streams_after_resp3xx = false;
+bool opt_keep_final_last_sip_response = true;
 map<vmIPport, string> ssl_ipport;
 map<vmIPmask_port, string> ssl_netport;
 bool opt_ssl_ipport_reverse_enable;
@@ -7069,6 +7070,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("response_time_from_first_invite", &opt_response_time_from_first_invite));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("redirect_publish_to_call", &opt_redirect_publish_to_call));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("remove_rtp_streams_after_resp3xx", &opt_remove_rtp_streams_after_resp3xx));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("keep_final_last_sip_response", &opt_keep_final_last_sip_response));
 		subgroup("REGISTER");
 			addConfigItem((new FILE_LINE(42290) cConfigItem_yesno("sip-register", &opt_sip_register))
 				->addValues("old:2|o:2|nodb:3"));

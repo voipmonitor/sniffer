@@ -304,6 +304,7 @@ extern unsigned opt_max_sip_packets_in_call;
 extern unsigned opt_max_invite_packets_in_call;
 extern int opt_enable_semicolon_in_number;
 extern bool opt_redirect_publish_to_call;
+extern bool opt_keep_final_last_sip_response;
 
 extern cProcessingLimitations processing_limitations;
 
@@ -4901,7 +4902,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		  (c_branch->new_invite_after_lsr487 && lastSIPresponseNum == 200) ||
 		  (c_branch->cancel_lsr487 && lastSIPresponseNum/10 == 48)) &&
 		 !c_branch->seeninviteok &&
-		 !(c_branch->lastSIPresponseNum / 100 == 5 && lastSIPresponseNum / 100 == 5))) &&
+		 !(c_branch->lastSIPresponseNum / 100 == 5 && lastSIPresponseNum / 100 == 5) &&
+		 !(opt_keep_final_last_sip_response && c_branch->lastSIPresponseNum / 100 >= 2 && lastSIPresponseNum / 100 == 1 &&
+		   !(c_branch->lastSIPresponseNum == 401 || c_branch->lastSIPresponseNum == 407)))) &&
 	   (lastSIPresponseNum != 200 || packetS->cseq.method == INVITE || (opt_sip_message && packetS->cseq.method == MESSAGE)) &&
 	   !(c_branch->cancelcseq.is_set() && packetS->cseq.is_set() && packetS->cseq == c_branch->cancelcseq)) {
 		c_branch->lastSIPresponse = lastSIPresponse;
