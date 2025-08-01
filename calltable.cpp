@@ -14277,8 +14277,8 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 	delete [] closeCalls;
 	
 	if(closeAll && is_terminating()) {
-		extern int terminated_call_cleanup;
-		terminated_call_cleanup = 1;
+		extern int terminated_cleanup_calls;
+		terminated_cleanup_calls = 1;
 		syslog(LOG_NOTICE, "terminated - cleanup calls");
 	}
 	
@@ -14489,9 +14489,9 @@ Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
 	unlock_registers_listMAP();
 	
 	if(closeAll && is_terminating()) {
-		extern int terminated_call_cleanup;
-		terminated_call_cleanup = 1;
-		syslog(LOG_NOTICE, "terminated - call cleanup");
+		extern int terminated_cleanup_registers;
+		terminated_cleanup_registers = 1;
+		syslog(LOG_NOTICE, "terminated - cleanup registers");
 	}
 	
 	return 0;

@@ -568,7 +568,7 @@ int opt_mysql_max_multiple_rows_insert = 20;
 int opt_mysql_enable_new_store = 0;
 bool opt_mysql_enable_set_id = false;
 bool opt_csv_store_format = false;
-bool opt_mysql_mysql_redirect_cdr_queue = false;
+int opt_mysql_redirect_cdr_queue = false;
 int opt_cdr_sip_response_number_max_length = 0;
 vector<string> opt_cdr_sip_response_reg_remove;
 bool opt_cdr_sip_response_normalisation = false;
@@ -1242,8 +1242,10 @@ volatile int terminating;	// if set to 1, sniffer will terminate
 int terminating_moving_cache;	// if set to 1, worker thread will terminate
 int terminating_storing_cdr;	// if set to 1, worker thread will terminate
 int terminating_storing_registers;
+int terminated_storing;
 int terminating_charts_cache;
-int terminated_call_cleanup;
+int terminated_cleanup_calls;
+int terminated_cleanup_registers;
 int terminated_async;
 int terminated_tar_flush_queue[2];
 int terminated_tar[2];
@@ -2475,7 +2477,7 @@ void *storing_cdr( void */*dummy*/ ) {
 		firstIter = false;
 	}
 	if(verbosity && !opt_nocdr) {
-		syslog(LOG_NOTICE, "terminated - storing cdr / message / register");
+		syslog(LOG_NOTICE, "terminated - storing cdr / message");
 	}
 	if(terminating < 2) {
 		int _terminating = terminating;
@@ -2496,9 +2498,7 @@ void *storing_cdr( void */*dummy*/ ) {
 	while(calltable->getCountActiveAudioQueueThreads()) {
 		USLEEP(100000);
 	}
-	
 	terminating_storing_cdr = 2;
-	
 	return NULL;
 }
 
@@ -2728,7 +2728,7 @@ void *storing_registers( void */*dummy*/ ) {
 	if(verbosity && !opt_nocdr) {
 		syslog(LOG_NOTICE, "terminated - storing register");
 	}
-	
+	terminating_storing_registers = 2;
 	return NULL;
 }
 
@@ -3330,7 +3330,9 @@ void resetTerminating() {
 	terminating_moving_cache = 0;
 	terminating_storing_cdr = 0;
 	terminating_storing_registers = 0;
-	terminated_call_cleanup = 0;
+	terminated_storing = 0;
+	terminated_cleanup_calls = 0;
+	terminated_cleanup_registers = 0;
 	terminating_charts_cache = 0;
 	terminated_async = 0;
 	for(int i = 0; i < 2; i++) {
@@ -5648,35 +5650,6 @@ void main_term_read() {
 	extern TcpReassemblySip tcpReassemblySip;
 	tcpReassemblySip.clean();
 
-	if(opt_pcap_dump_asyncwrite) {
-		extern AsyncClose *asyncClose;
-		if(asyncClose) {
-			asyncClose->safeTerminate();
-			delete asyncClose;
-			asyncClose = NULL;
-		}
-	}
-	
-	if(opt_pcap_dump_tar) {
-		if(sverb.chunk_buffer > 1) { 
-			cout << "start destroy tar queue" << endl << flush;
-		}
-		for(int i = 0; i < 2; i++) {
-			if(tarQueue[i]) {
-				pthread_join(tarqueuethread[i], NULL);
-				delete tarQueue[i];
-				tarQueue[i] = NULL;
-			}
-			if(tarCopy) {
-				delete tarCopy;
-				tarCopy = NULL;
-			}
-		}
-		if(sverb.chunk_buffer > 1) { 
-			cout << "end destroy tar queue" << endl << flush;
-		}
-	}
-	
 	if(storing_cdr_thread) {
 		terminating_storing_cdr = 1;
 		pthread_join(storing_cdr_thread, NULL);
@@ -5704,6 +5677,36 @@ void main_term_read() {
 		terminating_storing_registers = 1;
 		pthread_join(storing_registers_thread, NULL);
 		storing_registers_thread = 0;
+	}
+	terminated_storing = 1;
+	
+	if(opt_pcap_dump_asyncwrite) {
+		extern AsyncClose *asyncClose;
+		if(asyncClose) {
+			asyncClose->safeTerminate();
+			delete asyncClose;
+			asyncClose = NULL;
+		}
+	}
+	
+	if(opt_pcap_dump_tar) {
+		if(sverb.chunk_buffer > 1) { 
+			cout << "start destroy tar queue" << endl << flush;
+		}
+		for(int i = 0; i < 2; i++) {
+			if(tarQueue[i]) {
+				pthread_join(tarqueuethread[i], NULL);
+				delete tarQueue[i];
+				tarQueue[i] = NULL;
+			}
+			if(tarCopy) {
+				delete tarCopy;
+				tarCopy = NULL;
+			}
+		}
+		if(sverb.chunk_buffer > 1) { 
+			cout << "end destroy tar queue" << endl << flush;
+		}
 	}
 	
 	if(useChartsCacheOrCdrStatProcessThreads()) {
@@ -5905,7 +5908,7 @@ void main_init_sqlstore() {
 			for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
 				if(opt_mysqlstore_concat_limit_cdr) {
 					sqlStore->setConcatLimit(STORE_PROC_ID_CDR, i, opt_mysqlstore_concat_limit_cdr);
-					if(opt_mysql_mysql_redirect_cdr_queue) {
+					if(opt_mysql_redirect_cdr_queue) {
 						sqlStore->setConcatLimit(STORE_PROC_ID_CDR_REDIRECT, i, opt_mysqlstore_concat_limit_cdr);
 						if(loadFromQFiles) {
 							loadFromQFiles->setConcatLimit(STORE_PROC_ID_CDR_REDIRECT, i, opt_mysqlstore_concat_limit_cdr);
@@ -5914,7 +5917,7 @@ void main_init_sqlstore() {
 				}
 				if(i) {
 					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_CDR, i);
-					if(opt_mysql_mysql_redirect_cdr_queue) {
+					if(opt_mysql_redirect_cdr_queue) {
 						sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_CDR_REDIRECT, i);
 						if(loadFromQFiles) {
 							loadFromQFiles->setEnableAutoDisconnect(STORE_PROC_ID_CDR_REDIRECT, i);
@@ -5923,7 +5926,7 @@ void main_init_sqlstore() {
 				}
 				if(opt_mysql_enable_transactions_cdr) {
 					sqlStore->setEnableTransaction(STORE_PROC_ID_CDR, i);
-					if(opt_mysql_mysql_redirect_cdr_queue) {
+					if(opt_mysql_redirect_cdr_queue) {
 						sqlStore->setEnableTransaction(STORE_PROC_ID_CDR_REDIRECT, i);
 						if(loadFromQFiles) {
 							loadFromQFiles->setEnableTransaction(STORE_PROC_ID_CDR_REDIRECT, i);
@@ -5932,7 +5935,7 @@ void main_init_sqlstore() {
 				}
 				if(opt_cdr_check_duplicity_callid_in_next_pass_insert) {
 					sqlStore->setEnableFixDeadlock(STORE_PROC_ID_CDR, i);
-					if(opt_mysql_mysql_redirect_cdr_queue) {
+					if(opt_mysql_redirect_cdr_queue) {
 						sqlStore->setEnableFixDeadlock(STORE_PROC_ID_CDR_REDIRECT, i);
 						if(loadFromQFiles) {
 							loadFromQFiles->setEnableFixDeadlock(STORE_PROC_ID_CDR_REDIRECT, i);
@@ -6293,12 +6296,13 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42115) cConfigItem_yesno("mysqltransactions_webrtc", &opt_mysql_enable_transactions_webrtc));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_enable_multiple_rows_insert", &opt_mysql_enable_multiple_rows_insert));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("mysql_max_multiple_rows_insert", &opt_mysql_max_multiple_rows_insert));
-				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("mysql_enable_new_store", &opt_mysql_enable_new_store))
-					->addValues("per_query:2"));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_enable_set_id", &opt_mysql_enable_set_id));
 					expert();
-					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_enable_set_id", &opt_mysql_enable_set_id));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("mysql_enable_new_store", &opt_mysql_enable_new_store))
+						->addValues("per_query:2"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("csv_store_format", &opt_csv_store_format));
-					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_redirect_cdr_queue", &opt_mysql_mysql_redirect_cdr_queue));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("mysql_redirect_cdr_queue", &opt_mysql_redirect_cdr_queue))
+						->addValues("direct:2"));
 		subgroup("cleaning");
 			addConfigItem(new FILE_LINE(42116) cConfigItem_integer("cleandatabase"));
 			addConfigItem(new FILE_LINE(42117) cConfigItem_integer("cleandatabase_cdr", &opt_cleandatabase_cdr));
@@ -8998,6 +9002,10 @@ void set_context_config() {
 			if(opt_mysql_enable_set_id && !opt_mysql_enable_new_store) {
 				opt_mysql_enable_new_store = 2;
 			}
+			if(opt_mysql_enable_set_id && opt_mysql_enable_new_store == 2 &&
+			   !CONFIG.isSet("mysql_redirect_cdr_queue")) {
+				opt_mysql_redirect_cdr_queue = true;
+			}
 		} else {
 			if(opt_mysql_enable_new_store || opt_mysql_enable_set_id) {
 				opt_mysql_enable_new_store = false;
@@ -9154,12 +9162,15 @@ void set_context_config() {
 	}
 	
 	if(is_read_from_file_by_pb()) {
-		opt_save_query_main_to_files = false;
-		opt_save_query_charts_to_files = false;
-		opt_save_query_charts_remote_to_files = false;
-		opt_load_query_main_from_files = 0;
-		opt_load_query_charts_from_files = 0;
-		opt_load_query_charts_remote_from_files = 0;
+		cConfigItem *item = CONFIG.getItem("query_cache");
+		if(!item || !item->is_set_in_json()) {
+			opt_save_query_main_to_files = false;
+			opt_save_query_charts_to_files = false;
+			opt_save_query_charts_remote_to_files = false;
+			opt_load_query_main_from_files = 0;
+			opt_load_query_charts_from_files = 0;
+			opt_load_query_charts_remote_from_files = 0;
+		}
 	}
 	
 	if(is_read_from_file()) {

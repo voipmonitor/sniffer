@@ -1990,7 +1990,7 @@ bool AsyncClose::removeThread() {
 }
 
 void AsyncClose::processTask(int threadIndex) {
-	extern int terminated_call_cleanup;
+	extern int terminated_storing;
 	this->threadId[threadIndex] = get_unix_tid();
 	do {
 		processAll(threadIndex);
@@ -2006,7 +2006,7 @@ void AsyncClose::processTask(int threadIndex) {
 			unlock(threadIndex);
 		}
 		USLEEP(10000);
-	} while(!terminated_call_cleanup);
+	} while(!terminated_storing);
 }
 
 void AsyncClose::processAll(int threadIndex) {
@@ -2065,8 +2065,8 @@ void AsyncClose::processAll(int threadIndex) {
 }
 
 void AsyncClose::safeTerminate() {
-	extern int terminated_call_cleanup;
-	while(!terminated_call_cleanup) {
+	extern int terminated_storing;
+	while(!terminated_storing) {
 		USLEEP(100000);
 	}
 	for(int i = 0; i < getCountThreads(); i++) {

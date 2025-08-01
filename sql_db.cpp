@@ -123,7 +123,7 @@ extern int opt_load_query_main_from_files;
 
 extern bool opt_disable_cdr_fields_rtp;
 extern bool opt_disable_cdr_indexes_rtp;
-extern bool opt_mysql_mysql_redirect_cdr_queue;
+extern int opt_mysql_redirect_cdr_queue;
 
 
 extern bool opt_sip_register_save_eq_states_time;
@@ -3929,10 +3929,21 @@ void MySqlStore_process::__store(list<string> *queries) {
 		if(sverb.store_process_query_compl) {
 			cout << "store_process_query_compl_" << this->id_main << "_" << this->id_2 << endl;
 		}
-		if(id_main == STORE_PROC_ID_CDR && opt_mysql_mysql_redirect_cdr_queue) {
-			parentStore->query_lock(&queries_list, STORE_PROC_ID_CDR_REDIRECT, 
-						parentStore->findMinId2(STORE_PROC_ID_CDR_REDIRECT, false),
-						100);
+		if(id_main == STORE_PROC_ID_CDR && opt_mysql_redirect_cdr_queue) {
+			extern MySqlStore *sqlStore;
+			if(!sqlStore || opt_mysql_redirect_cdr_queue == 2) {
+				parentStore->query_lock(&queries_list, STORE_PROC_ID_CDR_REDIRECT, 
+							parentStore->findMinId2(STORE_PROC_ID_CDR_REDIRECT, false),
+							100);
+			} else {
+				if(sqlStore->qfileConfigEnable(STORE_PROC_ID_CDR_REDIRECT)) {
+					sqlStore->query_lock(&queries_list, STORE_PROC_ID_CDR_REDIRECT, 0);
+				} else {
+					sqlStore->query_lock(&queries_list, STORE_PROC_ID_CDR_REDIRECT, 
+							     sqlStore->findMinId2(STORE_PROC_ID_CDR_REDIRECT, false),
+							     100);
+				}
+			}
 		} else {
 			for(list<string>::iterator iter = queries_list.begin(); iter != queries_list.end(); iter++) {
 				#if TEST_SERVER_STORE_SPEED
@@ -4245,7 +4256,7 @@ void MySqlStore::loadFromQFiles_start() {
 		if(!isCloud()) {
 			extern MySqlStore *sqlStore_2;
 			this->addLoadFromQFile(STORE_PROC_ID_CDR, "cdr");
-			this->addLoadFromQFile(STORE_PROC_ID_CDR_REDIRECT, "cdr");
+			this->addLoadFromQFile(STORE_PROC_ID_CDR_REDIRECT, "cdr_redir");
 			this->addLoadFromQFile(STORE_PROC_ID_MESSAGE, "message");
 			this->addLoadFromQFile(STORE_PROC_ID_SIP_MSG, "sip_msg");
 			this->addLoadFromQFile(STORE_PROC_ID_CLEANSPOOL, "cleanspool");

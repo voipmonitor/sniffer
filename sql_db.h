@@ -1209,6 +1209,12 @@ public:
 	bool isSetMaxThreadsForStoreId(int id_main);
 	int getConcatLimitForStoreId(int id_main);
 	bool isRedirectStoreId(int id_main);
+	bool qfileConfigEnable(int id) {
+		return(id == STORE_PROC_ID_SAVE_PACKET_SQL ? false :
+		       idIsNotCharts(id) ? qfileConfig.enable :
+		       idIsCharts(id) ? qfileConfig.enable_charts :
+		       idIsChartsRemote(id) ? qfileConfig.enable_charts_remote : false);
+	}
 private:
 	static void *threadQFilesCheckPeriod(void *arg);
 	static void *threadLoadFromQFiles(void *arg);
@@ -1233,12 +1239,6 @@ private:
 	}
 	bool idIsChartsRemote(int id) {
 		return(id == STORE_PROC_ID_CHARTS_CACHE_REMOTE);
-	}
-	bool qfileConfigEnable(int id) {
-		return(id == STORE_PROC_ID_SAVE_PACKET_SQL ? false :
-		       idIsNotCharts(id) ? qfileConfig.enable :
-		       idIsCharts(id) ? qfileConfig.enable_charts :
-		       idIsChartsRemote(id) ? qfileConfig.enable_charts_remote : false);
 	}
 private:
 	map<int, map<int, MySqlStore_process*> > processes;

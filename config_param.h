@@ -59,6 +59,9 @@ public:
 	virtual bool enableMultiValues() { return(false); }
 	virtual bool isPassword() { return(false); }
 	virtual bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false) = 0;
+	bool is_set_in_config() { return(set_in_config); }
+	bool is_set_in_db() { return(set_in_db); }
+	bool is_set_in_json() { return(set_in_json); }
 protected:
 	virtual bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false) = 0;
 	virtual bool setParamFromValuesStr(vector<string> /*list_value_str*/, bool /*enableInitBeforeSet*/ = true, bool /*enableClearBeforeFirstSet*/ = false) { return(false); }
