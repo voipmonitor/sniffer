@@ -158,14 +158,13 @@ void cIPFixConnection::process_ipfix_SipOutTcp(sIPFixHeader *header) {
 }
 
 void cIPFixConnection::process_packet(sIPFixHeader *header, string &data, bool tcp, timeval time, vmIPport src, vmIPport dst) {
-	/*
-	cout << "************************************************************" << endl;
-	cout << ntohs(header->SetID) << " / " << ntohl(header->SeqNum) << endl;
-	cout << time.tv_sec << "." << setw(6) << time.tv_usec << endl;
-	cout << src.getString() << " -> " << dst.getString() << endl;
-	cout << data << endl;
-	*/
-	//
+	if(sverb.ipfix) {
+		cout << "* IPFIX *" << endl;
+		cout << "id/seq: " << ntohs(header->SetID) << " / " << ntohl(header->SeqNum) << endl;
+		cout << "time: " << time.tv_sec << "." << setw(6) << time.tv_usec << endl;
+		cout << src.getString() << " -> " << dst.getString() << endl;
+		cout << data << endl << endl;
+	}
 	/*
 	u_int64_t time_us = getTimeUS();
 	time.tv_sec = time_us / 1000000ull;
@@ -422,6 +421,8 @@ void IPFix_client_emulation(const char *pcap, vmIP client_ip, vmIP server_ip, vm
 							break;
 						}
 					} while(!socket.isError());
+				} else {
+					cout << "unknown ip: " << ppd.header_ip->get_saddr().getString() << " -> " <<ppd.header_ip->get_daddr().getString() << endl;
 				}
 			}
 		}

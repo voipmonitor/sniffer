@@ -691,6 +691,8 @@ void HEP_client_emulation(const char *pcap, vmIP client_ip, vmIP server_ip, vmIP
 					if(socket.write((u_char*)ppd.data, ppd.datalen)) {
 						cout << "ok write " << ppd.datalen << endl;
 					}
+				} else {
+					cout << "unknown ip: " << ppd.header_ip->get_saddr().getString() << " -> " <<ppd.header_ip->get_daddr().getString() << endl;
 				}
 			}
 		}

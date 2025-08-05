@@ -8205,6 +8205,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "dtmf")				sverb.dtmf = 1;
 	else if(verbParam == "dtls")				sverb.dtls = 1;
 	else if(verbParam == "hep3")				sverb.hep3 = 1;
+	else if(verbParam == "ipfix")				sverb.ipfix = 1;
 	else if(verbParam == "cleanspool")			sverb.cleanspool = 1;
 	else if(verbParam == "cleanspool_disable_rm")		sverb.cleanspool_disable_rm = 1;
 	else if(verbParam == "t2_destroy_all")			sverb.t2_destroy_all = 1;
