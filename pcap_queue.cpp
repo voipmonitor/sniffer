@@ -1912,34 +1912,20 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 		}
 		extern bool opt_save_query_main_to_files;
 		if(loadFromQFiles) {
-			bool fill = false;
 			string stat = loadFromQFiles->getLoadFromQFilesStat();
 			string stat_proc = sverb.qfiles ? loadFromQFiles->getLoadFromQFilesStat(true) : "";
 			u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery(SqlDb::_tq_store);
 			u_int32_t countFilesQuery = loadFromQFiles->getLoadFromQFilesCount();
 			SqlDb::resetDelayQuery(SqlDb::_tq_store);
-			if(!stat.empty() || avgDelayQuery || !stat_proc.empty()) {
-				outStr << "SQLf[";
-			}
 			if(!stat.empty()) {
-				outStr << stat;
-				fill = true;
-			}
-			if(avgDelayQuery) {
-				if(fill) {
-					outStr << " / ";
+				outStr << "SQLf["
+				       << stat;
+				if(avgDelayQuery) {
+					outStr << " / " << setprecision(3) << (double)avgDelayQuery / 1000 << "s";
 				}
-				outStr << setprecision(3) << (double)avgDelayQuery / 1000 << "s";
-				fill = true;
-			}
-			if(!stat_proc.empty()) {
-				if(fill) {
-					outStr << " / ";
+				if(!stat_proc.empty()) {
+					outStr << " / " << stat_proc;
 				}
-				outStr << stat_proc;
-				fill = true;
-			}
-			if(fill) {
 				outStr << "] ";
 			}
 			if(opt_rrd && (avgDelayQuery || countFilesQuery)) {
@@ -1948,11 +1934,13 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			}
 		}
 		if(!loadFromQFiles || !opt_save_query_main_to_files || sverb.force_log_sqlq) {
-			outStr << "SQLq[";
+			bool filled = false;
 			if(isCloud()) {
 				int sizeSQLq = sqlStore->getSize(1, 0) +
 					       (loadFromQFiles ? loadFromQFiles->getSize(1, 0) : 0);
-				outStr << (sizeSQLq >=0 ? sizeSQLq : 0);
+				outStr << "SQLq[";
+				outStr << (sizeSQLq >= 0 ? sizeSQLq : 0);
+				filled = true;
 			} else {
 				map<int, int> size_map;
 				map<int, int> size_map_by_id_2;
@@ -1967,6 +1955,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 					int size = iter->second;
 					string id_main_str =
 						id_main == STORE_PROC_ID_CDR ? "C" :
+						id_main == STORE_PROC_ID_CDR_REDIRECT ? "Cr" :
 						id_main == STORE_PROC_ID_CHARTS_CACHE  ? "ch" :
 						id_main == STORE_PROC_ID_MESSAGE ? "M" :
 						id_main == STORE_PROC_ID_SIP_MSG ? "SM" :
@@ -1977,8 +1966,12 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 						id_main == STORE_PROC_ID_HTTP ? "H" :
 						id_main == STORE_PROC_ID_OTHER ? "O" :
 						("i" + intToString(id_main) + "_");
+					if(!filled) {
+						outStr << "SQLq[";
+					}
 					outStr << (first ? "" : " ") << id_main_str << (id_2 + 1) << ":" << size;
 					first = false;
+					filled = true;
 				}
 				if(opt_rrd) {
 					for(map<int, int>::iterator iter = size_map.begin(); iter != size_map.end(); iter++) {
@@ -1997,27 +1990,29 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 					}
 				}
 			}
-			for(int i = 0; i < 2; i++) {
-				SqlDb::eTypeQuery typeQuery = i == 0 ? SqlDb::_tq_std : SqlDb::_tq_redirect;
-				const char *prefix = i == 0 ? "" : "R";
-				u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery(typeQuery);
-				if(avgDelayQuery) {
-					outStr << " / " << setprecision(3) << prefix << (double)avgDelayQuery / 1000 << "s";
+			if(filled) {
+				for(int i = 0; i < 2; i++) {
+					SqlDb::eTypeQuery typeQuery = i == 0 ? SqlDb::_tq_std : SqlDb::_tq_redirect;
+					const char *prefix = i == 0 ? "" : "R";
+					u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery(typeQuery);
+					if(avgDelayQuery) {
+						outStr << " / " << setprecision(3) << prefix << (double)avgDelayQuery / 1000 << "s";
+					}
+					u_int32_t countQuery = SqlDb::getCountQuery(typeQuery);
+					if(countQuery) {
+						outStr << " / " << prefix << (countQuery / statPeriod) << "q/s";
+					}
+					SqlDb::resetDelayQuery(typeQuery);
 				}
-				u_int32_t countQuery = SqlDb::getCountQuery(typeQuery);
-				if(countQuery) {
-					outStr << " / " << prefix << (countQuery / statPeriod) << "q/s";
+				u_int64_t insertCount = SqlDb::getCountInsert();
+				if(insertCount) {
+					if(insertCount / statPeriod) {
+						outStr << " / " << (insertCount / statPeriod) << "i/s";
+					}
+					SqlDb::resetCountInsert();
 				}
-				SqlDb::resetDelayQuery(typeQuery);
+				outStr << "] ";
 			}
-			u_int64_t insertCount = SqlDb::getCountInsert();
-			if(insertCount) {
-				if(insertCount / statPeriod) {
-					outStr << " / " << (insertCount / statPeriod) << "i/s";
-				}
-				SqlDb::resetCountInsert();
-			}
-			outStr << "] ";
 		}
 		if(sverb.log_profiler) {
 			lapTime.push_back(getTimeMS_rdtsc());

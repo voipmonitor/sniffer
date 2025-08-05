@@ -23,6 +23,7 @@ struct sgParams {
 		pcap = "";
 		interface = "";
 		calls = 80;
+		rtp = true;
 		threads = 4;
 		max_time = 0;
 		dur_rtp_min = 2;
@@ -39,6 +40,7 @@ struct sgParams {
 	string pcap;
 	string interface;
 	unsigned calls;
+	bool rtp;
 	unsigned threads;
 	unsigned max_time;
 	unsigned dur_rtp_min;
@@ -345,6 +347,13 @@ public:
 		state_bye_ok,
 		state_end
 	};
+	enum eRsltProcess {
+		rslt_end = -1,
+		rslt_na = 0,
+		rslt_sip = 1,
+		rslt_rtp = 2,
+		rslt_rtp_skip = 3
+	};
 public:
 	sgCall(sgCalls *calls);
 	~sgCall();
@@ -361,7 +370,7 @@ private:
 		}
 		return(rslt);
 	}
-	int process_state(u_int64_t time);
+	eRsltProcess process_state(u_int64_t time, u_int16_t &packets);
 	void set_next_state();
 	void create_sip_packet(u_int64_t time);
 	void create_rtp_packets(u_int64_t time);

@@ -25,6 +25,7 @@ void sgParams::parse(const char *params) {
 	if(jsonData.getItem("pcap")) pcap = jsonData.getValue("pcap");
 	if(jsonData.getItem("interface")) interface = jsonData.getValue("interface");
 	if(jsonData.getItem("calls")) calls = atoi(jsonData.getValue("calls").c_str());
+	if(jsonData.getItem("rtp")) rtp = yesno(jsonData.getValue("rtp").c_str());
 	if(jsonData.getItem("threads")) threads = atoi(jsonData.getValue("threads").c_str());
 	if(jsonData.getItem("max_time")) max_time = atoi(jsonData.getValue("max_time").c_str());
 	if(jsonData.getItem("dur_rtp_min")) dur_rtp_min = atoi(jsonData.getValue("dur_rtp_min").c_str());
@@ -67,6 +68,7 @@ void sgParams::printParams() {
 	<< " - pcap" << endl
 	<< " - interface" << endl
 	<< " - calls (default 80)" << endl
+	<< " - rtp (yes/no - default yes)" << endl
 	<< " - threads (default 4)" << endl
 	<< " - max_time (default 0)" << endl
 	<< " - dur_rtp_min (default 2s)" << endl
@@ -426,12 +428,13 @@ void sgCalls::process() {
 		u_int64_t time = TIME_MS_TO_US(getTimeMS_rdtsc());
 		bool exists_process = false;
 		for(map<string, sgCall*>::iterator iter = calls.begin(); iter != calls.end();) {
-			int rslt = iter->second->process_state(time);
-			if(rslt >= 0) {
-				if(rslt > 0) {
+			u_int16_t packets = 0;
+			sgCall::eRsltProcess rslt = iter->second->process_state(time, packets);
+			if(rslt != sgCall::rslt_end) {
+				if(rslt != sgCall::rslt_na) {
 					exists_process = true;
 					#if PACKETS_COUNTER
-					packets_counter += rslt;
+					packets_counter += packets;
 					if(!packets_counter_last_time) {
 						packets_counter_last_time = time;
 					} else if(time >= packets_counter_last_time + TIME_S_TO_US(1)) {
@@ -626,25 +629,31 @@ string sgCall::create_tag() {
 	return(rand_str(charset, sizeof(charset) - 1, 10, 20));
 }
 
-int sgCall::process_state(u_int64_t time) {
+sgCall::eRsltProcess sgCall::process_state(u_int64_t time, u_int16_t &packets) {
 	if(next_state == state_end) {
-		return(-1);
+		return(rslt_end);
 	}
 	if(!(state == state_na || (next_state_at && time >= next_state_at))) {
-		return(0);
+		return(rslt_na);
 	}
-	int rslt = 0;
+	eRsltProcess rslt = rslt_na;
 	state = next_state;
 	last_state_at = time;
 	if(state == state_streams) {
 		if(!begin_streams_at) {
 			begin_streams_at = time;
 		}
-		create_rtp_packets(time);
-		rslt = 2;
+		if(sg_params.rtp) {
+			create_rtp_packets(time);
+			packets = 2;
+			rslt = rslt_rtp;
+		} else {
+			rslt = rslt_rtp_skip;
+		}
 	} else {
 		create_sip_packet(time);
-		rslt = 1;
+		packets = 1;
+		rslt = rslt_sip;
 	}
 	set_next_state();
 	return(rslt);

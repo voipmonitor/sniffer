@@ -2335,7 +2335,12 @@ cCdrStat::cCdrStat() {
 	first_interval = 0;
 	maxValuesPartsForPercentile = 1000;
 	mainInterval = opt_cdr_stat_interval * 60;
-	intervalStore = sverb.cdr_stat_interval_store ? sverb.cdr_stat_interval_store : mainInterval / 4;
+	intervalStore = sverb.cdr_stat_interval_store ? 
+			 sverb.cdr_stat_interval_store :
+			 (opt_cdr_stat_interval <= 15 ? mainInterval / 3 :
+			  opt_cdr_stat_interval <= 30 ? mainInterval / 3 :
+			  opt_cdr_stat_interval <= 60 ? mainInterval / 4 :
+			  30 * 60);
 	intervalCleanup = mainInterval * 2;
 	intervalExpiration = 5 * 60 * 60;
 	sqlDbStore = NULL;
@@ -2687,7 +2692,12 @@ void cCdrProblems::cListIP::fetch_ip_from_call(sChartsCallData *call, vmIP *src,
 cCdrProblems::cCdrProblems() {
 	first_interval = 0;
 	mainInterval = opt_cdr_problems_interval * 60;
-	intervalStore = sverb.cdr_problems_interval_store ? sverb.cdr_problems_interval_store : mainInterval / 4;
+	intervalStore = sverb.cdr_problems_interval_store ? 
+			 sverb.cdr_problems_interval_store :
+			 (opt_cdr_problems_interval <= 15 ? mainInterval / 3 :
+			  opt_cdr_problems_interval <= 30 ? mainInterval / 3 :
+			  opt_cdr_problems_interval <= 60 ? mainInterval / 4 :
+			  30 * 60);
 	intervalCleanup = mainInterval * 2;
 	intervalExpiration = 5 * 60 * 60;
 	sqlDbStore = NULL;
