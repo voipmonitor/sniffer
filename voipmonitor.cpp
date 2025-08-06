@@ -2038,19 +2038,19 @@ int SqlInitSchema(string *rsltConnectErrorString = NULL) {
 			sleep(1);
 		}
 		if(rsltConnect && sqlDb->connected()) {
-			if(!is_read_from_file() &&
+			if(!is_read_from_file_simple() &&
 			   sqlDb->getDbName() == "mysql" &&
-			   sqlDb->getDbMajorVersion() >= 8) {
+			   sqlDb->getDbVersion() >= 80000 && sqlDb->getDbVersion() < 80400) {
 				if(is_support_for_mysql_new_store()) {
 					if(opt_mysql_enable_new_store < 1) {
 						opt_mysql_enable_new_store = true;
 					}
 				} else {
 					if(!sqlDb->existsTable("cdr") || sqlDb->emptyTable("cdr")) {
-						connectErrorString = "! mysql version 8 is not supported because it contains critical bug #92023 (https://bugs.mysql.com/bug.php?id=92023)";
+						connectErrorString = "Mysql version >= 8.0 and < 8.4  is not supported because it contains critical bug #92023 (https://bugs.mysql.com/bug.php?id=92023). Please upgrade to version >= 8.4.";
 						connectOk = -1;
 					} else {
-						cLogSensor::log(cLogSensor::critical, "Mysql version 8 contains critical bug #92023 (https://bugs.mysql.com/bug.php?id=92023). Please downgrade to version 5.7 or contact support.");
+						cLogSensor::log(cLogSensor::critical, "Mysql version >= 8 and < 8.4 contains critical bug #92023 (https://bugs.mysql.com/bug.php?id=92023). Please upgrade to version >= 8.4.");
 						opt_mysql_enable_new_store = false;
 					}
 				}
