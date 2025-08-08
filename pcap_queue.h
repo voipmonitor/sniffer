@@ -499,6 +499,9 @@ private:
 	u_int64_t counterErrorLogEtherTypeFFFF_ms;
 	u_int64_t firstPacketTime_us;
 	u_int64_t firstPacketTime_at_ms;
+	bool waitForPacketTime;
+	pcap_pkthdr* wait_header;
+	u_char *wait_packet;
 friend class PcapQueue_readFromInterfaceThread;
 };
 

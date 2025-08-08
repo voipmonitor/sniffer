@@ -27,8 +27,6 @@
 
 
 extern int opt_t2_boost_direct_rtp;
-extern int opt_t2_boost_direct_rtp_delay_queue_ms;
-extern int opt_t2_boost_direct_rtp_max_queue_length_ms;
 
 
 class TcpReassemblySip {
@@ -1194,22 +1192,22 @@ public:
 		}
 		return(true);
 	}
-	inline void push_packet_to_direct_rtp_queue(packet_s_process *packetS) {
+	inline void push_packet_to_rtp_delay_queue(packet_s_process *packetS) {
 		extern bool use_push_batch_limit_ms;
 		u_int64_t time_us = use_push_batch_limit_ms ? packetS->getTimeUS() : 0;
-		if(!direct_rtp_queue_push_item) {
-			if(opt_t2_boost_direct_rtp_max_queue_length_ms > 0) {
-				bool direct_rtp_queue_full = false;
+		if(!rtp_delay_queue_push_item) {
+			if(rtp_delay_queue__max_length_ms > 0) {
+				bool rtp_delay_queue_full = false;
 				unsigned int usleepCounter = 0;
 				do {
-					direct_rtp_queue_full = false;
-					__SYNC_LOCK(direct_rtp_queue_lock);
-					if(direct_rtp_queue.size() > 1) {
-						batch_packet_s_time *front = direct_rtp_queue.front();
-						direct_rtp_queue_full = direct_rtp_queue_last_time > front->batch[front->count - 1]->getTimeUS() + opt_t2_boost_direct_rtp_max_queue_length_ms * 1000 * 1.5;
+					rtp_delay_queue_full = false;
+					__SYNC_LOCK(rtp_delay_queue_lock);
+					if(rtp_delay_queue.size() > 1) {
+						batch_packet_s_time *front = rtp_delay_queue.front();
+						rtp_delay_queue_full = rtp_delay_queue_last_time > front->batch[front->count - 1]->getTimeUS() + rtp_delay_queue__max_length_ms * 1000 * 1.5;
 					}
-					__SYNC_UNLOCK(direct_rtp_queue_lock);
-					if(direct_rtp_queue_full) {
+					__SYNC_UNLOCK(rtp_delay_queue_lock);
+					if(rtp_delay_queue_full) {
 						extern unsigned int opt_preprocess_packets_qring_push_usleep;
 						if(opt_preprocess_packets_qring_push_usleep) {
 							USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
@@ -1218,21 +1216,21 @@ public:
 							++usleepCounter;
 						}
 					}
-				} while(direct_rtp_queue_full);
+				} while(rtp_delay_queue_full);
 			}
 			extern unsigned int opt_preprocess_packets_qring_item_length;
-			direct_rtp_queue_push_item = new FILE_LINE(0) batch_packet_s_time(opt_preprocess_packets_qring_item_length);
+			rtp_delay_queue_push_item = new FILE_LINE(0) batch_packet_s_time(opt_preprocess_packets_qring_item_length);
 			extern unsigned int opt_push_batch_limit_ms;
-			direct_rtp_queue_push_item_limit_us = use_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
+			rtp_delay_queue_push_item_limit_us = use_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
 		}
-		direct_rtp_queue_push_item->push(packetS);
-		if(direct_rtp_queue_push_item->count == direct_rtp_queue_push_item->max_count ||
-		   time_us > direct_rtp_queue_push_item_limit_us) {
-			__SYNC_LOCK(direct_rtp_queue_lock);
-			direct_rtp_queue.push(direct_rtp_queue_push_item);
-			direct_rtp_queue_last_time = direct_rtp_queue_push_item->batch[direct_rtp_queue_push_item->count - 1]->getTimeUS();
-			__SYNC_UNLOCK(direct_rtp_queue_lock);
-			direct_rtp_queue_push_item = NULL;
+		rtp_delay_queue_push_item->push(packetS);
+		if(rtp_delay_queue_push_item->count == rtp_delay_queue_push_item->max_count ||
+		   time_us > rtp_delay_queue_push_item_limit_us) {
+			__SYNC_LOCK(rtp_delay_queue_lock);
+			rtp_delay_queue.push(rtp_delay_queue_push_item);
+			rtp_delay_queue_last_time = rtp_delay_queue_push_item->batch[rtp_delay_queue_push_item->count - 1]->getTimeUS();
+			__SYNC_UNLOCK(rtp_delay_queue_lock);
+			rtp_delay_queue_push_item = NULL;
 		}
 	}
 	inline void push_batch() {
@@ -1297,13 +1295,13 @@ public:
 			this->unlock_push();
 		}
 	}
-	inline void push_batch_to_direct_rtp_queue() {
-		if(direct_rtp_queue_push_item) {
-			__SYNC_LOCK(direct_rtp_queue_lock);
-			direct_rtp_queue.push(direct_rtp_queue_push_item);
-			direct_rtp_queue_last_time = direct_rtp_queue_push_item->batch[direct_rtp_queue_push_item->count - 1]->getTimeUS();
-			__SYNC_UNLOCK(direct_rtp_queue_lock);
-			direct_rtp_queue_push_item = NULL;
+	inline void push_batch_to_rtp_delay_queue() {
+		if(rtp_delay_queue_push_item) {
+			__SYNC_LOCK(rtp_delay_queue_lock);
+			rtp_delay_queue.push(rtp_delay_queue_push_item);
+			rtp_delay_queue_last_time = rtp_delay_queue_push_item->batch[rtp_delay_queue_push_item->count - 1]->getTimeUS();
+			__SYNC_UNLOCK(rtp_delay_queue_lock);
+			rtp_delay_queue_push_item = NULL;
 		}
 	}
 	void push_batch_nothread();
@@ -1947,12 +1945,15 @@ private:
 	unsigned push_thread;
 	u_int64_t last_race_log[2];
 	#endif
-	queue<batch_packet_s_time*> direct_rtp_queue;
-	batch_packet_s_time* direct_rtp_queue_push_item;
-	u_int64_t direct_rtp_queue_push_item_limit_us;
-	batch_packet_s_time* direct_rtp_queue_pop_item;
-	u_int64_t direct_rtp_queue_last_time;
-	volatile int direct_rtp_queue_lock;
+	int rtp_delay_queue__delay_ms;
+	int rtp_delay_queue__max_length_ms;
+	bool rtp_delay_queue__use;
+	queue<batch_packet_s_time*> rtp_delay_queue;
+	batch_packet_s_time* rtp_delay_queue_push_item;
+	u_int64_t rtp_delay_queue_push_item_limit_us;
+	batch_packet_s_time* rtp_delay_queue_pop_item;
+	volatile u_int64_t rtp_delay_queue_last_time;
+	volatile int rtp_delay_queue_lock;
 	#if SNIFFER_THREADS_EXT
 	cThreadMonitor::sThread *thread_data;
 	#endif

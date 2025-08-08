@@ -9946,11 +9946,26 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 	last_race_log[0] = 0;
 	last_race_log[1] = 0;
 	#endif
-	direct_rtp_queue_push_item = NULL;
-	direct_rtp_queue_push_item_limit_us = 0;
-	direct_rtp_queue_pop_item = NULL;
-	direct_rtp_queue_lock = 0;
-	direct_rtp_queue_last_time = 0;
+	extern int opt_t2_boost_rtp_delay_queue_ms;
+	extern int opt_t2_boost_rtp_max_queue_length_ms;
+	extern int opt_t2_boost_direct_rtp_delay_queue_ms;
+	extern int opt_t2_boost_direct_rtp_max_queue_length_ms;
+	rtp_delay_queue__delay_ms = opt_t2_boost ?
+				     (opt_t2_boost_direct_rtp ?
+				       opt_t2_boost_direct_rtp_delay_queue_ms :
+				       opt_t2_boost_rtp_delay_queue_ms) :
+				     0;
+	rtp_delay_queue__max_length_ms = opt_t2_boost ?
+					  (opt_t2_boost_direct_rtp ?
+					    opt_t2_boost_direct_rtp_max_queue_length_ms :
+					    opt_t2_boost_rtp_max_queue_length_ms) :
+					  0;
+	rtp_delay_queue__use = rtp_delay_queue__delay_ms > 0 && rtp_delay_queue__max_length_ms > 0;
+	rtp_delay_queue_push_item = NULL;
+	rtp_delay_queue_push_item_limit_us = 0;
+	rtp_delay_queue_pop_item = NULL;
+	rtp_delay_queue_lock = 0;
+	rtp_delay_queue_last_time = 0;
 }
 
 PreProcessPacket::~PreProcessPacket() {
@@ -9987,9 +10002,9 @@ PreProcessPacket::~PreProcessPacket() {
 		this->stackOther->destroyAll<packet_s_stack>();
 		delete this->stackOther;
 	}
-	while(direct_rtp_queue.size()) {
-		delete direct_rtp_queue.front();
-		direct_rtp_queue.pop();
+	while(rtp_delay_queue.size()) {
+		delete rtp_delay_queue.front();
+		rtp_delay_queue.pop();
 	}
 }
 
@@ -10435,8 +10450,8 @@ void *PreProcessPacket::outThreadFunction() {
 										if(p->need_sip_process || !p->is_rtp) {
 											preProcessPacket[ppt_sip]->push_packet(p);
 										} else {
-											if(opt_t2_boost_direct_rtp_delay_queue_ms || opt_t2_boost_direct_rtp_max_queue_length_ms) {
-												preProcessPacket[ppt_pp_rtp]->push_packet_to_direct_rtp_queue(p);
+											if(rtp_delay_queue__use) {
+												preProcessPacket[ppt_pp_rtp]->push_packet_to_rtp_delay_queue(p);
 											} else {
 												preProcessPacket[ppt_pp_rtp]->push_packet(p);
 											}
@@ -10490,8 +10505,8 @@ void *PreProcessPacket::outThreadFunction() {
 								if(p->need_sip_process || !p->is_rtp) {
 									preProcessPacket[ppt_sip]->push_packet(p);
 								} else {
-									if(opt_t2_boost_direct_rtp_delay_queue_ms || opt_t2_boost_direct_rtp_max_queue_length_ms) {
-										preProcessPacket[ppt_pp_rtp]->push_packet_to_direct_rtp_queue(p);
+									if(rtp_delay_queue__use) {
+										preProcessPacket[ppt_pp_rtp]->push_packet_to_rtp_delay_queue(p);
 									} else {
 										preProcessPacket[ppt_pp_rtp]->push_packet(p);
 									}
@@ -10516,8 +10531,8 @@ void *PreProcessPacket::outThreadFunction() {
 								if(p->need_sip_process || !p->is_rtp) {
 									preProcessPacket[ppt_sip]->push_packet(p);
 								} else {
-									if(opt_t2_boost_direct_rtp_delay_queue_ms || opt_t2_boost_direct_rtp_max_queue_length_ms) {
-										preProcessPacket[ppt_pp_rtp]->push_packet_to_direct_rtp_queue(p);
+									if(rtp_delay_queue__use) {
+										preProcessPacket[ppt_pp_rtp]->push_packet_to_rtp_delay_queue(p);
 									} else {
 										preProcessPacket[ppt_pp_rtp]->push_packet(p);
 									}
@@ -10737,7 +10752,11 @@ void *PreProcessPacket::outThreadFunction() {
 				if(opt_preprocess_packets_qring_force_push) {
 					preProcessPacket[ppt_extend]->push_batch();
 					if(opt_t2_boost && !opt_t2_boost_direct_rtp) {
-						preProcessPacket[ppt_pp_rtp]->push_batch();
+						if(rtp_delay_queue__use) {
+							preProcessPacket[ppt_pp_rtp]->push_batch_to_rtp_delay_queue();
+						} else {
+							preProcessPacket[ppt_pp_rtp]->push_batch();
+						}
 					}
 				}
 				#if RQUEUE_SAFE
@@ -10992,6 +11011,9 @@ void *PreProcessPacket::outThreadFunction() {
 						this->process_FIND_CALL(batch->batch[batch_index]);
 					}
 				}
+				if(opt_preprocess_packets_qring_force_push) {
+					preProcessPacket[ppt_pp_process_call]->push_batch();
+				}
 				#if RQUEUE_SAFE
 					if(batch_length_high_traffic_need && batch->max_count < opt_batch_length_sip_high_traffic) {
 						batch->realloc(opt_batch_length_sip_high_traffic);
@@ -11139,38 +11161,38 @@ void *PreProcessPacket::outThreadFunction() {
 				}
 			}
 		#endif
-		} else if(this->typePreProcessThread == ppt_pp_rtp && (opt_t2_boost_direct_rtp_delay_queue_ms || opt_t2_boost_direct_rtp_max_queue_length_ms)) {
-			if(!direct_rtp_queue_pop_item) {
-				__SYNC_LOCK(direct_rtp_queue_lock);
-				if(direct_rtp_queue.size()) {
-					direct_rtp_queue_pop_item = direct_rtp_queue.front();
-					direct_rtp_queue.pop();
+		} else if(this->typePreProcessThread == ppt_pp_rtp && rtp_delay_queue__use) {
+			if(!rtp_delay_queue_pop_item) {
+				__SYNC_LOCK(rtp_delay_queue_lock);
+				if(rtp_delay_queue.size()) {
+					rtp_delay_queue_pop_item = rtp_delay_queue.front();
+					rtp_delay_queue.pop();
 				}
-				__SYNC_UNLOCK(direct_rtp_queue_lock);
+				__SYNC_UNLOCK(rtp_delay_queue_lock);
 			}
-			if(direct_rtp_queue_pop_item) {
+			if(rtp_delay_queue_pop_item) {
 				u_int64_t time_ms = getTimeMS_rdtsc();
-				for(unsigned i = direct_rtp_queue_pop_item->count_processed; i < direct_rtp_queue_pop_item->count; i++) {
-					if((opt_t2_boost_direct_rtp_delay_queue_ms > 0 &&
-					    time_ms > direct_rtp_queue_pop_item->packet_batch_time_ms[i] + opt_t2_boost_direct_rtp_delay_queue_ms) ||
-					   (opt_t2_boost_direct_rtp_max_queue_length_ms > 0 &&
-					    direct_rtp_queue_last_time >= direct_rtp_queue_pop_item->batch[i]->getTimeUS() + opt_t2_boost_direct_rtp_max_queue_length_ms * 1000)) {
-						++direct_rtp_queue_pop_item->count_processed;
+				for(unsigned i = rtp_delay_queue_pop_item->count_processed; i < rtp_delay_queue_pop_item->count; i++) {
+					if((rtp_delay_queue__delay_ms > 0 &&
+					    time_ms > rtp_delay_queue_pop_item->packet_batch_time_ms[i] + rtp_delay_queue__delay_ms) ||
+					   (rtp_delay_queue__max_length_ms > 0 &&
+					    rtp_delay_queue_last_time >= rtp_delay_queue_pop_item->batch[i]->getTimeUS() + rtp_delay_queue__max_length_ms * 1000)) {
+						++rtp_delay_queue_pop_item->count_processed;
 						#if SNIFFER_THREADS_EXT
 						if(sverb.sniffer_threads_ext && thread_data) {
-							thread_data->inc_packets_in(direct_rtp_queue_pop_item->batch[i]->header_pt->caplen);
-							thread_data->inc_packets_out(direct_rtp_queue_pop_item->batch[i]->header_pt->caplen);
+							thread_data->inc_packets_in(rtp_delay_queue_pop_item->batch[i]->header_pt->caplen);
+							thread_data->inc_packets_out(rtp_delay_queue_pop_item->batch[i]->header_pt->caplen);
 						}
 						#endif
-						this->process_RTP(direct_rtp_queue_pop_item->batch[i]);
+						this->process_RTP(rtp_delay_queue_pop_item->batch[i]);
 						exists_used_direct_rtp = true;
 					} else {
 						break;
 					}
 				}
-				if(direct_rtp_queue_pop_item->count_processed == direct_rtp_queue_pop_item->count) {
-					delete direct_rtp_queue_pop_item;
-					direct_rtp_queue_pop_item = NULL;
+				if(rtp_delay_queue_pop_item->count_processed == rtp_delay_queue_pop_item->count) {
+					delete rtp_delay_queue_pop_item;
+					rtp_delay_queue_pop_item = NULL;
 				}
 			}
 		} else {
@@ -11209,7 +11231,11 @@ void *PreProcessPacket::outThreadFunction() {
 							   batch_index == count - 1) {
 								preProcessPacket[ppt_extend]->push_batch();
 								if(opt_t2_boost && !opt_t2_boost_direct_rtp) {
-									preProcessPacket[ppt_pp_rtp]->push_batch();
+									if(rtp_delay_queue__use) {
+										preProcessPacket[ppt_pp_rtp]->push_batch_to_rtp_delay_queue();
+									} else {
+										preProcessPacket[ppt_pp_rtp]->push_batch();
+									}
 								}
 							}
 							break;
@@ -11312,8 +11338,8 @@ void *PreProcessPacket::outThreadFunction() {
 				case ppt_detach:
 					preProcessPacket[ppt_sip]->push_batch();
 					if(opt_t2_boost_direct_rtp) {
-						if(opt_t2_boost_direct_rtp_delay_queue_ms || opt_t2_boost_direct_rtp_max_queue_length_ms) {
-							preProcessPacket[ppt_pp_rtp]->push_batch_to_direct_rtp_queue();
+						if(rtp_delay_queue__use) {
+							preProcessPacket[ppt_pp_rtp]->push_batch_to_rtp_delay_queue();
 						} else {
 							preProcessPacket[ppt_pp_rtp]->push_batch();
 						}
@@ -11322,7 +11348,11 @@ void *PreProcessPacket::outThreadFunction() {
 				case ppt_sip:
 					preProcessPacket[ppt_extend]->push_batch();
 					if(opt_t2_boost && !opt_t2_boost_direct_rtp) {
-						preProcessPacket[ppt_pp_rtp]->push_batch();
+						if(rtp_delay_queue__use) {
+							preProcessPacket[ppt_pp_rtp]->push_batch_to_rtp_delay_queue();
+						} else {
+							preProcessPacket[ppt_pp_rtp]->push_batch();
+						}
 					}
 					preProcessPacket[ppt_pp_other]->push_batch();
 					break;
@@ -11479,8 +11509,12 @@ void PreProcessPacket::processNextAction(packet_s_process *packetS) {
 		if(opt_t2_boost_direct_rtp) {
 			packetS->next_action = _ppna_destroy;
 		} else {
-			if(!preProcessPacket[ppt_pp_rtp]->push_packet(packetS)) {
-				return;
+			if(rtp_delay_queue__use) {
+				preProcessPacket[ppt_pp_rtp]->push_packet_to_rtp_delay_queue(packetS);
+			} else {
+				if(!preProcessPacket[ppt_pp_rtp]->push_packet(packetS)) {
+					return;
+				}
 			}
 		}
 		break;
@@ -11521,7 +11555,11 @@ void PreProcessPacket::push_batch_nothread() {
 		}
 		if(opt_t2_boost && !opt_t2_boost_direct_rtp) {
 			if(!preProcessPacket[ppt_pp_rtp]->outThreadState) {
-				preProcessPacket[ppt_pp_rtp]->push_batch();
+				if(rtp_delay_queue__use) {
+					preProcessPacket[ppt_pp_rtp]->push_batch_to_rtp_delay_queue();
+				} else {
+					preProcessPacket[ppt_pp_rtp]->push_batch();
+				}
 			}
 		}
 		if(!preProcessPacket[ppt_pp_other]->outThreadState) {
@@ -11883,7 +11921,11 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 			if(parallel_threads) {
 				packetS->next_action = _ppna_push_to_rtp;
 			} else {
-				preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
+				if(rtp_delay_queue__use) {
+					preProcessPacket[ppt_pp_rtp]->push_packet_to_rtp_delay_queue(packetS);
+				} else {
+					preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
+				}
 			}
 		} else {
 			packetS->type_content = _pptc_na;
@@ -12406,7 +12448,11 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, pack
 			if(packetS->next_action == _ppna_set) {
 				packetS->next_action = _ppna_push_to_rtp;
 			} else {
-				preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
+				if(rtp_delay_queue__use) {
+					preProcessPacket[ppt_pp_rtp]->push_packet_to_rtp_delay_queue(packetS);
+				} else {
+					preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
+				}
 			}
 		} else {
 			if(packetS->next_action == _ppna_set) {

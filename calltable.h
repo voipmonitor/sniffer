@@ -2315,14 +2315,23 @@ public:
 	}
 	
 	void set_destroy_call_at(u_int32_t time_s, u_int32_t shift_s) {
-		if(!typeIs(REGISTER)) {
+		extern int opt_t2_boost;
+		if(!typeIs(REGISTER) && opt_t2_boost) {
 			extern int opt_t2_boost_direct_rtp;
+			extern int opt_t2_boost_rtp_delay_queue_ms;
+			extern int opt_t2_boost_rtp_max_queue_length_ms;
 			extern int opt_t2_boost_direct_rtp_delay_queue_ms;
 			extern int opt_t2_boost_direct_rtp_max_queue_length_ms;
-			if(opt_t2_boost_direct_rtp && (opt_t2_boost_direct_rtp_delay_queue_ms || opt_t2_boost_direct_rtp_max_queue_length_ms)) {
-				int max_delay = max(opt_t2_boost_direct_rtp_delay_queue_ms, opt_t2_boost_direct_rtp_max_queue_length_ms);
-				if(shift_s < max_delay * 1.5 / 1000) {
-					shift_s = max_delay * 1.5 / 1000;
+			int delay_ms = opt_t2_boost_direct_rtp ?
+					opt_t2_boost_direct_rtp_delay_queue_ms :
+					opt_t2_boost_rtp_delay_queue_ms;
+			int max_length_ms = opt_t2_boost_direct_rtp ?
+					     opt_t2_boost_direct_rtp_max_queue_length_ms :
+					     opt_t2_boost_rtp_max_queue_length_ms;
+			if(delay_ms > 0 || max_length_ms > 0) {
+				int max_delay = max(delay_ms, max_length_ms);
+				if(shift_s < ceil(max_delay * 1.5 / 1000.)) {
+					shift_s = ceil(max_delay * 1.5 / 1000.);
 				}
 			}
 		}

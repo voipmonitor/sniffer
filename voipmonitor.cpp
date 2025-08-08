@@ -1156,6 +1156,8 @@ int opt_callend = 1; //if true, cdr.called is saved
 bool opt_disable_cdr_fields_rtp;
 bool opt_disable_cdr_indexes_rtp;
 int opt_t2_boost = true;
+int opt_t2_boost_rtp_delay_queue_ms = 0;
+int opt_t2_boost_rtp_max_queue_length_ms = 0;
 int opt_t2_boost_direct_rtp = false;
 int opt_t2_boost_direct_rtp_delay_queue_ms = 0;
 int opt_t2_boost_direct_rtp_max_queue_length_ms = 0;
@@ -6231,6 +6233,9 @@ void cConfig::addConfigItems() {
 					addConfigItem((new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost))
 						->addValues("high_traffic:2")
 						->addAlias("threading_expanded"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_rtp_delay_ms"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_rtp_delay_queue_ms", &opt_t2_boost_rtp_delay_queue_ms));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_rtp_max_queue_length_ms", &opt_t2_boost_rtp_max_queue_length_ms));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_direct_rtp", &opt_t2_boost_direct_rtp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_direct_rtp_delay_ms"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_direct_rtp_delay_queue_ms", &opt_t2_boost_direct_rtp_delay_queue_ms));
@@ -7896,6 +7901,10 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 			}
 		}
 	}
+	if(configItem->config_name == "t2_boost_rtp_delay_ms") {
+		opt_t2_boost_rtp_delay_queue_ms = configItem->getValueInt();
+		opt_t2_boost_rtp_max_queue_length_ms = configItem->getValueInt();
+	}
 	if(configItem->config_name == "t2_boost_direct_rtp_delay_ms") {
 		opt_t2_boost_direct_rtp_delay_queue_ms = configItem->getValueInt();
 		opt_t2_boost_direct_rtp_max_queue_length_ms = configItem->getValueInt();
@@ -8965,6 +8974,17 @@ void set_context_config() {
 	if(opt_t2_boost_direct_rtp) {
 		opt_t2_boost = 2;
 	}
+	
+	/* only a draft value for now
+	if(opt_t2_boost == 1 && !CONFIG.isSet("t2_boost_rtp_delay_ms")) {
+		if(!CONFIG.isSet("t2_boost_rtp_delay_queue_ms")) {
+			opt_t2_boost_rtp_delay_queue_ms = 200;
+		}
+		if(!CONFIG.isSet("t2_boost_rtp_max_queue_length_ms")) {
+			opt_t2_boost_rtp_max_queue_length_ms = 200;
+		}
+	}
+	*/
 	
 	if(opt_t2_boost == 2 && !CONFIG.isSet("t2_boost_direct_rtp_delay_ms")) {
 		if(!CONFIG.isSet("t2_boost_direct_rtp_delay_queue_ms")) {

@@ -3894,6 +3894,9 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(sInterface *i
 	counterErrorLogEtherTypeFFFF_ms = 0;
 	firstPacketTime_us = 0;
 	firstPacketTime_at_ms = 0;
+	waitForPacketTime = false;
+	wait_header = NULL;
+	wait_packet = NULL;
 }
 
 PcapQueue_readFromInterface_base::~PcapQueue_readFromInterface_base() {
@@ -4116,11 +4119,6 @@ failed:
 	return(false);
 }
 
-#if REPLICATE_FIRST_PACKET_EVERY_S
-static pcap_pkthdr* __header;
-static u_char* __packet;
-#endif
-
 inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet,
 								bool checkProtocol, sCheckProtocolData *checkProtocolData) {
 	if(!pcapHandle) {
@@ -4128,24 +4126,25 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 		*packet = NULL;
 		return(0);
 	}
-	#if REPLICATE_FIRST_PACKET_EVERY_S
-		int res;
-		if(!__header && !__packet) {
-			res = ::pcap_next_ex(pcapHandle, header, (const u_char**)packet);
-			__header = *header;
-			__packet = *packet;
-		} else {
-			sleep(REPLICATE_FIRST_PACKET_EVERY_S);
-			*header = __header;
-			*packet = __packet;
-			res = 1;
+	int res;
+	if(if_unlikely(opt_pb_read_from_file[0] && waitForPacketTime)) {
+		u_int64_t packetTime = getTimeUS(*header);
+		u_int64_t actTime_ms = getTimeMS_rdtsc();
+		u_int64_t pushTime_ms = firstPacketTime_at_ms + (packetTime - firstPacketTime_us) / opt_pb_read_from_file_speed / 1000;
+		if(pushTime_ms > actTime_ms) {
+			if(pushTime_ms > actTime_ms + 5) {
+				usleep(5000);
+				return(0);
+			} else {
+				usleep((pushTime_ms - actTime_ms) * 1000);
+			}
 		}
-		u_int64_t time_us = getTimeUS();
-		(*header)->ts.tv_sec = time_us / 1000000ull;
-		(*header)->ts.tv_usec = time_us % 1000000ull;
-	#else
-	int res = ::pcap_next_ex(pcapHandle, header, (const u_char**)packet);
-	#endif
+		waitForPacketTime = false;
+		*header = wait_header;
+		*packet = wait_packet;
+		goto checkProtocol;
+	}
+	res = ::pcap_next_ex(pcapHandle, header, (const u_char**)packet);
 	if(!packet && res != -2) {
 		if(VERBOSE) {
 			u_int64_t actTime = getTimeMS();
@@ -4214,7 +4213,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 	 last_ts = (*header)->ts;
 	}
 	*/
-	if(opt_pb_read_from_file[0]) {
+	if(if_unlikely(opt_pb_read_from_file[0])) {
 		if((*header)->caplen > this->pcap_snaplen) {
 			(*header)->caplen = this->pcap_snaplen;
 		}
@@ -4246,7 +4245,15 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 			} else if(packetTime > firstPacketTime_us) {
 				u_int64_t pushTime_ms = firstPacketTime_at_ms + (packetTime - firstPacketTime_us) / opt_pb_read_from_file_speed / 1000;
 				if(pushTime_ms > actTime_ms) {
-					usleep((pushTime_ms - actTime_ms) * 1000);
+					if(pushTime_ms > actTime_ms + 5) {
+						usleep(5000);
+						waitForPacketTime = true;
+						wait_header = *header;
+						wait_packet = *packet;
+						return(0);
+					} else {
+						usleep((pushTime_ms - actTime_ms) * 1000);
+					}
 				}
 			}
 		} else if(!opt_unlimited_read && !opt_nonstop_read_quick && heap_pb_used_perc > 5) {
@@ -4363,6 +4370,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 	}
 	lastPcapTime_s = (*header)->ts.tv_sec;
 	#endif
+checkProtocol:
 	if(checkProtocol || filter_ip) {
 		sCheckProtocolData _checkProtocolData;
 		if(!checkProtocolData) {
@@ -6684,7 +6692,7 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 			block = this->prevThread->pop_block();
 			if(!block) {
 				this->pop_usleep_sum += USLEEP_C(20, this->counter_pop_usleep++);
-				if(this->pop_usleep_sum > this->pop_usleep_sum_last_push + 200000) {
+				if(this->pop_usleep_sum > this->pop_usleep_sum_last_push + opt_pcap_queue_block_max_time_ms * 1000) {
 					this->prevThread->setForcePush();
 					this->pop_usleep_sum_last_push = this->pop_usleep_sum;
 				}
