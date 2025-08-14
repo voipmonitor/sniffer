@@ -99,6 +99,7 @@
 #include "charts.h"
 #include "ipfix.h"
 #include "hep.h"
+#include "ribbonsbc.h"
 #include "separate_processing.h"
 #include "crc.h"
 #include "transcribe.h"
@@ -1525,11 +1526,20 @@ bool opt_hep_counter_log;
 bool opt_hep_kamailio_protocol_id_fix = true;
 bool opt_hep_via_pb = true;
 
-bool opt_kamailio;
+bool opt_ribbonsbc_listen;
+string opt_ribbonsbc_bind_ip;
+unsigned opt_ribbonsbc_bind_port;
+bool opt_ribbonsbc_bind_udp;
+bool opt_ribbonsbc_counter_log;
+bool opt_ribbonsbc_via_pb = true;
+bool opt_ribbonsbc_size_header = true;
+bool opt_ribbonsbc_strict_check = false;
+
+bool opt_kamailio_subst;
 vmIP opt_kamailio_dstip;
 vmIP opt_kamailio_srcip;
 unsigned opt_kamailio_port;
-bool opt_ribbonsbc;
+bool opt_ribbonsbc_subst;
 vmIP opt_ribbonsbc_dstip;
 vmIP opt_ribbonsbc_srcip;
 unsigned opt_ribbonsbc_port;
@@ -4717,7 +4727,7 @@ int main_init_read() {
 		global_pcap_handle_index = register_pcap_handle(global_pcap_handle);
 	}
 	
-	if(opt_convert_dlt_sll_to_en10 || opt_ipfix || opt_hep) {
+	if(opt_convert_dlt_sll_to_en10 || opt_ipfix || opt_hep || opt_ribbonsbc_listen) {
 		global_pcap_handle_dead_EN10MB = pcap_open_dead(DLT_EN10MB, 65535);
 		global_pcap_handle_index_dead_EN10MB = register_pcap_handle(global_pcap_handle_dead_EN10MB);
 	}
@@ -5154,6 +5164,10 @@ int main_init_read() {
 	
 	if(opt_hep && !opt_hep_bind_ip.empty() && opt_hep_bind_port) {
 		HEP_ServerStart(opt_hep_bind_ip.c_str(), opt_hep_bind_port, opt_hep_bind_udp);
+	}
+	
+	if(opt_ribbonsbc_listen && !opt_ribbonsbc_bind_ip.empty() && opt_ribbonsbc_bind_port) {
+		RibbonSbc_ServerStart(opt_ribbonsbc_bind_ip.c_str(), opt_ribbonsbc_bind_port, opt_ribbonsbc_bind_udp);
 	}
 	
 	clear_readend();
@@ -5612,6 +5626,10 @@ void main_term_read() {
 	
 	if(opt_hep && !opt_hep_bind_ip.empty() && opt_hep_bind_port) {
 		HEP_ServerStop();
+	}
+	
+	if(opt_ribbonsbc_listen && !opt_ribbonsbc_bind_ip.empty() && opt_ribbonsbc_bind_port) {
+		RibbonSbc_ServerStop();
 	}
 
 	terminate_processpacket();
@@ -7540,6 +7558,14 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_counter_log",  &opt_hep_counter_log));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_kamailio_protocol_id_fix", &opt_hep_kamailio_protocol_id_fix));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_via_pb",  &opt_hep_via_pb));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ribbonsbc_listen",  &opt_ribbonsbc_listen));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("ribbonsbc_bind_ip",  &opt_ribbonsbc_bind_ip));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("ribbonsbc_bind_port",  &opt_ribbonsbc_bind_port));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ribbonsbc_bind_udp",  &opt_ribbonsbc_bind_udp));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ribbonsbc_counter_log",  &opt_ribbonsbc_counter_log));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ribbonsbc_via_pb",  &opt_ribbonsbc_via_pb));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ribbonsbc_size_header",  &opt_ribbonsbc_size_header));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ribbonsbc_strict_check",  &opt_ribbonsbc_strict_check));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audiocodes",  &opt_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_audiocodes",  &opt_udp_port_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_audiocodes",  &opt_tcp_port_audiocodes));
@@ -7548,9 +7574,11 @@ void cConfig::addConfigItems() {
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("audiocodes_rtcp",  &opt_audiocodes_rtcp))
 						->addValues("only:2|only_for_audiocodes_sip:3"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_ports("audiocodes_sip_ports", &opt_audiocodes_sip_ports));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("kamailio",  &opt_kamailio_subst));
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("kamailio_dstip",  &opt_kamailio_dstip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("kamailio_srcip",  &opt_kamailio_srcip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("kamailio_port",  &opt_kamailio_port ));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ribbonsbc",  &opt_ribbonsbc_subst));
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("ribbonsbc_dstip",  &opt_ribbonsbc_dstip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("ribbonsbc_srcip",  &opt_ribbonsbc_srcip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("ribbonsbc_port",  &opt_ribbonsbc_port));
@@ -8052,6 +8080,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"eval-formula", 1, 0, _param_eval_formula},
 	    {"ipfix-client-emulation", 1, 0, _param_ipfix_client_emulation},
 	    {"hep-client-emulation", 1, 0, _param_hep_client_emulation},
+	    {"ribbonsbc-client-emulation", 1, 0, _param_ribbonsbc_client_emulation},
 	    {"ws-calls", 1, 0, _param_ws_calls},
 	    {"extract_payload", 1, 0, _param_extract_payload},
 	    {"extract_rtp_payload", 1, 0, _param_extract_rtp_payload},
@@ -8851,6 +8880,24 @@ void get_command_line_arguments() {
 				exit(0);
 				}
 				break;
+			case _param_ribbonsbc_client_emulation:
+				{
+				vector<string> parameters = explode(optarg, ';');
+				if(parameters.size() >= 5) {
+					string pcap = parameters[0];
+					vmIP client_ip = str_2_vmIP(parameters[1].c_str()); 
+					vmIP server_ip = str_2_vmIP(parameters[2].c_str()); 
+					vmIP destination_ip = str_2_vmIP(parameters[3].c_str()); 
+					u_int64_t destination_port = atoi(parameters[4].c_str());
+					bool udp = false;
+					if(parameters.size() >= 6) {
+						udp = !strcasecmp(parameters[5].c_str(), "udp");
+					}
+					RibbonSbc_client_emulation(pcap.c_str(), client_ip, server_ip, destination_ip, destination_port, udp);
+				}
+				exit(0);
+				}
+				break;
 			case _param_ws_calls:
 				if(!ws_calls) {
 					ws_calls = new FILE_LINE(0) cWsCalls();
@@ -9500,10 +9547,17 @@ void set_context_config() {
 	if(!CONFIG.isSet("hep")) {
 		opt_hep = !opt_hep_bind_ip.empty() && opt_hep_bind_port;
 	}
-	
 	if(opt_hep && (is_sender() || is_client_packetbuffer_sender())) {
 		opt_hep = false;
 		syslog(LOG_ERR, "the hep option is not supported on a client with packet buffer sending or in mirror sender mode");
+	}
+	
+	if(!CONFIG.isSet("ribbonsbc_listen")) {
+		opt_ribbonsbc_listen = !opt_ribbonsbc_bind_ip.empty() && opt_ribbonsbc_bind_port;
+	}
+	if(opt_ribbonsbc_listen && (is_sender() || is_client_packetbuffer_sender())) {
+		opt_ribbonsbc_listen = false;
+		syslog(LOG_ERR, "the ribbonsbc option is not supported on a client with packet buffer sending or in mirror sender mode");
 	}
 	
 	opt_is_client_packetbuffer_sender = is_client_packetbuffer_sender();
@@ -9538,9 +9592,13 @@ void set_context_config() {
 		}
 	}
 
-	opt_kamailio = opt_kamailio_dstip.isSet();
-	opt_ribbonsbc = opt_ribbonsbc_dstip.isSet();
-	sip_data_subst = opt_kamailio || opt_ribbonsbc || opt_audiocodes;
+	if(!CONFIG.isSet("kamailio")) {
+		opt_kamailio_subst = opt_kamailio_dstip.isSet();
+	}
+	if(!CONFIG.isSet("ribbonsbc")) {
+		opt_ribbonsbc_subst = opt_ribbonsbc_dstip.isSet();
+	}
+	sip_data_subst = opt_kamailio_subst || opt_ribbonsbc_subst || opt_audiocodes;
 	
 	if(opt_dup_check_type == _dedup_murmur && opt_dup_check_ipheader == 2) {
 		opt_dup_check_type = _dedup_crc64;

@@ -211,6 +211,7 @@ enum eCmdLineParams {
 	_param_eval_formula,
 	_param_ipfix_client_emulation,
 	_param_hep_client_emulation,
+	_param_ribbonsbc_client_emulation,
 	_param_ws_calls,
 	_param_extract_payload,
 	_param_extract_rtp_payload,

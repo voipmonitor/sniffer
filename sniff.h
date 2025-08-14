@@ -66,8 +66,8 @@ unsigned int setCallFlags(unsigned long int flags, nat_aliases_t **nat_aliases,
 			  bool reconfigure = false);
 
 extern bool opt_audiocodes;
-extern bool opt_kamailio;
-extern bool opt_ribbonsbc;
+extern bool opt_kamailio_subst;
+extern bool opt_ribbonsbc_subst;
 extern bool sip_data_subst;
 extern int opt_t2_boost_direct_rtp;
 
@@ -194,7 +194,7 @@ struct packet_s {
 			}
 			#endif
 			#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-			if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
+			if(if_unlikely((opt_kamailio_subst || opt_ribbonsbc_subst) && kamailio_subst)) {
 				return(kamailio_subst->saddr);
 			}
 			#endif
@@ -217,7 +217,7 @@ struct packet_s {
 			}
 			#endif
 			#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-			if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
+			if(if_unlikely((opt_kamailio_subst || opt_ribbonsbc_subst) && kamailio_subst)) {
 				return(&kamailio_subst->saddr);
 			}
 			#endif
@@ -239,7 +239,7 @@ struct packet_s {
 			}
 			#endif
 			#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-			if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
+			if(if_unlikely((opt_kamailio_subst || opt_ribbonsbc_subst) && kamailio_subst)) {
 				return(kamailio_subst->daddr);
 			}
 			#endif
@@ -262,7 +262,7 @@ struct packet_s {
 			}
 			#endif
 			#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-			if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
+			if(if_unlikely((opt_kamailio_subst || opt_ribbonsbc_subst) && kamailio_subst)) {
 				return(&kamailio_subst->daddr);
 			}
 			#endif
@@ -278,7 +278,7 @@ struct packet_s {
 			}
 			#endif
 			#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-			if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
+			if(if_unlikely((opt_kamailio_subst || opt_ribbonsbc_subst) && kamailio_subst)) {
 				return(kamailio_subst->source);
 			}
 			#endif
@@ -293,7 +293,7 @@ struct packet_s {
 			}
 			#endif
 			#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-			if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
+			if(if_unlikely((opt_kamailio_subst || opt_ribbonsbc_subst) && kamailio_subst)) {
 				return(kamailio_subst->dest);
 			}
 			#endif
@@ -442,7 +442,7 @@ struct packet_s {
 			}
 			#endif
 			#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-			if(if_unlikely((opt_kamailio || opt_ribbonsbc) && kamailio_subst)) {
+			if(if_unlikely((opt_kamailio_subst || opt_ribbonsbc_subst) && kamailio_subst)) {
 				delete kamailio_subst;
 				kamailio_subst = NULL;
 			}

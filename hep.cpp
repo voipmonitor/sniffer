@@ -641,7 +641,7 @@ void HEP_client_emulation(const char *pcap, vmIP client_ip, vmIP server_ip, vmIP
 	sHeaderPacket *header_packet = NULL;
 	pcapProcessData ppd;
 	int res;
-	cSocket socket("x");
+	cSocket socket("HEP_client_emulation");
 	if(udp) {
 		socket.setUdp(true);
 	}

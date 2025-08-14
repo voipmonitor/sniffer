@@ -9809,8 +9809,12 @@ inline void *_PreProcessPacket_nextThreadFunction(void *arg) {
 }
 
 PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, unsigned idPreProcessThread) {
+	extern bool opt_ipfix;
+	extern bool opt_hep;
+	extern bool opt_ribbonsbc_listen;
 	extern bool opt_ipfix_via_pb;
 	extern bool opt_hep_via_pb;
+	extern bool opt_ribbonsbc_via_pb;
 	this->typePreProcessThread = typePreProcessThread;
 	this->needLockPush = false;
 	switch(typePreProcessThread) {
@@ -9819,7 +9823,8 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 		if(opt_t2_boost_direct_rtp &&
 		   ((opt_enable_ssl && opt_ssl_enable_redirection_unencrypted_sip_content) || 
 		    (opt_ipfix && !(opt_t2_boost && opt_ipfix_via_pb)) ||
-		    (opt_hep && !(opt_t2_boost && opt_hep_via_pb)))) {
+		    (opt_hep && !(opt_t2_boost && opt_hep_via_pb)) ||
+		    (opt_ribbonsbc_listen && !(opt_t2_boost && opt_ribbonsbc_via_pb)))) {
 			this->needLockPush = true;
 		}
 		break;
@@ -9827,7 +9832,8 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 		if(!opt_t2_boost_direct_rtp &&
 		   (opt_enable_ssl ||
 		    (opt_ipfix && !(opt_t2_boost && opt_ipfix_via_pb)) ||
-		    (opt_hep && !(opt_t2_boost && opt_hep_via_pb)))) {
+		    (opt_hep && !(opt_t2_boost && opt_hep_via_pb)) ||
+		    (opt_ribbonsbc_listen && !(opt_t2_boost && opt_ribbonsbc_via_pb)))) {
 			this->needLockPush = true;
 		}
 		break;
@@ -12486,125 +12492,120 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 		extern vmIP opt_kamailio_dstip;
 		extern vmIP opt_kamailio_srcip;
 		extern unsigned opt_kamailio_port;
-		if(opt_kamailio && opt_kamailio_dstip.isSet() && opt_kamailio_dstip == packetS->daddr_() &&
+		if(opt_kamailio_subst && 
+		   (!opt_kamailio_dstip.isSet() || opt_kamailio_dstip == packetS->daddr_()) &&
 		   (!opt_kamailio_srcip.isSet() || opt_kamailio_srcip == packetS->saddr_()) &&
 		   (!opt_kamailio_port || opt_kamailio_port == packetS->dest_().port)) {
-			unsigned long from_ip_l;
-			char *from_ip = gettag_sip(packetS, "\nX-Siptrace-Fromip:", &from_ip_l);
-			if(from_ip) {
-				unsigned long to_ip_l;
-				char *to_ip = gettag_sip(packetS, "\nX-Siptrace-Toip:", &to_ip_l);
-				if(to_ip) {
-					bool is_tcp[2] = { false, false };
-					vmIP n_ip[2];
-					unsigned n_port[2] = { 0, 0 };
-					bool ok_ip[2] = { false, false };
-					for(int i = 0; i < 2; i++) {
-						char *ip = i == 0 ? from_ip : to_ip;
-						unsigned long l = i == 0 ? from_ip_l : to_ip_l;
-						char *p_sep_ip = strnchr(ip, ':', l);
-						if(p_sep_ip) {
-							char *p_sep_port = strnrchr(p_sep_ip + 1, ':', l - (p_sep_ip - ip));
-							if(p_sep_port) {
-								is_tcp[i] = ip[0] == 't' || ip[0] == 'T';
-								string str_ip = string(p_sep_ip + 1, p_sep_port - p_sep_ip - 1);
-								n_port[i] = atoi(p_sep_port + 1);
-								if(n_ip[i].setFromString(str_ip.c_str()) &&
-								   n_port[i] > 0 && n_port[i] <= 0xFFFF) {
-									ok_ip[i] = true;
-									// cout << (is_tcp[i] ? 'T' : 'U') << " : " << n_ip[i].getString() << " : " << n_port[i] << endl;
-								} else {
-									break;
-								}
+			vmIPport from_ip_port;
+			vmIPport to_ip_port;
+			bool from_ip_port_ok = false;
+			bool to_ip_port_ok = false;
+			bool from_is_tcp = false;
+			bool to_is_tcp = false;
+			unsigned long from_ip_port_l;
+			char *from_ip_port_s = gettag_sip(packetS, "\nX-Siptrace-Fromip:", &from_ip_port_l);
+			if(from_ip_port_s) {
+				unsigned long to_ip_port_l;
+				char *to_ip_port_s = gettag_sip(packetS, "\nX-Siptrace-Toip:", &to_ip_port_l);
+				if(to_ip_port_s) {
+					char *_from_ip_port_s = strnchr(from_ip_port_s, ':', from_ip_port_l);
+					char *_to_ip_port_s = strnchr(to_ip_port_s, ':', to_ip_port_l);
+					if(_from_ip_port_s && _to_ip_port_s) {
+						string from_ip_port_str(_from_ip_port_s + 1, from_ip_port_l - (_from_ip_port_s - from_ip_port_s) - 1);
+						if(from_ip_port.setFromString(from_ip_port_str.c_str())) {
+							from_ip_port_ok = true;
+							from_is_tcp = toupper(from_ip_port_s[0]) == 'T';
+							string to_ip_port_str(_to_ip_port_s + 1, to_ip_port_l - (_to_ip_port_s - to_ip_port_s) - 1);
+							if(to_ip_port.setFromString(to_ip_port_str.c_str())) {
+								to_ip_port_ok = true;
+								to_is_tcp = toupper(to_ip_port_s[0]) == 'T';
 							}
 						}
-					}
-					if(ok_ip[0] && ok_ip[1]) {
-						packet_s_kamailio_subst *kamailio_subst = new FILE_LINE(0) packet_s_kamailio_subst;
-						kamailio_subst->is_tcp = is_tcp[0] || is_tcp[1];
-						kamailio_subst->saddr = n_ip[0];
-						kamailio_subst->daddr = n_ip[1];
-						kamailio_subst->source = n_port[0];
-						kamailio_subst->dest = n_port[1];
-						unsigned long time_l;
-						char *time = gettag_sip(packetS, "\nX-Siptrace-Time:", &time_l);
-						bool time_ok = false;
-						if(time) {
-							char *p_sep_us = strnchr(time, ' ', time_l) ;
-							if(p_sep_us) {
-								kamailio_subst->ts.tv_sec = atol(time);
-								kamailio_subst->ts.tv_usec = atol(p_sep_us + 1);
-								extern char opt_pb_read_from_file[256];
-								extern int opt_pb_read_from_file_acttime;
-								extern u_int64_t opt_pb_read_from_file_acttime_diff;
-								if(opt_pb_read_from_file[0]) {
-									if(opt_pb_read_from_file_acttime) {
-										u_int64_t packetTime = getTimeUS(kamailio_subst->ts);
-										packetTime += opt_pb_read_from_file_acttime_diff;
-										kamailio_subst->ts.tv_sec = TIME_US_TO_S(packetTime);
-										kamailio_subst->ts.tv_usec = TIME_US_TO_DEC_US(packetTime);
-									}
-								}
-								time_ok = true;
-							}
-						}
-						if(!time_ok) {
-							kamailio_subst->ts.tv_sec = 0;
-							kamailio_subst->ts.tv_usec = 0;
-						}
-						packetS->kamailio_subst = kamailio_subst;
-						#if not NOT_USE_SEPARATE_TIME_US
-						packetS->time_us = ::getTimeUS(kamailio_subst->ts);
-						#endif
 					}
 				}
 			}
+			if(from_ip_port_ok && to_ip_port_ok) {
+				packet_s_kamailio_subst *kamailio_subst = new FILE_LINE(0) packet_s_kamailio_subst;
+				kamailio_subst->is_tcp = from_is_tcp || to_is_tcp;
+				kamailio_subst->saddr = from_ip_port.ip;
+				kamailio_subst->daddr = to_ip_port.ip;
+				kamailio_subst->source = from_ip_port.port;
+				kamailio_subst->dest = to_ip_port.port;
+				unsigned long time_l;
+				char *time = gettag_sip(packetS, "\nX-Siptrace-Time:", &time_l);
+				bool time_ok = false;
+				if(time) {
+					char *p_sep_us = strnchr(time, ' ', time_l) ;
+					if(p_sep_us) {
+						kamailio_subst->ts.tv_sec = atol(time);
+						kamailio_subst->ts.tv_usec = atol(p_sep_us + 1);
+						extern char opt_pb_read_from_file[256];
+						extern int opt_pb_read_from_file_acttime;
+						extern u_int64_t opt_pb_read_from_file_acttime_diff;
+						if(opt_pb_read_from_file[0]) {
+							if(opt_pb_read_from_file_acttime) {
+								u_int64_t packetTime = getTimeUS(kamailio_subst->ts);
+								packetTime += opt_pb_read_from_file_acttime_diff;
+								kamailio_subst->ts.tv_sec = TIME_US_TO_S(packetTime);
+								kamailio_subst->ts.tv_usec = TIME_US_TO_DEC_US(packetTime);
+							}
+						}
+						time_ok = true;
+					}
+				}
+				if(!time_ok) {
+					kamailio_subst->ts.tv_sec = 0;
+					kamailio_subst->ts.tv_usec = 0;
+				}
+				packetS->kamailio_subst = kamailio_subst;
+				#if not NOT_USE_SEPARATE_TIME_US
+				packetS->time_us = ::getTimeUS(kamailio_subst->ts);
+				#endif
+			}
 		}
 		#endif
-		extern bool opt_ribbonsbc;
+		extern bool opt_ribbonsbc_subst;
 		extern vmIP opt_ribbonsbc_dstip;
 		extern vmIP opt_ribbonsbc_srcip;
 		extern unsigned opt_ribbonsbc_port;
-		if(opt_ribbonsbc && opt_ribbonsbc_dstip.isSet() && opt_ribbonsbc_dstip == packetS->daddr_() &&
+		if(opt_ribbonsbc_subst &&
+		   (!opt_ribbonsbc_dstip.isSet() || opt_ribbonsbc_dstip == packetS->daddr_()) &&
 		   (!opt_ribbonsbc_srcip.isSet() || opt_ribbonsbc_srcip == packetS->saddr_()) &&
 		   (!opt_ribbonsbc_port || opt_ribbonsbc_port == packetS->dest_().port)) {
-			unsigned long from_ip_l;
-			char *from_ip = gettag_sip(packetS, "\nsrcIP:", &from_ip_l);
-			if(from_ip) {
-				unsigned long to_ip_l;
-				char *to_ip = gettag_sip(packetS, "\ndstIP:", &to_ip_l);
-				if(to_ip) {
-					bool is_tcp[2] = { false, false };
-					vmIP n_ip[2];
-					unsigned n_port[2] = { 0, 0 };
-					bool ok_ip[2] = { false, false };
-					for(int i = 0; i < 2; i++) {
-						char *ip = i == 0 ? from_ip : to_ip;
-						unsigned long l = i == 0 ? from_ip_l : to_ip_l;
-						char *p_sep_port = strnrchr(ip, ':', l);
-						if(p_sep_port) {
-							string str_ip = string(ip, p_sep_port - ip);
-							n_port[i] = atoi(p_sep_port + 1);
-							if(n_ip[i].setFromString(str_ip.c_str()) &&
-							   n_port[i] > 0 && n_port[i] <= 0xFFFF) {
-								ok_ip[i] = true;
-							} else {
-								break;
-							}
+			vmIPport src_ip_port;
+			vmIPport dst_ip_port;
+			bool src_ip_port_ok = false;
+			bool dst_ip_port_ok = false;
+			unsigned long src_ip_port_l;
+			char *src_ip_port_s = gettag_sip(packetS, "\nsrcIP:", &src_ip_port_l);
+			if(src_ip_port_s) {
+				unsigned long dst_ip_port_l;
+				char *dst_ip_port_s = gettag_sip(packetS, "\ndstIP:", &dst_ip_port_l);
+				if(dst_ip_port_s) {
+					string src_ip_port_str(src_ip_port_s, src_ip_port_l);
+					if(src_ip_port.setFromString(src_ip_port_str.c_str())) {
+						src_ip_port_ok = true;
+						string dst_ip_port_str(dst_ip_port_s, dst_ip_port_l);
+						if(dst_ip_port.setFromString(dst_ip_port_str.c_str())) {
+							dst_ip_port_ok = true;
 						}
 					}
-					if(ok_ip[0] && ok_ip[1]) {
-						packet_s_kamailio_subst *ribbonsbc_subst = new FILE_LINE(0) packet_s_kamailio_subst;
-						ribbonsbc_subst->is_tcp = is_tcp[0] || is_tcp[1];
-						ribbonsbc_subst->saddr = n_ip[0];
-						ribbonsbc_subst->daddr = n_ip[1];
-						ribbonsbc_subst->source = n_port[0];
-						ribbonsbc_subst->dest = n_port[1];
-						ribbonsbc_subst->ts.tv_sec = 0;
-						ribbonsbc_subst->ts.tv_usec = 0;
-						packetS->kamailio_subst = ribbonsbc_subst;
-					}
 				}
+			}
+			if(src_ip_port_ok && dst_ip_port_ok &&
+			   (packetS->saddr_() != src_ip_port.ip ||
+			    packetS->source_() != src_ip_port.port ||
+			    packetS->daddr_() != dst_ip_port.ip ||
+			    packetS->dest_() != dst_ip_port.port)) {
+				packet_s_kamailio_subst *ribbonsbc_subst = new FILE_LINE(0) packet_s_kamailio_subst;
+				ribbonsbc_subst->is_tcp = false;
+				ribbonsbc_subst->saddr = src_ip_port.ip;
+				ribbonsbc_subst->daddr = dst_ip_port.ip;
+				ribbonsbc_subst->source = src_ip_port.port;
+				ribbonsbc_subst->dest = dst_ip_port.port;
+				ribbonsbc_subst->ts.tv_sec = 0;
+				ribbonsbc_subst->ts.tv_usec = 0;
+				packetS->kamailio_subst = ribbonsbc_subst;
 			}
 		}
 	}

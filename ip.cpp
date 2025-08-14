@@ -239,6 +239,25 @@ std::string vmPort::getString() const {
 	return(intToString(port));
 }
 
+bool vmIPport::setFromString(const char *ip_port) {
+	const char *end_ip_ptr = NULL;
+	if(!ip.setFromString(ip_port, &end_ip_ptr)) {
+		return(false);
+	}
+	while(*end_ip_ptr == ' ' || *end_ip_ptr == '\t' || *end_ip_ptr == ':') {
+		++end_ip_ptr;
+	}
+	if(!isdigit(*end_ip_ptr)) {
+		return(false);
+	}
+	unsigned port_i = atoi(end_ip_ptr);
+	if(!port_i || port_i > 0xFFFF) {
+		return(false);
+	}
+	port.setPort(port_i);
+	return(true);
+}
+
 
 #ifdef CLOUD_ROUTER_CLIENT
 vmIP mysql_ip_2_vmIP(void *row, const char *column) {

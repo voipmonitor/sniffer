@@ -1116,6 +1116,7 @@ struct vmIPport {
 		return(this->ip > other.ip ||
 		       (this->ip == other.ip && this->port > other.port));
 	}
+	bool setFromString(const char *ip_port);
 	std::string getString(bool ipv6_in_brackets = false) const {
 		return(ip.getString(ipv6_in_brackets) + ":" + port.getString());
 	}

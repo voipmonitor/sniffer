@@ -3978,14 +3978,14 @@ void ParsePacket::setStdParse() {
 		this->timeSync_custom_headers_sip_msg = custom_headers_sip_msg->getLoadTime();
 	}
 	
-	extern bool opt_kamailio;
-	if(if_unlikely(opt_kamailio)) {
+	extern bool opt_kamailio_subst;
+	if(if_unlikely(opt_kamailio_subst)) {
 		addNode("X-Siptrace-Fromip:");
 		addNode("X-Siptrace-Toip:");
 		addNode("X-Siptrace-Time:");
 	}
-	extern bool opt_ribbonsbc;
-	if(if_unlikely(opt_ribbonsbc)) {
+	extern bool opt_ribbonsbc_subst;
+	if(if_unlikely(opt_ribbonsbc_subst)) {
 		addNode("srcIP:");
 		addNode("dstIP:");
 	}

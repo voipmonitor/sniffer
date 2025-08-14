@@ -33,8 +33,6 @@ extern int opt_enable_ss7;
 extern int opt_enable_http;
 extern int opt_enable_webrtc;
 extern int opt_enable_ssl;
-extern bool opt_ipfix;
-extern bool opt_hep;
 
 #if not PCAP_QUEUE_PCAP_HEADER_FORCE_STD
 struct pcap_pkthdr_fix_size {

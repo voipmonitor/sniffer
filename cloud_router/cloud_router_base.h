@@ -655,21 +655,27 @@ private:
 		unsigned index;
 	};
 public:
-	 cServer(bool udp = false, bool simple_read = false);
-	 virtual ~cServer();
-	 bool listen_start(const char *name, string host, u_int16_t port, unsigned index = 0);
-	 void listen_stop(unsigned index = 0);
-	 static void *listen_process(void *arg);
-	 void listen_process(int index);
-	 virtual void createConnection(cSocket *socket);
-	 virtual void evData(u_char *data, size_t dataLen, vmIP ip);
-	 void setStartVerbString(const char *startVerbString);
+	cServer(bool udp = false, bool simple_read = false);
+	virtual ~cServer();
+	bool listen_start(const char *name, string host, u_int16_t port, unsigned index = 0);
+	void listen_stop(unsigned index = 0);
+	static void *listen_process(void *arg);
+	void listen_process(int index);
+	virtual void createConnection(cSocket *socket);
+	virtual void evData(u_char *data, size_t dataLen, vmIP ip);
+	void setStartVerbString(const char *startVerbString);
+	vmIP getListenSocketIP() {
+		return(listen_socket[0] ? listen_socket[0]->getIPL() : vmIP(0));
+	}
+	vmPort getListenSocketPort() {
+		return(listen_socket[0] ? vmPort(listen_socket[0]->getPort()) : vmPort(0));
+	}
 protected:
-	 bool udp;
-	 bool simple_read;
-	 cSocketBlock *listen_socket[MAX_LISTEN_SOCKETS];
-	 pthread_t listen_thread[MAX_LISTEN_SOCKETS];
-	 string startVerbString;
+	bool udp;
+	bool simple_read;
+	cSocketBlock *listen_socket[MAX_LISTEN_SOCKETS];
+	pthread_t listen_thread[MAX_LISTEN_SOCKETS];
+	string startVerbString;
 };
 
 

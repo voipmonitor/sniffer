@@ -360,7 +360,7 @@ void IPFix_client_emulation(const char *pcap, vmIP client_ip, vmIP server_ip, vm
 	sHeaderPacket *header_packet = NULL;
 	pcapProcessData ppd;
 	int res;
-	cSocket socket("x");
+	cSocket socket("IPFix_client_emulation");
 	socket.setHostPort(destination_ip.getString(), destination_port);
 	if(!socket.connect()) {
 		return;

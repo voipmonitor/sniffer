@@ -43,6 +43,7 @@
 #include "transcribe.h"
 #include "ipfix.h"
 #include "hep.h"
+#include "ribbonsbc.h"
 
 #ifndef FREEBSD
 #include <malloc.h>
@@ -3015,6 +3016,16 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				if(!hep_counter_rslt.empty()) {
 					hep_counter.reset();
 					outStrStat << "hep[" << hep_counter_rslt << "] ";
+				}
+			}
+			extern bool opt_ribbonsbc_listen;
+			extern bool opt_ribbonsbc_counter_log;
+			if(opt_ribbonsbc_listen && opt_ribbonsbc_counter_log) {
+				extern cRibbonSbcCounter ribbonsbc_counter;
+				string ribbonsbc_counter_rslt = ribbonsbc_counter.get_ip_counter();
+				if(!ribbonsbc_counter_rslt.empty()) {
+					ribbonsbc_counter.reset();
+					outStrStat << "ribbonsbc[" << ribbonsbc_counter_rslt << "] ";
 				}
 			}
 		}
