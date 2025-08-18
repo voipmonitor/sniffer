@@ -1232,36 +1232,6 @@ char *strncasechr(const char *haystack, char needle, size_t len) {
         return NULL;
 }
 
-int strcasecmp_wildcard(const char *str, const char *pattern, const char *wildcard) {
-	return(strncasecmp_wildcard(str, pattern, SIZE_MAX, wildcard));
-}
-
-int strncasecmp_wildcard(const char *str, const char *pattern, size_t len, const char *wildcard) {
-	size_t wildcard_lenght = strlen(wildcard);
-	size_t cmp_len = 0;
-	while((*str || *pattern) && cmp_len < len) {
-		if(toupper(*str) != toupper(*pattern)) {
-			if(*str && *pattern) {
-				bool is_wildcard = false;
-				for(unsigned i = 0; i < wildcard_lenght; i++) {
-					if(*pattern == wildcard[i]) {
-						is_wildcard = true;
-					}
-				}
-				if(!is_wildcard) {
-					return(*str - *pattern);
-				}
-			} else {
-				return(*str - *pattern);
-			}
-		}
-		++str;
-		++pattern;
-		++cmp_len;
-	}
-	return(0);
-}
-
 size_t strCaseEqLengthR(const char *str1, const char *str2, bool *eqMinLength) {
 	if(eqMinLength) {
 		*eqMinLength = false;
@@ -1293,6 +1263,114 @@ const char *strrstr(const char *haystack, const char *needle) {
 		haystack = current + 1;
 	}
 	return result;
+}
+
+
+static inline int wildmatch_n(const char *s, size_t slen, const char *p, size_t plen,
+			      const char *one_wc, size_t onelen, const char *multi_wc, size_t multilen,
+			      int ignore_case) {
+	size_t si = 0, pi = 0;
+	size_t last_star_pi = SIZE_MAX;
+	size_t last_star_si = 0;
+	while(si < slen) {
+		unsigned char pc = (pi < plen) ? p[pi] : 0;
+		if(pi < plen && multilen && multi_wc && memchr(multi_wc, pc, multilen) != NULL) {
+			last_star_pi = pi++;
+			last_star_si = si;
+			continue;
+		}
+		if(pi < plen) {
+		    unsigned char sc = s[si];
+		    int chars_equal = ignore_case ?
+				       toupper((unsigned char)sc) == toupper((unsigned char)pc) :
+				       sc == pc;
+			int pc_is_one = (onelen && one_wc && memchr(one_wc, pc, onelen) != NULL);
+			if(chars_equal || pc_is_one) {
+				++si; ++pi;
+				continue;
+			}
+		}
+		if(last_star_pi != SIZE_MAX) {
+			pi = last_star_pi + 1;
+			if(++last_star_si > slen) return 0;
+			si = last_star_si;
+			continue;
+		}
+		return(0);
+	}
+	while(pi < plen && multilen && multi_wc && memchr(multi_wc, (unsigned char)p[pi], multilen) != NULL) ++pi;
+	return(pi == plen);
+}
+
+int strncmp_wildcard(const char *s, const char *pattern, size_t len,
+                     const char *one_wc, const char *multi_wc,
+                     bool ignore_case) {
+	if(!s || !pattern) return(-1);
+	size_t one_wc_len   = one_wc   ? strlen(one_wc)   : 0;
+	size_t multi_wc_len = multi_wc ? strlen(multi_wc) : 0;
+	size_t s_vis_len = 0;
+	while(s_vis_len < len && s[s_vis_len] != '\0') ++s_vis_len;
+	size_t pattern_len = strlen(pattern);
+	return(wildmatch_n(s, s_vis_len, pattern, pattern_len,
+			   one_wc, one_wc_len, multi_wc, multi_wc_len, ignore_case) ? 0 : -1);
+}
+
+int strcmp_wildcard(const char *s, const char *pattern,
+                    const char *one_wc, const char *multi_wc,
+                    bool ignore_case) {
+	return(strncmp_wildcard(s, pattern, SIZE_MAX, one_wc, multi_wc, ignore_case));
+}
+
+char *strnstr_wildcard(const char *s, const char *pattern, size_t len,
+                       const char *one_wc, const char *multi_wc,
+                       bool ignore_case) {
+	if(!s || !pattern) return(NULL);
+	if(!*pattern) return((char*)s);
+	size_t one_wc_len   = one_wc   ? strlen(one_wc)   : 0;
+	size_t multi_wc_len = multi_wc ? strlen(multi_wc) : 0;
+	size_t s_vis_len = 0;
+	while(s_vis_len < len && s[s_vis_len] != '\0') ++s_vis_len;
+	size_t pattern_len = strlen(pattern);
+	bool has_multi = false;
+	if(multi_wc_len) {
+		for(size_t i = 0; i < pattern_len; ++i) {
+			if(memchr(multi_wc, (unsigned char)pattern[i], multi_wc_len) != NULL) {
+				has_multi = true;
+				break;
+			}
+		}
+	}
+	if(has_multi) {
+		string _pattern = pattern;
+		if(memchr(multi_wc, (unsigned char)_pattern.back(), multi_wc_len) == NULL) {
+			_pattern += multi_wc[0];
+		}
+		pattern_len = _pattern.length();
+		for(size_t i = 0; i <= s_vis_len; ++i) {
+			if(wildmatch_n(s + i, s_vis_len - i, _pattern.c_str(), pattern_len,
+			               one_wc, one_wc_len, multi_wc, multi_wc_len, ignore_case)) {
+				return((char*)s + i);
+			}
+		}
+		return(NULL);
+	} else {
+		if(pattern_len == 0) return((char*)s);
+		if(pattern_len > s_vis_len) return(NULL);
+		for(size_t i = 0; i + pattern_len <= s_vis_len; ++i) {
+			if(wildmatch_n(s + i, pattern_len, pattern, pattern_len,
+			               one_wc, one_wc_len, multi_wc, multi_wc_len, ignore_case)) {
+				return((char*)s + i);
+			}
+		}
+		return(NULL);
+	}
+	return(NULL);
+}
+
+char *strstr_wildcard(const char *s, const char *pattern,
+                      const char *one_wc, const char *multi_wc,
+                      bool ignore_case) {
+	return(strnstr_wildcard(s, pattern, SIZE_MAX, one_wc, multi_wc, ignore_case));
 }
 
 
@@ -1519,18 +1597,17 @@ std::vector<std::string> split(const char *s, const char *delim, bool enableTrim
 
 std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim, bool useEmptyItems, bool enableTrimString) {
 	vector<std::string> elems;
-	string elem = s;
+	string elem = s ? s : "";
 	if(enableTrimString) {
 		trim(elem);
 	}
 	elems.push_back(elem);
 	for(size_t i = 0; i < delim.size(); i++) {
+		if(delim[i].empty()) continue; 
 		vector<std::string> _elems;
 		for(size_t j = 0; j < elems.size(); j++) {
 			vector<std::string> __elems = split(elems[j].c_str(), delim[i].c_str(), enableTrim, useEmptyItems);
-			for(size_t k = 0; k < __elems.size(); k++) {
-				_elems.push_back(__elems[k]);
-			}
+			_elems.insert(_elems.end(), __elems.begin(), __elems.end());
 		}
 		elems = _elems;
 	}
@@ -1563,6 +1640,98 @@ std::vector<std::string> split2chars(const std::string &s) {
 		elems.push_back(_s.substr(i, 1));
 	}
 	return(elems);
+}
+
+vector<string> split_ext(const char *str, vector<string> &delimiters, vector<sNoSplitBorders> *no_split_borders, bool enableTrim, bool useEmptyItems) {
+	vector<string> rslt;
+	string delims;
+	for(vector<string>::iterator iter = delimiters.begin(); iter != delimiters.end(); iter++) {
+		if(!iter->empty()) delims += iter[0];
+	}
+	const char *p = str;
+	const char *p_start_item = str;
+	bool pushed_no_split_borders = false;
+	while(*p) {
+		int delim_length = 0;
+		if(delims.find(*p) != string::npos) {
+			for(vector<string>::iterator iter = delimiters.begin(); iter != delimiters.end(); iter++) {
+				if(!iter->empty() && !strncmp(p, iter->c_str(), iter->length())) {
+					delim_length = iter->length();
+					break;
+				}
+			}
+		}
+		bool inc_p = false;
+		if(delim_length) {
+			if(!pushed_no_split_borders) {
+				string item = string(p_start_item, p - p_start_item);
+				if(enableTrim) item = trim(item);
+				if(useEmptyItems || !item.empty()) {
+					rslt.push_back(item);
+				}
+			}
+			p += delim_length;
+			p_start_item = p;
+			inc_p = true;
+			pushed_no_split_borders = false;
+		}
+		if(no_split_borders && (delim_length || p == str)) {
+			bool neg = false;
+			const char *_p = p;
+			if(_p[0] == '!') {
+				++_p;
+				neg = true;
+			}
+			for(vector<sNoSplitBorders>::iterator iter_b = no_split_borders->begin(); iter_b != no_split_borders->end(); iter_b++) {
+				const char *pos_right = NULL;
+				bool pos_right_ok = false;
+				if(!strncmp(_p, iter_b->left.c_str(), iter_b->left.length())) {
+					do {
+						pos_right = strstr(pos_right ? pos_right + 1 : _p + iter_b->left.length(), iter_b->right.c_str());
+						if(pos_right) {
+							if(*(pos_right + iter_b->right.length()) == 0) {
+								pos_right_ok = true;
+							} else {
+								for(vector<string>::iterator iter_d = delimiters.begin(); iter_d != delimiters.end(); iter_d++) {
+									if(!iter_d->empty() &&
+									   !strncmp(pos_right + iter_b->right.length(), iter_d->c_str(), iter_d->length())) {
+										pos_right_ok = true;
+										break;
+									}
+								}
+							}
+						}
+					} while(pos_right && !pos_right_ok);
+					if(pos_right_ok) {
+						string item_b;
+						if(iter_b->remove_borders) {
+							item_b = string(_p + iter_b->left.length(), pos_right - _p - iter_b->left.length());
+						} else {
+							item_b = string(_p, pos_right - _p + iter_b->right.length());
+						}
+						if(neg) {
+							item_b = "!" + item_b;
+						}
+						if(enableTrim) item_b = trim(item_b);
+						if(useEmptyItems || !item_b.empty()) {
+							rslt.push_back(item_b);
+						}
+						pushed_no_split_borders = true;
+						p = pos_right + iter_b->right.length();
+						inc_p = true;
+						break;
+					}
+				}
+			}
+		}
+		if(!inc_p) {
+			++p;
+		}
+	}
+	if(*p_start_item && !pushed_no_split_borders) {
+		rslt.push_back(string(p_start_item));
+	}
+	return(rslt);
 }
 
 

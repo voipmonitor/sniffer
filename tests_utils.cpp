@@ -5,6 +5,7 @@
 #include "cleanspool.h"
 #include "sniff_proc_class.h"
 #include "voipmonitor.h"
+#include "audio_convert.h"
 
 
 extern void dns_lookup_common_hostnames();
@@ -41,6 +42,7 @@ extern int opt_cleandatabase_register_failed;
 extern int opt_cleandatabase_register_time_info;
 extern int opt_cleandatabase_sip_msg;
 extern int opt_cleandatabase_cdr_stat;
+extern int opt_cleandatabase_cdr_problems;
 extern int opt_cleandatabase_rtp_stat;
 extern int opt_cleandatabase_log_sensor;
 extern unsigned int opt_maxpoolsize;
@@ -727,6 +729,159 @@ void check_bad_ether_type(const char *params) {
 	}
 }
 
+struct check_check_phone_number_case {
+	const char* pattern;
+	bool prefix;
+	const char* input;
+	bool expect;
+	const char* note;
+};
+void check_check_phone_number() {
+ 
+	int fails = 0;
+
+	std::vector<check_check_phone_number_case> cases;
+
+	// 1) Bez wildcardů, prefix=false
+	cases.push_back((check_check_phone_number_case){"123", false, "123",  true,  "exact match"});
+	cases.push_back((check_check_phone_number_case){"123", false, "1234", false, "exact must fail"});
+	cases.push_back((check_check_phone_number_case){"AbC", false, "aBc",  true,  "case-insensitive exact"});
+	cases.push_back((check_check_phone_number_case){"",    false, "",     true,  "empty==empty"});
+	cases.push_back((check_check_phone_number_case){"",    false, "x",    false, "empty pattern not prefix"});
+
+	// 2) Bez wildcardů, prefix=true
+	cases.push_back((check_check_phone_number_case){"123", true, "123",      true,  "prefix: exact ok"});
+	cases.push_back((check_check_phone_number_case){"123", true, "1234",     true,  "prefix: longer ok"});
+	cases.push_back((check_check_phone_number_case){"123", true, "0123",     false, "prefix: must start"});
+	cases.push_back((check_check_phone_number_case){"",    true, "anything", true,  "empty prefix matches all"});
+
+	// 3) Suffix
+	cases.push_back((check_check_phone_number_case){"%123", true,  "A123", true,  "suffix true"});
+	cases.push_back((check_check_phone_number_case){"%123", true,  "123B", false, "suffix false"});
+	cases.push_back((check_check_phone_number_case){"%123", false, "X123", true,  "suffix w/o prefix"});
+	cases.push_back((check_check_phone_number_case){"%123", false, "12",   false, "too short"});
+
+	// 4) Substring
+	cases.push_back((check_check_phone_number_case){"%abc%", true,  "xabcY", true,  "substring true"});
+	cases.push_back((check_check_phone_number_case){"%abc%", false, "abc",   true,  "substring exact"});
+	cases.push_back((check_check_phone_number_case){"%abc%", false, "ab",    false, "substring missing"});
+
+	// 5) Vnitřní '%', bez krajních
+	cases.push_back((check_check_phone_number_case){"6%2", false, "6z2",   true,  "full-string starts 6 ends 2"});
+	cases.push_back((check_check_phone_number_case){"6%2", false, "x6z2",  false, "must start with 6"});
+	cases.push_back((check_check_phone_number_case){"6%2", false, "6z2y",  false, "must end with 2"});
+	cases.push_back((check_check_phone_number_case){"6%2", true,  "6z2",   true,  "prefix: still ok"});
+	cases.push_back((check_check_phone_number_case){"6%2", true,  "6z2y",  true,  "prefix: right side open"});
+	cases.push_back((check_check_phone_number_case){"6%2", true,  "x6z2y", false, "prefix: must start with 6"});
+
+	// 6) "%6%2"
+	cases.push_back((check_check_phone_number_case){"%6%2", true,  "706912", true,  "leading % not overridden by prefix"});
+	cases.push_back((check_check_phone_number_case){"%6%2", false, "706912", true,  "normal SQL-LIKE"});
+	cases.push_back((check_check_phone_number_case){"%6%2", true,  "761",    false, "no trailing 2"});
+	cases.push_back((check_check_phone_number_case){"%6%2", true,  "62",     true,  "6 then 2"});
+
+	// 7) '_'
+	cases.push_back((check_check_phone_number_case){"12_34", false, "12A34",  true,  "_ matches one"});
+	cases.push_back((check_check_phone_number_case){"12_34", false, "1234",   false, "missing one char"});
+	cases.push_back((check_check_phone_number_case){"12_34", false, "12AB34", false, "too many in middle"});
+	cases.push_back((check_check_phone_number_case){"_%",    false, "Axxxxx", true,  "one then anything"});
+	cases.push_back((check_check_phone_number_case){"_%",    false, "",       false, "needs at least 1"});
+	cases.push_back((check_check_phone_number_case){"_",     true,  "A",      true,  "underscore one char"});
+	cases.push_back((check_check_phone_number_case){"_",     true,  "AB",     true,  "prefix: only first char checked"});
+	cases.push_back((check_check_phone_number_case){"_",     true,  "",       false, "needs one char"});
+
+	// 8) Kombinace
+	cases.push_back((check_check_phone_number_case){"%ab_c%", false, "xabZcY", true,  "%...ab _ c...%"});
+	cases.push_back((check_check_phone_number_case){"%ab_c%", false, "abZc",   true,  "edge ok"});
+	cases.push_back((check_check_phone_number_case){"%ab_c%", false, "abc",    false, "underscore needs one"});
+	cases.push_back((check_check_phone_number_case){"a_b%c",  false, "aXbYc",  true,  "a, one, b, anything, c"});
+	cases.push_back((check_check_phone_number_case){"a_b%c",  false, "abYc",   false, "missing '_' char"});
+
+	// 9) Vícenásobné %
+	cases.push_back((check_check_phone_number_case){"abc%%%%",   true,  "abcdef",  true,  "abc% prefix after trim"});
+	cases.push_back((check_check_phone_number_case){"abc%%%%",   true,  "abX",     false, "must start abc"});
+	cases.push_back((check_check_phone_number_case){"%%abc%%%%", false, "xabc",    true,  "== %abc%"});
+	cases.push_back((check_check_phone_number_case){"a%%b%%%c",  false, "axxbxxc", true,  "a%b%c equivalent"});
+	cases.push_back((check_check_phone_number_case){"a%%b%%%c",  false, "abxc",    true,  "collapsed ok"});
+	cases.push_back((check_check_phone_number_case){"a%%b%%%c",  false, "axbc",    true,  "also ok"});
+
+	// 10) Suffix
+	cases.push_back((check_check_phone_number_case){"%1234", false, "1234",  true,  "ends with exact"});
+	cases.push_back((check_check_phone_number_case){"%1234", false, "x1234", true,  "ends with with prefix char"});
+	cases.push_back((check_check_phone_number_case){"%1234", false, "123",   false, "shorter than suffix"});
+
+	// 11) Prefix
+	cases.push_back((check_check_phone_number_case){"1234%", false, "1234",  true,  "starts with exact"});
+	cases.push_back((check_check_phone_number_case){"1234%", false, "12345", true,  "starts with plus more"});
+	cases.push_back((check_check_phone_number_case){"1234%", false, "123",   false, "shorter than prefix"});
+
+	// 12) Substring s '_'
+	cases.push_back((check_check_phone_number_case){"%12_3%", false, "x12a3y", true,  "substring w/underscore"});
+	cases.push_back((check_check_phone_number_case){"%12_3%", false, "12a3",   true,  "substring at edges ok"});
+	cases.push_back((check_check_phone_number_case){"%12_3%", false, "12aX3",  false, "underscore=one only"});
+
+	// 13) Plný wildcard
+	cases.push_back((check_check_phone_number_case){"%",   true,  "anything", true,  "match all"});
+	cases.push_back((check_check_phone_number_case){"%%",  true,  "anything", true,  "match all multi %"});
+	cases.push_back((check_check_phone_number_case){"%_%", false, "A",        true,  "at least one char"});
+	cases.push_back((check_check_phone_number_case){"%_%", false, "",         false, "needs one char"});
+
+	// 14) Case-insensitivity
+	cases.push_back((check_check_phone_number_case){"%AbC%", false, "xxabcYY", true,  "case-insensitive substring"});
+	cases.push_back((check_check_phone_number_case){"AB_",   false, "abC",     true,  "case-insensitive '_'"});
+	cases.push_back((check_check_phone_number_case){"AB_",   false, "ab",      false, "needs one char"});
+
+	// 15) Empty pattern
+	cases.push_back((check_check_phone_number_case){"", false, "",  true,  "empty==empty"});
+	cases.push_back((check_check_phone_number_case){"", false, "X", false, "empty not prefix"});
+	cases.push_back((check_check_phone_number_case){"", true,  "",  true,  "prefix empty ok"});
+	cases.push_back((check_check_phone_number_case){"", true,  "X", true,  "prefix empty matches all"});
+
+	// 16) prefix má přednost, ale ne přebití leading %
+	cases.push_back((check_check_phone_number_case){"%abc%", true, "xabc", true,  "leading % stays substring"});
+	cases.push_back((check_check_phone_number_case){"%abc",  true, "xabc", true,  "suffix respected"});
+	cases.push_back((check_check_phone_number_case){"%abc",  true, "abcy", false, "suffix respected (still suffix)"});
+
+	// 17) „6%2“ v prefix režimu
+	cases.push_back((check_check_phone_number_case){"6%2", true, "602x", true,  "prefix open right"});
+	cases.push_back((check_check_phone_number_case){"6%2", true, "x602", false, "must start with 6"});
+	cases.push_back((check_check_phone_number_case){"6%2", true, "62",   true,  "2 can be last"});
+
+	// 18) Dlouhé řetězce
+	cases.push_back((check_check_phone_number_case){"12345%6789", false, "12345___6789",  true,  "wildcards inside"});
+	cases.push_back((check_check_phone_number_case){"12345%6789", true,  "12345___6789X", true,  "prefix left-anchored"});
+	cases.push_back((check_check_phone_number_case){"12345%6789", false, "X12345__6789",  false, "not starting with 12345"});
+     
+	for(size_t i = 0; i < cases.size(); ++i) {
+		const check_check_phone_number_case& c = cases[i];
+		PhoneNumber pn(c.pattern, c.prefix);
+		bool got = pn.checkNumber(c.input);
+		cout << "[TEST " << (i+1) << "] pat=\"" << c.pattern 
+		     << "\" prefix=" << (c.prefix ? 1 : 0)
+		     << " input=\"" << c.input << "\" -> "
+		     << (got ? "true" : "false")
+		     << " expected " << (c.expect ? "true" : "false")
+		     << " // " << c.note;
+		if(got == c.expect) {
+			cout << " [PASS]\n";
+		} else {
+			cout << " [FAIL]\n";
+			++fails;
+		}
+	}
+	cout << endl
+	     << "Summary: " << (cases.size()-fails) 
+	     << " passed, " << fails << " failed, total " 
+	     << cases.size() << endl;
+		  
+	/*     
+	cout << "1 " << (strstr_wildcard("aXYZbc", "a%bc", "_", "%", true) ? "OK" : "failed") << endl;
+	cout << "2 " << (strstr_wildcard("xxa12345bcYY", "a%bc", "_", "%", true) ? "OK" : "failed") << endl;
+	cout << "3 " << (strstr_wildcard("aXYZbQWc" ,"a%b%c",  "_", "%", true) ? "OK" : "failed") << endl;
+	cout << "4 " << (strstr_wildcard("6zzz2tail" ,"6%2",  "_", "%", true) ? "OK" : "failed") << endl;
+	*/
+}
+
 void test() {
  
 	switch(opt_test) {
@@ -789,6 +944,98 @@ void test() {
 	 
 	case 1: {
 	 
+		check_check_phone_number();
+		//break;
+		
+		const char *number[] = {
+			"123,!456,R(45,5454),!R(354,(6)565),789,abc,[56456,645456],![xyz,xyz],sdfg,%ab%cd%,!%xb%cd%,eg_gh",
+			"123,456,789,abc",
+			"R(45,5454),R(354,6565)",
+			"R(354,(6)565)",
+			"123,,456",
+			"R(354,(6)565)eee",
+			"start; text R(a;b); konec"
+		};
+		vector<string> delimiters = split(" |,|;|\t|\r|\n", "|");
+		vector<sNoSplitBorders> no_split_borders;
+		no_split_borders.push_back(sNoSplitBorders("R(", ")"));
+		no_split_borders.push_back(sNoSplitBorders("[", "]", true));
+		for(unsigned i = 0; i < sizeof(number) / sizeof(number[0]); i++) {
+			cout << number[i] << endl;
+			vector<string>number_elems = split_ext(number[i], delimiters, &no_split_borders);
+			for(unsigned i = 0; i < number_elems.size(); i++) {
+				cout << "   " << number_elems[i] << endl;
+			}
+			cout << endl;
+		}
+		cout << "***" << endl;
+		break;
+
+	 
+		extern bool opt_usleep_mod_enable;
+		extern unsigned opt_usleep_mod_pause_spin_limit;
+		
+		opt_usleep_mod_enable = true;
+		opt_usleep_mod_pause_spin_limit = 1e8;
+		u_int64_t start_time = getTimeMS_rdtsc();
+		for(unsigned i = 0; i < opt_usleep_mod_pause_spin_limit; i++) {
+			//__asm__ volatile ("pause");
+			//USLEEP_C(10, 0);
+			sched_yield();
+		}
+		u_int64_t end_time = getTimeMS_rdtsc();
+		cout << (double)(end_time - start_time) / opt_usleep_mod_pause_spin_limit / 1000 * 1e6 << endl;
+		cout << "***" << endl;
+
+		/*
+		const uint64_t N = 100000000;
+		uint64_t t0 = rdtsc();
+		for (uint64_t i = 0; i < N; i++) {
+		    _mm_pause();
+		}
+		uint64_t t1 = rdtsc();
+		double avg_cycles = (double)(t1 - t0) / N;
+		printf("Průměrná latence PAUSE: %.3f cyklů\n", avg_cycles);
+		cout << "***" << endl;
+		*/
+		
+		break;
+	 
+		for(unsigned i = 0; i <= 1e9; i++) {
+			string format = format_metric(i, 3);
+			unsigned cd = 0;
+			for(unsigned j = 0; j < format.length(); j++) {
+				if(isdigit(format[j])) ++cd;
+			}
+			if(cd > 3 || (i >= 100 && cd < 3)) {
+				cout << i << " / " << format << endl;
+				format_metric(i, 3);
+			}
+		}
+		cout << "---" << endl;
+		break;
+	 
+		cAudioConvert::test();
+		break;
+	 
+		/*
+		#if HAVE_LIBZSTD
+		cZstd zstd;
+		const char *test_string = "ahoj světe!";
+		u_char *compress_buffer;
+		size_t compress_buffer_length;
+		u_char *decompress_buffer;
+		size_t decompress_buffer_length;
+		bool compress_rslt = zstd.compress((u_char*)test_string, strlen(test_string), &compress_buffer, &compress_buffer_length);
+		cout << "compress result: " << compress_rslt << endl;
+		cout << "is compressed: " << cZstd::isCompress(compress_buffer, compress_buffer_length) << endl;
+		bool decompress_rslt = zstd.decompress(compress_buffer, compress_buffer_length, &decompress_buffer, &decompress_buffer_length);
+		cout << "decompress result: " << decompress_rslt << endl;
+		cout << string((char*)decompress_buffer, decompress_buffer_length) << endl;
+		cout << "***" << endl;
+		break;
+		#endif
+	 
 		cPartitions p;
 		cout << p.dump(false);
 		
@@ -801,6 +1048,7 @@ void test() {
 		p.cleanup_by_size();
 		
 		break;
+		*/
 	 
 		void adjustSipResponse(string &sipResponse);
 		//extern int opt_cdr_sip_response_number_max_length;
@@ -825,6 +1073,9 @@ void test() {
 		//opt_cdr_reason_normalisation = true;
 		string reas[] = {
 			 "00000ab3-fb29-4139-a6ca-d5b6bb2da949;LocalUserInitiated",
+			 "00000ab3-fb29-4139-a6ca-d5b6bb2da949,LocalUserInitiated",
+			 "LocalUserInitiated;00000ab3-fb29-4139-a6ca-d5b6bb2da949",
+			 "LocalUserInitiated,00000ab3-fb29-4139-a6ca-d5b6bb2da949",
 			 "0031f80c-cc4a-4a38-816d-a48299e8759d;Callee did not pickup.",
 			 "1241e184-86c8-44be-bf56-c09486922be4;EstablishmentTimeout"
 		};
@@ -1462,6 +1713,14 @@ void test() {
 			return;
 		}
 		dropMysqlPartitionsCdrStat();
+		break;
+	case _param_run_droppartitions_cdr_problems_maxdays:
+		if(atoi(opt_test_arg) > 0) {
+			opt_cleandatabase_cdr_problems = atoi(opt_test_arg);
+		} else {
+			return;
+		}
+		dropMysqlPartitionsCdrProblems();
 		break;
 	case _param_conv_raw_info:
 		{

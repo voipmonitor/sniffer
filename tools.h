@@ -1518,47 +1518,90 @@ class PhoneNumber {
 public:
 	PhoneNumber(const char *number, bool prefix = true) {
 		this->number = number;
-		this->prefix = prefix;
-		while(this->number.size() && this->number[this->number.size() - 1] == '%') {
-			this->number.resize(this->number.size() - 1);
-			this->prefix = true;
+		if(prefix && this->number.size() > 1 && this->number.front() != '%') {
+			while(this->number.size() > 1 && this->number.back() == '%') {
+				this->number.erase(this->number.length() - 1, 1);
+			}
 		}
-		this->lengthPrefix = this->prefix ? this->number.size() : 0;
+		number_length = this->number.length();
+		if(prefix && this->number.find_first_of("_%") == string::npos) {
+			boundLeft = true;
+			boundRight = false;
+			wildcard = 0;
+		} else {
+			if(prefix && this->number.size() && this->number.front() != '%' && this->number.back() != '%') {
+				this->number += '%';
+			}
+			string _number = this->number;
+			boundLeft = true;
+			boundRight = true;
+			if(_number.size() && _number.front() == '%') {
+				_number.erase(0, 1);
+				boundLeft = false;
+			}
+			if(_number.size() && _number.back() == '%') {
+				_number.erase(_number.length() - 1, 1);
+				boundRight = false;
+			}
+			if(_number.find('%') == string::npos) {
+				this->number = _number;
+				number_length = this->number.length();
+				wildcard = this->number.find('_') != string::npos ? 1 : 0;
+			} else {
+				wildcard = 2;
+			}
+		}
 	}
 	bool checkNumber(const char *check_number) {
-		if(prefix) {
-			return(!strncmp(check_number, number.c_str(), lengthPrefix));
+		if((boundLeft && boundRight) || wildcard == 2) {
+			return(wildcard ?
+				!strcasecmp_wildcard(check_number, number.c_str(), "_", "%") :
+				!strcasecmp(check_number, number.c_str()));
+		} else if(boundLeft) {
+			return(wildcard ?
+				!strncasecmp_wildcard(check_number, number.c_str(), number_length, "_", "%") :
+				!strncasecmp(check_number, number.c_str(), number_length));
+		} else if(boundRight) {
+			uint length = strlen(check_number);
+			if(length >= number_length) {
+				return(wildcard ?
+					!strcasecmp_wildcard(check_number + length - number_length, number.c_str(), "_", "%") :
+					!strcasecmp(check_number + length - number_length, number.c_str()));
+			} else {
+				return(false);
+			}
 		} else {
-			return(check_number == number);
+			return(wildcard ?
+				strcasestr_wildcard(check_number, number.c_str(), "_", "%") :
+				strcasestr(check_number, number.c_str()));
 		}
-	}
-	bool isPrefix() {
-		return(prefix);
 	}
 	bool operator < (const PhoneNumber &phoneNumber) const {
 		return(this->number < phoneNumber.number);
 	}
 public:
 	std::string number;
-	bool prefix;
-	uint lengthPrefix;
+	unsigned number_length;
+	bool boundLeft;
+	bool boundRight;
+	int wildcard;
 };
 
 class UA {
 public:
 	UA(const char *ua) {
 		this->ua = ua;
-		if(this->ua.length() && this->ua[0] == '%') {
-			this->ua = this->ua.substr(1);
-			this->boundLeft = false;
+		if(this->ua.length() && this->ua.front() == '%') {
+			this->ua.erase(0, 1);
+			boundLeft = false;
 		} else {
-			this->boundLeft = true;
+			boundLeft = true;
 		}
-		if(this->ua.length() && this->ua[this->ua.length() - 1] == '%') {
-			this->ua = this->ua.substr(0, this->ua.length() - 1);
-			this->boundRight = false;
+		if(this->ua.length() && this->ua.back() == '%') {
+			this->ua.erase(this->ua.length() - 1, 1);
+			boundRight = false;
 		} else {
-			this->boundRight = true;
+			boundRight = true;
 		}
 		this->ua_length = this->ua.length();
 	}
@@ -1566,11 +1609,11 @@ public:
 		if(!this->ua_length) {
 			return(false);
 		}
-		if(this->boundLeft && this->boundRight) {
+		if(boundLeft && boundRight) {
 			return(!strcasecmp(ua, this->ua.c_str()));
-		} else if(this->boundLeft) {
+		} else if(boundLeft) {
 			return(!strncasecmp(ua, this->ua.c_str(), this->ua_length));
-		} else if(this->boundRight) {
+		} else if(boundRight) {
 			uint length = strlen(ua);
 			if(length >= this->ua_length) {
 				return(!strcasecmp(ua + length - this->ua_length, this->ua.c_str()));
@@ -1592,10 +1635,10 @@ class CheckString {
 public:
 	CheckString(const char *checkString) {
 		this->checkString = checkString;
-		this->checkString_length = this->checkString.length();
+		checkString_length = this->checkString.length();
 		boundLeft = false;
 		boundRight = false;
-		wildcard = false;
+		wildcard = 0;
 		interval = false;
 		interval_num_length = -1;
 		interval_from = -1;
@@ -1644,24 +1687,27 @@ public:
 				return;
 			}
 		}
-		if(this->checkString.length() && this->checkString[0] == '%') {
-			this->checkString = this->checkString.substr(1);
-			--this->checkString_length;
-			this->boundLeft = false;
-		} else {
-			this->boundLeft = true;
+		string _checkString = this->checkString;
+		boundLeft = true;
+		boundRight = true;
+		if(_checkString.size() && _checkString.front() == '%') {
+			_checkString.erase(0, 1);
+			boundLeft = false;
 		}
-		if(this->checkString.length() && this->checkString[this->checkString.length() - 1] == '%') {
-			this->checkString = this->checkString.substr(0, this->checkString.length() - 1);
-			--this->checkString_length;
-			this->boundRight = false;
-		} else {
-			this->boundRight = true;
+		if(_checkString.size() && _checkString.back() == '%') {
+			_checkString.erase(_checkString.length() - 1, 1);
+			boundRight = false;
 		}
-		this->wildcard = this->checkString.find('_') != string::npos;
+		if(_checkString.find('%') == string::npos) {
+			this->checkString = _checkString;
+			checkString_length = this->checkString.length();
+			wildcard = this->checkString.find('_') != string::npos ? 1 : 0;
+		} else {
+			wildcard = 2;
+		}
 	}
 	bool check(const char *checkString) {
-		if(!this->checkString_length) {
+		if(!checkString_length) {
 			return(false);
 		}
 		if(interval) {
@@ -1701,25 +1747,27 @@ public:
 			}
 			return(true);
 		}
-		if(this->boundLeft && this->boundRight) {
-			return(this->wildcard ?
-				!strcasecmp_wildcard(checkString, this->checkString.c_str(), "_") :
+		if((boundLeft && boundRight) || wildcard == 2) {
+			return(wildcard ?
+				!strcasecmp_wildcard(checkString, this->checkString.c_str(), "_", "%") :
 				!strcasecmp(checkString, this->checkString.c_str()));
-		} else if(this->boundLeft) {
-			return(this->wildcard ?
-				!strncasecmp_wildcard(checkString, this->checkString.c_str(), this->checkString_length, "_") :
-				!strncasecmp(checkString, this->checkString.c_str(), this->checkString_length));
-		} else if(this->boundRight) {
+		} else if(boundLeft) {
+			return(wildcard ?
+				!strncasecmp_wildcard(checkString, this->checkString.c_str(), checkString_length, "_", "%") :
+				!strncasecmp(checkString, this->checkString.c_str(), checkString_length));
+		} else if(boundRight) {
 			uint length = strlen(checkString);
-			if(length >= this->checkString_length) {
-				return(this->wildcard ?
-					!strcasecmp_wildcard(checkString + length - this->checkString_length, this->checkString.c_str(), "_") :
-					!strcasecmp(checkString + length - this->checkString_length, this->checkString.c_str()));
+			if(length >= checkString_length) {
+				return(wildcard ?
+					!strcasecmp_wildcard(checkString + length - checkString_length, this->checkString.c_str(), "_", "%") :
+					!strcasecmp(checkString + length - checkString_length, this->checkString.c_str()));
 			} else {
 				return(false);
 			}
 		} else {
-			return(strcasestr(checkString, this->checkString.c_str()));
+			return(wildcard ?
+				strcasestr_wildcard(checkString, this->checkString.c_str(), "_", "%") :
+				strcasestr(checkString, this->checkString.c_str()));
 		}
 	}
 public:
@@ -1727,7 +1775,7 @@ public:
 	uint checkString_length;
 	bool boundLeft;
 	bool boundRight;
-	bool wildcard;
+	int wildcard;
 	bool interval;
 	std::string interval_eq;
 	int interval_num_length;
@@ -1904,18 +1952,20 @@ public:
 		if(autoLock) lock();
 		if(number[0] == 'R' && number[1] == '(' && number[strlen(number) - 1] == ')') {
 			if(check_regexp(number)) {
-				cRegExp *regexp = new FILE_LINE(0) cRegExp(string(number).substr(2, strlen(number) - 3).c_str());
+				cRegExp *regexp = new cRegExp(string(number).substr(2, strlen(number) - 3).c_str());
 				listRegExp.push_back(regexp);
 			}
-		} else if (strpbrk(number, "%_[")) {
-			cRegExp *regexp = number2Regex(number);
-			if(regexp) {
-				listRegExp.push_back(regexp);
-			}
-		} else if(!prefix) {
-			listPhoneNumber.push_back(PhoneNumber(number, false));
 		} else {
-			listPrefixes.push_back(PhoneNumber(number, true));
+			PhoneNumber pn(number, prefix);
+			if(!pn.wildcard && pn.boundLeft) {
+				if(pn.boundRight) {
+					listPhoneNumber.push_back(pn);
+				} else {
+					listPrefixes.push_back(pn);
+				}
+			} else {
+				listWildcards.push_back(pn);
+			}
 		}
 		if(autoLock) unlock();
 	}
@@ -1949,6 +1999,14 @@ public:
 				}
 			}
 		}
+		if(!rslt && listWildcards.size()) {
+			for(std::vector<PhoneNumber>::iterator iter = listWildcards.begin(); iter != listWildcards.end(); iter++) {
+				if(iter->checkNumber(check_number)) {
+					rslt = true;
+					break;
+				}
+			}
+		}
 		if(!rslt && listRegExp.size()) {
 			for(std::list<cRegExp*>::iterator iter = listRegExp.begin(); iter != listRegExp.end(); iter++) {
 				if((*iter)->match(check_number)) {
@@ -1964,6 +2022,7 @@ public:
 		if(autoLock) lock();
 		listPhoneNumber.clear();
 		listPrefixes.clear();
+		listWildcards.clear();
 		for(std::list<cRegExp*>::iterator iter = listRegExp.begin(); iter != listRegExp.end(); iter++) {
 			delete *iter;
 		}
@@ -1971,7 +2030,7 @@ public:
 		if(autoLock) unlock();
 	}
 	bool is_empty() {
-		return(!listPhoneNumber.size() && !listPrefixes.size() && !listRegExp.size());
+		return(!listPhoneNumber.size() && !listPrefixes.size() && !listWildcards.size() && !listRegExp.size());
 	}
 	void lock() {
 		__SYNC_LOCK(this->_sync);
@@ -1982,6 +2041,7 @@ public:
 private:
 	std::vector<PhoneNumber> listPhoneNumber;
 	std::vector<PhoneNumber> listPrefixes;
+	std::vector<PhoneNumber> listWildcards;
 	std::list<cRegExp*> listRegExp;
 	bool autoLock;
 	volatile int _sync;

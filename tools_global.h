@@ -404,11 +404,39 @@ char *strncasestr(const char *haystack, const char *needle, size_t len);
 char *strnchr(const char *haystack, char needle, size_t len);
 char *strnrchr(const char *haystack, char needle, size_t len);
 char *strncasechr(const char *haystack, char needle, size_t len);
-int strcasecmp_wildcard(const char *str, const char *pattern, const char *wildcard);
-int strncasecmp_wildcard(const char *str, const char *pattern, size_t len, const char *wildcard);
 size_t strCaseEqLengthR(const char *str1, const char *str2, bool *eqMinLength);
 const char *strrstr(const char *haystack, const char *needle);
 
+}
+
+
+int strcmp_wildcard(const char *s, const char *pattern,
+		    const char *one_wc = NULL, const char *multi_wc = NULL,
+		    bool ignore_case = false);
+inline int strcasecmp_wildcard(const char *s, const char *pattern,
+			const char *one_wc = NULL, const char *multi_wc = NULL) {
+	return(strcmp_wildcard(s, pattern, one_wc, multi_wc, true));
+}
+int strncmp_wildcard(const char *s, const char *pattern, size_t len,
+                     const char *one_wc = NULL, const char *multi_wc = NULL,
+                     bool ignore_case = false);
+inline int strncasecmp_wildcard(const char *s, const char *pattern, size_t len,
+			 const char *one_wc = NULL, const char *multi_wc = NULL) {
+	return(strncmp_wildcard(s, pattern, len, one_wc, multi_wc, true));
+}
+char *strstr_wildcard(const char *s, const char *pattern,
+                      const char *one_wc = NULL, const char *multi_wc = NULL,
+                      bool ignore_case = false);
+inline char *strcasestr_wildcard(const char *s, const char *pattern,
+			  const char *one_wc = NULL, const char *multi_wc = NULL) {
+	return(strstr_wildcard(s, pattern, one_wc, multi_wc, true));
+}
+char *strnstr_wildcard(const char *s, const char *pattern, size_t len,
+                       const char *one_wc = NULL, const char *multi_wc = NULL,
+                       bool ignore_case = false);
+inline char *strncasestr_wildcard(const char *s, const char *pattern, size_t len,
+			   const char *one_wc = NULL, const char *multi_wc = NULL) {
+	return(strnstr_wildcard(s, pattern, len, one_wc, multi_wc, true));
 }
 
 
@@ -654,6 +682,15 @@ std::vector<std::string> split(const char *s, std::vector<std::string> delim, bo
 std::vector<int> split2int(const std::string &s, char delim);
 std::vector<int> split2int(const std::string &s, std::vector<std::string> delim, bool enableTrim);
 std::vector<std::string> split2chars(const std::string &s);
+
+struct sNoSplitBorders {
+	sNoSplitBorders(const char *left, const char *right, bool remove_borders = false) 
+	 : left(left), right(right), remove_borders(remove_borders) {}
+	string left;
+	string right;
+	bool remove_borders;
+};
+std::vector<string> split_ext(const char *str, std::vector<string> &delimiters, std::vector<sNoSplitBorders> *no_split_borders, bool enableTrim = false, bool useEmptyItems = false);
 
 bool check_regexp(const char *pattern);
 int reg_match(const char *string, const char *pattern, const char *file = NULL, int line = 0);

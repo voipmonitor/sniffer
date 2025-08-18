@@ -3563,17 +3563,11 @@ void ListPhoneNumber::addComb(string &number, ListPhoneNumber *negList) {
 }
 
 void ListPhoneNumber::addComb(const char *number, ListPhoneNumber *negList) {
-	vector<string>number_elems;
-	vector<string>number_elems2 = split(number, split("\t|\r|\n", "|"), true);
-	for(size_t i = 0; i < number_elems2.size(); i++) {
-		if((number_elems2[i][0] == '[' || number_elems2[i][1] == '[') && number_elems2[i][number_elems2[i].length() - 1] == ']') {
-			number_elems.push_back(number_elems2[i]);
-		} else {
-			vector<string>number_elems_tmp = split(number_elems2[i].c_str(), split(" |,|;", "|"), true);
-			number_elems.insert(number_elems.end(), number_elems_tmp.begin(), number_elems_tmp.end());
-		}
-	}
-
+	vector<string> delimiters = split(" |,|;|\t|\r|\n", "|");
+	vector<sNoSplitBorders> no_split_borders;
+	no_split_borders.push_back(sNoSplitBorders("R(", ")"));
+	no_split_borders.push_back(sNoSplitBorders("[", "]", true));
+	vector<string>number_elems = split_ext(number, delimiters, &no_split_borders, true);
 	for(size_t i = 0; i < number_elems.size(); i++) {
 		if(number_elems[i][0] == '!') {
 			if(negList) {
