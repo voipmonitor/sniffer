@@ -1280,10 +1280,10 @@ static inline int wildmatch_n(const char *s, size_t slen, const char *p, size_t 
 			continue;
 		}
 		if(pi < plen) {
-		    unsigned char sc = s[si];
-		    int chars_equal = ignore_case ?
-				       toupper((unsigned char)sc) == toupper((unsigned char)pc) :
-				       sc == pc;
+			unsigned char sc = s[si];
+			int chars_equal = ignore_case ?
+					   toupper((unsigned char)sc) == toupper((unsigned char)pc) :
+					   sc == pc;
 			int pc_is_one = (onelen && one_wc && memchr(one_wc, pc, onelen) != NULL);
 			if(chars_equal || pc_is_one) {
 				++si; ++pi;
@@ -1340,29 +1340,26 @@ char *strnstr_wildcard(const char *s, const char *pattern, size_t len,
 			}
 		}
 	}
+	string _pattern;
 	if(has_multi) {
-		string _pattern = pattern;
-		if(memchr(multi_wc, (unsigned char)_pattern.back(), multi_wc_len) == NULL) {
+		_pattern = pattern;
+		if(memchr(multi_wc, (unsigned char)_pattern[_pattern.size() - 1], multi_wc_len) == NULL) {
 			_pattern += multi_wc[0];
+			pattern = _pattern.c_str();
+			pattern_len = _pattern.length();
 		}
-		pattern_len = _pattern.length();
-		for(size_t i = 0; i <= s_vis_len; ++i) {
-			if(wildmatch_n(s + i, s_vis_len - i, _pattern.c_str(), pattern_len,
-			               one_wc, one_wc_len, multi_wc, multi_wc_len, ignore_case)) {
-				return((char*)s + i);
-			}
-		}
-		return(NULL);
 	} else {
-		if(pattern_len == 0) return((char*)s);
 		if(pattern_len > s_vis_len) return(NULL);
-		for(size_t i = 0; i + pattern_len <= s_vis_len; ++i) {
-			if(wildmatch_n(s + i, pattern_len, pattern, pattern_len,
-			               one_wc, one_wc_len, multi_wc, multi_wc_len, ignore_case)) {
-				return((char*)s + i);
-			}
+	}
+	for (size_t i = 0; i <= s_vis_len; ++i) {
+		if(!has_multi &&
+		   i + pattern_len > s_vis_len) {
+			break;
 		}
-		return(NULL);
+		if(wildmatch_n(s + i, has_multi ? (s_vis_len - i) : pattern_len, pattern, pattern_len,
+			       one_wc, one_wc_len, multi_wc, multi_wc_len, ignore_case)) {
+			return (char*)s + i;
+		}
 	}
 	return(NULL);
 }

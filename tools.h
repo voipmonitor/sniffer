@@ -1518,8 +1518,8 @@ class PhoneNumber {
 public:
 	PhoneNumber(const char *number, bool prefix = true) {
 		this->number = number;
-		if(prefix && this->number.size() > 1 && this->number.front() != '%') {
-			while(this->number.size() > 1 && this->number.back() == '%') {
+		if(prefix && this->number.size() > 1 && this->number[0] != '%') {
+			while(this->number.size() > 1 && this->number[this->number.size() - 1] == '%') {
 				this->number.erase(this->number.length() - 1, 1);
 			}
 		}
@@ -1529,17 +1529,17 @@ public:
 			boundRight = false;
 			wildcard = 0;
 		} else {
-			if(prefix && this->number.size() && this->number.front() != '%' && this->number.back() != '%') {
+			if(prefix && this->number.size() && this->number[0] != '%' && this->number[this->number.size() - 1] != '%') {
 				this->number += '%';
 			}
 			string _number = this->number;
 			boundLeft = true;
 			boundRight = true;
-			if(_number.size() && _number.front() == '%') {
+			if(_number.size() && _number[0] == '%') {
 				_number.erase(0, 1);
 				boundLeft = false;
 			}
-			if(_number.size() && _number.back() == '%') {
+			if(_number.size() && _number[_number.size() - 1] == '%') {
 				_number.erase(_number.length() - 1, 1);
 				boundRight = false;
 			}
@@ -1591,13 +1591,13 @@ class UA {
 public:
 	UA(const char *ua) {
 		this->ua = ua;
-		if(this->ua.length() && this->ua.front() == '%') {
+		if(this->ua.length() && this->ua[0] == '%') {
 			this->ua.erase(0, 1);
 			boundLeft = false;
 		} else {
 			boundLeft = true;
 		}
-		if(this->ua.length() && this->ua.back() == '%') {
+		if(this->ua.length() && this->ua[this->ua.length() - 1] == '%') {
 			this->ua.erase(this->ua.length() - 1, 1);
 			boundRight = false;
 		} else {
@@ -1690,11 +1690,11 @@ public:
 		string _checkString = this->checkString;
 		boundLeft = true;
 		boundRight = true;
-		if(_checkString.size() && _checkString.front() == '%') {
+		if(_checkString.size() && _checkString[0] == '%') {
 			_checkString.erase(0, 1);
 			boundLeft = false;
 		}
-		if(_checkString.size() && _checkString.back() == '%') {
+		if(_checkString.size() && _checkString[_checkString.size() - 1] == '%') {
 			_checkString.erase(_checkString.length() - 1, 1);
 			boundRight = false;
 		}

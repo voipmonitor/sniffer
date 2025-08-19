@@ -734,152 +734,184 @@ struct check_check_phone_number_case {
 	bool prefix;
 	const char* input;
 	bool expect;
+	bool expect_strstr;
+	bool expect_strlike;
 	const char* note;
 };
 void check_check_phone_number() {
- 
+	check_check_phone_number_case cases[] = {
+		// 1) Bez wildcardů, prefix=false
+		{"123", false, "123",  true,  true, true,  "exact match"},
+		{"123", false, "1234", false, true, false, "exact must fail"},
+		{"AbC", false, "aBc",  true,  true, true,  "case-insensitive exact"},
+		{"",    false, "",     true,  true, false, "empty==empty"},
+		{"",    false, "x",    false, true, false, "empty pattern not prefix"},
+		// 2) Bez wildcardů, prefix=true
+		{"123", true, "123",      true,  true,  true,  "prefix: exact ok"},
+		{"123", true, "1234",     true,  true,  false, "prefix: longer ok"},
+		{"123", true, "0123",     false, true,  false, "prefix: must start"},
+		{"",    true, "anything", true,  true,  false, "empty prefix matches all"},
+		// 3) Suffix
+		{"%123", true,  "A123", true,  true,  true,  "suffix true"},
+		{"%123", true,  "123B", false, true,  false, "suffix false"},
+		{"%123", false, "X123", true,  true,  true,  "suffix w/o prefix"},
+		{"%123", false, "12",   false, false, false, "too short"},
+		// 4) Substring
+		{"%abc%", true,  "xabcY", true,  true,  true,  "substring true"},
+		{"%abc%", false, "abc",   true,  true,  true,  "substring exact"},
+		{"%abc%", false, "ab",    false, false, false, "substring missing"},
+		// 5) Vnitřní '%', bez krajních
+		{"6%2", false, "6z2",   true,  true,  true,  "full-string starts 6 ends 2"},
+		{"6%2", false, "x6z2",  false, true,  false, "must start with 6"},
+		{"6%2", false, "6z2y",  false, true,  false, "must end with 2"},
+		{"6%2", true,  "6z2",   true,  true,  true,  "prefix: still ok"},
+		{"6%2", true,  "6z2y",  true,  true,  false, "prefix: right side open"},
+		{"6%2", true,  "x6z2y", false, true,  false, "prefix: must start with 6"},
+		// 6) "%6%2"
+		{"%6%2", true,  "706912", true,  true,  true,  "leading % not overridden by prefix"},
+		{"%6%2", false, "706912", true,  true,  true,  "normal SQL-LIKE"},
+		{"%6%2", true,  "761",    false, false, false, "no trailing 2"},
+		{"%6%2", true,  "62",     true,  true,  true,  "6 then 2"},
+		// 7) '_'
+		{"12_34", false, "12A34",  true,  true,  true,  "_ matches one"},
+		{"12_34", false, "1234",   false, false, false, "missing one char"},
+		{"12_34", false, "12AB34", false, false, false, "too many in middle"},
+		{"_%",    false, "Axxxxx", true,  true,  true,  "one then anything"},
+		{"_%",    false, "",       false, false, false, "needs at least 1"},
+		{"_",     true,  "A",      true,  true,  true,  "underscore one char"},
+		{"_",     true,  "AB",     true,  true,  false, "prefix: only first char checked"},
+		{"_",     true,  "",       false, false, false, "needs one char"},
+		// 8) Kombinace
+		{"%ab_c%", false, "xabZcY", true,  true,  true,  "%...ab _ c...%"},
+		{"%ab_c%", false, "abZc",   true,  true,  true,  "edge ok"},
+		{"%ab_c%", false, "abc",    false, false, false, "underscore needs one"},
+		{"a_b%c",  false, "aXbYc",  true,  true,  true,  "a, one, b, anything, c"},
+		{"a_b%c",  false, "abYc",   false, false, false, "missing '_' char"},
+		// 9) Vícenásobné %
+		{"abc%%%%",   true,  "abcdef",  true,  true,  true,  "abc% prefix after trim"},
+		{"abc%%%%",   true,  "abX",     false, false, false, "must start abc"},
+		{"%%abc%%%%", false, "xabc",    true,  true,  true,  "== %abc%"},
+		{"a%%b%%%c",  false, "axxbxxc", true,  true,  true,  "a%b%c equivalent"},
+		{"a%%b%%%c",  false, "abxc",    true,  true,  true,  "collapsed ok"},
+		{"a%%b%%%c",  false, "axbc",    true,  true,  true,  "also ok"},
+		// 10) Suffix
+		{"%1234", false, "1234",  true,  true,  true,  "ends with exact"},
+		{"%1234", false, "x1234", true,  true,  true,  "ends with with prefix char"},
+		{"%1234", false, "123",   false, false, false, "shorter than suffix"},
+		// 11) Prefix
+		{"1234%", false, "1234",  true,  true,  true,  "starts with exact"},
+		{"1234%", false, "12345", true,  true,  true,  "starts with plus more"},
+		{"1234%", false, "123",   false, false, false, "shorter than prefix"},
+		// 12) Substring s '_'
+		{"%12_3%", false, "x12a3y", true,  true,  true,  "substring w/underscore"},
+		{"%12_3%", false, "12a3",   true,  true,  true,  "substring at edges ok"},
+		{"%12_3%", false, "12aX3",  false, false, false, "underscore=one only"},
+		// 13) Plný wildcard
+		{"%",   true,  "anything", true,  true,  true,  "match all"},
+		{"%%",  true,  "anything", true,  true,  true,  "match all multi %"},
+		{"%_%", false, "A",        true,  true,  true,  "at least one char"},
+		{"%_%", false, "",         false, false, false, "needs one char"},
+		// 14) Case-insensitivity
+		{"%AbC%", false, "xxabcYY", true,  true,  true,  "case-insensitive substring"},
+		{"AB_",   false, "abC",     true,  true,  true,  "case-insensitive '_'"},
+		{"AB_",   false, "ab",      false, false, false, "needs one char"},
+		// 15) Empty pattern
+		{"", false, "",  true,  true, false, "empty==empty"},
+		{"", false, "X", false, true, false, "empty not prefix"},
+		{"", true,  "",  true,  true, false, "prefix empty ok"},
+		{"", true,  "X", true,  true, false, "prefix empty matches all"},
+		// 16) prefix má přednost, ale ne přebití leading %
+		{"%abc%", true, "xabc", true,  true, true, "leading % stays substring"},
+		{"%abc",  true, "xabc", true,  true, true, "suffix respected"},
+		{"%abc",  true, "abcy", false, true, false, "suffix respected (still suffix)"},
+		// 17) „6%2“ v prefix režimu
+		{"6%2", true, "602x", true,  true, false, "prefix open right"},
+		{"6%2", true, "x602", false, true, false, "must start with 6"},
+		{"6%2", true, "62",   true,  true, true,  "2 can be last"},
+		// 18) Dlouhé řetězce
+		{"12345%6789", false, "12345___6789",  true,  true, true,  "wildcards inside"},
+		{"12345%6789", true,  "12345___6789X", true,  true, false, "prefix left-anchored"},
+		{"12345%6789", false, "X12345__6789",  false, true, false, "not starting with 12345"},
+	};
+	unsigned cases_size = sizeof(cases) / sizeof(cases[0]);
+
+	cout << "*** checkNumber" << endl; 
 	int fails = 0;
-
-	std::vector<check_check_phone_number_case> cases;
-
-	// 1) Bez wildcardů, prefix=false
-	cases.push_back((check_check_phone_number_case){"123", false, "123",  true,  "exact match"});
-	cases.push_back((check_check_phone_number_case){"123", false, "1234", false, "exact must fail"});
-	cases.push_back((check_check_phone_number_case){"AbC", false, "aBc",  true,  "case-insensitive exact"});
-	cases.push_back((check_check_phone_number_case){"",    false, "",     true,  "empty==empty"});
-	cases.push_back((check_check_phone_number_case){"",    false, "x",    false, "empty pattern not prefix"});
-
-	// 2) Bez wildcardů, prefix=true
-	cases.push_back((check_check_phone_number_case){"123", true, "123",      true,  "prefix: exact ok"});
-	cases.push_back((check_check_phone_number_case){"123", true, "1234",     true,  "prefix: longer ok"});
-	cases.push_back((check_check_phone_number_case){"123", true, "0123",     false, "prefix: must start"});
-	cases.push_back((check_check_phone_number_case){"",    true, "anything", true,  "empty prefix matches all"});
-
-	// 3) Suffix
-	cases.push_back((check_check_phone_number_case){"%123", true,  "A123", true,  "suffix true"});
-	cases.push_back((check_check_phone_number_case){"%123", true,  "123B", false, "suffix false"});
-	cases.push_back((check_check_phone_number_case){"%123", false, "X123", true,  "suffix w/o prefix"});
-	cases.push_back((check_check_phone_number_case){"%123", false, "12",   false, "too short"});
-
-	// 4) Substring
-	cases.push_back((check_check_phone_number_case){"%abc%", true,  "xabcY", true,  "substring true"});
-	cases.push_back((check_check_phone_number_case){"%abc%", false, "abc",   true,  "substring exact"});
-	cases.push_back((check_check_phone_number_case){"%abc%", false, "ab",    false, "substring missing"});
-
-	// 5) Vnitřní '%', bez krajních
-	cases.push_back((check_check_phone_number_case){"6%2", false, "6z2",   true,  "full-string starts 6 ends 2"});
-	cases.push_back((check_check_phone_number_case){"6%2", false, "x6z2",  false, "must start with 6"});
-	cases.push_back((check_check_phone_number_case){"6%2", false, "6z2y",  false, "must end with 2"});
-	cases.push_back((check_check_phone_number_case){"6%2", true,  "6z2",   true,  "prefix: still ok"});
-	cases.push_back((check_check_phone_number_case){"6%2", true,  "6z2y",  true,  "prefix: right side open"});
-	cases.push_back((check_check_phone_number_case){"6%2", true,  "x6z2y", false, "prefix: must start with 6"});
-
-	// 6) "%6%2"
-	cases.push_back((check_check_phone_number_case){"%6%2", true,  "706912", true,  "leading % not overridden by prefix"});
-	cases.push_back((check_check_phone_number_case){"%6%2", false, "706912", true,  "normal SQL-LIKE"});
-	cases.push_back((check_check_phone_number_case){"%6%2", true,  "761",    false, "no trailing 2"});
-	cases.push_back((check_check_phone_number_case){"%6%2", true,  "62",     true,  "6 then 2"});
-
-	// 7) '_'
-	cases.push_back((check_check_phone_number_case){"12_34", false, "12A34",  true,  "_ matches one"});
-	cases.push_back((check_check_phone_number_case){"12_34", false, "1234",   false, "missing one char"});
-	cases.push_back((check_check_phone_number_case){"12_34", false, "12AB34", false, "too many in middle"});
-	cases.push_back((check_check_phone_number_case){"_%",    false, "Axxxxx", true,  "one then anything"});
-	cases.push_back((check_check_phone_number_case){"_%",    false, "",       false, "needs at least 1"});
-	cases.push_back((check_check_phone_number_case){"_",     true,  "A",      true,  "underscore one char"});
-	cases.push_back((check_check_phone_number_case){"_",     true,  "AB",     true,  "prefix: only first char checked"});
-	cases.push_back((check_check_phone_number_case){"_",     true,  "",       false, "needs one char"});
-
-	// 8) Kombinace
-	cases.push_back((check_check_phone_number_case){"%ab_c%", false, "xabZcY", true,  "%...ab _ c...%"});
-	cases.push_back((check_check_phone_number_case){"%ab_c%", false, "abZc",   true,  "edge ok"});
-	cases.push_back((check_check_phone_number_case){"%ab_c%", false, "abc",    false, "underscore needs one"});
-	cases.push_back((check_check_phone_number_case){"a_b%c",  false, "aXbYc",  true,  "a, one, b, anything, c"});
-	cases.push_back((check_check_phone_number_case){"a_b%c",  false, "abYc",   false, "missing '_' char"});
-
-	// 9) Vícenásobné %
-	cases.push_back((check_check_phone_number_case){"abc%%%%",   true,  "abcdef",  true,  "abc% prefix after trim"});
-	cases.push_back((check_check_phone_number_case){"abc%%%%",   true,  "abX",     false, "must start abc"});
-	cases.push_back((check_check_phone_number_case){"%%abc%%%%", false, "xabc",    true,  "== %abc%"});
-	cases.push_back((check_check_phone_number_case){"a%%b%%%c",  false, "axxbxxc", true,  "a%b%c equivalent"});
-	cases.push_back((check_check_phone_number_case){"a%%b%%%c",  false, "abxc",    true,  "collapsed ok"});
-	cases.push_back((check_check_phone_number_case){"a%%b%%%c",  false, "axbc",    true,  "also ok"});
-
-	// 10) Suffix
-	cases.push_back((check_check_phone_number_case){"%1234", false, "1234",  true,  "ends with exact"});
-	cases.push_back((check_check_phone_number_case){"%1234", false, "x1234", true,  "ends with with prefix char"});
-	cases.push_back((check_check_phone_number_case){"%1234", false, "123",   false, "shorter than suffix"});
-
-	// 11) Prefix
-	cases.push_back((check_check_phone_number_case){"1234%", false, "1234",  true,  "starts with exact"});
-	cases.push_back((check_check_phone_number_case){"1234%", false, "12345", true,  "starts with plus more"});
-	cases.push_back((check_check_phone_number_case){"1234%", false, "123",   false, "shorter than prefix"});
-
-	// 12) Substring s '_'
-	cases.push_back((check_check_phone_number_case){"%12_3%", false, "x12a3y", true,  "substring w/underscore"});
-	cases.push_back((check_check_phone_number_case){"%12_3%", false, "12a3",   true,  "substring at edges ok"});
-	cases.push_back((check_check_phone_number_case){"%12_3%", false, "12aX3",  false, "underscore=one only"});
-
-	// 13) Plný wildcard
-	cases.push_back((check_check_phone_number_case){"%",   true,  "anything", true,  "match all"});
-	cases.push_back((check_check_phone_number_case){"%%",  true,  "anything", true,  "match all multi %"});
-	cases.push_back((check_check_phone_number_case){"%_%", false, "A",        true,  "at least one char"});
-	cases.push_back((check_check_phone_number_case){"%_%", false, "",         false, "needs one char"});
-
-	// 14) Case-insensitivity
-	cases.push_back((check_check_phone_number_case){"%AbC%", false, "xxabcYY", true,  "case-insensitive substring"});
-	cases.push_back((check_check_phone_number_case){"AB_",   false, "abC",     true,  "case-insensitive '_'"});
-	cases.push_back((check_check_phone_number_case){"AB_",   false, "ab",      false, "needs one char"});
-
-	// 15) Empty pattern
-	cases.push_back((check_check_phone_number_case){"", false, "",  true,  "empty==empty"});
-	cases.push_back((check_check_phone_number_case){"", false, "X", false, "empty not prefix"});
-	cases.push_back((check_check_phone_number_case){"", true,  "",  true,  "prefix empty ok"});
-	cases.push_back((check_check_phone_number_case){"", true,  "X", true,  "prefix empty matches all"});
-
-	// 16) prefix má přednost, ale ne přebití leading %
-	cases.push_back((check_check_phone_number_case){"%abc%", true, "xabc", true,  "leading % stays substring"});
-	cases.push_back((check_check_phone_number_case){"%abc",  true, "xabc", true,  "suffix respected"});
-	cases.push_back((check_check_phone_number_case){"%abc",  true, "abcy", false, "suffix respected (still suffix)"});
-
-	// 17) „6%2“ v prefix režimu
-	cases.push_back((check_check_phone_number_case){"6%2", true, "602x", true,  "prefix open right"});
-	cases.push_back((check_check_phone_number_case){"6%2", true, "x602", false, "must start with 6"});
-	cases.push_back((check_check_phone_number_case){"6%2", true, "62",   true,  "2 can be last"});
-
-	// 18) Dlouhé řetězce
-	cases.push_back((check_check_phone_number_case){"12345%6789", false, "12345___6789",  true,  "wildcards inside"});
-	cases.push_back((check_check_phone_number_case){"12345%6789", true,  "12345___6789X", true,  "prefix left-anchored"});
-	cases.push_back((check_check_phone_number_case){"12345%6789", false, "X12345__6789",  false, "not starting with 12345"});
-     
-	for(size_t i = 0; i < cases.size(); ++i) {
+	for(size_t i = 0; i < cases_size; ++i) {
 		const check_check_phone_number_case& c = cases[i];
 		PhoneNumber pn(c.pattern, c.prefix);
 		bool got = pn.checkNumber(c.input);
-		cout << "[TEST " << (i+1) << "] pat=\"" << c.pattern 
-		     << "\" prefix=" << (c.prefix ? 1 : 0)
-		     << " input=\"" << c.input << "\" -> "
-		     << (got ? "true" : "false")
-		     << " expected " << (c.expect ? "true" : "false")
-		     << " // " << c.note;
-		if(got == c.expect) {
-			cout << " [PASS]\n";
-		} else {
-			cout << " [FAIL]\n";
+		if(got != c.expect) {
+			cout << "[TEST " << (i+1) << "] pat=\"" << c.pattern << "\""
+			     << " prefix=" << (c.prefix ? 1 : 0)
+			     << " input=\"" << c.input << "\""
+			     << " -> " << (got ? "true" : "false")
+			     << " expected " << (c.expect ? "true" : "false")
+			     << " // " << c.note
+			     << " " << (got == c.expect ? "[PASS]" : "[FAIL]")
+			     << endl;
+		}
+		if(got != c.expect) {
 			++fails;
 		}
 	}
-	cout << endl
-	     << "Summary: " << (cases.size()-fails) 
-	     << " passed, " << fails << " failed, total " 
-	     << cases.size() << endl;
-		  
-	/*     
-	cout << "1 " << (strstr_wildcard("aXYZbc", "a%bc", "_", "%", true) ? "OK" : "failed") << endl;
-	cout << "2 " << (strstr_wildcard("xxa12345bcYY", "a%bc", "_", "%", true) ? "OK" : "failed") << endl;
-	cout << "3 " << (strstr_wildcard("aXYZbQWc" ,"a%b%c",  "_", "%", true) ? "OK" : "failed") << endl;
-	cout << "4 " << (strstr_wildcard("6zzz2tail" ,"6%2",  "_", "%", true) ? "OK" : "failed") << endl;
-	*/
+	cout << "Summary: " 
+	     << (cases_size-fails) << " passed, " 
+	     << fails << " failed, " 
+	     << cases_size << " total"
+	     << endl << endl;
+	     
+	cout << "*** strstr_wildcard" << endl; 
+	fails = 0;
+	for(size_t i = 0; i < cases_size; ++i) {
+		const check_check_phone_number_case& c = cases[i];
+		PhoneNumber pn(c.pattern, c.prefix);
+		bool got = strstr_wildcard(c.input, c.pattern, "_", "%", true);
+		if(got != c.expect_strstr) {
+			cout << "[TEST " << (i+1) << "] pat=\"" << c.pattern << "\""
+			     << " prefix=" << (c.prefix ? 1 : 0)
+			     << " input=\"" << c.input << "\""
+			     << " -> " << (got ? "true" : "false")
+			     << " expected " << (c.expect_strstr ? "true" : "false")
+			     << " // " << c.note
+			     << " " << (got == c.expect_strstr ? "[PASS]" : "[FAIL]")
+			     << endl;
+		}
+		if(got != c.expect_strstr) {
+			++fails;
+		}
+	}
+	cout << "Summary: " 
+	     << (cases_size-fails) << " passed, " 
+	     << fails << " failed, " 
+	     << cases_size << " total"
+	     << endl << endl;
+	     
+	cout << "*** str_like" << endl; 
+	fails = 0;
+	for(size_t i = 0; i < cases_size; ++i) {
+		const check_check_phone_number_case& c = cases[i];
+		PhoneNumber pn(c.pattern, c.prefix);
+		bool got = str_like(c.input, c.pattern);
+		if(got != c.expect_strlike) {
+		cout << "[TEST " << (i+1) << "] pat=\"" << c.pattern << "\""
+		     << " prefix=" << (c.prefix ? 1 : 0)
+		     << " input=\"" << c.input << "\""
+		     << " -> " << (got ? "true" : "false")
+		     << " expected " << (c.expect_strlike ? "true" : "false")
+		     << " // " << c.note
+		     << " " << (got == c.expect_strlike ? "[PASS]" : "[FAIL]")
+		     << endl;
+		}
+		if(got != c.expect_strlike) {
+			++fails;
+		}
+	}
+	cout << "Summary: " 
+	     << (cases_size-fails) << " passed, " 
+	     << fails << " failed, " 
+	     << cases_size << " total"
+	     << endl << endl;
 }
 
 void test() {

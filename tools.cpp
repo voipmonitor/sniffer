@@ -3372,32 +3372,49 @@ bool string_is_alphanumeric(const char *s) {
 
 
 bool str_like(const char *str, const char *pattern) {
-	unsigned str_length = strlen(str);
 	unsigned pattern_length = strlen(pattern);
-	if(pattern_length) {
-		bool pattern_contain_wildcard = strchr(pattern, '_') ? true : false;
-		bool rslt;
-		if(pattern[0] == '%') {
-			if(pattern[pattern_length - 1] == '%') {
-				rslt = strcasestr(str, string(pattern).substr(1, pattern_length - 2).c_str()) != NULL;
-			} else {
-				rslt = str_length >= pattern_length - 1 &&
-				       !(pattern_contain_wildcard ?
-					  strncasecmp_wildcard(str + str_length - (pattern_length - 1), string(pattern).substr(1).c_str(), pattern_length - 1, "_") :
-					  strncasecmp(str + str_length - (pattern_length - 1), string(pattern).substr(1).c_str(), pattern_length - 1));
-			}
-		} else if(pattern[pattern_length - 1] == '%') {
-			rslt = !(pattern_contain_wildcard ?
-				  strncasecmp_wildcard(str, pattern, pattern_length - 1, "_") :
-				  strncasecmp(str, pattern, pattern_length - 1));
-		} else {
-			rslt = !(pattern_contain_wildcard ?
-				  strcasecmp_wildcard(str, pattern, "_") :
-				  strcasecmp(str, pattern));
-		}
-		return(rslt);
+	if(!pattern_length) return(false);
+	bool boundLeft = true;
+	bool boundRight = true;
+	int wildcard = 0;
+	string pattern_str = pattern;
+	if(pattern_str.size() && pattern_str[0] == '%') {
+		pattern_str.erase(0, 1);
+		boundLeft = false;
 	}
-	return(false);
+	if(pattern_str.size() && pattern_str[pattern_str.size() - 1] == '%') {
+		pattern_str.erase(pattern_str.length() - 1, 1);
+		boundRight = false;
+	}
+	if(pattern_str.find('%') == string::npos) {
+		pattern_length = pattern_str.length();
+		wildcard = pattern_str.find('_') != string::npos ? 1 : 0;
+	} else {
+		pattern_str = pattern;
+		wildcard = 2;
+	}
+	if((boundLeft && boundRight) || wildcard == 2) {
+		return(wildcard ?
+			!strcasecmp_wildcard(str, pattern_str.c_str(), "_", "%") :
+			!strcasecmp(str, pattern_str.c_str()));
+	} else if(boundLeft) {
+		return(wildcard ?
+			!strncasecmp_wildcard(str, pattern_str.c_str(), pattern_length, "_", "%") :
+			!strncasecmp(str, pattern_str.c_str(), pattern_length));
+	} else if(boundRight) {
+		unsigned str_length = strlen(str);
+		if(str_length >= pattern_length) {
+			return(wildcard ?
+				!strcasecmp_wildcard(str + str_length - pattern_length, pattern_str.c_str(), "_", "%") :
+				!strcasecmp(str + str_length - pattern_length, pattern_str.c_str()));
+		} else {
+			return(false);
+		}
+	} else {
+		return(wildcard ?
+			strcasestr_wildcard(str, pattern_str.c_str(), "_", "%") :
+			strcasestr(str, pattern_str.c_str()));
+	}
 }
 
 
