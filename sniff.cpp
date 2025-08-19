@@ -12535,9 +12535,12 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 				char *time = gettag_sip(packetS, "\nX-Siptrace-Time:", &time_l);
 				bool time_ok = false;
 				if(time) {
+					u_int32_t tv_sec = atol(time);
 					char *p_sep_us = strnchr(time, ' ', time_l) ;
-					if(p_sep_us) {
-						kamailio_subst->ts.tv_sec = atol(time);
+					if(p_sep_us &&
+					   tv_sec > packetS->getTime_s() - 2 * 24 * 60 * 60 &&
+					   tv_sec < packetS->getTime_s() + 2 * 24 * 60 * 60) {
+						kamailio_subst->ts.tv_sec = tv_sec;
 						kamailio_subst->ts.tv_usec = atol(p_sep_us + 1);
 						extern char opt_pb_read_from_file[256];
 						extern int opt_pb_read_from_file_acttime;
@@ -12559,7 +12562,9 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 				}
 				packetS->kamailio_subst = kamailio_subst;
 				#if not NOT_USE_SEPARATE_TIME_US
-				packetS->time_us = ::getTimeUS(kamailio_subst->ts);
+				if(time_ok) {
+					packetS->time_us = ::getTimeUS(kamailio_subst->ts);
+				}
 				#endif
 			}
 		}
