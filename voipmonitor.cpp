@@ -4322,7 +4322,7 @@ int main(int argc, char *argv[]) {
 	}
 	
 	// start manager threads
-	if((opt_manager_port > 0 || !opt_manager_socket.empty() || is_client()) && !is_read_from_file_simple()) {
+	if((opt_manager_port > 0 || !opt_manager_socket.empty() || is_client()) && !is_read_from_file_simple() && !is_gui_param) {
 		init_management_functions();
 		if(opt_manager_port > 0) {
 			vm_pthread_create("manager server",
