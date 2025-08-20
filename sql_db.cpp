@@ -11377,30 +11377,18 @@ void dropMysqlPartitionsSs7() {
 
 void dropMysqlPartitionsCdrStat() {
 	extern int opt_cleandatabase_cdr_stat;
-	if(opt_cdr_stat_values) {
-		for(int src_dst = 0; src_dst < 2; src_dst++) {
-			if(cCdrStat::enableBySrcDst(src_dst)) {
-				dropMysqlPartitionsTable(("cdr_stat_values" + cCdrStat::tableNameSuffix(src_dst)).c_str(), opt_cleandatabase_cdr_stat, 0, 'm');
-			}
-		}
+	for(int src_dst = 0; src_dst < 2; src_dst++) {
+		dropMysqlPartitionsTable(("cdr_stat_values" + cCdrStat::tableNameSuffix(src_dst)).c_str(), opt_cleandatabase_cdr_stat, 0, 'm');
 	}
-	if(opt_cdr_stat_sources) {
-		for(int src_dst = 0; src_dst < 2; src_dst++) {
-			if(cCdrStat::enableBySrcDst(src_dst)) {
-				dropMysqlPartitionsTable(("cdr_stat_sources" + cCdrStat::tableNameSuffix(src_dst)).c_str(), opt_cleandatabase_cdr_stat, 0, 'm');
-			}
-		}
+	for(int src_dst = 0; src_dst < 2; src_dst++) {
+		dropMysqlPartitionsTable(("cdr_stat_sources" + cCdrStat::tableNameSuffix(src_dst)).c_str(), opt_cleandatabase_cdr_stat, 0, 'm');
 	}
 }
 
 void dropMysqlPartitionsCdrProblems() {
 	extern int opt_cleandatabase_cdr_problems;
-	if(opt_cdr_problems) {
-		for(int by_type = 0; by_type < 3; by_type++) {
-			if(cCdrProblems::enableByType(by_type)) {
-				dropMysqlPartitionsTable(("cdr_problems" + cCdrProblems::tableNameSuffix(by_type)).c_str(), opt_cleandatabase_cdr_problems, 0, 'm');
-			}
-		}
+	for(int by_type = 0; by_type < 3; by_type++) {
+		dropMysqlPartitionsTable(("cdr_problems" + cCdrProblems::tableNameSuffix(by_type)).c_str(), opt_cleandatabase_cdr_problems, 0, 'm');
 	}
 }
 
@@ -11449,13 +11437,15 @@ void dropMysqlPartitionsBillingAgregation() {
 }
 
 void dropMysqlPartitionsTable(const char *table, int cleanParam, unsigned maximumPartitions, char type) {
-	syslog(LOG_NOTICE, "%s", (string("drop ") + table + " old partitions - begin").c_str());
 	SqlDb *sqlDb = createSqlObject();
-	sqlDb->setDisableLogError();
-	sqlDb->setDisableNextAttemptIfError();
-	_dropMysqlPartitions(table, cleanParam, maximumPartitions, sqlDb, type);
+	if(sqlDb->existsTable(table)) {
+		syslog(LOG_NOTICE, "%s", (string("drop ") + table + " old partitions - begin").c_str());
+		sqlDb->setDisableLogError();
+		sqlDb->setDisableNextAttemptIfError();
+		_dropMysqlPartitions(table, cleanParam, maximumPartitions, sqlDb, type);
+		syslog(LOG_NOTICE, "%s", (string("drop ") + table + " old partitions - end").c_str());
+	}
 	delete sqlDb;
-	syslog(LOG_NOTICE, "%s", (string("drop ") + table + " old partitions - end").c_str());
 }
 
 void _dropMysqlPartitions(const char *table, int cleanParam, unsigned maximumPartitions, SqlDb *sqlDb, char type) {
