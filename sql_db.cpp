@@ -2098,9 +2098,10 @@ int SqlDb_mysql::getMaximumPartitions() {
 }
 
 bool SqlDb_mysql::isSupportForDatetimeMs() {
-	return(getDbName() == "mariadb" ? 
-		(getDbVersion() > 50300) :
-		(getDbVersion() > 50500));
+	return(isCloud() ||
+	       (getDbName() == "mariadb" ? 
+		 (getDbVersion() > 50300) :
+		 (getDbVersion() > 50500)));
 }
 
 bool SqlDb_mysql::_getDbVersion() {
