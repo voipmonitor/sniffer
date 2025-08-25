@@ -154,6 +154,36 @@ fi
 
 AC_SUBST([HAVE_SYSTEMD_SUBST])
 
+# Add --exclude-static-libs option to exclude specific libraries from static linking
+AC_ARG_WITH([exclude-static-libs],
+    [AS_HELP_STRING([--with-exclude-static-libs=LIBS], [Exclude specified libraries from static linking (comma-separated, e.g., 'systemd,p11-kit' for -lsystemd and -lp11-kit)])],
+    [
+        if test "x$withval" != "xno" && test "x$withval" != "x"; then
+            # Build list of libraries to exclude
+            EXCLUDE_STATIC_LIBS=""
+            OLDIFS="$IFS"
+            IFS=','
+            for lib in $withval; do
+                # Add -l prefix if not present
+                case "$lib" in
+                    -l*) libname="${lib}" ;;
+                    *) libname="-l${lib}" ;;
+                esac
+                if test -n "$EXCLUDE_STATIC_LIBS"; then
+                    EXCLUDE_STATIC_LIBS="${EXCLUDE_STATIC_LIBS}|"
+                fi
+                EXCLUDE_STATIC_LIBS="${EXCLUDE_STATIC_LIBS}${libname}"
+            done
+            IFS="$OLDIFS"
+            AC_MSG_NOTICE([Will exclude from static linking: $withval])
+        else
+            EXCLUDE_STATIC_LIBS=""
+        fi
+    ],
+    [EXCLUDE_STATIC_LIBS=""])
+
+AC_SUBST([EXCLUDE_STATIC_LIBS])
+
 AC_CHECK_LIB([json], [main], LIBJSON_NAME='json')
 AC_CHECK_LIB([json-c], [main], LIBJSON_NAME='json-c')
 AC_CHECK_LIB([png], [main], HAVE_LIBPNG=1, AC_MSG_WARN([Unable to find libpng library. apt-get install libpng-dev | yum install libpng-devel]))

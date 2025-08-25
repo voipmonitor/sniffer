@@ -618,6 +618,7 @@ DPDKINCLUDE
 LIBCDIRINC
 LIBCDIRLIB
 LIBJSON_NAME
+EXCLUDE_STATIC_LIBS
 HAVE_SYSTEMD_SUBST
 HAVE_DNS_RESOLVER
 CURLLIBSTATIC
@@ -698,6 +699,7 @@ with_openssl_dir
 with_curl
 with_dns_resolver
 with_systemd_subst
+with_exclude_static_libs
 with_libc_dir
 with_dpdk_include
 with_dpdk_lib
@@ -1343,6 +1345,10 @@ Optional Packages:
                           tools/dns_resolver/dns_resolver.c
   --with-systemd-subst    Include systemd substitution support from
                           tools/systemd_subst/systemd_subst.c
+  --with-exclude-static-libs=LIBS
+                          Exclude specified libraries from static linking
+                          (comma-separated, e.g., 'systemd,p11-kit' for
+                          -lsystemd and -lp11-kit)
   --with-libc-dir=PATH path to explicit libc directory (for static building)
   --with-dpdk-include=PATH path to explicit include files
   --with-dpdk-lib=PATH path to explicit lib files
@@ -4203,6 +4209,41 @@ $as_echo "#define HAVE_SYSTEMD_SUBST 1" >>confdefs.h
 else
     HAVE_SYSTEMD_SUBST=0
 fi
+
+
+
+# Add --exclude-static-libs option to exclude specific libraries from static linking
+
+# Check whether --with-exclude-static-libs was given.
+if test "${with_exclude_static_libs+set}" = set; then :
+  withval=$with_exclude_static_libs;
+        if test "x$withval" != "xno" && test "x$withval" != "x"; then
+            # Build list of libraries to exclude
+            EXCLUDE_STATIC_LIBS=""
+            OLDIFS="$IFS"
+            IFS=','
+            for lib in $withval; do
+                # Add -l prefix if not present
+                case "$lib" in
+                    -l*) libname="${lib}" ;;
+                    *) libname="-l${lib}" ;;
+                esac
+                if test -n "$EXCLUDE_STATIC_LIBS"; then
+                    EXCLUDE_STATIC_LIBS="${EXCLUDE_STATIC_LIBS}|"
+                fi
+                EXCLUDE_STATIC_LIBS="${EXCLUDE_STATIC_LIBS}${libname}"
+            done
+            IFS="$OLDIFS"
+            { $as_echo "$as_me:${as_lineno-$LINENO}: Will exclude from static linking: $withval" >&5
+$as_echo "$as_me: Will exclude from static linking: $withval" >&6;}
+        else
+            EXCLUDE_STATIC_LIBS=""
+        fi
+
+else
+  EXCLUDE_STATIC_LIBS=""
+fi
+
 
 
 
