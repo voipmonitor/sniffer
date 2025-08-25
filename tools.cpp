@@ -6887,10 +6887,12 @@ cPng::pixel *cPng::getPixelPointer(size_t x, size_t y) {
 	return(pixels + width * y + x);
 }
 
+#ifdef HAVE_LIBPNG
 static void _png_write_to_buffer(png_structp png_ptr, png_bytep data, png_size_t length) {
 	SimpleBuffer *png = (SimpleBuffer*)png_get_io_ptr(png_ptr);
 	png->add(data, length);
 }
+#endif
 
 bool cPng::_write(const char *filePathName, SimpleBuffer *png, string *error) {
 #ifdef HAVE_LIBPNG
