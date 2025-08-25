@@ -18,7 +18,10 @@
 #include <signal.h>
 #include <iomanip>
 #include <sys/wait.h>
+
+#ifdef HAVE_LIBCURL
 #include <curl/curl.h>
+#endif //HAVE_LIBCURL
 
 #ifdef FREEBSD
 #include <sys/endian.h>
@@ -2937,7 +2940,9 @@ pthread_mutex_t daemonizeErrorTempFileLock;
 static void daemonize(void)
 {
  
+	#ifdef HAVE_LIBCURL
 	curl_global_cleanup();
+	#endif
 	
 	daemonizeErrorTempFileName = tmpnam();
 	if (daemonizeErrorTempFileName.empty()) {
@@ -2986,7 +2991,9 @@ static void daemonize(void)
 		close(1); open("/dev/null", O_WRONLY);
 		close(2); open("/dev/null", O_WRONLY);
 		
+		#ifdef HAVE_LIBCURL
 		curl_global_init(CURL_GLOBAL_ALL);
+		#endif
 	}
 }
 

@@ -16,7 +16,6 @@
 #include <sys/ioctl.h>
 #include <sys/syscall.h>
 #include <sys/statvfs.h>
-#include <curl/curl.h>
 #include <cerrno>
 #include <json.h>
 #include <iomanip>

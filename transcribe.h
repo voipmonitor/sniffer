@@ -8,8 +8,6 @@
 
 #include "sync.h"
 
-#include <curl/curl.h>
-
 
 class Transcribe {
 public:

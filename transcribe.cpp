@@ -2,7 +2,6 @@
 #include <sys/stat.h>
 #include <dlfcn.h>
 #include <signal.h>
-#include <curl/curl.h>
 
 #include "config.h"
 
@@ -1022,188 +1021,130 @@ static size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *use
     return size * nmemb;
 }
 
-bool Transcribe::runWhisperRestApi(const char *wav,
-								   string &rslt_language, string &rslt_text, string &rslt_segments,
-								   string *error) {
-	CURL *curl;
-	CURLcode res;
+bool Transcribe::runWhisperRestApi(const char *wav, string &rslt_language, string &rslt_text, string &rslt_segments, string *error) {
 	std::string readBuffer;
-
-	struct curl_httppost *formpost = NULL;
-	struct curl_httppost *lastptr = NULL;
-	struct curl_slist *headerlist = NULL;
-	static const char buf[] = "Expect:";
-
-	curl_global_init(CURL_GLOBAL_ALL);
-
-	// Add form data
-	curl_formadd(&formpost,
-				 &lastptr,
-				 CURLFORM_COPYNAME, "audio_file",
-				 CURLFORM_FILE, wav,
-				 CURLFORM_END);
-
-	curl = curl_easy_init();
-	if(curl) {
-		headerlist = curl_slist_append(headerlist, buf);
-
-		curl_easy_setopt(curl, CURLOPT_URL, opt_whisper_rest_api_url.c_str());
-		curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
-		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headerlist);
-
-		if(sverb.whisper) {
-			cout << "whisper rest api url: " << opt_whisper_rest_api_url << endl;
-			cout << "whisper rest api file: " << wav << endl;
-		}
-
-		res = curl_easy_perform(curl);
-
-		if(res != CURLE_OK) {
-			if(error) {
-				*error = "curl_easy_perform() failed: " + string(curl_easy_strerror(res));
-			}
-		} else {
-			if(sverb.whisper) {
-				cout << "whisper rest api response: " << readBuffer << endl;
-			}
-
-			JsonItem json;
-			json.parse(readBuffer);
-			
-			rslt_text = json.getValue("text");
-			rslt_language = json.getValue("language");
-			
-			JsonItem *segments_item = json.getItem("segments");
-			if (segments_item && segments_item->getType() == json_type_array) {
-				string text_from_segments;
-				convertJsonSegmentsToText(segments_item, &text_from_segments, &rslt_segments);
-				if(rslt_text.empty()) {
-					rslt_text = text_from_segments;
-				}
-			}
-		}
-
-		curl_easy_cleanup(curl);
-		curl_formfree(formpost);
-		curl_slist_free_all(headerlist);
+	
+	s_get_curl_response_params curl_params(s_get_curl_response_params::_rt_multipart);
+	curl_params.addMultipartFile("audio_file", wav);
+	curl_params.custom_write_function = WriteCallback;
+	curl_params.custom_write_data = &readBuffer;
+	
+	if(sverb.whisper) {
+		cout << "whisper rest api url: " << opt_whisper_rest_api_url << endl;
+		cout << "whisper rest api file: " << wav << endl;
 	}
-	curl_global_cleanup();
+	
+	if(!get_curl_response(opt_whisper_rest_api_url.c_str(), NULL, &curl_params)) {
+		if(error) {
+			*error = "curl_easy_perform() failed: " + curl_params.error;
+		}
+		return false;
+	}
+	
+	if(sverb.whisper) {
+		cout << "whisper rest api response: " << readBuffer << endl;
+	}
+	
+	JsonItem json;
+	json.parse(readBuffer);
+	
+	rslt_text = json.getValue("text");
+	rslt_language = json.getValue("language");
+	
+	JsonItem *segments_item = json.getItem("segments");
+	if (segments_item && segments_item->getType() == json_type_array) {
+		string text_from_segments;
+		convertJsonSegmentsToText(segments_item, &text_from_segments, &rslt_segments);
+		if(rslt_text.empty()) {
+			rslt_text = text_from_segments;
+		}
+	}
+	
 	return !rslt_text.empty();
 }
 
-bool Transcribe::runWhisperRestApiStereo(const char *wav,
-										  sRslt results[2],
-										  string *error) {
-	CURL *curl;
-	CURLcode res = CURLE_FAILED_INIT;
+bool Transcribe::runWhisperRestApiStereo(const char *wav, sRslt results[2], string *error) {
 	std::string readBuffer;
 	bool success = false;
-
-	struct curl_httppost *formpost = NULL;
-	struct curl_httppost *lastptr = NULL;
-	struct curl_slist *headerlist = NULL;
-	static const char buf[] = "Expect:";
-
-	curl_global_init(CURL_GLOBAL_ALL);
-
-	// Add form data
-	curl_formadd(&formpost,
-				 &lastptr,
-				 CURLFORM_COPYNAME, "audio_file",
-				 CURLFORM_FILE, wav,
-				 CURLFORM_END);
-
-	curl = curl_easy_init();
-	if(curl) {
-		headerlist = curl_slist_append(headerlist, buf);
-
-		curl_easy_setopt(curl, CURLOPT_URL, opt_whisper_rest_api_url.c_str());
-		curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
-		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headerlist);
-
-		if(sverb.whisper) {
-			cout << "whisper rest api url (stereo mode): " << opt_whisper_rest_api_url << endl;
-			cout << "whisper rest api file: " << wav << endl;
-		}
-
-		res = curl_easy_perform(curl);
-
-		if(res != CURLE_OK) {
-			if(error) {
-				*error = "curl_easy_perform() failed: " + string(curl_easy_strerror(res));
-			}
-		} else {
-			if(sverb.whisper) {
-				cout << "whisper rest api response: " << readBuffer << endl;
-			}
-
-			// Parse the response - expected format:
-			// {"detected_language":{"language":"czech","language_code":"cs","confidence":1.0},"left_channel":{...},"right_channel":{...}}
-			JsonItem json;
-			json.parse(readBuffer);
-			
-			// Get detected language info
-			JsonItem *detectedLang = json.getItem("detected_language");
-			string detectedLanguageCode;
-			if(detectedLang) {
-				detectedLanguageCode = detectedLang->getValue("language_code");
-			}
-			
-			// Process left channel (a_*)
-			JsonItem *leftChannel = json.getItem("left_channel");
-			if(leftChannel) {
-				results[0].language = !detectedLanguageCode.empty() ? detectedLanguageCode : leftChannel->getValue("language");
-				results[0].text = leftChannel->getValue("text");
-				
-				JsonItem *segments_item = leftChannel->getItem("segments");
-				if (segments_item && segments_item->getType() == json_type_array) {
-					string text_from_segments;
-					convertJsonSegmentsToText(segments_item, &text_from_segments, &results[0].segments);
-					if(results[0].text.empty()) {
-						results[0].text = text_from_segments;
-					}
-				}
-			}
-			
-			// Process right channel (b_*)
-			JsonItem *rightChannel = json.getItem("right_channel");
-			if(rightChannel) {
-				results[1].language = !detectedLanguageCode.empty() ? detectedLanguageCode : rightChannel->getValue("language");
-				results[1].text = rightChannel->getValue("text");
-				
-				JsonItem *segments_item = rightChannel->getItem("segments");
-				if (segments_item && segments_item->getType() == json_type_array) {
-					string text_from_segments;
-					convertJsonSegmentsToText(segments_item, &text_from_segments, &results[1].segments);
-					if(results[1].text.empty()) {
-						results[1].text = text_from_segments;
-					}
-				}
-			}
-			
-			if(!leftChannel && !rightChannel) {
-				if(error) {
-					*error = "Expected left_channel and right_channel in JSON response for stereo mode";
-				}
-			} else {
-				if(sverb.whisper) {
-					cout << "whisper rest api stereo - parsed successfully" << endl;
-					cout << "  left channel: text=" << (results[0].text.empty() ? "(empty)" : results[0].text.substr(0, 50) + "...") << endl;
-					cout << "  right channel: text=" << (results[1].text.empty() ? "(empty)" : results[1].text.substr(0, 50) + "...") << endl;
-				}
-				success = true;
-			}
-		}
-
-		curl_easy_cleanup(curl);
-		curl_formfree(formpost);
-		curl_slist_free_all(headerlist);
+	
+	s_get_curl_response_params curl_params(s_get_curl_response_params::_rt_multipart);
+	curl_params.addMultipartFile("audio_file", wav);
+	curl_params.custom_write_function = WriteCallback;
+	curl_params.custom_write_data = &readBuffer;
+	
+	if(sverb.whisper) {
+		cout << "whisper rest api url (stereo mode): " << opt_whisper_rest_api_url << endl;
+		cout << "whisper rest api file: " << wav << endl;
 	}
-	curl_global_cleanup();
+	
+	if(!get_curl_response(opt_whisper_rest_api_url.c_str(), NULL, &curl_params)) {
+		if(error) {
+			*error = "curl_easy_perform() failed: " + curl_params.error;
+		}
+		return false;
+	}
+	
+	if(sverb.whisper) {
+		cout << "whisper rest api response: " << readBuffer << endl;
+	}
+	
+	// Parse the response - expected format:
+	// {"detected_language":{"language":"czech","language_code":"cs","confidence":1.0},"left_channel":{...},"right_channel":{...}}
+	JsonItem json;
+	json.parse(readBuffer);
+	
+	// Get detected language info
+	JsonItem *detectedLang = json.getItem("detected_language");
+	string detectedLanguageCode;
+	if(detectedLang) {
+		detectedLanguageCode = detectedLang->getValue("language_code");
+	}
+	
+	// Process left channel (a_*)
+	JsonItem *leftChannel = json.getItem("left_channel");
+	if(leftChannel) {
+		results[0].language = !detectedLanguageCode.empty() ? detectedLanguageCode : leftChannel->getValue("language");
+		results[0].text = leftChannel->getValue("text");
+		
+		JsonItem *segments_item = leftChannel->getItem("segments");
+		if (segments_item && segments_item->getType() == json_type_array) {
+			string text_from_segments;
+			convertJsonSegmentsToText(segments_item, &text_from_segments, &results[0].segments);
+			if(results[0].text.empty()) {
+				results[0].text = text_from_segments;
+			}
+		}
+	}
+	
+	// Process right channel (b_*)
+	JsonItem *rightChannel = json.getItem("right_channel");
+	if(rightChannel) {
+		results[1].language = !detectedLanguageCode.empty() ? detectedLanguageCode : rightChannel->getValue("language");
+		results[1].text = rightChannel->getValue("text");
+		
+		JsonItem *segments_item = rightChannel->getItem("segments");
+		if (segments_item && segments_item->getType() == json_type_array) {
+			string text_from_segments;
+			convertJsonSegmentsToText(segments_item, &text_from_segments, &results[1].segments);
+			if(results[1].text.empty()) {
+				results[1].text = text_from_segments;
+			}
+		}
+	}
+	
+	if(!leftChannel && !rightChannel) {
+		if(error) {
+			*error = "Expected left_channel and right_channel in JSON response for stereo mode";
+		}
+	} else {
+		if(sverb.whisper) {
+			cout << "whisper rest api stereo - parsed successfully" << endl;
+			cout << "  left channel: text=" << (results[0].text.empty() ? "(empty)" : results[0].text.substr(0, 50) + "...") << endl;
+			cout << "  right channel: text=" << (results[1].text.empty() ? "(empty)" : results[1].text.substr(0, 50) + "...") << endl;
+		}
+		success = true;
+	}
+	
 	// Return true if we successfully parsed the response
 	return success;
 }

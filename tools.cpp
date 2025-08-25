@@ -23,7 +23,6 @@
 #include <syslog.h>
 #include <sys/ioctl.h> 
 #include <sys/statvfs.h>
-#include <curl/curl.h>
 #include <cerrno>
 #include <iomanip>
 #include <json.h>
@@ -48,6 +47,9 @@
 #ifdef HAVE_LIBFFT
 #include <fftw3.h>
 #endif //HAVE_LIBFFT
+#ifdef HAVE_LIBCURL
+#include <curl/curl.h>
+#endif //HAVE_LIBCURL
 
 #ifdef FREEBSD
 #include <sys/uio.h>
@@ -724,6 +726,7 @@ size_t _get_url_file_writer_function(void *ptr, size_t size, size_t nmemb, FILE 
 	return written;
 }
 bool get_url_file(const char *url, const char *toFile, string *error) {
+#ifdef HAVE_LIBCURL
 	if(error) {
 		*error = "";
 	}
@@ -808,6 +811,90 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 		}
 	}
 	return(rslt);
+#else
+	if(error) {
+		*error = "";
+	}
+	if(system("which wget > /dev/null 2>&1") != 0) {
+		if(error) {
+			*error = "wget not found (curl library not available and wget is not installed)";
+		}
+		return(false);
+	}
+	string wget_cmd = "wget";
+	wget_cmd += " --no-check-certificate"; // equivalent to CURLOPT_SSL_VERIFYPEER = false
+	wget_cmd += " --timeout=60"; // reasonable timeout
+	wget_cmd += " --tries=3"; // retry a few times
+	wget_cmd += " -q"; // quiet mode
+	wget_cmd += " -O "; // output file
+	wget_cmd += escapeShellArgument(toFile);
+	extern char opt_curlproxy[256];
+	if(opt_curlproxy[0]) {
+		string proxy = opt_curlproxy;
+		if(proxy.find("http://") == 0 || proxy.find("https://") == 0) {
+			wget_cmd += " --proxy=on";
+			wget_cmd += " -e http_proxy=" + escapeShellArgument(proxy);
+			wget_cmd += " -e https_proxy=" + escapeShellArgument(proxy);
+		}
+	}
+	wget_cmd += " ";
+	wget_cmd += escapeShellArgument(url);
+	if(verbosity > 1) {
+		syslog(LOG_NOTICE, "get_url_file using wget: %s", wget_cmd.c_str());
+	}
+	int ret = system(wget_cmd.c_str());
+	if(ret == 0) {
+		struct stat st;
+		if(stat(toFile, &st) == 0 && st.st_size > 0) {
+			return(true);
+		} else {
+			if(error) {
+				*error = "wget succeeded but file is empty or missing";
+			}
+			unlink(toFile);
+			return(false);
+		}
+	} else {
+		if(error) {
+			if(WIFEXITED(ret)) {
+				int exit_code = WEXITSTATUS(ret);
+				switch(exit_code) {
+					case 1:
+						*error = "wget: Generic error code";
+						break;
+					case 2:
+						*error = "wget: Parse error";
+						break;
+					case 3:
+						*error = "wget: File I/O error";
+						break;
+					case 4:
+						*error = "wget: Network failure";
+						break;
+					case 5:
+						*error = "wget: SSL verification failure";
+						break;
+					case 6:
+						*error = "wget: Username/password authentication failure";
+						break;
+					case 7:
+						*error = "wget: Protocol error";
+						break;
+					case 8:
+						*error = "wget: Server issued an error response";
+						break;
+					default:
+						*error = "wget failed with exit code " + intToString(exit_code);
+						break;
+				}
+			} else {
+				*error = "wget command failed to execute properly";
+			}
+		}
+		unlink(toFile);
+		return(false);
+	}
+#endif //HAVE_LIBCURL
 }
 
 size_t _get_curl_response_writer_function(void *ptr, size_t size, size_t nmemb, SimpleBuffer *response) {
@@ -816,14 +903,26 @@ size_t _get_curl_response_writer_function(void *ptr, size_t size, size_t nmemb, 
 }
 
 bool get_curl_response(const char *url, SimpleBuffer *response, s_get_curl_response_params *params) {
+#ifdef HAVE_LIBCURL
+	if(params && !params->error.empty()) {
+		params->error.clear();
+	}
 	bool rslt = false;
 	CURL *curl = curl_easy_init();
 	if(curl) {
 		struct curl_slist *headers = NULL;
+		struct curl_httppost *formpost = NULL;
+		struct curl_httppost *lastptr = NULL;
 		char errorBuffer[1024];
+		errorBuffer[0] = 0;
 		curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errorBuffer);
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, _get_curl_response_writer_function);
-		curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
+		if(params && params->custom_write_function) {
+			curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, params->custom_write_function);
+			curl_easy_setopt(curl, CURLOPT_WRITEDATA, params->custom_write_data);
+		} else {
+			curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, _get_curl_response_writer_function);
+			curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
+		}
 		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
 		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, false);
 		curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_0);
@@ -926,6 +1025,27 @@ bool get_curl_response(const char *url, SimpleBuffer *response, s_get_curl_respo
 					  ":" + 
 					  (params->auth_password ? *params->auth_password : "")).c_str());
 		}
+		if(params && params->request_type == s_get_curl_response_params::_rt_multipart && params->multipart_files) {
+			static const char expect_header[] = "Expect:";
+			headers = curl_slist_append(headers, expect_header);
+			for(size_t i = 0; i < params->multipart_files->size(); i++) {
+				curl_formadd(&formpost,
+					     &lastptr,
+					     CURLFORM_COPYNAME, (*params->multipart_files)[i].field_name.c_str(),
+					     CURLFORM_FILE, (*params->multipart_files)[i].file_path.c_str(),
+					     CURLFORM_END);
+			}
+			if(params->params_array) {
+				for(size_t i = 0; i < params->params_array->size(); i++) {
+					curl_formadd(&formpost,
+						     &lastptr,
+						     CURLFORM_COPYNAME, (*params->params_array)[i][0].c_str(),
+						     CURLFORM_COPYCONTENTS, (*params->params_array)[i][1].c_str(),
+						     CURLFORM_END);
+				}
+			}
+			curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
+		}
 		string postFields;
 		if(params && 
 		   (params->request_type == s_get_curl_response_params::_rt_post ||
@@ -961,15 +1081,23 @@ bool get_curl_response(const char *url, SimpleBuffer *response, s_get_curl_respo
 				curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postFields.c_str());
 			}
 		}
-		if(curl_easy_perform(curl) == CURLE_OK) {
+		CURLcode res = curl_easy_perform(curl);
+		if(res == CURLE_OK) {
 			rslt = true;
 		} else {
 			if(params) {
-				params->error = errorBuffer;
+				if(errorBuffer[0]) {
+					params->error = errorBuffer;
+				} else {
+					params->error = curl_easy_strerror(res);
+				}
 			}
 		}
 		if(headers) {
 			curl_slist_free_all(headers);
+		}
+		if(formpost) {
+			curl_formfree(formpost);
 		}
 		curl_easy_cleanup(curl);
 	} else {
@@ -978,6 +1106,12 @@ bool get_curl_response(const char *url, SimpleBuffer *response, s_get_curl_respo
 		}
 	}
 	return(rslt);
+#else
+	if(params) {
+		params->error = "this is a build without curl / curl library not available";
+	}
+	return(false);
+#endif //HAVE_LIBCURL
 }
 
 /* circular buffer implementation */

@@ -416,8 +416,15 @@ struct s_get_curl_response_params {
 	enum eRequestType {
 		_rt_get,
 		_rt_post,
-		_rt_json
+		_rt_json,
+		_rt_multipart
 	};
+	struct sMultipartFile {
+		string field_name;
+		string file_path;
+		sMultipartFile(const string &field, const string &path) : field_name(field), file_path(path) {}
+	};
+	typedef size_t (*curl_write_callback)(void *contents, size_t size, size_t nmemb, void *userp);
 	eRequestType request_type;
 	unsigned timeout_sec;
 	string *auth_user;
@@ -425,6 +432,9 @@ struct s_get_curl_response_params {
 	vector<dstring> *headers;
 	vector<dstring> *params_array;
 	string *params_string;
+	vector<sMultipartFile> *multipart_files;
+	curl_write_callback custom_write_function;
+	void *custom_write_data;
 	bool suppress_parameters_encoding;
 	string error;
 	s_get_curl_response_params(eRequestType request_type = _rt_get) {
@@ -435,6 +445,9 @@ struct s_get_curl_response_params {
 		headers = NULL;
 		params_array = NULL;
 		params_string = NULL;
+		multipart_files = NULL;
+		custom_write_function = NULL;
+		custom_write_data = NULL;
 		suppress_parameters_encoding = request_type == _rt_json;
 	}
 	~s_get_curl_response_params() {
@@ -446,6 +459,9 @@ struct s_get_curl_response_params {
 		}
 		if(params_string) {
 			delete params_string;
+		}
+		if(multipart_files) {
+			delete multipart_files;
 		}
 	}
 	void addHeader(const char *header, const char *content) {
@@ -477,6 +493,12 @@ struct s_get_curl_response_params {
 			params_string = new FILE_LINE(0) string;
 		}
 		*params_string = params;
+	}
+	void addMultipartFile(const char *field_name, const char *file_path) {
+		if(!multipart_files) {
+			multipart_files = new FILE_LINE(0) vector<sMultipartFile>;
+		}
+		multipart_files->push_back(sMultipartFile(field_name, file_path));
 	}
 };
 bool get_curl_response(const char *url, SimpleBuffer *response, s_get_curl_response_params *params = NULL);
