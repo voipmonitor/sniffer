@@ -80,20 +80,79 @@ AC_CHECK_LIB([vorbis], [main], ,AC_MSG_ERROR([Unable to find VORBIS library. Deb
 AC_CHECK_LIB([vorbisenc], [main], ,AC_MSG_ERROR([Unable to find VORBISENC library. Debian: apt-get install libvorbis-dev. Centos/Redhat: yum install libogg-devel libvorbis-devel]))
 # FIXME: Replace `main' with a function in `-lz':
 AC_CHECK_LIB([snappy], [main], ,AC_MSG_ERROR([Unable to find snappy library. apt-get install libsnappy-dev | yum install snappy-devel.x86_64 | or compile from source: https://snappy.googlecode.com/files/snappy-1.1.0.tar.gz]))
-AC_CHECK_LIB([curl], [main], , AC_MSG_ERROR([Unable to find curl library. apt-get install libcurl4-openssl-dev | yum install libcurl-devel]))
+
+# Add --without-curl option
+AC_ARG_WITH([curl],
+    [AS_HELP_STRING([--without-curl], [Build without curl support])],
+    [with_curl=$withval],
+    [with_curl=yes])
+
+if test "x$with_curl" != "xno"; then
+    AC_CHECK_LIB([curl], [main], [
+        HAVE_LIBCURL=1
+        AC_DEFINE([HAVE_LIBCURL], [1], [Define to 1 if you have the `curl' library (-lcurl).])
+    ], AC_MSG_ERROR([Unable to find curl library. apt-get install libcurl4-openssl-dev | yum install libcurl-devel]))
+    
+    CURL_CFG='curl-config'
+    CURL_VER_MAJOR=`$CURL_CFG --version | cut -d" " -f2 | cut -d"." -f1`
+    CURL_VER_MINOR=`$CURL_CFG --version | cut -d" " -f2 | cut -d"." -f2`
+    if test -z $CURL_VER_MAJOR || test -z $CURL_VER_MINOR; then
+            AC_MSG_ERROR([Can't get about curl's version. $CURL_CFG binary is needed.])
+    fi
+    if (test $CURL_VER_MAJOR -eq 7 && test $CURL_VER_MINOR -ge 34) || test $CURL_VER_MAJOR -ge 8; then
+        AC_MSG_NOTICE([Curl version is ok ($CURL_VER_MAJOR.$CURL_VER_MINOR).])
+    else
+        AC_MSG_ERROR([Bad curl version ($CURL_VER_MAJOR.$CURL_VER_MINOR). Version 7.34 or higher is required.])
+    fi
+    
+    CURLCFLAGS='$(shell pkg-config --cflags libcurl)'
+    CURLLIB='$(shell pkg-config --libs libcurl)'
+    CURLLIBSTATIC='$(shell pkg-config --libs --static libcurl)'
+else
+    AC_MSG_NOTICE([Building without curl support])
+    HAVE_LIBCURL=0
+    CURLCFLAGS=""
+    CURLLIB=""
+    CURLLIBSTATIC=""
+fi
+
+AC_SUBST([CURLCFLAGS])
+AC_SUBST([CURLLIB])
+AC_SUBST([CURLLIBSTATIC])
+
 AC_CHECK_LIB([icuuc], [main], , AC_MSG_ERROR([Unable to find libicuuc library. apt-get install libicu-dev | yum install libicu-devel]))
 
-CURL_CFG='curl-config'
-CURL_VER_MAJOR=`$CURL_CFG --version | cut -d" " -f2 | cut -d"." -f1`
-CURL_VER_MINOR=`$CURL_CFG --version | cut -d" " -f2 | cut -d"." -f2`
-if test -z $CURL_VER_MAJOR || test -z $CURL_VER_MINOR; then
-        AC_MSG_ERROR([Can't get about curl's version. $CURL_CFG binary is needed.])
-fi
-if (test $CURL_VER_MAJOR -eq 7 && test $CURL_VER_MINOR -ge 34) || test $CURL_VER_MAJOR -ge 8; then
-	AC_MSG_NOTICE([Curl version is ok ($CURL_VER_MAJOR.$CURL_VER_MINOR).])
+# Add --with-dns-resolver option
+AC_ARG_WITH([dns-resolver],
+    [AS_HELP_STRING([--with-dns-resolver], [Include DNS resolver support from tools/dns_resolver/dns_resolver.c])],
+    [with_dns_resolver=$withval],
+    [with_dns_resolver=no])
+
+if test "x$with_dns_resolver" = "xyes"; then
+    AC_MSG_NOTICE([Including DNS resolver support])
+    HAVE_DNS_RESOLVER=1
+    AC_DEFINE([HAVE_DNS_RESOLVER], [1], [Define to 1 if DNS resolver is enabled])
 else
-	AC_MSG_ERROR([Bad curl version ($CURL_VER_MAJOR.$CURL_VER_MINOR). Version 7.34 or higher is required.])
+    HAVE_DNS_RESOLVER=0
 fi
+
+AC_SUBST([HAVE_DNS_RESOLVER])
+
+# Add --with-systemd-subst option
+AC_ARG_WITH([systemd-subst],
+    [AS_HELP_STRING([--with-systemd-subst], [Include systemd substitution support from tools/systemd_subst/systemd_subst.c])],
+    [with_systemd_subst=$withval],
+    [with_systemd_subst=no])
+
+if test "x$with_systemd_subst" = "xyes"; then
+    AC_MSG_NOTICE([Including systemd substitution support])
+    HAVE_SYSTEMD_SUBST=1
+    AC_DEFINE([HAVE_SYSTEMD_SUBST], [1], [Define to 1 if systemd substitution is enabled])
+else
+    HAVE_SYSTEMD_SUBST=0
+fi
+
+AC_SUBST([HAVE_SYSTEMD_SUBST])
 
 AC_CHECK_LIB([json], [main], LIBJSON_NAME='json')
 AC_CHECK_LIB([json-c], [main], LIBJSON_NAME='json-c')

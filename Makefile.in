@@ -31,7 +31,22 @@ ss7shared: CXXFLAGS += -DHAVE_LIBWIRESHARK -DLIBWIRESHARK_VERSION=30605 ${WIRESH
 
 version = $(shell grep RTPSENSOR_VERSION voipmonitor_define.h | cut -d" " -f 3 | tr -d "\"")
 
-objects = $(shell ls -1 *.cpp | sed 's/\.cpp/.o/' | tr "\n" " ") $(shell ls -1 jitterbuffer/*.c | sed 's/\.c/.o/' | tr "\n" " ") $(shell ls -1 dssl/*.c dssl/*.cpp | sed 's/\.cpp/.o/' | sed 's/\.c/.o/' | tr "\n" " ") cloud_router/cloud_router_base.o cloud_router/cloud_router_client.o
+HAVE_DNS_RESOLVER=@HAVE_DNS_RESOLVER@
+HAVE_SYSTEMD_SUBST=@HAVE_SYSTEMD_SUBST@
+
+ifeq ($(HAVE_DNS_RESOLVER),1)
+    DNS_RESOLVER_OBJ = tools/dns_resolver/dns_resolver.o
+else
+    DNS_RESOLVER_OBJ =
+endif
+
+ifeq ($(HAVE_SYSTEMD_SUBST),1)
+    SYSTEMD_SUBST_OBJ = tools/systemd_subst/systemd_subst.o
+else
+    SYSTEMD_SUBST_OBJ =
+endif
+
+objects = $(shell ls -1 *.cpp | sed 's/\.cpp/.o/' | tr "\n" " ") $(shell ls -1 jitterbuffer/*.c | sed 's/\.c/.o/' | tr "\n" " ") $(shell ls -1 dssl/*.c dssl/*.cpp | sed 's/\.cpp/.o/' | sed 's/\.c/.o/' | tr "\n" " ") cloud_router/cloud_router_base.o cloud_router/cloud_router_client.o $(DNS_RESOLVER_OBJ) $(SYSTEMD_SUBST_OBJ)
 
 #headers = $(shell ls -1 *.h | tr "\n" " ") $(shell ls -1 jitterbuffer/*.h | tr "\n" " ") $(shell ls -1 jitterbuffer/asterisk/*.h | tr "\n" " ")
 
@@ -52,9 +67,9 @@ GLIBCFLAGS =$(shell pkg-config --cflags glib-2.0)
 GLIBLIB =$(shell pkg-config --libs glib-2.0)
 GLIBLIBSTATIC =$(shell pkg-config --libs --static glib-2.0)
 GLIBLIBPATH =$(shell pkg-config --libs-only-L glib-2.0)
-CURLCFLAGS =$(shell pkg-config --cflags libcurl)
-CURLLIB =$(shell pkg-config --libs libcurl)
-CURLLIBSTATIC =$(shell pkg-config --libs --static libcurl)
+CURLCFLAGS =@CURLCFLAGS@
+CURLLIB =@CURLLIB@
+CURLLIBSTATIC =@CURLLIBSTATIC@
 PCAPLIBSTATIC =$(shell pkg-config --libs --static libpcap)
 
 LIBLAME=@LIBLAME@
@@ -71,7 +86,7 @@ LIBBLAKE3=@LIBBLAKE3@
 LIBWHISPER=@LIBWHISPER@
 LIBSRTP=@LIBSRTP@
 LIBGNUTLSSTATIC=-lgcrypt -lgpg-error $(shell pkg-config gnutls --libs --static)
-SHARED_LIBS = ${LIBLD} -licuuc -licudata -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg ${LIBLAME} ${LIBMPG123} -lodbc ${MYSQLLIB} -lrt -lsnappy -lcurl -lssl -lcrypto ${JSONLIB} -lxml2 -lrrd ${LIBGNUTLS} @LIBTCMALLOC@ ${GLIBLIB} ${LIBLZMA} ${LIBZSTD} ${LIBLZ4} -llzo2 ${LIBPNG} ${LIBJPEG} ${LIBFFT} @DPDK_LDFLAGS@ ${SS7} @FLTO@ ${LIBBLAKE3} ${LIBWHISPER} ${LIBSRTP}
+SHARED_LIBS = ${LIBLD} -licuuc -licudata -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg ${LIBLAME} ${LIBMPG123} -lodbc ${MYSQLLIB} -lrt -lsnappy ${CURLLIB} -lssl -lcrypto ${JSONLIB} -lxml2 -lrrd ${LIBGNUTLS} @LIBTCMALLOC@ ${GLIBLIB} ${LIBLZMA} ${LIBZSTD} ${LIBLZ4} -llzo2 ${LIBPNG} ${LIBJPEG} ${LIBFFT} @DPDK_LDFLAGS@ ${SS7} @FLTO@ ${LIBBLAKE3} ${LIBWHISPER} ${LIBSRTP}
 STATIC_LIBS = -static @LIBCDIRLIB@ @LIBTCMALLOC@ -licuuc -licudata -lodbc -lltdl -lrt -lz -lcrypt -lm ${CURLLIBSTATIC} -lssl -lcrypto -static-libstdc++ -static-libgcc ${PCAPLIBSTATIC} -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg ${LIBLAME} ${LIBMPG123} -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIBSTATIC} -lpcre -lz -ldbi ${LIBLZMA} ${LIBZSTD} ${LIBLZ4} ${LIBGNUTLSSTATIC} ${LIBGNUTLSSTATIC} -llzo2 ${LIBPNG} ${LIBJPEG} ${LIBFFT} -lpthread ${SS7} ${LIBLD} @FLTO@ @DPDK_LDFLAGSSTATIC@ ${LIBBLAKE3} ${LIBWHISPER} ${LIBSRTP}
 INCLUDES = @LIBCDIRINC@ ${DPDKINC} -I/usr/local/include ${MYSQLINC} -I jitterbuffer/ ${JSONCFLAGS} ${GLIBCFLAGS} @OPENSSLDIRINC@
 LIBS_PATH = ${DPDKLIB} -L/usr/local/lib/ @OPENSSLDIRLIB@ ${GLIBLIBPATH}
