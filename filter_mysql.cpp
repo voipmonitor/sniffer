@@ -111,7 +111,7 @@ u_int64_t filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow, u_int32
 	else if(baseRow->wav == 2)		flags |= CAPT_FLAG(_CAPT_BIT_AUDIO_WAV);
 	else if(baseRow->wav == 3)		flags |= CAPT_FLAG(_CAPT_BIT_AUDIO_OGG);
 	else if(baseRow->wav == 4)		flags |= CAPT_FLAG(
-								   #if HAVE_LIBLAME && HAVE_LIBLAME
+								   #if HAVE_LIBLAME && HAVE_LIBMPG123
 								   _CAPT_BIT_AUDIO_MP3
 								   #else
 								   _CAPT_BIT_AUDIO_OGG

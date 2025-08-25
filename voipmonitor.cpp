@@ -3942,7 +3942,7 @@ int main(int argc, char *argv[]) {
 				cerr << "audio-convert: bad arguments" << endl;
 				return(1);
 			}
-			#if not (HAVE_LIBLAME && HAVE_LIBLAME)
+			#if not (HAVE_LIBLAME && HAVE_LIBMPG123)
 			if(!strcmp(outputFormat, "mp3")) {
 				cerr << "audio-convert: mp3 support requires building with lame and mpg123 libraries" << endl;
 				return(1);
@@ -3958,7 +3958,7 @@ int main(int argc, char *argv[]) {
 				cAudioConvert dst;
 				dst.formatType = !strcmp(outputFormat, "wav") ? cAudioConvert::_format_wav :
 						 !strcmp(outputFormat, "ogg") ? cAudioConvert::_format_ogg :
-						 #if HAVE_LIBLAME && HAVE_LIBLAME
+						 #if HAVE_LIBLAME && HAVE_LIBMPG123
 						 !strcmp(outputFormat, "mp3") ? cAudioConvert::_format_mp3 :
 						 #endif
 										cAudioConvert::_format_raw;
@@ -3970,7 +3970,7 @@ int main(int argc, char *argv[]) {
 					rslt = src.readWav();
 				} else if(info.formatType == cAudioConvert::_format_ogg) {
 					rslt = src.readOgg();
-				#if HAVE_LIBLAME && HAVE_LIBLAME
+				#if HAVE_LIBLAME && HAVE_LIBMPG123
 				} else if(info.formatType == cAudioConvert::_format_mp3) {
 					rslt = src.readMp3();
 				#endif
@@ -9685,7 +9685,7 @@ void set_context_config() {
 	snifferClientOptions.hosts.parse();
 	snifferClientOptions_charts_cache.hosts.parse();
 	
-	#if not (HAVE_LIBLAME && HAVE_LIBLAME)
+	#if not (HAVE_LIBLAME && HAVE_LIBMPG123)
 	if(opt_audio_format == FORMAT_MP3) {
 		syslog(LOG_ERR, "MP3 support requires building with lame and mpg123 libraries. OGG format will be used.");
 		opt_audio_format = FORMAT_OGG;

@@ -490,7 +490,7 @@ inline void set_global_flags(volatile unsigned long int &flags) {
 	if(opt_saveWAV) {
 		flags |= (opt_audio_format == FORMAT_OGG ? FLAG_SAVEAUDIO_OGG : 
 			  opt_audio_format == FORMAT_MP3 ? 
-							   #if HAVE_LIBLAME && HAVE_LIBLAME
+							   #if HAVE_LIBLAME && HAVE_LIBMPG123
 							   FLAG_SAVEAUDIO_MP3
 							   #else
 							   FLAG_SAVEAUDIO_OGG

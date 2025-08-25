@@ -3520,7 +3520,7 @@ Call::convertRawToWav(void **transcribe_call, int thread_index) {
 	
 	cAudioConvert::eFormatType audio_format = (flags & FLAG_FORMATAUDIO_OGG) ? cAudioConvert::_format_ogg :
 						  (flags & FLAG_FORMATAUDIO_MP3) ? 
-										   #if HAVE_LIBLAME && HAVE_LIBLAME
+										   #if HAVE_LIBLAME && HAVE_LIBMPG123
 										   cAudioConvert::_format_mp3
 										   #else
 										   cAudioConvert::_format_ogg
@@ -4317,7 +4317,7 @@ Call::convertRawToWav(void **transcribe_call, int thread_index) {
 	
 	if(_enable_save_audio) {
 		double audio_quality = audio_format == cAudioConvert::_format_ogg ? opt_saveaudio_oggquality :
-				       #if HAVE_LIBLAME && HAVE_LIBLAME
+				       #if HAVE_LIBLAME && HAVE_LIBMPG123
 				       audio_format == cAudioConvert::_format_mp3 ? opt_saveaudio_mp3quality :
 				       #endif
 				       0;

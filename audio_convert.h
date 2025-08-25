@@ -34,7 +34,7 @@ public:
 		_format_raw,
 		_format_wav,
 		_format_ogg
-		#if HAVE_LIBLAME && HAVE_LIBLAME
+		#if HAVE_LIBLAME && HAVE_LIBMPG123
 		,_format_mp3
 		#endif
 	};
@@ -168,7 +168,7 @@ public:
 		char *sync_buffer;
 		ogg_int16_t *conv_buffer;
 	};
-	#if HAVE_LIBLAME && HAVE_LIBLAME
+	#if HAVE_LIBLAME && HAVE_LIBMPG123
 	struct sMp3 {
 		sMp3() {
 			lame = NULL;
@@ -205,7 +205,7 @@ public:
 	eResult writeOggData(u_char *data, unsigned datalen);
 	eResult writeOggEnd();
 	eResult _writeOgg();
-	#if HAVE_LIBLAME && HAVE_LIBLAME
+	#if HAVE_LIBLAME && HAVE_LIBMPG123
 	eResult readMp3();
 	eResult initMp3();
 	eResult writeMp3Data(u_char *data, unsigned datalen);
@@ -230,7 +230,7 @@ public:
 	int mp3Quality;
 	std::string comment;
 	sOgg ogg;
-	#if HAVE_LIBLAME && HAVE_LIBLAME
+	#if HAVE_LIBLAME && HAVE_LIBMPG123
 	sMp3 mp3;
 	#endif
 	bool headerIsWrited;

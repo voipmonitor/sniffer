@@ -28,7 +28,7 @@ void cAudioConvert::sWavHeader::prepareEndian() {
 }
 
 
-#if HAVE_LIBLAME && HAVE_LIBLAME
+#if HAVE_LIBLAME && HAVE_LIBMPG123
 void cAudioConvert::sMp3::set_buffer(unsigned pcm_buffer_size, sAudioInfo *audioInfo) {
 	unsigned need_buffer_size = pcm_buffer_size / (audioInfo->bitsPerSample / 8) * 1.25 + 7200;
 	if(!buffer || buffer_size < need_buffer_size) {
@@ -99,7 +99,7 @@ cAudioConvert::eResult cAudioConvert::getAudioInfo() {
 		 onlyGetAudioInfo = false;
 		 return(_rslt_ok);
 	}
-	#if HAVE_LIBLAME && HAVE_LIBLAME
+	#if HAVE_LIBLAME && HAVE_LIBMPG123
 	if(readMp3() == _rslt_ok) {
 		 formatType = _format_mp3;
 		 onlyGetAudioInfo = false;
@@ -115,7 +115,7 @@ string cAudioConvert::jsonAudioInfo() {
 	json_export.add("format", formatType == _format_raw ? "raw" :
 				  formatType == _format_wav ? "wav" :
 				  formatType == _format_ogg ? "ogg" :
-				  #if HAVE_LIBLAME && HAVE_LIBLAME
+				  #if HAVE_LIBLAME && HAVE_LIBMPG123
 				  formatType == _format_mp3 ? "mp3" :
 				  #endif
 				  "unknown");
@@ -741,7 +741,7 @@ cAudioConvert::eResult cAudioConvert::_writeOgg() {
 	return(_rslt_ok);
 }
 
-#if HAVE_LIBLAME && HAVE_LIBLAME
+#if HAVE_LIBLAME && HAVE_LIBMPG123
 cAudioConvert::eResult cAudioConvert::readMp3() {
 	if(mpg123_init() != MPG123_OK) {
 		return(_rslt_mpg123_failed_init);
@@ -839,7 +839,7 @@ cAudioConvert::eResult cAudioConvert::write(u_char *data, unsigned datalen) {
 				case _format_ogg:
 					rslt = destAudio->writeOggHeader();
 					break;
-				#if HAVE_LIBLAME && HAVE_LIBLAME
+				#if HAVE_LIBLAME && HAVE_LIBMPG123
 				case _format_mp3:
 					rslt = destAudio->initMp3();
 					break;
@@ -858,7 +858,7 @@ cAudioConvert::eResult cAudioConvert::write(u_char *data, unsigned datalen) {
 				case _format_ogg:
 					rslt = destAudio->writeOggData(data, datalen);
 					break;
-				#if HAVE_LIBLAME && HAVE_LIBLAME
+				#if HAVE_LIBLAME && HAVE_LIBMPG123
 				case _format_mp3:
 					rslt = destAudio->writeMp3Data(data, datalen);
 					break;
@@ -876,7 +876,7 @@ cAudioConvert::eResult cAudioConvert::write(u_char *data, unsigned datalen) {
 			case _format_ogg:
 				rslt = destAudio->writeOggEnd();
 				break;
-			#if HAVE_LIBLAME && HAVE_LIBLAME
+			#if HAVE_LIBLAME && HAVE_LIBMPG123
 			case _format_mp3:
 				rslt = destAudio->writeMp3End();
 				break;
@@ -993,7 +993,7 @@ const char *cAudioConvert::getExtension(eFormatType format) {
 	return(format == _format_raw ? "raw" :
 	       format == _format_wav ? "wav" :
 	       format == _format_ogg ? "ogg" :
-	       #if HAVE_LIBLAME && HAVE_LIBLAME
+	       #if HAVE_LIBLAME && HAVE_LIBMPG123
 	       format == _format_mp3 ? "mp3" :
 	       #endif
 	       "unknow");
@@ -1137,7 +1137,7 @@ void cAudioConvert::test() {
 	cout << "1: " << src.readWav() << endl;
 	}
 	
-	#if HAVE_LIBLAME && HAVE_LIBLAME
+	#if HAVE_LIBLAME && HAVE_LIBMPG123
 	{
 	cAudioConvert src;
 	src.fileName = "/home/jumbox/Plocha/ac/1781060762.wav";
@@ -1150,7 +1150,7 @@ void cAudioConvert::test() {
 	}
 	#endif
 	
-	#if HAVE_LIBLAME && HAVE_LIBLAME
+	#if HAVE_LIBLAME && HAVE_LIBMPG123
 	{
 	cAudioConvert src;
 	src.fileName = "/home/jumbox/Plocha/ac/1781060762.mp3";
@@ -1215,7 +1215,7 @@ bool ac_file_mix(char *src1, char *src2, char *dest, cAudioConvert::eFormatType 
 	if(format == cAudioConvert::_format_ogg) {
 		ac_dest.oggQuality = quality;
 	}
-	#if HAVE_LIBLAME && HAVE_LIBLAME
+	#if HAVE_LIBLAME && HAVE_LIBMPG123
 	else if(format == cAudioConvert::_format_mp3) {
 		ac_dest.mp3Quality = quality;
 	}
