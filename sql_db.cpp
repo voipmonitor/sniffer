@@ -10622,6 +10622,17 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 		   (maxIdSrc_time_limit && startIdToMasterInSlaveSrc >= maxIdSrc_time_limit)) {
 			return;
 		}
+		extern int opt_database_backup_slave_record_safe_gap;
+		if(useMaxIdMaster) {
+			unsigned gap = useMaxIdMaster > (unsigned)opt_database_backup_slave_record_safe_gap ? opt_database_backup_slave_record_safe_gap : 0;
+			if(startIdToMasterInSlaveSrc > useMaxIdMaster - gap) {
+				return;
+			}
+		} else if(opt_database_backup_slave_record_safe_gap && maxIdSrc > (unsigned)opt_database_backup_slave_record_safe_gap) {
+			if(startIdToMasterInSlaveSrc > maxIdSrc - opt_database_backup_slave_record_safe_gap) {
+				return;
+			}
+		}
 	} else {
 		startIdToMasterInSlaveSrc = maxIdSrc;
 		if(maxIdSrc_time_limit && startIdToMasterInSlaveSrc > maxIdSrc_time_limit) {
@@ -10639,6 +10650,9 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 		   (minIdSrc_time_limit && startIdToMasterInSlaveSrc <= minIdSrc_time_limit)) {
 			return;
 		}
+		if(useMinIdMaster && startIdToMasterInSlaveSrc < useMinIdMaster) {
+			return;
+		}
 	}
 	map<string, int> columnsDest;
 	this->query(string("show columns from ") + slaveTableName);
@@ -10651,10 +10665,12 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 		if(startIdToMasterInSlaveSrc) {
 			condSrc.push_back(string(slaveIdToMasterColumn) + " >= " + intToString(startIdToMasterInSlaveSrc));
 		}
+		extern int opt_database_backup_slave_record_safe_gap;
 		if(useMaxIdMaster) {
-			extern int opt_database_backup_slave_record_safe_gap;
 			unsigned gap = useMaxIdMaster > (unsigned)opt_database_backup_slave_record_safe_gap ? opt_database_backup_slave_record_safe_gap : 0;
 			condSrc.push_back(string(slaveIdToMasterColumn) + " <= " + intToString(useMaxIdMaster - gap));
+		} else if(opt_database_backup_slave_record_safe_gap && maxIdSrc > (unsigned)opt_database_backup_slave_record_safe_gap) {
+			condSrc.push_back(string(slaveIdToMasterColumn) + " <= " + intToString(maxIdSrc - opt_database_backup_slave_record_safe_gap));
 		}
 	} else {
 		if(startIdToMasterInSlaveSrc) {
