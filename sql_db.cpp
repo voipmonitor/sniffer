@@ -10346,17 +10346,17 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 	if(cb_src && cb_dst) {
 		getReferenceTablesMap(tableName, &reftable_map);
 	}
-	u_int64_t minIdSrc = 0;
 	extern char opt_database_backup_from_date[20];
 	extern char opt_database_backup_to_date[20];
-	if(opt_database_backup_from_date[0]) {
-		string timeColumn = getTimeColumn(tableName);
-		if(!timeColumn.empty()) {
-			sqlDbSrc->query(string("select min(id) as min_id from ") + tableName +
-					" where " + timeColumn + " = " + 
-					"(select min(" + timeColumn + ") from " + tableName + " where " + timeColumn + " > '" + opt_database_backup_from_date + "')");
-			minIdSrc = atoll(sqlDbSrc->fetchRow()["min_id"].c_str());
-		}
+	u_int64_t minIdSrc = 0;
+	u_int64_t minIdSrc_time_limit = 0;
+	string timeColumn = getTimeColumn(tableName);
+	if(opt_database_backup_from_date[0] && !timeColumn.empty()) {
+		sqlDbSrc->query(string("select min(id) as min_id from ") + tableName +
+				" where " + timeColumn + " = " + 
+				"(select min(" + timeColumn + ") from " + tableName + " where " + timeColumn + " > '" + opt_database_backup_from_date + "')");
+		minIdSrc = atoll(sqlDbSrc->fetchRow()["min_id"].c_str());
+		minIdSrc_time_limit = minIdSrc;
 	} else {
 		sqlDbSrc->query(string("select min(id) as min_id from ") + tableName);
 		SqlDb_row row = sqlDbSrc->fetchRow();
@@ -10364,17 +10364,17 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 			minIdSrc = atoll(row["min_id"].c_str());
 		}
 	}
+	if(!minIdSrc) {
+		return;
+	}
 	u_int64_t maxIdSrc = 0;
-	u_int64_t limitMaxId = 0;
-	if(opt_database_backup_to_date[0]) {
-		string timeColumn = getTimeColumn(tableName);
-		if(!timeColumn.empty()) {
-			sqlDbSrc->query(string("select max(id) as max_id from ") + tableName +
-					" where " + timeColumn + " = " +
-					"(select max(" + timeColumn + ") from " + tableName + " where " + timeColumn + " < '" + opt_database_backup_to_date + "')");
-			maxIdSrc = atoll(sqlDbSrc->fetchRow()["max_id"].c_str());
-			limitMaxId = maxIdSrc;
-		}
+	u_int64_t maxIdSrc_time_limit = 0;
+	if(opt_database_backup_to_date[0] && !timeColumn.empty()) {
+		sqlDbSrc->query(string("select max(id) as max_id from ") + tableName +
+				" where " + timeColumn + " = " +
+				"(select max(" + timeColumn + ") from " + tableName + " where " + timeColumn + " < '" + opt_database_backup_to_date + "')");
+		maxIdSrc = atoll(sqlDbSrc->fetchRow()["max_id"].c_str());
+		maxIdSrc_time_limit = maxIdSrc;
 	} else {
 		sqlDbSrc->query(string("select max(id) as max_id from ") + tableName);
 		SqlDb_row row = sqlDbSrc->fetchRow();
@@ -10391,23 +10391,33 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 	u_int64_t useMaxIdInSrc = 0;
 	u_int64_t useMinIdInSrc = 0;
 	u_int64_t startIdSrc = 0;
-	bool okStartIdSrc = false;
+	bool okStartIdSrc = true;
 	if(!descDir) {
+		startIdSrc = minIdSrc;
 		this->query(string("select max(id) as max_id from ") + tableName);
 		row = this->fetchRow();
 		if(row) {
 			maxIdDst = atoll(row["max_id"].c_str());
+			if(maxIdDst && startIdSrc < maxIdDst + 1) {
+				startIdSrc = maxIdDst + 1;
+			}
 		}
-		startIdSrc = max(minIdSrc, maxIdDst + 1);
-		okStartIdSrc = startIdSrc <= maxIdSrc;
+		if(startIdSrc > maxIdSrc) {
+			okStartIdSrc = false;
+		}
 	} else {
+		startIdSrc = maxIdSrc;
 		this->query(string("select min(id) as min_id from ") + tableName);
 		row = this->fetchRow();
 		if(row) {
 			minIdDst = atoll(row["min_id"].c_str());
+			if(minIdDst && startIdSrc > minIdDst - 1) {
+				startIdSrc = minIdDst - 1;
+			}
 		}
-		startIdSrc = minIdDst ? min(maxIdSrc, minIdDst - 1) : maxIdSrc;
-		okStartIdSrc = startIdSrc && startIdSrc >= minIdSrc;
+		if(startIdSrc < minIdSrc) {
+			okStartIdSrc = false;
+		}
 	}
 	if(okStartIdSrc) {
 		map<string, int> columnsDest;
@@ -10421,17 +10431,17 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 			if(startIdSrc) {
 				condSrc.push_back(string("id >= ") + intToString(startIdSrc));
 			}
-			if (limitMaxId) {
-				condSrc.push_back(string("id <= ") + intToString(limitMaxId));
-			}
 			if(string(tableName) == "register_failed") {
 				condSrc.push_back(string("created_at < '") + sqlDateTimeString(time(NULL) - 3600) + "'");
 			}
 		} else {
 			condSrc.push_back(string("id <= ") + intToString(startIdSrc));
-			if (minIdSrc) {
-				condSrc.push_back(string("id >= ") + intToString(minIdSrc));
-			}
+		}
+		if(minIdSrc_time_limit) {
+			condSrc.push_back(string("id >= ") + intToString(minIdSrc_time_limit));
+		}
+		if(maxIdSrc_time_limit) {
+			condSrc.push_back(string("id <= ") + intToString(maxIdSrc_time_limit));
 		}
 		string orderSrc = "id";
 		stringstream queryStr;
@@ -10468,9 +10478,15 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 					}
 				}
 				if(!descDir) {
+					if(!useMinIdInSrc) {
+						useMinIdInSrc = atoll(row["id"].c_str());
+					}
 					useMaxIdInSrc = atoll(row["id"].c_str());
 				} else {
 					useMinIdInSrc = atoll(row["id"].c_str());
+					if(!useMaxIdInSrc) {
+						useMaxIdInSrc = atoll(row["id"].c_str());
+					}
 				}
 				rows.push_back(row);
 				if(rows.size() >= 100) {
@@ -10504,24 +10520,24 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 	for(size_t i = 0; i < slaveTables.size() && !is_terminating(); i++) {
 		if(sqlDbSrc->existsTable(slaveTables[i])) {
 			if(!descDir) {
-				extern int opt_database_backup_slave_record_safe_gap;
 				this->copyFromSourceTableSlave(sqlDbSrc,
 							       tableName, slaveTables[i].c_str(),
 							       slaveIdToMasterColumn.c_str(), 
 							       "calldate", "calldate",
-							       minIdSrc, 
-							       opt_database_backup_slave_record_safe_gap > 0 ?
-								(useMaxIdInSrc > (unsigned)opt_database_backup_slave_record_safe_gap ? useMaxIdInSrc - opt_database_backup_slave_record_safe_gap : 0) :
-								useMaxIdInSrc,
-							       limit * 100, false, limitMaxId,
+							       minIdSrc, maxIdSrc,
+							       minIdSrc_time_limit, maxIdSrc_time_limit,
+							       useMinIdInSrc, useMaxIdInSrc,
+							       limit * 100, false,
 							       cb_src, cb_dst);
 			} else {
 				this->copyFromSourceTableSlave(sqlDbSrc,
 							       tableName, slaveTables[i].c_str(),
 							       slaveIdToMasterColumn.c_str(), 
 							       "calldate", "calldate",
-							       (minIdSrc < useMinIdInSrc ? useMinIdInSrc : minIdSrc) , 0,
-							       limit * 100, true, limitMaxId,
+							       minIdSrc, maxIdSrc,
+							       minIdSrc_time_limit, maxIdSrc_time_limit,
+							       useMinIdInSrc, useMaxIdInSrc,
+							       limit * 100, true,
 							       cb_src, cb_dst);
 			}
 		}
@@ -10532,53 +10548,14 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 					   const char *masterTableName, const char *slaveTableName,
 					   const char *slaveIdToMasterColumn, 
 					   const char *masterCalldateColumn, const char *slaveCalldateColumn,
+					   u_int64_t minIdSrc, u_int64_t maxIdSrc,
+					   u_int64_t minIdSrc_time_limit, u_int64_t maxIdSrc_time_limit,
 					   u_int64_t useMinIdMaster, u_int64_t useMaxIdMaster,
-					   unsigned long limit, bool descDir, u_int64_t limitMaxId,
+					   unsigned long limit, bool descDir, 
 					   cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst) {
 	map<string, cSqlDbCodebook::eTypeCodebook> reftable_map;
 	if(cb_src && cb_dst) {
 		getReferenceTablesMap(slaveTableName, &reftable_map);
-	}
-	u_int64_t maxIdToMasterInSlaveSrc = 0;
-	sqlDbSrc->query(string("select max(") + slaveIdToMasterColumn + ") as max_id from " + slaveTableName);
-	SqlDb_row row = sqlDbSrc->fetchRow();
-	if(row) {
-		maxIdToMasterInSlaveSrc = atoll(row["max_id"].c_str());
-	}
-	if(!maxIdToMasterInSlaveSrc) {
-		return;
-	}
-	u_int64_t minIdToMasterInSlaveSrc = 0;
-	sqlDbSrc->query(string("select min(") + slaveIdToMasterColumn + ") as min_id from " + slaveTableName);
-	row = sqlDbSrc->fetchRow();
-	if(row) {
-		minIdToMasterInSlaveSrc = atoll(row["min_id"].c_str());
-	}
-	u_int64_t maxIdToMasterInSlaveDst = 0;
-	u_int64_t minIdToMasterInSlaveDst = 0;
-	u_int64_t startIdToMasterSrc = 0;
-	if(!descDir) {
-		this->query(string("select max(") + slaveIdToMasterColumn + ") as max_id from " + slaveTableName);
-		row = this->fetchRow();
-		if(row) {
-			maxIdToMasterInSlaveDst = atoll(row["max_id"].c_str());
-		}
-		startIdToMasterSrc = max(useMinIdMaster, maxIdToMasterInSlaveDst + 1);
-
-		if(startIdToMasterSrc >= maxIdToMasterInSlaveSrc || (limitMaxId && startIdToMasterSrc >= limitMaxId)) {
-			return;
-		}
-	} else {
-		this->query(string("select min(") + slaveIdToMasterColumn + ") as min_id from " + slaveTableName);
-		row = this->fetchRow();
-		if(row) {
-			minIdToMasterInSlaveDst = atoll(row["min_id"].c_str());
-		}
-		startIdToMasterSrc = minIdToMasterInSlaveDst ? minIdToMasterInSlaveDst - 1 : maxIdToMasterInSlaveSrc;
-		if(startIdToMasterSrc < useMinIdMaster ||
-		   startIdToMasterSrc <= minIdToMasterInSlaveSrc) {
-			return;
-		}
 	}
 	bool existsCalldateInSlaveTableSrc = false;
 	bool existsCalldateInSlaveTableDst = false;
@@ -10590,6 +10567,79 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 			existsCalldateInSlaveTableDst = true;
 		}
 	}
+	extern char opt_database_backup_from_date[20];
+	extern char opt_database_backup_to_date[20];
+	u_int64_t minIdToMasterInSlaveSrc = 0;
+	if(opt_database_backup_from_date[0] && slaveCalldateColumn && existsCalldateInSlaveTableSrc) {
+		sqlDbSrc->query(string("select min(") + slaveIdToMasterColumn + ") as min_id from " + slaveTableName +
+				" where " + slaveCalldateColumn + " = " + 
+				"(select min(" + slaveCalldateColumn + ") from " + slaveTableName + " where " + slaveCalldateColumn + " > '" + opt_database_backup_from_date + "')");
+		minIdToMasterInSlaveSrc = atoll(sqlDbSrc->fetchRow()["min_id"].c_str());
+	} else {
+		sqlDbSrc->query(string("select min(") + slaveIdToMasterColumn + ") as min_id from " + slaveTableName);
+		SqlDb_row row = sqlDbSrc->fetchRow();
+		if(row) {
+			minIdToMasterInSlaveSrc = atoll(row["min_id"].c_str());
+		}
+	}
+	if(!minIdToMasterInSlaveSrc) {
+		return;
+	}
+	u_int64_t maxIdToMasterInSlaveSrc = 0;
+	if(opt_database_backup_to_date[0] && slaveCalldateColumn && existsCalldateInSlaveTableSrc) {
+		sqlDbSrc->query(string("select max(") + slaveIdToMasterColumn + ") as max_id from " + slaveTableName +
+				" where " + slaveCalldateColumn + " = " +
+				"(select max(" + slaveCalldateColumn + ") from " + slaveTableName + " where " + slaveCalldateColumn + " < '" + opt_database_backup_to_date + "')");
+		maxIdToMasterInSlaveSrc = atoll(sqlDbSrc->fetchRow()["max_id"].c_str());
+	} else {
+		sqlDbSrc->query(string("select max(") + slaveIdToMasterColumn + ") as max_id from " + slaveTableName);
+		SqlDb_row row = sqlDbSrc->fetchRow();
+		if(row) {
+			maxIdToMasterInSlaveSrc = atoll(row["max_id"].c_str());
+		}
+	}
+	if(!maxIdToMasterInSlaveSrc) {
+		return;
+	}
+	SqlDb_row row;
+	u_int64_t maxIdToMasterInSlaveDst = 0;
+	u_int64_t minIdToMasterInSlaveDst = 0;
+	u_int64_t startIdToMasterInSlaveSrc = 0;
+	if(!descDir) {
+		startIdToMasterInSlaveSrc = minIdSrc;
+		if(minIdSrc_time_limit && startIdToMasterInSlaveSrc < minIdSrc_time_limit) {
+			startIdToMasterInSlaveSrc = minIdSrc_time_limit;
+		}
+		this->query(string("select max(") + slaveIdToMasterColumn + ") as max_id from " + slaveTableName);
+		row = this->fetchRow();
+		if(row) {
+			maxIdToMasterInSlaveDst = atoll(row["max_id"].c_str());
+			if(maxIdToMasterInSlaveDst && startIdToMasterInSlaveSrc < maxIdToMasterInSlaveDst + 1) {
+				startIdToMasterInSlaveSrc = maxIdToMasterInSlaveDst + 1;
+			}
+		}
+		if(startIdToMasterInSlaveSrc >= maxIdToMasterInSlaveSrc ||
+		   (maxIdSrc_time_limit && startIdToMasterInSlaveSrc >= maxIdSrc_time_limit)) {
+			return;
+		}
+	} else {
+		startIdToMasterInSlaveSrc = maxIdSrc;
+		if(maxIdSrc_time_limit && startIdToMasterInSlaveSrc > maxIdSrc_time_limit) {
+			startIdToMasterInSlaveSrc = maxIdSrc_time_limit;
+		}
+		this->query(string("select min(") + slaveIdToMasterColumn + ") as min_id from " + slaveTableName);
+		row = this->fetchRow();
+		if(row) {
+			minIdToMasterInSlaveDst = atoll(row["min_id"].c_str());
+			if(minIdToMasterInSlaveDst && startIdToMasterInSlaveSrc > minIdToMasterInSlaveDst - 1) {
+				startIdToMasterInSlaveSrc = minIdToMasterInSlaveDst - 1;
+			}
+		}
+		if(startIdToMasterInSlaveSrc <= minIdToMasterInSlaveSrc ||
+		   (minIdSrc_time_limit && startIdToMasterInSlaveSrc <= minIdSrc_time_limit)) {
+			return;
+		}
+	}
 	map<string, int> columnsDest;
 	this->query(string("show columns from ") + slaveTableName);
 	size_t i = 0;
@@ -10598,23 +10648,27 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 	}
 	vector<string> condSrc;
 	if(!descDir) {
-		if(useMinIdMaster || maxIdToMasterInSlaveDst) {
-			condSrc.push_back(string(slaveIdToMasterColumn) + " >= " + intToString(startIdToMasterSrc));
+		if(startIdToMasterInSlaveSrc) {
+			condSrc.push_back(string(slaveIdToMasterColumn) + " >= " + intToString(startIdToMasterInSlaveSrc));
 		}
-		if(useMaxIdMaster && startIdToMasterSrc < useMaxIdMaster) {
-			condSrc.push_back(string(slaveIdToMasterColumn) + " <= " + intToString(useMaxIdMaster));
-		}
-		if(limitMaxId) {
-			condSrc.push_back(string(slaveIdToMasterColumn) + " <= " + intToString(limitMaxId));
+		if(useMaxIdMaster) {
+			extern int opt_database_backup_slave_record_safe_gap;
+			unsigned gap = useMaxIdMaster > (unsigned)opt_database_backup_slave_record_safe_gap ? opt_database_backup_slave_record_safe_gap : 0;
+			condSrc.push_back(string(slaveIdToMasterColumn) + " <= " + intToString(useMaxIdMaster - gap));
 		}
 	} else {
-		condSrc.push_back(string(slaveIdToMasterColumn) + " <= " + intToString(startIdToMasterSrc));
-		if (limitMaxId) {
-			condSrc.push_back(string(slaveIdToMasterColumn) + " <= " + intToString(limitMaxId));
+		if(startIdToMasterInSlaveSrc) {
+			condSrc.push_back(string(slaveIdToMasterColumn) + " <= " + intToString(startIdToMasterInSlaveSrc));
 		}
 		if(useMinIdMaster) {
 			condSrc.push_back(string(slaveIdToMasterColumn) + " >= " + intToString(useMinIdMaster));
 		}
+	}
+	if(minIdSrc_time_limit) {
+		condSrc.push_back(string(slaveIdToMasterColumn) + " >= " + intToString(minIdSrc_time_limit));
+	}
+	if(maxIdSrc_time_limit) {
+		condSrc.push_back(string(slaveIdToMasterColumn) + " <= " + intToString(maxIdSrc_time_limit));
 	}
 	string orderSrc = slaveIdToMasterColumn;
 	stringstream queryStr;

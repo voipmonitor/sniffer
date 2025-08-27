@@ -798,9 +798,11 @@ public:
 				      const char *masterTableName, const char *slaveTableName,
 				      const char *slaveIdToMasterColumn, 
 				      const char *masterCalldateColumn, const char *slaveCalldateColumn,
+				      u_int64_t minIdSrc, u_int64_t maxIdSrc,
+				      u_int64_t minIdSrc_time_limit, u_int64_t maxIdSrc_time_limit,
 				      u_int64_t useMinIdMaster, u_int64_t useMaxIdMaster,
-				      unsigned long limit, bool descDir = false, u_int64_t limitMaxId = 0,
-				      cSqlDbCodebooks *cb_src = NULL, cSqlDbCodebooks *cb_dst = NULL);
+				      unsigned long limit, bool descDir,
+				      cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst);
 	vector<string> getSourceTables(int typeTables = tt_all, int typeTables2 = tt2_na);
 	string getTimeColumn(string table);
 	bool getReferenceTablesMap(const char *table, map<string, cSqlDbCodebook::eTypeCodebook> *reftable_map);
