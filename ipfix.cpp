@@ -6,6 +6,7 @@
 #include "sniff_inline.h"
 #include "sniff_proc_class.h"
 
+#include <stddef.h>
 #include <pcap.h>
 
 
@@ -18,6 +19,287 @@ extern int opt_t2_boost;
 
 cIpFixCounter ipfix_counter;
 
+
+string sIPFixQosStatsExt::json(const char *callid) {
+	JsonExport json;
+	json.add("IncRtpBytes", IncRtpBytes);
+	json.add("IncRtpPackets", IncRtpPackets);
+	json.add("IncRtpLostPackets", IncRtpLostPackets);
+	json.add("IncRtpAvgJitter", IncRtpAvgJitter);
+	json.add("IncRtpMaxJitter", IncRtpMaxJitter);
+	json.add("IncRtcpBytes", IncRtcpBytes);
+	json.add("IncRtcpPackets", IncRtcpPackets);
+	json.add("IncRtcpLostPackets", IncRtcpLostPackets);
+	json.add("IncRtcpAvgJitter", IncRtcpAvgJitter);
+	json.add("IncRtcpMaxJitter", IncRtcpMaxJitter);
+	json.add("IncRtcpAvgLat", IncRtcpAvgLat);
+	json.add("IncRtcpMaxLat", IncRtcpMaxLat);
+	json.add("IncrVal", IncrVal);
+	json.add("IncMos", IncMos);
+	json.add("OutRtpBytes", OutRtpBytes);
+	json.add("OutRtpPackets", OutRtpPackets);
+	json.add("OutRtpLostPackets", OutRtpLostPackets);
+	json.add("OutRtpAvgJitter", OutRtpAvgJitter);
+	json.add("OutRtpMaxJitter", OutRtpMaxJitter);
+	json.add("OutRtcpBytes", OutRtcpBytes);
+	json.add("OutRtcpPackets", OutRtcpPackets);
+	json.add("OutRtcpLostPackets", OutRtcpLostPackets);
+	json.add("OutRtcpAvgJitter", OutRtcpAvgJitter);
+	json.add("OutRtcpMaxJitter", OutRtcpMaxJitter);
+	json.add("OutRtcpAvgLat", OutRtcpAvgLat);
+	json.add("OutRtcpMaxLat", OutRtcpMaxLat);
+	json.add("OutrVal", OutrVal);
+	json.add("OutMos", OutMos);
+	json.add("Type", Type);
+	json.add("CallerIncSrcIP", ipv4_2_vmIP(*(u_int32_t*)CallerIncSrcIP, true).getString());
+	json.add("CallerIncDstIP", ipv4_2_vmIP(*(u_int32_t*)CallerIncDstIP, true).getString());
+	json.add("CallerIncSrcPort", ntohs(CallerIncSrcPort));
+	json.add("CallerIncDstPort", ntohs(CallerIncDstPort));
+	json.add("CalleeIncSrcIP", ipv4_2_vmIP(*(u_int32_t*)CalleeIncSrcIP, true).getString());
+	json.add("CalleeIncDstIP", ipv4_2_vmIP(*(u_int32_t*)CalleeIncDstIP, true).getString());
+	json.add("CalleeIncSrcPort", ntohs(CalleeIncSrcPort));
+	json.add("CalleeIncDstPort", ntohs(CalleeIncDstPort));
+	json.add("CallerOutSrcIP", ipv4_2_vmIP(*(u_int32_t*)CallerOutSrcIP, true).getString());
+	json.add("CallerOutDstIP", ipv4_2_vmIP(*(u_int32_t*)CallerOutDstIP, true).getString());
+	json.add("CallerOutSrcPort", ntohs(CallerOutSrcPort));
+	json.add("CallerOutDstPort", ntohs(CallerOutDstPort));
+	json.add("CalleeOutSrcIP", ipv4_2_vmIP(*(u_int32_t*)CalleeOutSrcIP, true).getString());
+	json.add("CalleeOutDstIP", ipv4_2_vmIP(*(u_int32_t*)CalleeOutDstIP, true).getString());
+	json.add("CalleeOutSrcPort", ntohs(CalleeOutSrcPort));
+	json.add("CalleeOutDstPort", ntohs(CalleeOutDstPort));
+	json.add("CallerIntSlot", CallerIntSlot);
+	json.add("CallerIntPort", CallerIntPort);
+	json.add("CallerIntVlan", ntohs(CallerIntVlan));
+	json.add("CalleeIntSlot", CalleeIntSlot);
+	json.add("CalleeIntPort", CalleeIntPort);
+	json.add("CalleeIntVlan", ntohs(CalleeIntVlan));
+	json.add("BeginTimeSec", BeginTimeSec);
+	json.add("BeginTimeMic", BeginTimeMic);
+	json.add("EndTimeSec", EndTimeSec);
+	json.add("EndTimeMic", EndTimeMic);
+	json.add("Separator", Separator);
+	json.add("IncRealm", IncRealm);
+	json.add("OutRealm", OutRealm);
+	json.add("IncCallID", IncCallID);
+	json.add("OutCallID", OutCallID);
+	if(callid) {
+		json.add("CallID", callid);
+	}
+	return(json.getJson());
+}
+
+void sIPFixQosStatsExt::load_from_json(const char *json, unsigned json_len) {
+	string json_str(json, json_len);
+	load_from_json(json_str.c_str());
+}
+
+void sIPFixQosStatsExt::load_from_json(const char *json) {
+	JsonItem json_data;
+	json_data.parse(json);
+	IncRtpBytes = atol(json_data.getValue("IncRtpBytes").c_str());
+	IncRtpPackets = atol(json_data.getValue("IncRtpPackets").c_str());
+	IncRtpLostPackets = atol(json_data.getValue("IncRtpLostPackets").c_str());
+	IncRtpAvgJitter = atol(json_data.getValue("IncRtpAvgJitter").c_str());
+	IncRtpMaxJitter = atol(json_data.getValue("IncRtpMaxJitter").c_str());
+	IncRtcpBytes = atol(json_data.getValue("IncRtcpBytes").c_str());
+	IncRtcpPackets = atol(json_data.getValue("IncRtcpPackets").c_str());
+	IncRtcpLostPackets = atol(json_data.getValue("IncRtcpLostPackets").c_str());
+	IncRtcpAvgJitter = atol(json_data.getValue("IncRtcpAvgJitter").c_str());
+	IncRtcpMaxJitter = atol(json_data.getValue("IncRtcpMaxJitter").c_str());
+	IncRtcpAvgLat = atol(json_data.getValue("IncRtcpAvgLat").c_str());
+	IncRtcpMaxLat = atol(json_data.getValue("IncRtcpMaxLat").c_str());
+	OutRtpBytes = atol(json_data.getValue("OutRtpBytes").c_str());
+	OutRtpPackets = atol(json_data.getValue("OutRtpPackets").c_str());
+	OutRtpLostPackets = atol(json_data.getValue("OutRtpLostPackets").c_str());
+	OutRtpAvgJitter = atol(json_data.getValue("OutRtpAvgJitter").c_str());
+	OutRtpMaxJitter = atol(json_data.getValue("OutRtpMaxJitter").c_str());
+	OutRtcpBytes = atol(json_data.getValue("OutRtcpBytes").c_str());
+	OutRtcpPackets = atol(json_data.getValue("OutRtcpPackets").c_str());
+	OutRtcpLostPackets = atol(json_data.getValue("OutRtcpLostPackets").c_str());
+	OutRtcpAvgJitter = atol(json_data.getValue("OutRtcpAvgJitter").c_str());
+	OutRtcpMaxJitter = atol(json_data.getValue("OutRtcpMaxJitter").c_str());
+	OutRtcpAvgLat = atol(json_data.getValue("OutRtcpAvgLat").c_str());
+	OutRtcpMaxLat = atol(json_data.getValue("OutRtcpMaxLat").c_str());
+	*(u_int32_t*)CallerIncSrcIP = str_2_vmIP(json_data.getValue("CallerIncSrcIP").c_str()).getIPv4(true);
+	CallerIncSrcPort = atoi(json_data.getValue("CallerIncSrcPort").c_str());
+	*(u_int32_t*)CallerIncDstIP = str_2_vmIP(json_data.getValue("CallerIncDstIP").c_str()).getIPv4(true);
+	CallerIncDstPort = atoi(json_data.getValue("CallerIncDstPort").c_str());
+	*(u_int32_t*)CalleeIncSrcIP = str_2_vmIP(json_data.getValue("CalleeIncSrcIP").c_str()).getIPv4(true);
+	CalleeIncSrcPort = atoi(json_data.getValue("CalleeIncSrcPort").c_str());
+	*(u_int32_t*)CalleeIncDstIP = str_2_vmIP(json_data.getValue("CalleeIncDstIP").c_str()).getIPv4(true);
+	CalleeIncDstPort = atoi(json_data.getValue("CalleeIncDstPort").c_str());
+	*(u_int32_t*)CallerOutSrcIP = str_2_vmIP(json_data.getValue("CallerOutSrcIP").c_str()).getIPv4(true);
+	CallerOutSrcPort = atoi(json_data.getValue("CallerOutSrcPort").c_str());
+	*(u_int32_t*)CallerOutDstIP = str_2_vmIP(json_data.getValue("CallerOutDstIP").c_str()).getIPv4(true);
+	CallerOutDstPort = atoi(json_data.getValue("CallerOutDstPort").c_str());
+	*(u_int32_t*)CalleeOutSrcIP = str_2_vmIP(json_data.getValue("CalleeOutSrcIP").c_str()).getIPv4(true);
+	CalleeOutSrcPort = atoi(json_data.getValue("CalleeOutSrcPort").c_str());
+	*(u_int32_t*)CalleeOutDstIP = str_2_vmIP(json_data.getValue("CalleeOutDstIP").c_str()).getIPv4(true);
+	CalleeOutDstPort = atoi(json_data.getValue("CalleeOutDstPort").c_str());
+	IncMos = atol(json_data.getValue("IncMos").c_str());
+	IncrVal = atol(json_data.getValue("IncrVal").c_str());
+	OutMos = atol(json_data.getValue("OutMos").c_str());
+	OutrVal = atol(json_data.getValue("OutrVal").c_str());
+	Type = atoi(json_data.getValue("Type").c_str());
+	BeginTimeSec = atol(json_data.getValue("BeginTimeSec").c_str());
+	BeginTimeMic = atol(json_data.getValue("BeginTimeMic").c_str());
+	EndTimeSec = atol(json_data.getValue("EndTimeSec").c_str());
+	EndTimeMic = atol(json_data.getValue("EndTimeMic").c_str());
+	Separator = atoi(json_data.getValue("Separator").c_str());
+	IncRealm = json_data.getValue("IncRealm");
+	OutRealm = json_data.getValue("OutRealm");
+	IncCallID = json_data.getValue("IncCallID");
+	OutCallID = json_data.getValue("OutCallID");
+}
+
+void sIPFixQosStatsExt::load(sIPFixQosStats *src, sIPFixHeader *header) {
+	memcpy((sIPFixQosStats*)this, src, sizeof(sIPFixQosStats));
+	IncRealm.clear();
+	OutRealm.clear();
+	IncCallID.clear();
+	OutCallID.clear();
+	u_char *data_end = (u_char*)header + ntohs(header->Length);
+	u_char *var_data = (u_char*)src + offsetof(sIPFixQosStats, Separator);
+	if(var_data >= data_end || *var_data != Separator) {
+		return;
+	}
+	var_data++;
+	for(int i = 0; i < 4; i++) {
+		if(var_data + 2 > data_end) {
+			return;
+		}
+		u_int16_t field_len = ntohs(*(u_int16_t*)var_data);
+		var_data += 2;
+		string *target_field = NULL;
+		switch(i) {
+		case 0:
+			target_field = &IncRealm;
+			break;
+		case 1:
+			target_field = &OutRealm;
+			break;
+		case 2:
+			target_field = &IncCallID;
+			break;
+		case 3:
+			target_field = &OutCallID;
+			break;
+		}
+		if(field_len > 0) {
+			if(var_data + field_len > data_end) {
+				return;
+			}
+			*target_field = string((char*)var_data, field_len);
+			var_data += field_len;
+			if(i < 3 && var_data < data_end && *var_data == Separator) {
+				var_data++;
+			}
+		}
+	}
+}
+
+void sIPFixQosStatsExt::getRtpStreams(vector<sIPFixQosStreamStat> *streams, const char *callid) {
+	if(!callid || !streams) {
+		return;
+	}
+	bool isIncCall = (IncCallID == callid);
+	bool isOutCall = (OutCallID == callid);
+	if(!isIncCall && !isOutCall) {
+		return;
+	}
+	if(isIncCall) {
+		// Add Caller Inc stream (Caller → SBC)
+		sIPFixQosStreamStat stream1;
+		stream1.RtpBytes = IncRtpBytes;
+		stream1.RtpPackets = IncRtpPackets;
+		stream1.RtpLostPackets = IncRtpLostPackets;
+		stream1.RtpAvgJitter = IncRtpAvgJitter;
+		stream1.RtpMaxJitter = IncRtpMaxJitter;
+		stream1.RtcpBytes = IncRtcpBytes;
+		stream1.RtcpPackets = IncRtcpPackets;
+		stream1.RtcpLostPackets = IncRtcpLostPackets;
+		stream1.RtcpAvgJitter = IncRtcpAvgJitter;
+		stream1.RtcpMaxJitter = IncRtcpMaxJitter;
+		stream1.RtcpAvgLat = IncRtcpAvgLat;
+		stream1.RtcpMaxLat = IncRtcpMaxLat;
+		stream1.rVal = IncrVal;
+		stream1.Mos = IncMos;
+		stream1.SrcIP = ipv4_2_vmIP(*(u_int32_t*)CallerIncSrcIP, true);
+		stream1.DstIP = ipv4_2_vmIP(*(u_int32_t*)CallerIncDstIP, true);
+		stream1.SrcPort = CallerIncSrcPort;
+		stream1.DstPort = CallerIncDstPort;
+		stream1.iscaller = true;  // Caller → SBC (incoming side)
+		streams->push_back(stream1);
+		// Add Callee Inc stream (SBC → Caller)
+		sIPFixQosStreamStat stream2;
+		stream2.RtpBytes = IncRtpBytes;  // Same statistics for both Inc directions
+		stream2.RtpPackets = IncRtpPackets;
+		stream2.RtpLostPackets = IncRtpLostPackets;
+		stream2.RtpAvgJitter = IncRtpAvgJitter;
+		stream2.RtpMaxJitter = IncRtpMaxJitter;
+		stream2.RtcpBytes = IncRtcpBytes;
+		stream2.RtcpPackets = IncRtcpPackets;
+		stream2.RtcpLostPackets = IncRtcpLostPackets;
+		stream2.RtcpAvgJitter = IncRtcpAvgJitter;
+		stream2.RtcpMaxJitter = IncRtcpMaxJitter;
+		stream2.RtcpAvgLat = IncRtcpAvgLat;
+		stream2.RtcpMaxLat = IncRtcpMaxLat;
+		stream2.rVal = IncrVal;
+		stream2.Mos = IncMos;
+		stream2.SrcIP = ipv4_2_vmIP(*(u_int32_t*)CalleeIncSrcIP, true);
+		stream2.DstIP = ipv4_2_vmIP(*(u_int32_t*)CalleeIncDstIP, true);
+		stream2.SrcPort = CalleeIncSrcPort;
+		stream2.DstPort = CalleeIncDstPort;
+		stream2.iscaller = false;  // SBC → Caller (callee to caller on incoming side)
+		streams->push_back(stream2);
+	}
+	if(isOutCall) {
+		// Add Caller Out stream (SBC → Callee)
+		sIPFixQosStreamStat stream3;
+		stream3.RtpBytes = OutRtpBytes;
+		stream3.RtpPackets = OutRtpPackets;
+		stream3.RtpLostPackets = OutRtpLostPackets;
+		stream3.RtpAvgJitter = OutRtpAvgJitter;
+		stream3.RtpMaxJitter = OutRtpMaxJitter;
+		stream3.RtcpBytes = OutRtcpBytes;
+		stream3.RtcpPackets = OutRtcpPackets;
+		stream3.RtcpLostPackets = OutRtcpLostPackets;
+		stream3.RtcpAvgJitter = OutRtcpAvgJitter;
+		stream3.RtcpMaxJitter = OutRtcpMaxJitter;
+		stream3.RtcpAvgLat = OutRtcpAvgLat;
+		stream3.RtcpMaxLat = OutRtcpMaxLat;
+		stream3.rVal = OutrVal;
+		stream3.Mos = OutMos;
+		stream3.SrcIP = ipv4_2_vmIP(*(u_int32_t*)CallerOutSrcIP, true);
+		stream3.DstIP = ipv4_2_vmIP(*(u_int32_t*)CallerOutDstIP, true);
+		stream3.SrcPort = CallerOutSrcPort;
+		stream3.DstPort = CallerOutDstPort;
+		stream3.iscaller = true;  // SBC → Callee (outgoing side)
+		streams->push_back(stream3);
+		// Add Callee Out stream (Callee → SBC)
+		sIPFixQosStreamStat stream4;
+		stream4.RtpBytes = OutRtpBytes;  // Same statistics for both Out directions
+		stream4.RtpPackets = OutRtpPackets;
+		stream4.RtpLostPackets = OutRtpLostPackets;
+		stream4.RtpAvgJitter = OutRtpAvgJitter;
+		stream4.RtpMaxJitter = OutRtpMaxJitter;
+		stream4.RtcpBytes = OutRtcpBytes;
+		stream4.RtcpPackets = OutRtcpPackets;
+		stream4.RtcpLostPackets = OutRtcpLostPackets;
+		stream4.RtcpAvgJitter = OutRtcpAvgJitter;
+		stream4.RtcpMaxJitter = OutRtcpMaxJitter;
+		stream4.RtcpAvgLat = OutRtcpAvgLat;
+		stream4.RtcpMaxLat = OutRtcpMaxLat;
+		stream4.rVal = OutrVal;
+		stream4.Mos = OutMos;
+		stream4.SrcIP = ipv4_2_vmIP(*(u_int32_t*)CalleeOutSrcIP, true);
+		stream4.DstIP = ipv4_2_vmIP(*(u_int32_t*)CalleeOutDstIP, true);
+		stream4.SrcPort = CalleeOutSrcPort;
+		stream4.DstPort = CalleeOutDstPort;
+		stream4.iscaller = false;  // Callee → SBC (callee to caller on outgoing side)
+		streams->push_back(stream4);
+	}
+}
 
 cIPFixServer::cIPFixServer() {
 }
@@ -123,47 +405,191 @@ void cIPFixConnection::process_ipfix(sIPFixHeader *header) {
 	case _ipfix_SipOutTCP:
 		process_ipfix_SipOutTcp(header);
 		break;
+	case _ipfix_QosStats:
+		process_ipfix_QosStats(header);
+		break;
+	case _ipfix_UdpIn:
+		process_ipfix_UdpIn(header);
+		break;
+	case _ipfix_UdpOut:
+		process_ipfix_UdpOut(header);
+		break;
+	default:
+		process_ipfix_other(header);
+		break;
 	}
 }
 
 void cIPFixConnection::process_ipfix_HandShake(sIPFixHeader *header) {
 	// sIPFixHandShake *data = (sIPFixHandShake*)((u_char*)header + sizeof(sIPFixHeader));
-	// cout << "Hostname: " << data->Hostname() << " |" << endl;
+	// cout << "Hostname: " << data->Hostname(header) << " |" << endl;
 	header->SetID = ntohs(_ipfix_HandShake_Response);
 	socket->write((u_char*)header, htons(header->Length));
 }
 
 void cIPFixConnection::process_ipfix_SipIn(sIPFixHeader *header) {
+	if(header->DataLength() < sizeof(sIPFixSipIn)) return;
 	sIPFixSipIn *data = (sIPFixSipIn*)((u_char*)header + sizeof(sIPFixHeader));
 	string sip_data = data->SipMsg(header);
-	process_packet(header, sip_data, false, data->GetTime(), data->GetSrc(), data->GetDst());
+	process_packet(header, sip_data, false, data->GetTime(), data->GetSrc(), data->GetDst(), "SIP In (SetID 258)");
 }
 
 void cIPFixConnection::process_ipfix_SipOut(sIPFixHeader *header) {
+	if(header->DataLength() < sizeof(sIPFixSipOut)) return;
 	sIPFixSipOut *data = (sIPFixSipOut*)((u_char*)header + sizeof(sIPFixHeader));
 	string sip_data = data->SipMsg(header);
-	process_packet(header, sip_data, false, data->GetTime(), data->GetSrc(), data->GetDst());
+	process_packet(header, sip_data, false, data->GetTime(), data->GetSrc(header), data->GetDst(header), "SIP Out (SetID 259)");
 }
 
 void cIPFixConnection::process_ipfix_SipInTcp(sIPFixHeader *header) {
+	if(header->DataLength() < sizeof(sIPFixSipInTCP)) return;
 	sIPFixSipInTCP *data = (sIPFixSipInTCP*)((u_char*)header + sizeof(sIPFixHeader));
 	string sip_data = data->SipMsg(header);
-	process_packet(header, sip_data, true, data->GetTime(), data->GetSrc(), data->GetDst());
+	process_packet(header, sip_data, true, data->GetTime(), data->GetSrc(), data->GetDst(), "SIP In TCP (SetID 260)");
 }
 
 void cIPFixConnection::process_ipfix_SipOutTcp(sIPFixHeader *header) {
+	if(header->DataLength() < sizeof(sIPFixSipOutTCP)) return;
 	sIPFixSipOutTCP *data = (sIPFixSipOutTCP*)((u_char*)header + sizeof(sIPFixHeader));
 	string sip_data = data->SipMsg(header);
-	process_packet(header, sip_data, true, data->GetTime(), data->GetSrc(), data->GetDst());
+	process_packet(header, sip_data, true, data->GetTime(), data->GetSrc(), data->GetDst(), "SIP Out TCP (SetID 261)");
 }
 
-void cIPFixConnection::process_packet(sIPFixHeader *header, string &data, bool tcp, timeval time, vmIPport src, vmIPport dst) {
+void cIPFixConnection::process_ipfix_QosStats(sIPFixHeader *header) {
+	if(header->DataLength() < sizeof(sIPFixQosStats)) return;
+	sIPFixQosStats *data = (sIPFixQosStats*)((u_char*)header + sizeof(sIPFixHeader));
+	sIPFixQosStatsExt qos_ext;
+	qos_ext.load(data, header);
+	int dlink = PcapDumper::get_global_pcap_dlink_en10();
+	int pcap_handle_index = PcapDumper::get_global_handle_index_en10();
+	ether_header header_eth;
+	memset(&header_eth, 0, sizeof(header_eth));
+	header_eth.ether_type = htons(ETHERTYPE_IP);
+	pcap_pkthdr *udpHeader;
+	u_char *udpPacket;
+	vmIPport src;
+	vmIPport dst;
+	for(int i = 0; i < 2; i++) {
+		string *callid = NULL;
+		switch(i) {
+		case 0:
+			callid = &qos_ext.IncCallID;
+			break;
+		case 1:
+			callid = &qos_ext.OutCallID;
+			break;
+		}
+		if(!callid->empty()) {
+			string json_data = "IPFIX_QOS:" + qos_ext.json(callid->c_str());
+			createSimpleUdpDataPacket(sizeof(header_eth), &udpHeader,  &udpPacket,
+						  (u_char*)&header_eth, (u_char*)json_data.c_str(), json_data.length(), 0,
+						  src.ip, dst.ip, src.port, dst.port,
+						  qos_ext.EndTimeSec, qos_ext.EndTimeMic);
+			push_packet(src, dst,
+				    udpHeader, udpPacket, json_data.length(), false,
+				    dlink, pcap_handle_index);
+		}
+	}
 	if(sverb.ipfix) {
-		cout << "* IPFIX *" << endl;
+		cout << "* IPFIX QoS Statistics (SetID 268) *" << endl;
+		cout << "id/seq: " << ntohs(header->SetID) << " / " << ntohl(header->SeqNum) << endl;
+		cout << "Begin time: " << ntohl(qos_ext.BeginTimeSec) << "." << ntohl(qos_ext.BeginTimeMic) << endl;
+		cout << "End time: " << ntohl(qos_ext.EndTimeSec) << "." << ntohl(qos_ext.EndTimeMic) << endl;
+		cout << "Caller Inc: " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CallerIncSrcIP, true).getString() << ":" << ntohs(qos_ext.CallerIncSrcPort)
+		     << " -> " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CallerIncDstIP, true).getString() << ":" << ntohs(qos_ext.CallerIncDstPort) << endl;
+		cout << "Callee Inc: " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CalleeIncSrcIP, true).getString() << ":" << ntohs(qos_ext.CalleeIncSrcPort)
+		     << " -> " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CalleeIncDstIP, true).getString() << ":" << ntohs(qos_ext.CalleeIncDstPort) << endl;
+		cout << "Caller Out: " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CallerOutSrcIP, true).getString() << ":" << ntohs(qos_ext.CallerOutSrcPort)
+		     << " -> " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CallerOutDstIP, true).getString() << ":" << ntohs(qos_ext.CallerOutDstPort) << endl;
+		cout << "Callee Out: " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CalleeOutSrcIP, true).getString() << ":" << ntohs(qos_ext.CalleeOutSrcPort)
+		     << " -> " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CalleeOutDstIP, true).getString() << ":" << ntohs(qos_ext.CalleeOutDstPort) << endl;
+		cout << "RTP Inc: packets=" << ntohl(qos_ext.IncRtpPackets) << " lost=" << ntohl(qos_ext.IncRtpLostPackets) 
+		     << " jitter=" << ntohl(qos_ext.IncRtpAvgJitter) << endl;
+		cout << "RTP Out: packets=" << ntohl(qos_ext.OutRtpPackets) << " lost=" << ntohl(qos_ext.OutRtpLostPackets) 
+		     << " jitter=" << ntohl(qos_ext.OutRtpAvgJitter) << endl;
+		cout << "MOS Inc=" << ntohl(qos_ext.IncMos) << " Out=" << ntohl(qos_ext.OutMos) << endl;
+		cout << "R-val Inc=" << ntohl(qos_ext.IncrVal) << " Out=" << ntohl(qos_ext.OutrVal) << endl;
+		if(!qos_ext.IncRealm.empty()) {
+			cout << "IncRealm: " << qos_ext.IncRealm << endl;
+		}
+		if(!qos_ext.OutRealm.empty()) {
+			cout << "OutRealm: " << qos_ext.OutRealm << endl;
+		}
+		if(!qos_ext.IncCallID.empty()) {
+			cout << "IncCallID: " << qos_ext.IncCallID << endl;
+		}
+		if(!qos_ext.OutCallID.empty()) {
+			cout << "OutCallID: " << qos_ext.OutCallID << endl;
+		}
+		hexdump((u_char*)header + sizeof(sIPFixHeader),
+			ntohs(header->Length) - sizeof(sIPFixHeader));
+		cout << endl;
+	}
+}
+
+void cIPFixConnection::process_ipfix_UdpIn(sIPFixHeader *header) {
+	if(header->DataLength() < sizeof(sIPFixUdpIn)) return;
+	sIPFixUdpIn *data = (sIPFixUdpIn*)((u_char*)header + sizeof(sIPFixHeader));
+	if(sverb.ipfix) {
+		cout << "* IPFIX UDP In (SetID 266) *" << endl;
+		cout << "id/seq: " << ntohs(header->SetID) << " / " << ntohl(header->SeqNum) << endl;
+		cout << "time: " << data->GetTime().tv_sec << "." << setw(6) << data->GetTime().tv_usec << endl;
+		cout << data->GetSrc(header).getString() << " -> " << data->GetDst(header).getString() << endl;
+		u_int16_t _data_len;
+		string _data_type;
+		u_char *_data = data->GetData(header, &_data_len, &_data_type);
+		if(_data && _data_len) {
+			cout << "DATA " << _data_type << ":" << endl;
+			hexdump(_data, _data_len);
+		} else {
+			hexdump((u_char*)header + sizeof(sIPFixHeader),
+				ntohs(header->Length) - sizeof(sIPFixHeader));
+		}
+		cout << endl << endl;
+	}
+}
+
+void cIPFixConnection::process_ipfix_UdpOut(sIPFixHeader *header) {
+	if(header->DataLength() < sizeof(sIPFixUdpOut)) return;
+	sIPFixUdpOut *data = (sIPFixUdpOut*)((u_char*)header + sizeof(sIPFixHeader));
+	if(sverb.ipfix) {
+		cout << "* IPFIX UDP Out (SetID 267) *" << endl;
+		cout << "id/seq: " << ntohs(header->SetID) << " / " << ntohl(header->SeqNum) << endl;
+		cout << "time: " << data->GetTime().tv_sec << "." << setw(6) << data->GetTime().tv_usec << endl;
+		cout << "CallID: " << data->CallID(header) << endl;
+		cout << data->GetSrc(header).getString() << " -> " << data->GetDst(header).getString() << endl;
+		u_int16_t _data_len;
+		string _data_type;
+		u_char *_data = data->GetData(header, &_data_len, &_data_type);
+		if(_data && _data_len) {
+			cout << "DATA " << _data_type << ":" << endl;
+			hexdump(_data, _data_len);
+		} else {
+			hexdump((u_char*)header + sizeof(sIPFixHeader),
+				ntohs(header->Length) - sizeof(sIPFixHeader));
+		}
+		cout << endl << endl;
+	}
+}
+
+void cIPFixConnection::process_ipfix_other(sIPFixHeader *header) {
+	if(sverb.ipfix) {
+		cout << "* IPFIX (Unknown SetID" << htons(header->SetID) << ") *" << endl;
+		cout << "id/seq: " << ntohs(header->SetID) << " / " << ntohl(header->SeqNum) << endl;
+		hexdump((u_char*)header + sizeof(sIPFixHeader),
+			ntohs(header->Length) - sizeof(sIPFixHeader));
+		cout << endl << endl;
+	}
+}
+
+void cIPFixConnection::process_packet(sIPFixHeader *header, string &data, bool tcp, timeval time, vmIPport src, vmIPport dst, const char *type) {
+	if(sverb.ipfix) {
+		cout << "* IPFIX " << type << " *" << endl;
 		cout << "id/seq: " << ntohs(header->SetID) << " / " << ntohl(header->SeqNum) << endl;
 		cout << "time: " << time.tv_sec << "." << setw(6) << time.tv_usec << endl;
 		cout << src.getString() << " -> " << dst.getString() << endl;
-		cout << data << endl << endl;
+		cout << data;
+		cout << endl << endl;
 	}
 	/*
 	u_int64_t time_us = getTimeUS();

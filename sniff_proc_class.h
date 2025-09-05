@@ -626,6 +626,7 @@ public:
 		extern char *mgcp_gateway_udp_portmatrix;
 		extern char *mgcp_callagent_tcp_portmatrix;
 		extern char *mgcp_callagent_udp_portmatrix;
+		extern bool opt_ipfix;
 		pflags.set_skinny(opt_skinny && pflags.get_tcp() && (skinnyportmatrix[source] || skinnyportmatrix[dest]));
 		pflags.set_mgcp(opt_mgcp && 
 				(pflags.get_tcp() ?
@@ -638,6 +639,9 @@ public:
 				    (pflags.get_tcp() ?
 				      diameter_tcp_portmatrix[source] || diameter_tcp_portmatrix[dest] :
 				      diameter_udp_portmatrix[source] || diameter_udp_portmatrix[dest]));
+		pflags.set_ipfix_qos(opt_ipfix &&
+				     !saddr.isSet() && !daddr.isSet() && !source.isSet() && !dest.isSet() &&
+				     datalen > 10 && !memcmp(packet + dataoffset, "IPFIX_QOS:", 10));
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 		extern bool opt_audiocodes;
 		sAudiocodes *audiocodes = NULL;
@@ -662,7 +666,8 @@ public:
 					  sipportmatrix[source] || sipportmatrix[dest] ||
 					  pflags.is_skinny() ||
 					  pflags.is_mgcp() ||
-					  pflags.is_diameter()))
+					  pflags.is_diameter() ||
+					  pflags.is_ipfix_qos()))
 					#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 					||
 					(audiocodes && audiocodes->media_type == sAudiocodes::ac_mt_SIP)
@@ -1625,6 +1630,7 @@ private:
 		extern char *mgcp_gateway_udp_portmatrix;
 		extern char *mgcp_callagent_tcp_portmatrix;
 		extern char *mgcp_callagent_udp_portmatrix;
+		extern bool opt_ipfix;
 		pcap_pkthdr *header = packet_data->hp.header->_getStdHeader();
 		u_char *packet = packet_data->hp.packet;
 		#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
@@ -1644,6 +1650,9 @@ private:
 						 (packet_data->pflags.get_tcp() ?
 						   diameter_tcp_portmatrix[packet_data->source] || diameter_tcp_portmatrix[packet_data->dest] :
 						   diameter_udp_portmatrix[packet_data->source] || diameter_udp_portmatrix[packet_data->dest]));
+		packet_data->pflags.set_ipfix_qos(opt_ipfix &&
+						  !saddr.isSet() && !daddr.isSet() && !packet_data->source && !packet_data->dest &&
+						  packet_data->datalen > 10 && !memcmp(packet + packet_data->data_offset, "IPFIX_QOS:", 10));
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 		extern bool opt_audiocodes;
 		sAudiocodes *audiocodes = NULL;
@@ -1667,7 +1676,8 @@ private:
 					 (packet_data->pflags.is_ssl() ||
 					  sipportmatrix[packet_data->source] || sipportmatrix[packet_data->dest] ||
 					  packet_data->pflags.is_skinny() ||
-					  packet_data->pflags.is_mgcp()))
+					  packet_data->pflags.is_mgcp() ||
+					  packet_data->pflags.is_ipfix_qos()))
 					#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 					||
 					(audiocodes && audiocodes->media_type == sAudiocodes::ac_mt_SIP)
@@ -1852,11 +1862,13 @@ private:
 	inline void process_websocket(packet_s_process **packetS_ref, packet_s_process *packetS_orig);
 	void process_diameterExt(packet_s_process **packetS_ref, packet_s_process *packetS_orig);
 	inline void process_diameter(packet_s_process **packetS_ref);
+	inline void process_ipfix_qos(packet_s_process **packetS_ref);
 	inline bool process_getCallID(packet_s_process **packetS_ref);
 	inline void process_getSipMethod(packet_s_process **packetS_ref);
 	inline void process_getLastSipResponse(packet_s_process **packetS_ref);
 	inline void process_findSipCall(packet_s_process **packetS_ref, map<string, Call*> *map_calls = NULL);
 	inline void process_createSipCall(packet_s_process **packetS_ref, map<string, Call*> *map_calls = NULL);
+	inline void process_findIpfixQosCall(packet_s_process **packetS_ref);
 	void runOutThread();
 	void endOutThread(bool force = false);
 	void *outThreadFunction();

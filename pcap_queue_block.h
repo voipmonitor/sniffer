@@ -604,6 +604,7 @@ struct packet_flags {
 	static const uint16_t MGCP_MASK           = (1 << 6);
 	static const uint16_t DTLS_HANDSHAKE_MASK = (1 << 7);
 	static const uint16_t DIAMETER_MASK       = (1 << 8);
+	static const uint16_t IPFIX_QOS_MASK       = (1 << 8);
 	
 	uint16_t flags;
 
@@ -632,6 +633,9 @@ struct packet_flags {
 
 	inline void set_diameter(bool value) { flags = (flags & ~DIAMETER_MASK) | (value ? DIAMETER_MASK : 0); }
 	inline bool is_diameter() { return((flags & DIAMETER_MASK) != 0); }
+	
+	inline void set_ipfix_qos(bool value) { flags = (flags & ~IPFIX_QOS_MASK) | (value ? IPFIX_QOS_MASK : 0); }
+	inline bool is_ipfix_qos() { return((flags & IPFIX_QOS_MASK) != 0); }
 
 	inline bool other_processing() {
 		return(is_ss7());

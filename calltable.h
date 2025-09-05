@@ -45,6 +45,7 @@
 #include "record_array.h"
 #include "calltable_base.h"
 #include "dtls.h"
+#include "ipfix.h"
 
 
 #define MAX_IP_PER_CALL 40	//!< total maxumum of SDP sessions for one call-id
@@ -1334,6 +1335,9 @@ public:
 		sRtcpXrStreamData *getOtherType(sRtcpXrStreamData *stream);
 		map<sRtcpStreamIndex, sRtcpXrStreamDataByType> by_type;
 	};
+	struct sIPFixStreamData : public vector<sIPFixQosStreamStat> {
+		void findAB(sIPFixQosStreamStat *ab[]);
+	};
 	struct sUdptlDumper {
 		sUdptlDumper() {
 			dumper = NULL;
@@ -1789,6 +1793,7 @@ public:
 	bool rtp_zeropackets_stored;
 	
 	sRtcpData rtcpData;
+	sIPFixStreamData ipfixData;
 	
 	map<d_item<vmIPport>, unsigned> last_udptl_seq;
 

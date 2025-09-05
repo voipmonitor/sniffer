@@ -647,7 +647,8 @@ enum packet_s_process_type_content {
 	_pptc_sip = 1,
 	_pptc_skinny = 2,
 	_pptc_mgcp = 3,
-	_pptc_diameter = 4
+	_pptc_diameter = 4,
+	_pptc_ipfix_qos = 5
 };
 
 enum packet_s_process_next_action {
@@ -765,6 +766,9 @@ struct packet_s_process_0 : public packet_s_stack {
 	}
 	inline bool typeContentIsDiameter() {
 		return(type_content == _pptc_diameter);
+	}
+	inline bool typeContentIsIpFixQos() {
+		return(type_content == _pptc_ipfix_qos);
 	}
 	inline void insert_packet(packet_s_process_0 *packet) {
 		if(!insert_packets) {

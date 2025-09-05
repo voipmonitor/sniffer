@@ -6263,6 +6263,28 @@ void process_packet_sip_alone_bye(packet_s_process *packetS) {
 	
 }
 
+void process_packet_ipfix_qos(packet_s_process *packetS) {
+	Call *call = packetS->call ? packetS->call : NULL;
+	if(!call) {
+		return;
+	}
+	sIPFixQosStatsExt ipfix_data;
+	ipfix_data.load_from_json(packetS->data_() + 10, packetS->datalen_() - 10);
+	ipfix_data.getRtpStreams(&call->ipfixData, call->call_id.c_str());
+	/*
+	cout << " * IPFIX STREAMS for: " << call->call_id << endl;
+	for(vector<sIPFixQosStreamStat>::iterator iter = call->ipfixData.begin(); iter != call->ipfixData.end(); iter++) {
+		cout << " *** " 
+		     << iter->SrcIP.getString() << ":" << iter->SrcPort
+		     << " -> " 
+		     << iter->DstIP.getString() << ":" << iter->DstPort
+		     << "  " << (iter->iscaller ? "iscaller" : "iscalled")
+		     << endl;
+	}
+	cout << "---" << endl;
+	*/
+}
+
 void process_packet_sip_register(packet_s_process *packetS) {
  
 	Call *call = NULL;
@@ -11784,6 +11806,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 	bool isSip = false;
 	bool isMgcp = false;
 	bool isDiameter = false;
+	bool isIpfixQos = false;
 	bool rtp = false;
 	bool other = false;
 	packetS->blockstore_addflag(11 /*pb lock flag*/);
@@ -11804,6 +11827,8 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 		} else if(packetS->pflags.is_diameter() && check_diameter((u_char*)packetS->data_(), packetS->datalen_())) {
 			//packetS->blockstore_addflag(12 /*pb lock flag*/);
 			isDiameter = true;
+		} else if(packetS->pflags.is_ipfix_qos()) {
+			isIpfixQos = true;
 		}
 		if(packetS->pflags.get_tcp()) {
 			extern int opt_sip_tcp_reassembly_ext_quick_mod;
@@ -11892,6 +11917,8 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 			this->process_mgcp(&packetS);
 		} else if(isDiameter) {
 			this->process_diameter(&packetS);
+		} else if(isIpfixQos) {
+			this->process_ipfix_qos(&packetS);
 		} else {
 			packetS->blockstore_addflag(15 /*pb lock flag*/);
 			rtp = true;
@@ -12023,6 +12050,13 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 		#else
 		preProcessPacket[ppt_pp_call]->push_packet(packetS);
 		#endif
+	} else if(packetS->typeContentIsIpFixQos()) {
+		//packetS->blockstore_addflag(102 /*pb lock flag*/);
+		#if not CALLX_MOD_OLDVER
+		preProcessPacket[ppt_pp_find_call]->push_packet(packetS);
+		#else
+		preProcessPacket[ppt_pp_call]->push_packet(packetS);
+		#endif
 	} else if(packetS->typeContentIsDiameter()) {
 		preProcessPacket[ppt_pp_diameter]->push_packet(packetS);
 	} else if(!opt_t2_boost) {
@@ -12037,6 +12071,9 @@ void PreProcessPacket::process_FIND_CALL(packet_s_process *packetS) {
 	if(packetS->typeContentIsSip()) {
 		this->process_findSipCall(&packetS);
 		this->process_createSipCall(&packetS);
+	}
+	if(packetS->typeContentIsIpFixQos()) {
+		this->process_findIpfixQosCall(&packetS);
 	}
 	_process_FIND_CALL_push(packetS);
 }
@@ -12068,6 +12105,25 @@ void PreProcessPacket::_process_FIND_CALL_push(packet_s_process *packetS) {
 			   (packetS->is_subscribe() && (opt_sip_subscribe || livesnifferfilterUseSipTypes.u_subscribe)) ||
 			   (packetS->is_notify() && (opt_sip_notify || livesnifferfilterUseSipTypes.u_notify))) {
 				push_to_thread = ppt_pp_sip_other;
+			}
+		}
+		if(push_to_thread >= 0) {
+			preProcessPacket[push_to_thread]->push_packet(packetS);
+		} else {
+			PACKET_S_PROCESS_DESTROY(&packetS);
+		}
+	} else if(packetS->typeContentIsIpFixQos()) {
+		int push_to_thread = -1;
+		if(packetS->_findCall && packetS->call) {
+			if(packetS->call->isAllocFlagOK() && !packetS->call->stopProcessing) {
+				push_to_thread = ppt_pp_process_call;
+			} else {
+				if(!packetS->call->stopProcessing && !packetS->call->bad_flags_warning[0]) {
+					syslog(LOG_WARNING, "WARNING: bad flags in call: %s: alloc_flag: %i, stop_processing: %i (process_SIP_EXTEND)", 
+					       packetS->get_callid(),
+					       packetS->call->alloc_flag, packetS->call->stopProcessing);
+					packetS->call->bad_flags_warning[0] = true;
+				}
 			}
 		}
 		if(push_to_thread >= 0) {
@@ -12121,6 +12177,9 @@ void PreProcessPacket::process_PROCESS_CALL(packet_s_process *packetS, int threa
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
 		handle_mgcp(packetS);
+	} else if(packetS->typeContentIsIpFixQos()) {
+		process_packet_ipfix_qos(packetS);
+		__SYNC_DEC(packetS->call->in_preprocess_queue_before_process_packet);
 	}
 	if(callCleanupCalls) {
 		_process_packet__cleanup_calls(packetS, 0, __FILE__, __LINE__);
@@ -12749,6 +12808,16 @@ void PreProcessPacket::process_diameter(packet_s_process **packetS_ref) {
 	}
 }
 
+void PreProcessPacket::process_ipfix_qos(packet_s_process **packetS_ref) {
+	packet_s_process *packetS = *packetS_ref;
+	packetS->type_content = _pptc_ipfix_qos;
+	if(packetS->next_action == _ppna_set) {
+		packetS->next_action = _ppna_push_to_extend;
+	} else {
+		preProcessPacket[ppt_extend]->push_packet(packetS);
+	}
+}
+
 bool PreProcessPacket::process_getCallID(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
 	bool exists_callid = false;
@@ -12816,6 +12885,18 @@ void PreProcessPacket::process_createSipCall(packet_s_process **packetS_ref, map
 	if(packetS->_findCall && packetS->enableCreateCall()) {
 		packetS->call_created = new_invite_register(packetS, packetS->sip_method, packetS->get_callid(), -1, map_calls);
 		packetS->_createCall = true;
+	}
+}
+
+void PreProcessPacket::process_findIpfixQosCall(packet_s_process **packetS_ref) {
+	packet_s_process *packetS = *packetS_ref;
+	JsonItem json;
+	string data(packetS->data_() + 10, packetS->datalen_() - 10);
+	json.parse(data);
+	string callid = json.getValue("CallID");
+	if(!callid.empty()) {
+		packetS->call = calltable->find_by_call_id((char*)callid.c_str(), 0, packetS->callid_alternative, packetS->getTime_s());
+		packetS->_findCall = true;
 	}
 }
 

@@ -7733,6 +7733,27 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				cdr.add(rtcp_xr_streams_ab[i]->ip_port_dst.ip, c+"_saddr", false, sqlDbSaveCall, sql_cdr_table);
 			}
 		}
+	} else if(ipfixData.size() > 0) {
+		if(sverb.rtp_streams) {
+			cout << "IPFIX RTP STREAMS - " << call_id << endl;
+			for(vector<sIPFixQosStreamStat>::iterator iter = ipfixData.begin(); iter != ipfixData.end(); iter++) {
+				cout << " *** " 
+				     << iter->SrcIP.getString() << ":" << iter->SrcPort
+				     << " -> " 
+				     << iter->DstIP.getString() << ":" << iter->DstPort
+				     << "  " << (iter->iscaller ? "iscaller" : "iscalled")
+				     << endl;
+			}
+		}
+		sIPFixQosStreamStat *ipfix_qos_streams_ab[2] = { NULL, NULL };
+		ipfixData.findAB(ipfix_qos_streams_ab);
+		for(int i = 0; i < 2; i++) {
+			if(!ipfix_qos_streams_ab[i]) continue;
+			string c = i == 0 ? "a" : "b";
+			cdr.add(ipfix_qos_streams_ab[i]->SrcIP, c+"_saddr", false, sqlDbSaveCall, sql_cdr_table);
+			cdr.add(LIMIT_MEDIUMINT_UNSIGNED(ipfix_qos_streams_ab[i]->RtpPackets), c+"_received");
+			cdr.add(LIMIT_MEDIUMINT_UNSIGNED(ipfix_qos_streams_ab[i]->RtpLostPackets), c+"_lost");
+		}
 	}
 
 	if(opt_dscp && existsColumns.cdr_dscp) {
@@ -10355,6 +10376,66 @@ Call::sRtcpXrStreamData *Call::sRtcpXrStreams::getOtherType(sRtcpXrStreamData *s
 		}
 	}
 	return(NULL);
+}
+
+void Call::sIPFixStreamData::findAB(sIPFixQosStreamStat *ab[]) {
+	if(!size()) {
+		return;
+	}
+	if(size() == 1) {
+		ab[(*this)[0].iscaller ? 0 : 1] = &(*this)[0];
+		return;
+	}
+	if(size() == 2 &&
+	   (*this)[0].iscaller != (*this)[1].iscaller) {
+		if((*this)[0].iscaller) {
+			ab[0] = &(*this)[0];
+			ab[1] = &(*this)[1];
+		} else {
+			ab[0] = &(*this)[1];
+			ab[1] = &(*this)[0];
+		}
+		return;
+	}
+	for(int pass = 0; pass < 2; pass++) {
+		for(int i = 0; i < 2; i++) {
+			if(!ab[i]) {
+				bool _iscaller = i == 0 ? 1 : 0;
+				unsigned max_packets = 0;
+				int max_packets_index = -1;
+				for(unsigned j = 0; j < size(); j++) {
+					if((*this)[j].iscaller == _iscaller &&
+					   (pass == 0 ?
+					     ((*this)[j].SrcIP.isSet() && (*this)[j].DstIP.isSet() &&
+					      (*this)[j].SrcPort.isSet() && (*this)[j].DstPort.isSet()) :
+					     ((*this)[j].SrcIP.isSet() || (*this)[j].DstIP.isSet())) &&
+					   (max_packets_index == -1 ||
+					    (*this)[j].RtpPackets > max_packets)) {
+						max_packets = (*this)[j].RtpPackets;
+						max_packets_index = j;
+					}
+				}
+				if(max_packets_index >= 0) {
+					ab[i] = &(*this)[max_packets_index];
+				}
+			}
+		}
+	}
+	if(ab[0] && ab[1]) {
+		for(int i = 0; i < 2; i++) {
+			int j = i == 0 ? 1 : 0;
+			if(!ab[i]->SrcIP.isSet() && ab[j]->DstIP.isSet() &&
+			   ab[i]->DstIP == ab[j]->SrcIP) {
+				ab[i]->SrcIP = ab[j]->DstIP;
+				ab[i]->SrcPort = ab[j]->DstPort;
+			}
+			if(!ab[i]->DstIP.isSet() && ab[j]->SrcIP.isSet() &&
+			   ab[i]->SrcIP == ab[j]->DstIP) {
+				ab[i]->DstIP = ab[j]->SrcIP;
+				ab[i]->DstPort = ab[j]->SrcPort;
+			}
+		}
+	}
 }
 
 void Call::prepareRtcpXrData(sRtcpXrStreams *streams, bool checkOK) {
