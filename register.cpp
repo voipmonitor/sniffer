@@ -944,6 +944,7 @@ u_int8_t Register::saveNewStateToDb(RegisterState *state) {
 	} else {
 		state->next_states.clear();
 	}
+	cleanupAfterSaveNewState();
 	return(1);
 }
 
@@ -1108,6 +1109,10 @@ void Register::saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState,
 		     << " f: " << file << ":" << line
 		     << endl;
 	}
+}
+
+void Register::cleanupAfterSaveNewState() {
+	REG_FREE_STR(digest_username);
 }
 
 RegisterState* Register::getLastState() {
