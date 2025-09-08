@@ -19,6 +19,7 @@ WIRESHARKCFLAGS =$(shell pkg-config --cflags wireshark)
 core2cust: GCCARCH = core2
 core2: GCCARCH = core2
 armv6k: GCCARCH = armv6k
+arm64: GCCARCH = native
 clean: GCCARCH = core2
 ss7: core2 static
 ss7: CXXFLAGS += -DHAVE_LIBWIRESHARK -DLIBWIRESHARK_VERSION=30605 ${WIRESHARKCFLAGS}
@@ -116,6 +117,8 @@ static: cleantest $(objects)
 core2: cleantest static
 
 armv6k: cleantest static
+
+arm64: cleantest static
 
 armv5shared: CXXFLAGS+= -DPACKED 
 armv5shared: CFLAGS+= -DPACKED 
