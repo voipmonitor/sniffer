@@ -560,9 +560,14 @@ Register::~Register() {
 	clean_all();
 }
 
-void Register::update(Call *call) {
+void Register::update(Call *call, eRegisterState state) {
 	char *tmp_str;
 	CallBranch *c_branch = call->branch_main();
+	if(state == rs_OK) {
+		if(digest_username) {
+			REG_FREE_STR(digest_username);
+		}
+	}
 	if(!opt_sip_register_state_compare_contact_num &&
 	   !contact_num && !c_branch->contact_num.empty()) {
 		contact_num = REG_NEW_STR(c_branch->contact_num.c_str());
@@ -944,7 +949,6 @@ u_int8_t Register::saveNewStateToDb(RegisterState *state) {
 	} else {
 		state->next_states.clear();
 	}
-	cleanupAfterSaveNewState();
 	return(1);
 }
 
@@ -1109,10 +1113,6 @@ void Register::saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState,
 		     << " f: " << file << ":" << line
 		     << endl;
 	}
-}
-
-void Register::cleanupAfterSaveNewState() {
-	REG_FREE_STR(digest_username);
 }
 
 RegisterState* Register::getLastState() {
@@ -1329,7 +1329,7 @@ void Registers::add(Call *call) {
 			existsReg->expire(false);
 		}
 		existsReg->unlock_states();
-		existsReg->update(call);
+		existsReg->update(call, state);
 		unlock_registers();
 		existsReg->addState(call);
 		delete reg;

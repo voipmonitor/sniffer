@@ -241,7 +241,7 @@ public:
 public:
 	inline Register(Call *call);
 	inline ~Register();
-	inline void update(Call *call);
+	inline void update(Call *call, eRegisterState state);
 	inline void addState(Call *call);
 	inline void expire(bool need_lock_states = true);
 	inline void updateLastState(Call *call, RegisterStates *states);
@@ -256,7 +256,6 @@ public:
 	inline void saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState, u_int32_t actTimeS = 0,
 				  const char *file = NULL, int line = 0);
 	inline bool needSaveToDb();
-	inline void cleanupAfterSaveNewState();
 	inline RegisterState* getLastState();
 	inline eRegisterState getState();
 	inline bool stateIsOK();
