@@ -11250,3 +11250,11 @@ string format_metric(double value, int sig_digits, const char *zero) {
 	snprintf(out, sizeof(out), "%.*f%s", dec_places, scaled, prefixes[exponent_id]);
 	return(out);
 }
+
+bool files_name_cmp(const string &a, const string &b) {
+	if(isdigit(a[0]) && isdigit(b[0])) {
+		return(atoi(a.c_str()) < atoi(b.c_str()));
+	} else {
+		return(strcmp(a.c_str(), b.c_str()) < 0);
+	}
+}

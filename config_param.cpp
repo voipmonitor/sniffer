@@ -2581,26 +2581,33 @@ void cConfig::setDisableIfEnd() {
 	defaultDisableIf = "";
 }
 
+bool cConfig::loadConfigFiles(const char *directory, vector<string> *files) {
+	DIR *dir = opendir(directory);
+	if(dir == NULL) return(false);
+	struct dirent *ent;
+	while((ent = readdir(dir)) != NULL) {
+		if(ent->d_name[0] == '.' || is_dir(directory + string("/") + ent->d_name)) continue;
+		files->push_back(ent->d_name);
+	}
+	closedir(dir);
+	std::sort(files->begin(), files->end(), files_name_cmp);
+	return(true);
+}
+
 bool cConfig::loadFromConfigFileOrDirectory(const char *filename, bool silent) {
 	if(!file_exists(filename)) {
 		return(false);
 	}
 	if(is_dir((char*)filename)) {
-		DIR *dir = opendir(filename);
-		if(dir != NULL) {
-			struct dirent *ent;
-			while((ent = readdir(dir)) != NULL) {
-				if (ent->d_type != 0x8) {
-					continue;
-				}
-				char filepathname[1024];
-				strcpy(filepathname, filename);
-				strcat(filepathname, "/");
-				strcat(filepathname, ent->d_name);
-				if(!loadFromConfigFile(filepathname, NULL, silent, true)) {
-					return(false);
+		vector<string> files;
+		if(loadConfigFiles(filename, &files)) {
+			bool rslt_load = false;
+			for(vector<string>::iterator iter = files.begin(); iter != files.end(); iter++) {
+				if(loadFromConfigFile((filename + string("/") + *iter).c_str(), NULL, silent, true)) {
+					rslt_load = true;
 				}
 			}
+			return(rslt_load);
 		} else {
 			if(!silent) {
 				loadFromConfigFileError("Cannot access directory file %s!", filename);
@@ -2725,21 +2732,15 @@ bool cConfig::loadConfigMapConfigFileOrDirectory(cConfigMap *configMap, const ch
 		return(false);
 	}
 	if(is_dir((char*)filename)) {
-		DIR *dir = opendir(filename);
-		if(dir != NULL) {
-			struct dirent *ent;
-			while((ent = readdir(dir)) != NULL) {
-				if (ent->d_type != 0x8) {
-					continue;
-				}
-				char filepathname[1024];
-				strcpy(filepathname, filename);
-				strcat(filepathname, "/");
-				strcat(filepathname, ent->d_name);
-				if(!loadConfigMapFromConfigFile(configMap, filepathname)) {
-					return(false);
+		vector<string> files;
+		if(loadConfigFiles(filename, &files)) {
+			bool rslt_load = false;
+			for(vector<string>::iterator iter = files.begin(); iter != files.end(); iter++) {
+				if(loadConfigMapFromConfigFile(configMap, (filename + string("/") + *iter).c_str())) {
+					rslt_load = true;
 				}
 			}
+			return(rslt_load);
 		} else {
 			return(false);
 		}

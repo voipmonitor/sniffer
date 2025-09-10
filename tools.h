@@ -5054,5 +5054,7 @@ bool is_vmware();
 
 string format_metric(double value, int sig_digits, const char *zero = "0");
 
+bool files_name_cmp(const string &a, const string &b);
+
 
 #endif

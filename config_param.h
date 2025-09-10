@@ -723,6 +723,7 @@ public:
 	void minorGroupIfNotSetEnd();
 	void setDisableIfBegin(string disableIf);
 	void setDisableIfEnd();
+	bool loadConfigFiles(const char *directory, vector<string> *files);
 	bool loadFromConfigFileOrDirectory(const char *filename, bool silent = false);
 	bool loadFromConfigFile(const char *filename, string *error = NULL, bool silent = false, bool nextConfigFile = false);
 	bool loadConfigMapConfigFileOrDirectory(cConfigMap *configMap, const char *filename);
