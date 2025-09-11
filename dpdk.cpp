@@ -57,6 +57,7 @@ extern string opt_dpdk_pci_device;
 extern int opt_dpdk_force_max_simd_bitwidth;
 extern int opt_dpdk_nb_mbufs;
 extern bool opt_dpdk_nb_mbufs_strictly;
+extern int opt_dpdk_mbuf_size;
 extern int opt_dpdk_pkt_burst;
 extern int opt_dpdk_ring_size;
 extern int opt_dpdk_mempool_cache_size;
@@ -82,6 +83,7 @@ extern cThreadMonitor threadMonitor;
 #endif
 #define DPDK_PORTID_MAX (64 * 1024U - 1)
 #define DPDK_NB_MBUFS ((opt_dpdk_nb_mbufs ? opt_dpdk_nb_mbufs : 1024) * (opt_dpdk_nb_mbufs_strictly ? 1 : 1024))
+#define DPDK_MBUF_SIZE (opt_dpdk_mbuf_size ? opt_dpdk_mbuf_size : RTE_MBUF_DEFAULT_BUF_SIZE)
 #define DPDK_DEF_MAC_ADDR "00:00:00:00:00:00"
 #define DPDK_TX_BUF_NAME "tx_buffer"
 #define DPDK_PREFIX "dpdk:"
@@ -435,7 +437,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 	}
 	// create the mbuf pool
 	dpdk->pktmbuf_pool = rte_pktmbuf_pool_create((string(MBUF_POOL_NAME) + "_" + config->device).c_str(), DPDK_NB_MBUFS,
-						     MEMPOOL_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE,
+						     MEMPOOL_CACHE_SIZE, 0, DPDK_MBUF_SIZE,
 						     rte_socket_id());
 	dpdk_eval_res(dpdk->pktmbuf_pool == NULL ? -rte_errno : 0, dpdk->pktmbuf_pool == NULL && !rte_errno ? "failed allocation mbuf pool" : NULL, 2, error,
 		      "dpdk_activate(%s) - rte_pktmbuf_pool_create",
@@ -2772,7 +2774,7 @@ unsigned cGlobalDpdkTools::get_planned_memory_consumption_mb(string *log) {
 #if HAVE_LIBDPDK
 	// mbuf pool
 	int dynfield_size = DPDK_TIMESTAMP_IN_MBUF == 1 ? sizeof(u_int64_t) : 0;
-	size_t mbuf_size = sizeof(struct rte_mbuf) + RTE_MBUF_DEFAULT_BUF_SIZE + dynfield_size;
+	size_t mbuf_size = sizeof(struct rte_mbuf) + DPDK_MBUF_SIZE + dynfield_size;
 	size_t memory_consumption_mbuf_pool = DPDK_NB_MBUFS * (mbuf_size + sizeof(struct rte_mempool_objhdr)) + MEMPOOL_CACHE_SIZE * sizeof(void*);
 	memory_consumption_sum += memory_consumption_mbuf_pool;
 	if(log) {
