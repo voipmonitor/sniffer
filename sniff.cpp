@@ -5872,28 +5872,33 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	if(packetS->sip_method == INFO) {
 		s = gettag_sip(packetS, "\nSignal:", &l);
 		if(s && l < 33) {
-			char *tmp = s + 1;
-			char tmp2 = tmp[l - 1];
-			tmp[l - 1] = '\0';
-			if(verbosity >= 2)
-				syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
-			call->handle_dtmf(*tmp, packetS->getTimeSF(), packetS->saddr_(), packetS->daddr_(), s_dtmf::sip_info);
-			tmp[l - 1] = tmp2;
-			if(!enable_save_dtmf_pcap(call)) {
-				dont_save = true;
+			unsigned i = 1;
+			while(i < l && s[i] == ' ') ++i;
+			if(i < l) {
+				char ch = s[i];
+				if((ch >= '0' && ch <= '9') || ch == '*' || ch == '#' || (ch >= 'A' && ch <= 'D')) {
+					if(verbosity >= 2) syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, ch);
+					call->handle_dtmf(ch, packetS->getTimeSF(), packetS->saddr_(), packetS->daddr_(), s_dtmf::sip_info);
+					if(!enable_save_dtmf_pcap(call)) {
+						dont_save = true;
+					}
+				}
 			}
 		}
 		s = gettag_sip(packetS, "Signal=", &l);
 		if(s && l < 33) {
-			char *tmp = s;
-			char tmp2 = tmp[l];
-			tmp[l] = '\0';
-			if(verbosity >= 2)
-				syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
-			call->handle_dtmf(*tmp, packetS->getTimeSF(), packetS->saddr_(), packetS->daddr_(), s_dtmf::sip_info);
-			tmp[l] = tmp2;
-			if(!enable_save_dtmf_pcap(call)) {
-				dont_save = true;
+			unsigned i = 0;
+			while(i < l && s[i] == ' ') ++i;
+			if(i < l) {
+				char ch = s[i];
+				if((ch >= '0' && ch <= '9') || ch == '*' || ch == '#' || (ch >= 'A' && ch <= 'D')) {
+					if(verbosity >= 2)
+						syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, ch);
+					call->handle_dtmf(ch, packetS->getTimeSF(), packetS->saddr_(), packetS->daddr_(), s_dtmf::sip_info);
+					if(!enable_save_dtmf_pcap(call)) {
+						dont_save = true;
+					}
+				}
 			}
 		}
 	}
