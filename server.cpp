@@ -1907,7 +1907,8 @@ void snifferClientStop(cSnifferClientService *snifferClientService) {
 
 
 bool existsRemoteChartServer() {
-	return(snifferServerServices->remote_chart_server);
+	extern bool opt_charts_cache_remote_only;
+	return(snifferServerServices->remote_chart_server || opt_charts_cache_remote_only);
 }
 
 

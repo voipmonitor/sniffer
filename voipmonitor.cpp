@@ -425,6 +425,7 @@ bool opt_charts_cache_ip_boost = false;
 int opt_charts_cache_queue_limit = 100000;
 int opt_charts_cache_remote_queue_limit = 1000;
 int opt_charts_cache_remote_concat_limit = 1000;
+bool opt_charts_cache_remote_only = false;
 char opt_convert_char[64] = "";
 int opt_skinny = 0;
 int opt_mgcp = 0;
@@ -7528,6 +7529,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("charts_cache_queue_limit", &opt_charts_cache_queue_limit));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("charts_cache_remote_queue_limit", &opt_charts_cache_remote_queue_limit));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("charts_cache_remote_concat_limit", &opt_charts_cache_remote_concat_limit));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_remote_only", &opt_charts_cache_remote_only));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("watchdog", &enable_wdt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("watchdog_run_command", &wdt_run_command));
