@@ -6994,7 +6994,7 @@ Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort de
 
 }
 
-inline bool call_confirmation_for_rtp_processing(Call *call, CallBranch *c_branch, packet_s_process_calls_info *call_info, packet_s_process_0 *packetS) {
+inline bool call_confirmation_for_rtp_processing(Call *call, call_rtp *call_rtp, CallBranch *c_branch, packet_s_process_calls_info *call_info, packet_s_process_0 *packetS) {
 	if(call->suppress_rtp_proc_due_to_insufficient_hw_performance) {
 		return(false);
 	}
@@ -7032,6 +7032,27 @@ inline bool call_confirmation_for_rtp_processing(Call *call, CallBranch *c_branc
 		if(processing_limitations.suppressRtpSelectiveProcessing()) {
 			call->suppress_rtp_proc_due_to_insufficient_hw_performance = true;
 			return(false);
+		}
+		extern int opt_rtp_check_both_sides_by_sdp;
+		if(opt_rtp_check_both_sides_by_sdp >= 3 &&
+		   !call_rtp->is_rtcp &&
+		   !(call->typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip)) {
+			if(!iscaller_is_set(call_rtp->iscaller)) {
+				return(false);
+			}
+			if(call_info->find_by_dest ?
+			    calltable->check_call_in_hashfind_by_ip_port(call, c_branch, packetS->saddr_(), packetS->source_(), false) :
+			    calltable->check_call_in_hashfind_by_ip_port(call, c_branch, packetS->daddr_(), packetS->dest_(), false)) {
+				if(opt_rtp_check_both_sides_by_sdp == 3) {
+					call->set_callerd_confirm_rtp_by_both_sides_sdp(call_rtp->iscaller);
+				}
+				return(true);
+			} else if(opt_rtp_check_both_sides_by_sdp == 3 &&
+				  !call->get_callerd_confirm_rtp_by_both_sides_sdp(call_rtp->iscaller)) {
+				return(true);
+			} else {
+				return(false);
+			}
 		}
 		return(true);
 	}
@@ -7095,7 +7116,7 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 			#endif
 				CallBranch *c_branch = call_rtp->c_branch;
 				Call *call = c_branch->call;
-				if(call_confirmation_for_rtp_processing(call, c_branch, call_info, packetS)) {
+				if(call_confirmation_for_rtp_processing(call, call_rtp, c_branch, call_info, packetS)) {
 					/*
 					if(packetS->getTimeUS() < (call->first_packet_time * 1000000ull + call->first_packet_usec) + (0 * 60 + 0) * 1000000ull) {
 						continue;
@@ -13704,7 +13725,7 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, unsigned *counters
 			Call *call = c_branch->call;
 			if(call->isAllocFlagOK() && !call->stopProcessing) {
 				#if not EXPERIMENTAL_SUPPRESS_CALL_CONFIRMATION_FOR_RTP_PROCESSING
-				if(call_confirmation_for_rtp_processing(call, c_branch, &packetS->call_info, packetS)) {
+				if(call_confirmation_for_rtp_processing(call, call_rtp, c_branch, &packetS->call_info, packetS)) {
 				#endif
 					++counters[1];
 					if(!call_rtp->is_rtcp) {

@@ -2378,7 +2378,8 @@ read:
 				}
 			}
 		}
-		if(opt_rtp_check_both_sides_by_sdp && index_call_ip_port_find_side >= 0 && iscaller_is_set(iscaller)) {
+		if((opt_rtp_check_both_sides_by_sdp == 1 || opt_rtp_check_both_sides_by_sdp == 2) && 
+		   index_call_ip_port_find_side >= 0 && iscaller_is_set(iscaller)) {
 			/*
 			cout << " * new rtp stream " 
 			     << packetS->saddr_().getString() << " : " << packetS->source_().getString() 

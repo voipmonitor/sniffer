@@ -3013,10 +3013,16 @@ public:
 	void set_pcap_dump_error(int pcap_dump_error) {
 		this->pcap_dump_error |= pcap_dump_error;
 	}
+	inline void set_callerd_confirm_rtp_by_both_sides_sdp(int8_t iscaller) {
+		__SYNC_SET(callerd_confirm_rtp_by_both_sides_sdp[iscaller]);
+	}
+	inline int8_t get_callerd_confirm_rtp_by_both_sides_sdp(int8_t iscaller) {
+		return(ATOMIC_LOAD(callerd_confirm_rtp_by_both_sides_sdp[iscaller]) > 0);
+	}
 	
 private:
 	
-	bool callerd_confirm_rtp_by_both_sides_sdp[2];
+	volatile int8_t callerd_confirm_rtp_by_both_sides_sdp[2];
 	bool exists_srtp;
 	bool exists_srtp_crypto_config;
 	bool exists_srtp_fingerprint;

@@ -7215,7 +7215,7 @@ void cConfig::addConfigItems() {
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("rtp_streams_max_in_call", &opt_rtp_streams_max_in_call));
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("rtp_check_both_sides_by_sdp", &opt_rtp_check_both_sides_by_sdp))
-					->addValues("keep_rtp_packets:2"));
+					->addValues("keep_rtp_packets:2|strict:3|very_strict:4"));
 				addConfigItem(new FILE_LINE(42325) cConfigItem_yesno("rtpmap_by_callerd", &opt_rtpmap_by_callerd));
 				addConfigItem(new FILE_LINE(42326) cConfigItem_yesno("rtpmap_combination", &opt_rtpmap_combination));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("rtpmap_indirect", &opt_rtpmap_indirect));
