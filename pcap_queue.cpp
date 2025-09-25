@@ -2113,12 +2113,12 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 		double speed_packets_s = this->pcapStat_get_speed_packets_s(statPeriod);
 		double speed_out_packets_s = this->pcapStat_get_speed_out_packets_s(statPeriod);
 		#endif
-		if(speed_mb_s >= 0 || speed_mb_s >= 0) {
+		if(speed_mb_s >= 0 || speed_out_mb_s >= 0) {
 			outStr << "[";
 			#if LOG_PACKETS_PER_SEC or LOG_PACKETS_SUM
 			bool needSeparator = false;
 			#endif
-			if(speed_mb_s >= 0 || speed_mb_s >= 0) {
+			if(speed_mb_s >= 0 || speed_out_mb_s >= 0) {
 				if(speed_mb_s >= 0) {
 					outStr << setprecision(1) << speed_mb_s;
 				} else {

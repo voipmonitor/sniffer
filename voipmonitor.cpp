@@ -8314,6 +8314,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "whisper")				sverb.whisper = 1;
 	else if(verbParam == "packetbuffer_send")		sverb.packetbuffer_send = 1;
 	else if(verbParam == "dpdk")				sverb.dpdk = 1;
+	else if(verbParam == "dpdk_timer")			sverb.dpdk_timer = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;

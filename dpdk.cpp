@@ -39,6 +39,7 @@
 #include <rte_mempool.h>
 #include <rte_mbuf.h>
 #include <rte_bus.h>
+#include <rte_spinlock.h>
 
 #if HAVE_LIBDPDK_VDEV
 #include <rte_bus_vdev.h>
@@ -157,9 +158,9 @@ struct sDpdk_cycles {
 #endif
 
 struct dpdk_ts_helper{
-	uint64_t start_time;
-	uint64_t start_cycles;
-	uint64_t hz;
+	volatile uint64_t start_time;
+	volatile uint64_t start_cycles;
+	volatile uint64_t hz;
 };
 
 class cDpdkTools {
@@ -210,6 +211,7 @@ struct sDpdk {
 	rte_eth_stats prev_stats;
 	rte_eth_stats curr_stats;
 	dpdk_ts_helper ts_helper;
+	rte_spinlock_t ts_helper_lock;
 	ETHER_ADDR_TYPE eth_addr;
 	char mac_addr[DPDK_MAC_ADDR_SIZE];
 	char pci_addr[DPDK_PCI_ADDR_SIZE];
@@ -328,7 +330,7 @@ static uint16_t portid_by_device(const char * device);
 static int parse_dpdk_cfg(char* dpdk_cfg,char** dargv);
 #endif
 static void dpdk_eval_res(int res_no, const char *cust_error, int syslog_print, string *error_str, const char *fmt, ...);
-static int dpdk_init_timer(sDpdk *dpdk);
+static int dpdk_init_timer(sDpdk *dpdk, bool use_lock);
 static void eth_addr_str(ETHER_ADDR_TYPE *addrp, char* mac_str, int len);
 static int check_link_status(uint16_t portid, struct rte_eth_link *plink);
 
@@ -391,7 +393,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 		*error = "DPDK is not available on this machine";
 		return(PCAP_ERROR_NO_SUCH_DEVICE);
 	}
-	ret = dpdk_init_timer(dpdk);
+	ret = dpdk_init_timer(dpdk, true);
 	dpdk_eval_res(ret, NULL, 2, error,
 		      "dpdk_activate(%s) - dpdk_init_timer",
 		      config->device);
@@ -1839,16 +1841,22 @@ static inline u_int32_t get_caplen(u_int32_t len, sDpdk *dpdk) {
 
 
 static inline u_int64_t get_timestamp_us(sDpdk *dpdk) {
-	dpdk_ts_helper *ts_helper = &dpdk->ts_helper;
-	uint64_t cycles = rte_get_timer_cycles() - ts_helper->start_cycles;
-	uint64_t shift_s = cycles / ts_helper->hz;
+	u_int64_t rslt_timestamp_us;
+	rte_spinlock_lock(&dpdk->ts_helper_lock);
+	dpdk_ts_helper ts_helper = dpdk->ts_helper;
+	uint64_t cycles = rte_get_timer_cycles() - ts_helper.start_cycles;
+	uint64_t shift_s = cycles / ts_helper.hz;
 	if(shift_s >= (unsigned)opt_dpdk_timer_reset_interval) {
-		dpdk_init_timer(dpdk);
-		return(dpdk->ts_helper.start_time);
+		dpdk_init_timer(dpdk, false);
+		rslt_timestamp_us = dpdk->ts_helper.start_time;
+		rte_spinlock_unlock(&dpdk->ts_helper_lock);
+	} else {
+		rte_spinlock_unlock(&dpdk->ts_helper_lock);
+		rslt_timestamp_us = ts_helper.start_time +
+				    shift_s * 1000000ull + 
+				    (cycles % ts_helper.hz) * 1000000ull / ts_helper.hz;
 	}
-	return(ts_helper->start_time +
-	       shift_s * 1000000ull + 
-	       (cycles % ts_helper->hz) * 1000000ull / ts_helper->hz);
+	return(rslt_timestamp_us);
 }
 
 
@@ -2073,14 +2081,27 @@ static void dpdk_eval_res(int res_no, const char *cust_error,
 }
 
 
-static int dpdk_init_timer(sDpdk *dpdk) {
+static int dpdk_init_timer(sDpdk *dpdk, bool use_lock) {
+	int rslt = 0;
+	if(use_lock) rte_spinlock_lock(&dpdk->ts_helper_lock);
 	dpdk->ts_helper.start_time = getTimeUS();
 	dpdk->ts_helper.start_cycles = rte_get_timer_cycles();
 	dpdk->ts_helper.hz = rte_get_timer_hz();
 	if(dpdk->ts_helper.hz == 0) {
-		return -1;
+		rslt = -1;
 	}
-	return 0;
+	if(sverb.dpdk_timer) {
+		syslog(LOG_NOTICE, 
+		       "DPDK TIMER: " 
+		       "start_time: %" int_64_format_prefix "lu, "
+		       "start_cycles: %" int_64_format_prefix "lu, "
+		       "hz: %" int_64_format_prefix "lu",
+		       dpdk->ts_helper.start_time,
+		       dpdk->ts_helper.start_cycles,
+		       dpdk->ts_helper.hz);
+	}
+	if(use_lock) rte_spinlock_unlock(&dpdk->ts_helper_lock);
+	return(rslt);
 }
 
 
