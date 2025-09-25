@@ -1,3 +1,25 @@
+2025.09.0 25.09.2025
+====================
+- added support for AEAD_AES_256_GCM encryption, completed the possibility of using libsrtp, added the srtp_decode command for testing rtp stream decryption [VS-1736]
+- set mysql_redirect_cdr_queue = yes if mysql_enable_set_id = yes is enabled, use query cache if redirect queue is enabled, set mysql_redirect_cdr_queue = direct to disable it [VS-1732]
+- add support for active listener to ribbonsbc data, voipmonitor.conf ribbon sbc configuration overhaul [VS-1747]
+- enable ms precission for cloud mode [VS-1754]
+- add support for ipfix qos [VS-1757]
+- batch insert stored procedures are enabled again for MySQL >= 8.4 
+- new options for rtp_check_both_sides_by_sdp - strict: Verify both sides per SDP. Unverified RTP packets are temporarily allowed UNTIL at least one RTP packet in the caller/direction is successfully verified. After the first verified packet, only verified packets pass. very_strict: Verify both sides per SDP. NO unverified RTP packets are allowed to pass at any time [VS-1765] [VG-3008]
+- fix memory barrier issues on ARM [VS-1737]
+- fix compilation with rrd >= 1.9
+- fix regexp parser CDR filter form -> number called group in report generator [VG-2903]
+- do not store last sip response 1XX if there was at least >=200 sip response [VG-3020]
+- ignore incorrect times from X-Siptrace-Time [VS-1750]
+- reset username after save register_state (fixes wrong sip register username in some case) [VS-1758]
+- update aarch64 Makefile
+- fix potential race in dpdk/get_timestamp_us which fixes 1900-01-00 as a spool dir names [VS-1767]
+- new dpdk option dpdk_rxq_per_thread=yes/NO
+- command line sip+rtp high speed traffic generator. Run voipmonitor --sipgen for details and parameters 
+- add new options to ./configure: --without-curl - build without curl support, --with-dns-resolver - include internal DNS resolver, --with-systemd-subst - include substitution of missing systemd functions when building a static build without the systemd library, --with-exclude-static-libs="systemd,p11-kit"
+
+
 2025.07.1 02.07.2025
 ====================
 - skip alter for cdr.post_bye_delay if column does not exist
