@@ -4004,7 +4004,8 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_snaplen failed", this->getInterfaceAlias().c_str()); 
 		goto failed;
 	}
-	if((status = pcap_set_promisc(this->pcapHandle, this->pcap_promisc)) != 0) {
+	if(strcasecmp(this->getInterfaceAlias().c_str(), "any") &&
+	   (status = pcap_set_promisc(this->pcapHandle, this->pcap_promisc)) != 0) {
 		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_set_promisc failed", this->getInterfaceAlias().c_str()); 
 		goto failed;
 	}
