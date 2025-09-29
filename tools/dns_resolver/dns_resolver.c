@@ -369,3 +369,164 @@ void freeaddrinfo(struct addrinfo *res) {
         res = next;
     }
 }
+
+// Static storage for servent structure
+static struct servent static_servent;
+static char static_s_name[256];
+static char static_s_proto[256];
+static char *static_s_aliases[1] = { NULL };
+
+// Custom getservbyname implementation
+struct servent *getservbyname(const char *name, const char *proto) {
+    FILE *fp = fopen("/etc/services", "r");
+    if (!fp) {
+        return NULL;
+    }
+
+    char line[1024];
+    while (fgets(line, sizeof(line), fp)) {
+        // Skip comments and empty lines
+        if (line[0] == '#' || line[0] == '\n' || line[0] == '\r') {
+            continue;
+        }
+
+        // Parse line: service_name port/protocol [aliases...]
+        char service_name[256];
+        char port_proto[256];
+        char *p = line;
+
+        // Skip leading whitespace
+        while (*p && (*p == ' ' || *p == '\t')) p++;
+
+        // Read service name
+        int i = 0;
+        while (*p && *p != ' ' && *p != '\t' && i < 255) {
+            service_name[i++] = *p++;
+        }
+        service_name[i] = '\0';
+
+        if (!*p) continue;
+
+        // Skip whitespace
+        while (*p && (*p == ' ' || *p == '\t')) p++;
+
+        // Read port/protocol
+        i = 0;
+        while (*p && *p != ' ' && *p != '\t' && *p != '\n' && *p != '\r' && i < 255) {
+            port_proto[i++] = *p++;
+        }
+        port_proto[i] = '\0';
+
+        // Parse port and protocol
+        char *slash = strchr(port_proto, '/');
+        if (!slash) continue;
+
+        *slash = '\0';
+        int port = atoi(port_proto);
+        char *proto_str = slash + 1;
+
+        // Check if this is the service we're looking for
+        if (strcmp(service_name, name) == 0) {
+            // Check protocol if specified
+            if (proto && strcmp(proto_str, proto) != 0) {
+                continue;
+            }
+
+            // Found it - fill static structure
+            strncpy(static_s_name, service_name, 255);
+            static_s_name[255] = '\0';
+            strncpy(static_s_proto, proto_str, 255);
+            static_s_proto[255] = '\0';
+
+            static_servent.s_name = static_s_name;
+            static_servent.s_aliases = static_s_aliases;
+            static_servent.s_port = htons(port);
+            static_servent.s_proto = static_s_proto;
+
+            fclose(fp);
+            return &static_servent;
+        }
+    }
+
+    fclose(fp);
+    return NULL;
+}
+
+// Custom getservbyport implementation
+struct servent *getservbyport(int port, const char *proto) {
+    FILE *fp = fopen("/etc/services", "r");
+    if (!fp) {
+        return NULL;
+    }
+
+    // Convert port to host byte order for comparison
+    int host_port = ntohs(port);
+
+    char line[1024];
+    while (fgets(line, sizeof(line), fp)) {
+        // Skip comments and empty lines
+        if (line[0] == '#' || line[0] == '\n' || line[0] == '\r') {
+            continue;
+        }
+
+        // Parse line: service_name port/protocol [aliases...]
+        char service_name[256];
+        char port_proto[256];
+        char *p = line;
+
+        // Skip leading whitespace
+        while (*p && (*p == ' ' || *p == '\t')) p++;
+
+        // Read service name
+        int i = 0;
+        while (*p && *p != ' ' && *p != '\t' && i < 255) {
+            service_name[i++] = *p++;
+        }
+        service_name[i] = '\0';
+
+        if (!*p) continue;
+
+        // Skip whitespace
+        while (*p && (*p == ' ' || *p == '\t')) p++;
+
+        // Read port/protocol
+        i = 0;
+        while (*p && *p != ' ' && *p != '\t' && *p != '\n' && *p != '\r' && i < 255) {
+            port_proto[i++] = *p++;
+        }
+        port_proto[i] = '\0';
+
+        // Parse port and protocol
+        char *slash = strchr(port_proto, '/');
+        if (!slash) continue;
+
+        *slash = '\0';
+        int file_port = atoi(port_proto);
+        char *proto_str = slash + 1;
+
+        // Check if this is the port we're looking for
+        if (file_port == host_port) {
+            // Check protocol if specified
+            if (proto && strcmp(proto_str, proto) != 0) {
+                continue;
+            }
+
+            // Found it - fill static structure
+            strncpy(static_s_name, service_name, 255);
+            static_s_name[255] = '\0';
+            strncpy(static_s_proto, proto_str, 255);
+            static_s_proto[255] = '\0';
+
+            static_servent.s_name = static_s_name;
+            static_servent.s_aliases = static_s_aliases;
+            static_servent.s_port = port;  // Keep in network byte order
+            static_servent.s_proto = static_s_proto;
+
+            fclose(fp);
+            return &static_servent;
+        }
+    }
+
+    fclose(fp);
+    return NULL;
+}
