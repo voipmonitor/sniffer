@@ -1,3 +1,8 @@
+2025.09.1 26.09.2025
+====================
+- do not set promisc mode for interface 'any' 
+
+
 2025.09.0 25.09.2025
 ====================
 - added support for AEAD_AES_256_GCM encryption, completed the possibility of using libsrtp, added the srtp_decode command for testing rtp stream decryption [VS-1736]
