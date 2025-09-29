@@ -1010,13 +1010,15 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 			}
 		}
 
-		if(codec == PAYLOAD_G729 and (payload_len <= (packetization == 10 ? 9 : 12))) {
-			frame->frametype = AST_FRAME_DTMF;
-			frame->marker = 1;
-		}
-		if((codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB or codec == PAYLOAD_EVS) and payload_len <= 7) {
-			frame->frametype = AST_FRAME_DTMF;
-			frame->marker = 1;
+		if(!(payload_len == 0 && sverb.process_rtp_header)) {
+			if(codec == PAYLOAD_G729 and (payload_len <= (packetization == 10 ? 9 : 12))) {
+				frame->frametype = AST_FRAME_DTMF;
+				frame->marker = 1;
+			}
+			if((codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB or codec == PAYLOAD_EVS) and payload_len <= 7) {
+				frame->frametype = AST_FRAME_DTMF;
+				frame->marker = 1;
+			}
 		}
 	}
 
@@ -1714,7 +1716,9 @@ bool RTP::read(CallBranch *c_branch,
 		lastcng = 1;
 		return(true);
 	}
-	if(curpayload == PAYLOAD_G729 and (payload_len <= (packetization == 10 or packetization == 0 ? 9 : 12) or (payload_len + padding_len == 22) or (payload_len + padding_len == 32))) {
+	if(curpayload == PAYLOAD_G729 and 
+	   (payload_len <= (packetization == 10 or packetization == 0 ? 9 : 12) or (payload_len + padding_len == 22) or (payload_len + padding_len == 32)) and
+	   !(payload_len == 0 && sverb.process_rtp_header)) {
 		last_seq = seq;
 		if(update_seq(seq)) {
 			update_stats();
