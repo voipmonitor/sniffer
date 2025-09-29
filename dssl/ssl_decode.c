@@ -195,11 +195,25 @@ static int ssl_decrypt_record( dssl_decoder_stack* stack, u_char* data, uint32_t
 	rc = EVP_Cipher(stack->cipher, buf, data, len );
 
 	buf_len = len;
+
+	/* For encrypt_then_mac with CBC and TLS 1.1+, skip the decrypted IV from output */
+	if( (stack->sess->flags & SSF_ENCRYPT_THEN_MAC) && EVP_CIPH_CBC_MODE == stack->sess->cipher_mode &&
+	    stack->sess->version >= TLS1_1_VERSION )
+	{
+		int ivl = EVP_CIPHER_iv_length( c );
+		if( ivl <= (int)buf_len )
+		{
+			/* Skip the IV in the decrypted output */
+			memmove(buf, buf + ivl, buf_len - ivl);
+			buf_len -= ivl;
+		}
+	}
+
 	/* strip the padding */
 	if( block_size != 1 )
 	{
-		if( buf[len-1] >= buf_len - 1 ) return NM_ERROR( DSSL_E_SSL_DECRYPTION_ERROR );
-		buf_len -= buf[len-1] + 1;
+		if( buf[buf_len-1] >= buf_len - 1 ) return NM_ERROR( DSSL_E_SSL_DECRYPTION_ERROR );
+		buf_len -= buf[buf_len-1] + 1;
 	}
 	
 	DEBUG_TRACE_BUF("decrypted", buf, buf_len);
@@ -308,6 +322,43 @@ int ssl3_record_layer_decoder( void* decoder_stack, NM_PacketDir dir,
 	rc = DSSL_RC_OK;
 	if( len < recLen ) { rc = DSSL_RC_WOULD_BLOCK; }
 
+	/* MAC verification and data modification if encrypted_then_mac is not set */
+	if( rc == DSSL_RC_OK && stack->md && (stack->sess->flags & SSF_ENCRYPT_THEN_MAC) &&
+	    (EVP_CIPH_CBC_MODE == stack->sess->cipher_mode || EVP_CIPH_STREAM_CIPHER == stack->sess->cipher_mode) )
+	{
+		u_char mac[EVP_MAX_MD_SIZE*2];
+		u_char* rec_mac = NULL;
+		int mac_size = EVP_MD_size( stack->md );
+		uint32_t encrypted_len;
+
+		if( (int)recLen < mac_size )
+		{
+			return NM_ERROR( DSSL_E_SSL_INVALID_RECORD_LENGTH );
+		}
+
+		rec_mac = data + recLen - mac_size;
+		encrypted_len = recLen - mac_size;
+
+		memset(mac, 0, sizeof(mac) );
+
+		if( !stack->sess->ignore_error_invalid_mac )
+		{
+			rc = stack->sess->caclulate_mac_proc( stack, record_type, data, encrypted_len, mac );
+
+			if( rc == DSSL_RC_OK )
+			{
+				rc = memcmp( mac, rec_mac, mac_size ) == 0 ? DSSL_RC_OK : NM_ERROR( DSSL_E_SSL_INVALID_MAC );
+			}
+
+			if( rc != DSSL_RC_OK )
+			{
+				return rc;
+			}
+		}
+
+		recLen = encrypted_len;
+	}
+
 	if( rc == DSSL_RC_OK && 
 	    (stack->cipher || 
 	     (stack->sess->tls_session && 
@@ -339,15 +390,16 @@ int ssl3_record_layer_decoder( void* decoder_stack, NM_PacketDir dir,
 		rc = NM_ERROR(DSSL_E_SSL_INVALID_RECORD_LENGTH);
 	}
 
-	if( rc == DSSL_RC_OK && stack->md )
+	/* MAC verification and data modification if encrypted_then_mac is not set */
+	if( rc == DSSL_RC_OK && stack->md && !(stack->sess->flags & SSF_ENCRYPT_THEN_MAC) )
 	{
 		u_char mac[EVP_MAX_MD_SIZE*2];
 		u_char* rec_mac = NULL;
-		int l = EVP_MD_size( stack->md );
+		int mac_size = EVP_MD_size( stack->md );
 		int ivl = EVP_CIPHER_iv_length( EVP_CIPHER_CTX_cipher( stack->cipher ) );
 
 		if ( EVP_CIPH_CBC_MODE == stack->sess->cipher_mode || EVP_CIPH_STREAM_CIPHER == stack->sess->cipher_mode )
-			recLen -= l;
+			recLen -= mac_size;
 		rec_mac = data+recLen;
 
 		memset(mac, 0, sizeof(mac) );
@@ -376,7 +428,7 @@ int ssl3_record_layer_decoder( void* decoder_stack, NM_PacketDir dir,
 
 			if( rc == DSSL_RC_OK )
 			{
-				rc = memcmp( mac, rec_mac, l ) == 0 ? DSSL_RC_OK : NM_ERROR( DSSL_E_SSL_INVALID_MAC );
+				rc = memcmp( mac, rec_mac, mac_size ) == 0 ? DSSL_RC_OK : NM_ERROR( DSSL_E_SSL_INVALID_MAC );
 			}
 		}
 	}

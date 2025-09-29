@@ -109,7 +109,7 @@ void StreamInit( TcpStream* stream, TcpSession* sess, uint32_t ip, uint16_t port
 	stream->queue_size = 0;
 }
 
-/*
+#ifdef _DEBUG
 static int StreamGetPacketCount( TcpStream* stream )
 {
 	int cnt = 0;
@@ -123,7 +123,7 @@ static int StreamGetPacketCount( TcpStream* stream )
 
 	return cnt;
 }
-*/
+#endif
 
 
 void StreamFreeData( TcpStream* stream )
