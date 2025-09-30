@@ -7133,7 +7133,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-contact_num", &opt_sip_register_state_compare_contact_num));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-contact_domain", &opt_sip_register_state_compare_contact_domain));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-digest_realm", &opt_sip_register_state_compare_digest_realm));
-				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-digest_ua", &opt_sip_register_state_compare_ua));
+				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-ua", &opt_sip_register_state_compare_ua))
+					->addAlias("sip-register-state-compare-digest_ua"));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-sipalg", &opt_sip_register_state_compare_sipalg));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-vlan", &opt_sip_register_state_compare_vlan));
 					expert();
