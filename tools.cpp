@@ -3395,7 +3395,7 @@ bool WDT::createScript() {
 		fputs("do\n", fileHandle);
 		fputs("sleep 5\n", fileHandle);
 		fprintf(fileHandle, 
-			"if [[ \"`ps -p %i -o comm,pid | grep %i`\" != \"%s\"* ]]; "
+			"if [[ ! \"`ps -p %i -o pid,command | grep %i`\" =~ \"%s\"* ]]; "
 			"then %s; "
 			"fi\n", 
 			getpid(), getpid(), appname.c_str(),
