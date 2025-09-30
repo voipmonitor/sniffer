@@ -286,6 +286,10 @@ extern int opt_safe_cleanup_calls;
 extern int opt_quick_save_cdr;
 extern bool opt_srtp_rtp_local_instances;
 
+extern bool opt_ipfix_qos_fill_codec;
+extern bool opt_ipfix_qos_fill_jitter;
+extern bool opt_ipfix_qos_fill_rtp_streams;
+
 static node_call_rtp_ip_port *calls_hash_static[MAXNODE];
 
 
@@ -7748,12 +7752,30 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 		sIPFixQosStreamStat *ipfix_qos_streams_ab[2] = { NULL, NULL };
 		ipfixData.findAB(ipfix_qos_streams_ab);
+		int payload_rslt = -1;
 		for(int i = 0; i < 2; i++) {
 			if(!ipfix_qos_streams_ab[i]) continue;
 			string c = i == 0 ? "a" : "b";
+			if(opt_ipfix_qos_fill_codec) {
+				cdr.add(ipfix_qos_streams_ab[i]->CodecType, c+"_payload");
+				if(payload_rslt < 0) {
+					payload_rslt = ipfix_qos_streams_ab[i]->CodecType;
+				}
+			}
 			cdr.add(ipfix_qos_streams_ab[i]->SrcIP, c+"_saddr", false, sqlDbSaveCall, sql_cdr_table);
 			cdr.add(LIMIT_MEDIUMINT_UNSIGNED(ipfix_qos_streams_ab[i]->RtpPackets), c+"_received");
 			cdr.add(LIMIT_MEDIUMINT_UNSIGNED(ipfix_qos_streams_ab[i]->RtpLostPackets), c+"_lost");
+			cdr.add(LIMIT_TINYINT_UNSIGNED(ipfix_qos_streams_ab[i]->Mos/10), c+"_mos_f2_mult10");
+			if(opt_ipfix_qos_fill_jitter) {
+				int ticks_bycodec = get_ticks_bycodec(ipfix_qos_streams_ab[i]->CodecType);
+				cdr.add(LIMIT_SMALLINT_UNSIGNED(round((double)ipfix_qos_streams_ab[i]->RtpMaxJitter / ticks_bycodec)), c+"_maxjitter");
+				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(round((double)ipfix_qos_streams_ab[i]->RtpAvgJitter / ticks_bycodec) * 10), c+"_avgjitter_mult10");
+				cdr.add(LIMIT_SMALLINT_UNSIGNED(round((double)ipfix_qos_streams_ab[i]->RtcpMaxJitter / ticks_bycodec)), c+"_rtcp_maxjitter");
+				cdr.add(LIMIT_SMALLINT_UNSIGNED(round((double)ipfix_qos_streams_ab[i]->RtcpAvgJitter / ticks_bycodec) * 10), c+"_rtcp_avgjitter_mult10");
+			}
+		}
+		if(payload_rslt >= 0) {
+			cdr.add(payload_rslt, "payload");
 		}
 	}
 
@@ -8201,80 +8223,145 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 
 		vector<SqlDb_row> rtp_rows;
-		for(unsigned ir = 0; ir < rtp_rows_count; ir++) {
-			int i = rtp_rows_indexes[ir];
-			RTP *rtp_i = rtp_stream_by_index(i);
-			double stime = TIME_US_TO_SF(this->first_packet_time_us);
-			double rtime = TIME_US_TO_SF(rtp_i->first_packet_time_us);
-			double diff = TIME_DIFF_FIX_OVERFLOW(rtime, stime);
+		if(rtp_rows_count > 0) {
+			for(unsigned ir = 0; ir < rtp_rows_count; ir++) {
+				int i = rtp_rows_indexes[ir];
+				RTP *rtp_i = rtp_stream_by_index(i);
+				double stime = TIME_US_TO_SF(this->first_packet_time_us);
+				double rtime = TIME_US_TO_SF(rtp_i->first_packet_time_us);
+				double diff = TIME_DIFF_FIX_OVERFLOW(rtime, stime);
 
-			SqlDb_row rtps;
-			rtps.setIgnoreCheckExistsField();
-			rtps.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
-			if(rtp_i->first_codec_() >= 0) {
-				rtps.add(rtp_i->first_codec_(), "payload");
-			} else {
-				rtps.add(0, "payload", true);
-			}
-			rtps.add(rtp_i->saddr, "saddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
-			rtps.add(rtp_i->daddr, "daddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
-			if(existsColumns.cdr_rtp_sport) {
-				rtps.add(rtp_i->sport.getPort(), "sport");
-			}
-			if(existsColumns.cdr_rtp_dport) {
-				rtps.add(rtp_i->dport.getPort(), "dport");
-			}
-			rtps.add(rtp_i->ssrc, "ssrc");
-			if(rtp_i->received_() > 0 || rtp_i->first_codec_() < 0) {
-				rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->received_() + (rtp_i->first_codec_() >= 0 ? 2 : 0)), "received");
-			} else {
-				rtps.add(0, "received", true);
-			}
-			rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->lost_()), "loss");
-			#if not EXPERIMENTAL_LITE_RTP_MOD
-			rtps.add(LIMIT_SMALLINT_UNSIGNED((unsigned int)(rtp_i->stats.maxjitter * 10)), "maxjitter_mult10");
-			#endif
-			rtps.add(diff, "firsttime");
-			if(existsColumns.cdr_rtp_index) {
-				rtps.add(i + 1, "index");
-			}
-			if(existsColumns.cdr_rtp_sdp_ptime) {
-				rtps.add(LIMIT_TINYINT_UNSIGNED(rtp_i->sdp_ptime), "sdp_ptime", !rtp_i->sdp_ptime);
-				rtps.add(LIMIT_TINYINT_UNSIGNED(round(rtp_i->avg_ptime)), "rtp_ptime", round(rtp_i->avg_ptime) == 0);
-			}
-			if(existsColumns.cdr_rtp_flags) {
-				u_int64_t flags = 0;
+				SqlDb_row rtps;
+				rtps.setIgnoreCheckExistsField();
+				rtps.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
+				if(rtp_i->first_codec_() >= 0) {
+					rtps.add(rtp_i->first_codec_(), "payload");
+				} else {
+					rtps.add(0, "payload", true);
+				}
+				rtps.add(rtp_i->saddr, "saddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
+				rtps.add(rtp_i->daddr, "daddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
+				if(existsColumns.cdr_rtp_sport) {
+					rtps.add(rtp_i->sport.getPort(), "sport");
+				}
+				if(existsColumns.cdr_rtp_dport) {
+					rtps.add(rtp_i->dport.getPort(), "dport");
+				}
+				rtps.add(rtp_i->ssrc, "ssrc");
+				if(rtp_i->received_() > 0 || rtp_i->first_codec_() < 0) {
+					rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->received_() + (rtp_i->first_codec_() >= 0 ? 2 : 0)), "received");
+				} else {
+					rtps.add(0, "received", true);
+				}
+				rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->lost_()), "loss");
 				#if not EXPERIMENTAL_LITE_RTP_MOD
-				if(rtp_i->stream_in_multiple_calls) {
-					flags |= CDR_RTP_STREAM_IN_MULTIPLE_CALLS;
+				rtps.add(LIMIT_SMALLINT_UNSIGNED((unsigned int)(rtp_i->stats.maxjitter * 10)), "maxjitter_mult10");
+				#endif
+				rtps.add(diff, "firsttime");
+				if(existsColumns.cdr_rtp_index) {
+					rtps.add(i + 1, "index");
+				}
+				if(existsColumns.cdr_rtp_sdp_ptime) {
+					rtps.add(LIMIT_TINYINT_UNSIGNED(rtp_i->sdp_ptime), "sdp_ptime", !rtp_i->sdp_ptime);
+					rtps.add(LIMIT_TINYINT_UNSIGNED(round(rtp_i->avg_ptime)), "rtp_ptime", round(rtp_i->avg_ptime) == 0);
+				}
+				if(existsColumns.cdr_rtp_flags) {
+					u_int64_t flags = 0;
+					#if not EXPERIMENTAL_LITE_RTP_MOD
+					if(rtp_i->stream_in_multiple_calls) {
+						flags |= CDR_RTP_STREAM_IN_MULTIPLE_CALLS;
+					}
+					#endif
+					// mark used rtp stream in a/b
+					if (rtp_stream_by_index(i) == rtpab[0] or rtp_stream_by_index(i) == rtpab[1]) {
+						flags |= CDR_RTP_STREAM_IS_AB;
+					}
+					flags |= rtp_i->iscaller ? CDR_RTP_STREAM_IS_CALLER : CDR_RTP_STREAM_IS_CALLED;
+					if (rtp_i->srtp_decrypt) {
+						flags |=  CDR_RTP_STREAM_IS_SRTP;
+					}
+					if(rtp_i->stopped_jb_due_to_high_ooo) {
+						flags |=  CDR_RTP_STOPPED_JB_DUE_TO_HIGH_OOO;
+					}
+					rtps.add(flags, "flags", !flags);
+				}
+				if(existsColumns.cdr_rtp_duration) {
+					double ltime = TIME_US_TO_SF(rtp_i->last_packet_time_us);
+					double duration = ltime - rtime;
+					rtps.add(duration, "duration");
+				}
+				if(existsColumns.cdr_rtp_calldate) {
+					rtps.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_rtp_calldate_ms);
+				}
+				if(opt_mysql_enable_multiple_rows_insert) {
+					rtp_rows.push_back(rtps);
+				} else {
+					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT + 
+						     sqlDbSaveCall->insertQuery(sql_cdr_rtp_table, rtps));
+				}
+			}
+		} else if(ipfixData.size() > 0 && opt_ipfix_qos_fill_rtp_streams) {
+			for(unsigned stream_i = 0; stream_i < ipfixData.size(); stream_i++) {
+				double stime = TIME_US_TO_SF(this->first_packet_time_us);
+				double rtime = TIME_US_TO_SF(ipfixData[stream_i].BeginTimeUS);
+				double diff = TIME_DIFF_FIX_OVERFLOW(rtime, stime);
+				int ticks_bycodec = get_ticks_bycodec(ipfixData[stream_i].CodecType);
+				SqlDb_row rtps;
+				rtps.setIgnoreCheckExistsField();
+				rtps.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
+				if(opt_ipfix_qos_fill_codec) {
+					rtps.add(ipfixData[stream_i].CodecType, "payload");
+				} else {
+					rtps.add(0, "payload", true);
+				}
+				rtps.add(ipfixData[stream_i].SrcIP, "saddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
+				rtps.add(ipfixData[stream_i].DstIP, "daddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
+				if(existsColumns.cdr_rtp_sport) {
+					rtps.add(ipfixData[stream_i].SrcPort, "sport");
+				}
+				if(existsColumns.cdr_rtp_dport) {
+					rtps.add(ipfixData[stream_i].DstPort, "dport");
+				}
+				rtps.add(0, "ssrc", true);
+				if(ipfixData[stream_i].RtpPackets > 0) {
+					rtps.add(LIMIT_MEDIUMINT_UNSIGNED(ipfixData[stream_i].RtpPackets + 2), "received");
+					rtps.add(LIMIT_MEDIUMINT_UNSIGNED(ipfixData[stream_i].RtpLostPackets), "loss");
+				} else {
+					rtps.add(0, "received", true);
+					rtps.add(0, "loss", true);
+				}
+				#if not EXPERIMENTAL_LITE_RTP_MOD
+				if(opt_ipfix_qos_fill_jitter) {
+					rtps.add(LIMIT_SMALLINT_UNSIGNED(round((double)ipfixData[stream_i].RtpMaxJitter / ticks_bycodec) * 10), "maxjitter_mult10");
+				} else {
+					rtps.add(0, "maxjitter_mult10", true);
 				}
 				#endif
-				// mark used rtp stream in a/b
-				if (rtp_stream_by_index(i) == rtpab[0] or rtp_stream_by_index(i) == rtpab[1]) {
-					flags |= CDR_RTP_STREAM_IS_AB;
+				rtps.add(diff, "firsttime");
+				if(existsColumns.cdr_rtp_index) {
+					rtps.add(stream_i + 1, "index");
 				}
-				flags |= rtp_i->iscaller ? CDR_RTP_STREAM_IS_CALLER : CDR_RTP_STREAM_IS_CALLED;
-				if (rtp_i->srtp_decrypt) {
-					flags |=  CDR_RTP_STREAM_IS_SRTP;
+				if(existsColumns.cdr_rtp_sdp_ptime) {
+					rtps.add(0, "sdp_ptime", true);
+					rtps.add(0, "rtp_ptime", true);
 				}
-				if(rtp_i->stopped_jb_due_to_high_ooo) {
-					flags |=  CDR_RTP_STOPPED_JB_DUE_TO_HIGH_OOO;
+				if(existsColumns.cdr_rtp_flags) {
+					rtps.add(0, "flags", true);
 				}
-				rtps.add(flags, "flags", !flags);
-			}
-			if(existsColumns.cdr_rtp_duration) {
-				double ltime = TIME_US_TO_SF(rtp_i->last_packet_time_us);
-				double duration = ltime - rtime;
-				rtps.add(duration, "duration");
-			}
-			if(existsColumns.cdr_rtp_calldate) {
-				rtps.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_rtp_calldate_ms);
-			}
-			if(opt_mysql_enable_multiple_rows_insert) {
-				rtp_rows.push_back(rtps);
-			} else {
-				query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT + 
-					     sqlDbSaveCall->insertQuery(sql_cdr_rtp_table, rtps));
+				if(existsColumns.cdr_rtp_duration) {
+					double ltime = TIME_US_TO_SF(ipfixData[stream_i].EndTimeUS);
+					double duration = ltime - rtime;
+					rtps.add(duration, "duration");
+				}
+				if(existsColumns.cdr_rtp_calldate) {
+					rtps.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_rtp_calldate_ms);
+				}
+				if(opt_mysql_enable_multiple_rows_insert) {
+					rtp_rows.push_back(rtps);
+				} else {
+					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT + 
+						     sqlDbSaveCall->insertQuery(sql_cdr_rtp_table, rtps));
+				}
 			}
 		}
 		if(opt_mysql_enable_multiple_rows_insert && rtp_rows.size()) {

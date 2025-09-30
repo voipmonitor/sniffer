@@ -53,26 +53,26 @@ string sIPFixQosStatsExt::json(const char *callid) {
 	json.add("Type", Type);
 	json.add("CallerIncSrcIP", ipv4_2_vmIP(*(u_int32_t*)CallerIncSrcIP, true).getString());
 	json.add("CallerIncDstIP", ipv4_2_vmIP(*(u_int32_t*)CallerIncDstIP, true).getString());
-	json.add("CallerIncSrcPort", ntohs(CallerIncSrcPort));
-	json.add("CallerIncDstPort", ntohs(CallerIncDstPort));
+	json.add("CallerIncSrcPort", CallerIncSrcPort);
+	json.add("CallerIncDstPort", CallerIncDstPort);
 	json.add("CalleeIncSrcIP", ipv4_2_vmIP(*(u_int32_t*)CalleeIncSrcIP, true).getString());
 	json.add("CalleeIncDstIP", ipv4_2_vmIP(*(u_int32_t*)CalleeIncDstIP, true).getString());
-	json.add("CalleeIncSrcPort", ntohs(CalleeIncSrcPort));
-	json.add("CalleeIncDstPort", ntohs(CalleeIncDstPort));
+	json.add("CalleeIncSrcPort", CalleeIncSrcPort);
+	json.add("CalleeIncDstPort", CalleeIncDstPort);
 	json.add("CallerOutSrcIP", ipv4_2_vmIP(*(u_int32_t*)CallerOutSrcIP, true).getString());
 	json.add("CallerOutDstIP", ipv4_2_vmIP(*(u_int32_t*)CallerOutDstIP, true).getString());
-	json.add("CallerOutSrcPort", ntohs(CallerOutSrcPort));
-	json.add("CallerOutDstPort", ntohs(CallerOutDstPort));
+	json.add("CallerOutSrcPort", CallerOutSrcPort);
+	json.add("CallerOutDstPort", CallerOutDstPort);
 	json.add("CalleeOutSrcIP", ipv4_2_vmIP(*(u_int32_t*)CalleeOutSrcIP, true).getString());
 	json.add("CalleeOutDstIP", ipv4_2_vmIP(*(u_int32_t*)CalleeOutDstIP, true).getString());
-	json.add("CalleeOutSrcPort", ntohs(CalleeOutSrcPort));
-	json.add("CalleeOutDstPort", ntohs(CalleeOutDstPort));
+	json.add("CalleeOutSrcPort", CalleeOutSrcPort);
+	json.add("CalleeOutDstPort", CalleeOutDstPort);
 	json.add("CallerIntSlot", CallerIntSlot);
 	json.add("CallerIntPort", CallerIntPort);
-	json.add("CallerIntVlan", ntohs(CallerIntVlan));
+	json.add("CallerIntVlan", CallerIntVlan);
 	json.add("CalleeIntSlot", CalleeIntSlot);
 	json.add("CalleeIntPort", CalleeIntPort);
-	json.add("CalleeIntVlan", ntohs(CalleeIntVlan));
+	json.add("CalleeIntVlan", CalleeIntVlan);
 	json.add("BeginTimeSec", BeginTimeSec);
 	json.add("BeginTimeMic", BeginTimeMic);
 	json.add("EndTimeSec", EndTimeSec);
@@ -154,6 +154,7 @@ void sIPFixQosStatsExt::load_from_json(const char *json) {
 
 void sIPFixQosStatsExt::load(sIPFixQosStats *src, sIPFixHeader *header) {
 	memcpy((sIPFixQosStats*)this, src, sizeof(sIPFixQosStats));
+	ntoh();
 	IncRealm.clear();
 	OutRealm.clear();
 	IncCallID.clear();
@@ -228,6 +229,9 @@ void sIPFixQosStatsExt::getRtpStreams(vector<sIPFixQosStreamStat> *streams, cons
 		stream1.DstIP = ipv4_2_vmIP(*(u_int32_t*)CallerIncDstIP, true);
 		stream1.SrcPort = CallerIncSrcPort;
 		stream1.DstPort = CallerIncDstPort;
+		stream1.CodecType = Type;
+		stream1.BeginTimeUS = TIME_S_TO_US(BeginTimeSec) + BeginTimeMic;
+		stream1.EndTimeUS = TIME_S_TO_US(EndTimeSec) + EndTimeMic;
 		stream1.iscaller = true;  // Caller → SBC (incoming side)
 		streams->push_back(stream1);
 		// Add Callee Inc stream (SBC → Caller)
@@ -250,6 +254,9 @@ void sIPFixQosStatsExt::getRtpStreams(vector<sIPFixQosStreamStat> *streams, cons
 		stream2.DstIP = ipv4_2_vmIP(*(u_int32_t*)CalleeIncDstIP, true);
 		stream2.SrcPort = CalleeIncSrcPort;
 		stream2.DstPort = CalleeIncDstPort;
+		stream2.CodecType = Type;
+		stream2.BeginTimeUS = TIME_S_TO_US(BeginTimeSec) + BeginTimeMic;
+		stream2.EndTimeUS = TIME_S_TO_US(EndTimeSec) + EndTimeMic;
 		stream2.iscaller = false;  // SBC → Caller (callee to caller on incoming side)
 		streams->push_back(stream2);
 	}
@@ -274,6 +281,9 @@ void sIPFixQosStatsExt::getRtpStreams(vector<sIPFixQosStreamStat> *streams, cons
 		stream3.DstIP = ipv4_2_vmIP(*(u_int32_t*)CallerOutDstIP, true);
 		stream3.SrcPort = CallerOutSrcPort;
 		stream3.DstPort = CallerOutDstPort;
+		stream3.CodecType = Type;
+		stream3.BeginTimeUS = TIME_S_TO_US(BeginTimeSec) + BeginTimeMic;
+		stream3.EndTimeUS = TIME_S_TO_US(EndTimeSec) + EndTimeMic;
 		stream3.iscaller = true;  // SBC → Callee (outgoing side)
 		streams->push_back(stream3);
 		// Add Callee Out stream (Callee → SBC)
@@ -296,9 +306,57 @@ void sIPFixQosStatsExt::getRtpStreams(vector<sIPFixQosStreamStat> *streams, cons
 		stream4.DstIP = ipv4_2_vmIP(*(u_int32_t*)CalleeOutDstIP, true);
 		stream4.SrcPort = CalleeOutSrcPort;
 		stream4.DstPort = CalleeOutDstPort;
+		stream4.CodecType = Type;
+		stream4.BeginTimeUS = TIME_S_TO_US(BeginTimeSec) + BeginTimeMic;
+		stream4.EndTimeUS = TIME_S_TO_US(EndTimeSec) + EndTimeMic;
 		stream4.iscaller = false;  // Callee → SBC (callee to caller on outgoing side)
 		streams->push_back(stream4);
 	}
+}
+
+void sIPFixQosStatsExt::ntoh() {
+	IncRtpBytes        = ntohl(IncRtpBytes);
+	IncRtpPackets      = ntohl(IncRtpPackets);
+	IncRtpLostPackets  = ntohl(IncRtpLostPackets);
+	IncRtpAvgJitter    = ntohl(IncRtpAvgJitter);
+	IncRtpMaxJitter    = ntohl(IncRtpMaxJitter);
+	IncRtcpBytes       = ntohl(IncRtcpBytes);
+	IncRtcpPackets     = ntohl(IncRtcpPackets);
+	IncRtcpLostPackets = ntohl(IncRtcpLostPackets);
+	IncRtcpAvgJitter   = ntohl(IncRtcpAvgJitter);
+	IncRtcpMaxJitter   = ntohl(IncRtcpMaxJitter);
+	IncRtcpAvgLat      = ntohl(IncRtcpAvgLat);
+	IncRtcpMaxLat      = ntohl(IncRtcpMaxLat);
+	IncrVal            = ntohl(IncrVal);
+	IncMos             = ntohl(IncMos);
+	OutRtpBytes        = ntohl(OutRtpBytes);
+	OutRtpPackets      = ntohl(OutRtpPackets);
+	OutRtpLostPackets  = ntohl(OutRtpLostPackets);
+	OutRtpAvgJitter    = ntohl(OutRtpAvgJitter);
+	OutRtpMaxJitter    = ntohl(OutRtpMaxJitter);
+	OutRtcpBytes       = ntohl(OutRtcpBytes);
+	OutRtcpPackets     = ntohl(OutRtcpPackets);
+	OutRtcpLostPackets = ntohl(OutRtcpLostPackets);
+	OutRtcpAvgJitter   = ntohl(OutRtcpAvgJitter);
+	OutRtcpMaxJitter   = ntohl(OutRtcpMaxJitter);
+	OutRtcpAvgLat      = ntohl(OutRtcpAvgLat);
+	OutRtcpMaxLat      = ntohl(OutRtcpMaxLat);
+	OutrVal            = ntohl(OutrVal);
+	OutMos             = ntohl(OutMos);
+	CallerIncSrcPort   = ntohs(CallerIncSrcPort);
+	CallerIncDstPort   = ntohs(CallerIncDstPort);
+	CalleeIncSrcPort   = ntohs(CalleeIncSrcPort);
+	CalleeIncDstPort   = ntohs(CalleeIncDstPort);
+	CallerOutSrcPort   = ntohs(CallerOutSrcPort);
+	CallerOutDstPort   = ntohs(CallerOutDstPort);
+	CalleeOutSrcPort   = ntohs(CalleeOutSrcPort);
+	CalleeOutDstPort   = ntohs(CalleeOutDstPort);
+	CallerIntVlan      = ntohs(CallerIntVlan);
+	CalleeIntVlan      = ntohs(CalleeIntVlan);
+	BeginTimeSec       = ntohl(BeginTimeSec);
+	BeginTimeMic       = ntohl(BeginTimeMic);
+	EndTimeSec         = ntohl(EndTimeSec);
+	EndTimeMic         = ntohl(EndTimeMic);
 }
 
 cIPFixServer::cIPFixServer() {
@@ -493,22 +551,22 @@ void cIPFixConnection::process_ipfix_QosStats(sIPFixHeader *header) {
 	if(sverb.ipfix) {
 		cout << "* IPFIX QoS Statistics (SetID 268) *" << endl;
 		cout << "id/seq: " << ntohs(header->SetID) << " / " << ntohl(header->SeqNum) << endl;
-		cout << "Begin time: " << ntohl(qos_ext.BeginTimeSec) << "." << ntohl(qos_ext.BeginTimeMic) << endl;
-		cout << "End time: " << ntohl(qos_ext.EndTimeSec) << "." << ntohl(qos_ext.EndTimeMic) << endl;
-		cout << "Caller Inc: " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CallerIncSrcIP, true).getString() << ":" << ntohs(qos_ext.CallerIncSrcPort)
-		     << " -> " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CallerIncDstIP, true).getString() << ":" << ntohs(qos_ext.CallerIncDstPort) << endl;
-		cout << "Callee Inc: " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CalleeIncSrcIP, true).getString() << ":" << ntohs(qos_ext.CalleeIncSrcPort)
-		     << " -> " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CalleeIncDstIP, true).getString() << ":" << ntohs(qos_ext.CalleeIncDstPort) << endl;
-		cout << "Caller Out: " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CallerOutSrcIP, true).getString() << ":" << ntohs(qos_ext.CallerOutSrcPort)
-		     << " -> " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CallerOutDstIP, true).getString() << ":" << ntohs(qos_ext.CallerOutDstPort) << endl;
-		cout << "Callee Out: " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CalleeOutSrcIP, true).getString() << ":" << ntohs(qos_ext.CalleeOutSrcPort)
-		     << " -> " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CalleeOutDstIP, true).getString() << ":" << ntohs(qos_ext.CalleeOutDstPort) << endl;
-		cout << "RTP Inc: packets=" << ntohl(qos_ext.IncRtpPackets) << " lost=" << ntohl(qos_ext.IncRtpLostPackets) 
-		     << " jitter=" << ntohl(qos_ext.IncRtpAvgJitter) << endl;
-		cout << "RTP Out: packets=" << ntohl(qos_ext.OutRtpPackets) << " lost=" << ntohl(qos_ext.OutRtpLostPackets) 
-		     << " jitter=" << ntohl(qos_ext.OutRtpAvgJitter) << endl;
-		cout << "MOS Inc=" << ntohl(qos_ext.IncMos) << " Out=" << ntohl(qos_ext.OutMos) << endl;
-		cout << "R-val Inc=" << ntohl(qos_ext.IncrVal) << " Out=" << ntohl(qos_ext.OutrVal) << endl;
+		cout << "Begin time: " << qos_ext.BeginTimeSec << "." << qos_ext.BeginTimeMic << endl;
+		cout << "End time: " << qos_ext.EndTimeSec << "." << qos_ext.EndTimeMic << endl;
+		cout << "Caller Inc: " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CallerIncSrcIP, true).getString() << ":" << qos_ext.CallerIncSrcPort
+		     << " -> " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CallerIncDstIP, true).getString() << ":" << qos_ext.CallerIncDstPort << endl;
+		cout << "Callee Inc: " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CalleeIncSrcIP, true).getString() << ":" << qos_ext.CalleeIncSrcPort
+		     << " -> " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CalleeIncDstIP, true).getString() << ":" << qos_ext.CalleeIncDstPort << endl;
+		cout << "Caller Out: " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CallerOutSrcIP, true).getString() << ":" << qos_ext.CallerOutSrcPort
+		     << " -> " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CallerOutDstIP, true).getString() << ":" << qos_ext.CallerOutDstPort << endl;
+		cout << "Callee Out: " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CalleeOutSrcIP, true).getString() << ":" << qos_ext.CalleeOutSrcPort
+		     << " -> " << ipv4_2_vmIP(*(u_int32_t*)qos_ext.CalleeOutDstIP, true).getString() << ":" << qos_ext.CalleeOutDstPort << endl;
+		cout << "RTP Inc: packets=" << qos_ext.IncRtpPackets << " lost=" << qos_ext.IncRtpLostPackets 
+		     << " jitter=" << qos_ext.IncRtpAvgJitter << endl;
+		cout << "RTP Out: packets=" << qos_ext.OutRtpPackets << " lost=" << qos_ext.OutRtpLostPackets 
+		     << " jitter=" << qos_ext.OutRtpAvgJitter << endl;
+		cout << "MOS Inc=" << qos_ext.IncMos << " Out=" << qos_ext.OutMos << endl;
+		cout << "R-val Inc=" << qos_ext.IncrVal << " Out=" << qos_ext.OutrVal << endl;
 		if(!qos_ext.IncRealm.empty()) {
 			cout << "IncRealm: " << qos_ext.IncRealm << endl;
 		}

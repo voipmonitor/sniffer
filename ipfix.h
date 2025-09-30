@@ -582,6 +582,10 @@ struct sIPFixQosStreamStat {
 	vmIP DstIP;
 	vmPort SrcPort;
 	vmPort DstPort;
+	//
+	u_int8_t CodecType;
+	u_int64_t BeginTimeUS;
+	u_int64_t EndTimeUS;
 	// Direction: true = caller->callee, false = callee->caller
 	bool iscaller;
 };
@@ -684,6 +688,7 @@ struct sIPFixQosStatsExt : sIPFixQosStats {
 	void load_from_json(const char *json);
 	void load(sIPFixQosStats *src, sIPFixHeader *header);
 	void getRtpStreams(vector<sIPFixQosStreamStat> *streams, const char *callid);
+	void ntoh();
 };
 
 class cIPFixServer : public cServer {

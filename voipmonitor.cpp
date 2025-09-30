@@ -1522,6 +1522,9 @@ unsigned opt_ipfix_bind_port;
 vector<int> opt_ipfix_version;
 bool opt_ipfix_counter_log;
 bool opt_ipfix_via_pb = true;
+bool opt_ipfix_qos_fill_codec = false;
+bool opt_ipfix_qos_fill_jitter = false;
+bool opt_ipfix_qos_fill_rtp_streams = false;
 
 bool opt_hep;
 string opt_hep_bind_ip;
@@ -7563,6 +7566,9 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("ipfix_version",  &opt_ipfix_version));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix_counter_log",  &opt_ipfix_counter_log));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix_via_pb",  &opt_ipfix_via_pb));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix_qos_fill_codec", &opt_ipfix_qos_fill_codec));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix_qos_fill_jitter", &opt_ipfix_qos_fill_jitter));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix_qos_fill_rtp_streams", &opt_ipfix_qos_fill_rtp_streams));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep",  &opt_hep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("hep_bind_ip",  &opt_hep_bind_ip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hep_bind_port",  &opt_hep_bind_port));
