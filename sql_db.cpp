@@ -6967,7 +6967,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`from_time` datetime,\
 			`type` enum('from_own_clients','from_own_servers','from_public_trunks'),\
 			`side` enum('src','dst'),\
-			`addr` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`addr` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 			`sensor_id` int,\
 			`created_at` datetime,\
 			`updated_at` datetime,\
@@ -6989,7 +6989,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`from_time` datetime,\
 			`type` enum('from_own_clients','from_own_servers','from_public_trunks'),\
 			`side` enum('src','dst'),\
-			`number` varchar(255) DEFAULT NULL,\
+			`number` varchar(255) NOT NULL,\
 			`sensor_id` int,\
 			`created_at` datetime,\
 			`updated_at` datetime,\
@@ -7011,8 +7011,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`from_time` datetime,\
 			`side` enum('src','dst'),\
 			`type` enum('from_own_clients','from_own_servers','from_public_trunks'),\
-			`addr` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
-			`number` varchar(255) DEFAULT NULL,\
+			`addr` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
+			`number` varchar(255) NOT NULL,\
 			`sensor_id` int,\
 			`created_at` datetime,\
 			`updated_at` datetime,\
