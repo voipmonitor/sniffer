@@ -5262,7 +5262,7 @@ int main_init_read() {
 				if(opt_dup_check_type != _dedup_na && 
 				   (is_receiver() || is_server() ?
 				     !opt_receiver_check_id_sensor :
-				     getCountInterfaces() > 1)) {
+				     (getCountInterfaces() > 1 || (opt_hep && opt_hep_via_pb)))) {
 					if(pass == 0) {
 						pcapQueueQ_outThread_dedup = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::dedup, pcapQueueQ);
 					} else {
