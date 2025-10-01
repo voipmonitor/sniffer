@@ -1703,7 +1703,19 @@ TarQueue::tarthreads_t::processData(TarQueue *tarQueue, const char *tarName,
 	map<string, Tar*>::iterator tars_it = tarQueue->tars.find(tarName);
 	if(tars_it == tarQueue->tars.end()) {
 		if(!data->buffer->get_warning_try_write_to_closed_tar()) {
-			syslog(LOG_ERR, "try write [%s] to closed tar: %s", data->buffer->getName_c_str(), tarName);
+			string data_buffer_dump = data->buffer->dump();
+			syslog(LOG_ERR,
+			       "try write [%s] to closed tar: %s, "
+			       "isClosed: %i, "
+			       "lenForProceed: %" int_64_format_prefix "lu, "
+			       "lenForProceedSafe: %" int_64_format_prefix "lu, "
+			       "data: %s",
+			       data->buffer->getName_c_str(),
+			       tarName,
+			       isClosed,
+			       lenForProceed,
+			       lenForProceedSafe,
+			       data_buffer_dump.c_str());
 			data->buffer->set_warning_try_write_to_closed_tar();
 		}
 	} else {

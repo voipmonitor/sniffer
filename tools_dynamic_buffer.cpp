@@ -1273,6 +1273,48 @@ CompressStream::eTypeCompress ChunkBuffer::getTypeCompress() {
 
 #include <stdio.h>
 
+string ChunkBuffer::dump() {
+	ostringstream outStr;
+	outStr << "time: " << sqlDateTimeString(time) << ", "
+	       << "need_tar_pos: " << need_tar_pos << ", "
+	       << "call: " << hex << call << dec << ", "
+	       << "typeContent: " << typeContent << ", "
+	       << "indexContent: " << indexContent << ", "
+	       << "name: " << name << ", "
+	       << "fbasename: " << fbasename << ", "
+	       << "chunkBuffer.size(): " << chunkBuffer.size() << ", "
+	       << "chunkBuffer_countItems: " << chunkBuffer_countItems << ", "
+	       << "len: " << len << ", "
+	       << "chunk_fix_len: " << chunk_fix_len << ", "
+	       << "compress_orig_data_len: " << compress_orig_data_len << ", "
+	       << "lastChunk: " << hex << lastChunk << dec << ", "
+	       << "compressStream: " << hex << compressStream << dec << ", "
+	       << "decompress_chunkbufferIterateEv: " << hex << decompress_chunkbufferIterateEv << dec << ", "
+	       << "decompress_pos: " << decompress_pos << ", "
+	       << "chunkIterateCompleteBufferInfo.bufferLen: " << chunkIterateCompleteBufferInfo.bufferLen << ", "
+	       << "chunkIterateCompleteBufferInfo.bufferPos: " << chunkIterateCompleteBufferInfo.bufferPos << ", "
+	       << "chunkIterateCompleteBufferInfo.counter: " << chunkIterateCompleteBufferInfo.counter << ", "
+	       << "chunkIterateCompleteBufferInfo.chunkLen.len: " << chunkIterateCompleteBufferInfo.chunkLen.len << ", "
+	       << "chunkIterateCompleteBufferInfo.chunkLen.decompress_len: " << chunkIterateCompleteBufferInfo.chunkLen.decompress_len << ", "
+	       << "chunkIterateCompleteBufferInfo.chunkLenBuff.len: " << chunkIterateCompleteBufferInfo.chunkLenBuff.len << ", "
+	       << "chunkIterateCompleteBufferInfo.chunkLenBuff.decompress_len: " << chunkIterateCompleteBufferInfo.chunkLenBuff.decompress_len << ", "
+	       << "chunkIterateCompleteBufferInfo.allPos: " << chunkIterateCompleteBufferInfo.allPos << ", "
+	       << "chunkIterateCompleteBufferInfo.chunkPos: " << chunkIterateCompleteBufferInfo.chunkPos << ", "
+	       << "chunkIterateCompleteBufferInfo.chunkIndex: " << chunkIterateCompleteBufferInfo.chunkIndex << ", "
+	       << "chunkIterateProceedLen: " << chunkIterateProceedLen << ", "
+	       << "closed: " << closed << ", "
+	       << "decompressError: " << decompressError << ", "
+	       << "_sync_chunkBuffer: " << _sync_chunkBuffer << ", "
+	       << "_sync_compress: " << _sync_compress << ", "
+	       << "last_add_time: " << sqlDateTimeString(last_add_time) << ", "
+	       << "last_add_time_tar: " << sqlDateTimeString(last_add_time_tar) << ", "
+	       << "last_tar_time: " << sqlDateTimeString(last_tar_time) << ", "
+	       << "chunk_buffer_size: " << chunk_buffer_size << ", "
+	       << "created_at: " << sqlDateTimeString(TIME_US_TO_S(created_at)) << ", "
+	       << "warning_try_write_to_closed_tar: " << warning_try_write_to_closed_tar;
+	return(outStr.str());
+}
+
 void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decompress_len, bool directAdd) {
 	if(!datalen) {
 		return;

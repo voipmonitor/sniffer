@@ -252,6 +252,7 @@ public:
 	const char *getName_c_str() {
 		return(this->name.c_str());
 	}
+	string dump();
 	void add(char *data, u_int32_t len, bool flush = false, u_int32_t decompress_len = 0, bool directAdd = false);
 	void close();
 	bool isClosed() {
