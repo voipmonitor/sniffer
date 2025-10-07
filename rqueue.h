@@ -42,6 +42,9 @@ public:
 		delete [] free;
 	}
 	bool push(typeItem *item, bool waitForFree, bool useLock = false) {
+		if(!waitForFree && free[writeit] != 1) {
+			return(false);
+		}
 		#if IS_ARM
 		useLock = true;
 		#endif

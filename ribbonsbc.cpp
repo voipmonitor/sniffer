@@ -220,7 +220,7 @@ void cRibbonSbc_Server::createConnection(cSocket *socket) {
 	connection->connection_start();
 }
 
-void cRibbonSbc_Server::evData(u_char *data, size_t dataLen, vmIP ip) {
+void cRibbonSbc_Server::evData(u_char *data, size_t dataLen, vmIP ip, cSocket *socket) {
 	processData(data, dataLen, ip);
 }
 

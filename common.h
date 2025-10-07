@@ -109,7 +109,6 @@ struct sVerbose {
 	int ipfix;
 	int cleanspool;
 	int cleanspool_disable_rm;
-	int t2_destroy_all;
 	int log_profiler;
 	int dump_packets_via_wireshark;
 	int force_log_sqlq;

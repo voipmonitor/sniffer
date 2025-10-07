@@ -39,7 +39,8 @@
 /* this is obsolete - it's here for backwards-compatibility only */
 #define TAR_IGNORE_MAGIC	0
 
-#define TAR_CHUNK_KB	128
+extern int opt_pcap_dump_tar_chunk_kb;
+#define TAR_CHUNK_KB ((unsigned)opt_pcap_dump_tar_chunk_kb)
 
 #define TAR_FILENAME_LENGTH 100u
 #define TAR_FILENAME_LENGTH_RESERVE 8u

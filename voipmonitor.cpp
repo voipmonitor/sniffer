@@ -508,6 +508,7 @@ int opt_cleanup_calls_period = 10;
 int opt_destroy_calls_period = 2;
 int opt_safe_cleanup_calls = 1;
 bool opt_destroy_calls_in_storing_cdr = false;
+int opt_preprocess_packet_stack = true;
 int opt_enable_ss7 = 0;
 bool opt_ss7_use_sam_subsequent_number = true;
 int opt_ss7_type_callid = 1;
@@ -741,6 +742,9 @@ int opt_pcap_dump_writethreads = 1;
 int opt_pcap_dump_writethreads_max = 32;
 int opt_pcap_dump_asyncwrite_maxsize = 100; //MB
 int opt_pcap_dump_tar = 1;
+bool opt_pcap_dump_tar_bypass = false;
+int opt_pcap_dump_tar_chunk_kb = 128;
+int opt_pcap_dump_tar_chunkbuffer_max_kb = 4 * 128;
 bool opt_pcap_dump_tar_use_hash_instead_of_long_callid = 1;
 int opt_pcap_dump_tar_threads = 8;
 int opt_pcap_dump_tar_compress_sip =
@@ -1422,7 +1426,7 @@ int opt_cpu_limit_new_thread = 60;
 int opt_cpu_limit_new_thread_high = 80;
 int opt_cpu_limit_delete_thread = 5;
 int opt_cpu_limit_delete_t2sip_thread = 15;
-int opt_heap_limit_new_thread = 5;
+int opt_heap_limit_new_thread = 20;
 
 int opt_memory_purge_interval = 60;
 int opt_memory_purge_if_release_gt = 500;
@@ -6598,6 +6602,8 @@ void cConfig::addConfigItems() {
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("safe_cleanup_calls", &opt_safe_cleanup_calls))
 						->addValues("ext:2"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("destroy_calls_in_storing_cdr", &opt_destroy_calls_in_storing_cdr));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("preprocess_packet_stack", &opt_preprocess_packet_stack))
+						->addValues("moodycamel:2"));
 			setDisableIfEnd();
 	group("manager");
 		addConfigItem((new FILE_LINE(42162) cConfigItem_string("managerip", opt_manager_ip, sizeof(opt_manager_ip)))
@@ -6673,6 +6679,9 @@ void cConfig::addConfigItems() {
 				->setReadOnly());
 			addConfigItem(new FILE_LINE(42188) cConfigItem_yesno("tar", &opt_pcap_dump_tar));
 				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("tar_bypass", &opt_pcap_dump_tar_bypass));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_chunk_kb", &opt_pcap_dump_tar_chunk_kb));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_chunkbuffer_max_kb", &opt_pcap_dump_tar_chunkbuffer_max_kb));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("tar_use_hash_instead_of_long_callid", &opt_pcap_dump_tar_use_hash_instead_of_long_callid));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("spooldir_file_permission", opt_spooldir_file_permission, sizeof(opt_spooldir_file_permission)));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("spooldir_dir_permission", opt_spooldir_dir_permission, sizeof(opt_spooldir_dir_permission)));
@@ -8264,7 +8273,6 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "ipfix")				sverb.ipfix = 1;
 	else if(verbParam == "cleanspool")			sverb.cleanspool = 1;
 	else if(verbParam == "cleanspool_disable_rm")		sverb.cleanspool_disable_rm = 1;
-	else if(verbParam == "t2_destroy_all")			sverb.t2_destroy_all = 1;
 	else if(verbParam == "log_profiler")			sverb.log_profiler = 1;
 	else if(verbParam == "dump_packets_via_wireshark")	sverb.dump_packets_via_wireshark = 1;
 	else if(verbParam == "force_log_sqlq")			sverb.force_log_sqlq = 1;

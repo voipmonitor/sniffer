@@ -9945,26 +9945,46 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 	this->_sync_push = 0;
 	this->_sync_count = 0;
 	this->term_preProcess = false;
+	this->stackSipBasic = NULL;
+	this->stackSipMoodyCamel = NULL;
+	this->stackRtpBasic = NULL;
+	this->stackRtpMoodyCamel = NULL;
+	this->stackOtherBasic = NULL;
+	this->stackOtherMoodyCamel = NULL;
 	if(typePreProcessThread == ppt_detach) {
-		this->stackSip = new FILE_LINE(26026) cHeapItemsPointerStack(opt_preprocess_packets_qring_item_length ?
-									      opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
-									      opt_preprocess_packets_qring_length, 
-									     opt_t2_boost_direct_rtp ? 5 : 1,
-									     200);
-		this->stackRtp = new FILE_LINE(26027) cHeapItemsPointerStack((opt_preprocess_packets_qring_item_length ?
-									       opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
-									       opt_preprocess_packets_qring_length) * 10, 
-									     opt_t2_boost_direct_rtp ? 5 : 1,
-									     200);
-		this->stackOther = new FILE_LINE(0) cHeapItemsPointerStack(opt_preprocess_packets_qring_item_length ?
+		if(opt_preprocess_packet_stack == 1) {
+			this->stackSipBasic = 
+				new FILE_LINE(0) cHeapItemsPointerStack(opt_preprocess_packets_qring_item_length ?
+									 opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
+									 opt_preprocess_packets_qring_length, 
+									opt_t2_boost_direct_rtp ? 5 : 1,
+									200);
+			this->stackRtpBasic =
+				new FILE_LINE(0) cHeapItemsPointerStack((opt_preprocess_packets_qring_item_length ?
+									  opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
+									  opt_preprocess_packets_qring_length) * 10, 
+									opt_t2_boost_direct_rtp ? 5 : 1,
+									200);
+			this->stackOtherBasic =
+				new FILE_LINE(0) cHeapItemsPointerStack(opt_preprocess_packets_qring_item_length ?
+									 opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
+									 opt_preprocess_packets_qring_length, 
+									opt_t2_boost_direct_rtp ? 5 : 1,
+									200);
+		} else if(opt_preprocess_packet_stack == 2) {
+			this->stackSipMoodyCamel = 
+				new FILE_LINE(0) BoundedMoodycamel<void*>(opt_preprocess_packets_qring_item_length ?
+									   opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
+									   opt_preprocess_packets_qring_length);
+			this->stackRtpMoodyCamel = 
+				new FILE_LINE(0) BoundedMoodycamel<void*>((opt_preprocess_packets_qring_item_length ?
 									    opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
-									    opt_preprocess_packets_qring_length, 
-									   opt_t2_boost_direct_rtp ? 5 : 1,
-									   200);
-	} else {
-		this->stackSip = NULL;
-		this->stackRtp = NULL;
-		this->stackOther = NULL;
+									    opt_preprocess_packets_qring_length) * 10);
+			this->stackOtherMoodyCamel =
+				new FILE_LINE(0) BoundedMoodycamel<void*>(opt_preprocess_packets_qring_item_length ?
+									   opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
+									   opt_preprocess_packets_qring_length);
+		}
 	}
 	this->outThreadState = 0;
 	allocCounter[0] = allocCounter[1] = 0;
@@ -10044,17 +10064,38 @@ PreProcessPacket::~PreProcessPacket() {
 	}
 	delete [] this->items_flag;
 	delete [] this->items_thread_index;
-	if(this->stackSip) {
-		this->stackSip->destroyAll<packet_s_process>();
-		delete this->stackSip;
+	if(this->stackSipBasic) {
+		this->stackSipBasic->destroyAll<packet_s_process>();
+		delete this->stackSipBasic;
 	}
-	if(this->stackRtp) {
-		this->stackRtp->destroyAll_u_char();
-		delete this->stackRtp;
+	if(this->stackRtpBasic) {
+		this->stackRtpBasic->destroyAll_u_char();
+		delete this->stackRtpBasic;
 	}
-	if(this->stackOther) {
-		this->stackOther->destroyAll<packet_s_stack>();
-		delete this->stackOther;
+	if(this->stackOtherBasic) {
+		this->stackOtherBasic->destroyAll_u_char();
+		delete this->stackOtherBasic;
+	}
+	if(this->stackSipMoodyCamel) {
+		u_char *p;
+		while(this->stackSipMoodyCamel->pop((void**)&p)) {
+			delete [] p;
+		}
+		delete this->stackSipMoodyCamel;
+	}
+	if(this->stackRtpMoodyCamel) {
+		u_char *p;
+		while(this->stackRtpMoodyCamel->pop((void**)&p)) {
+			delete [] p;
+		}
+		delete this->stackRtpMoodyCamel;
+	}
+	if(this->stackOtherMoodyCamel) {
+		u_char *p;
+		while(this->stackOtherMoodyCamel->pop((void**)&p)) {
+			delete [] p;
+		}
+		delete this->stackOtherMoodyCamel;
 	}
 	while(rtp_delay_queue.size()) {
 		delete rtp_delay_queue.front();
@@ -10498,7 +10539,7 @@ void *PreProcessPacket::outThreadFunction() {
 									thread_data->inc_packets_out(tm_caplen[completed]);
 								}
 								#endif
-								packet_s_process* p = (packet_s_process*)(batch_detach->batch[completed]->pointer[0]);
+								packet_s_process* p = (packet_s_process*)(batch_detach->batch[completed]->p_pointer[0]);
 								if(p) {
 									if(opt_t2_boost_direct_rtp) {
 										if(p->need_sip_process || !p->is_rtp) {
@@ -10548,7 +10589,7 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 					#if not EXPERIMENTAL_T2_STOP_IN_PROCESS_DETACH
 					for(unsigned batch_index = completed; batch_index < batch_detach->count; batch_index++) {
-						packet_s_process* p = (packet_s_process*)(batch_detach->batch[batch_index]->pointer[0]);
+						packet_s_process* p = (packet_s_process*)(batch_detach->batch[batch_index]->p_pointer[0]);
 						if(p) {
 							#if SNIFFER_THREADS_EXT
 							if(sverb.sniffer_threads_ext && thread_data) {
@@ -10579,7 +10620,7 @@ void *PreProcessPacket::outThreadFunction() {
 						}
 						#endif
 						if(opt_t2_boost_direct_rtp) {
-							packet_s_process* p = (packet_s_process*)(batch_detach->batch[batch_index]->pointer[0]);
+							packet_s_process* p = (packet_s_process*)(batch_detach->batch[batch_index]->p_pointer[0]);
 							if(p) {
 								this->process_DETACH_plus(batch_detach->batch[batch_index], false);
 								if(p->need_sip_process || !p->is_rtp) {
@@ -12461,7 +12502,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, pack
 			if(multipleSip) {
 				packet_s_process *partPacketS = PACKET_S_PROCESS_SIP_CREATE();
 				*partPacketS = *packetS;
-				partPacketS->stack = NULL;
+				partPacketS->p_stack = NULL;
 				partPacketS->blockstore_relock(18 /*pb lock flag*/);
 				if(partPacketS->_packet_alloc_type > _t_packet_alloc_na) {
 					partPacketS->new_alloc_packet_header();

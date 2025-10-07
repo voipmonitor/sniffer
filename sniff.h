@@ -70,6 +70,7 @@ extern bool opt_kamailio_subst;
 extern bool opt_ribbonsbc_subst;
 extern bool sip_data_subst;
 extern int opt_t2_boost_direct_rtp;
+extern int opt_preprocess_packet_stack;
 
 
 /* this is copied from libpcap sll.h header file, which is not included in debian distribution */
@@ -551,7 +552,7 @@ struct packet_s {
 };
 
 struct packet_s_stack : public packet_s {
-	cHeapItemsPointerStack *stack;
+	void *p_stack;
 	volatile u_int8_t use_reuse_counter;
 	volatile u_int8_t reuse_counter_c;
 	volatile u_int8_t reuse_counter_sync;
@@ -563,7 +564,7 @@ struct packet_s_stack : public packet_s {
 	}
 	inline void init() {
 		packet_s::init();
-		stack = NULL;
+		p_stack = NULL;
 		use_reuse_counter = 0;
 	}
 	inline void init_reuse() {
@@ -598,7 +599,7 @@ struct packet_s_plus_pointer : public packet_s {
 	inline packet_s_plus_pointer() {
 		__type = _t_packet_s_plus_pointer;
 	}
-	void *pointer[2];
+	void *p_pointer[2];
 };
 
 struct packet_s_process_rtp_call_info {

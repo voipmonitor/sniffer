@@ -2219,6 +2219,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			u_int64_t tarBufferSize = ChunkBuffer::getChunkBuffersSumsize();
 			if(tarBufferSize) {
 				outStr << "tarB[" << setprecision(0) << tarBufferSize / 1024 / 1024 << "MB] ";
+				//outStr << "tarB[" << setprecision(1) << tarBufferSize / 1024 << "kB] ";
 			}
 			if(sverb.log_profiler) {
 				lapTime.push_back(getTimeMS_rdtsc());
@@ -2900,21 +2901,41 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				*/
 				static int do_add_thread_counter = 0;
 				static int do_remove_thread_counter = 0;
-				if(tRTPcpuSum / num_threads_active > opt_cpu_limit_new_thread_high ||
+				if((tRTPcpuSum / num_threads_active > opt_cpu_limit_new_thread_high &&
+				    (heap_pb_used_perc + heap_pb_trash_perc) > opt_heap_limit_new_thread) ||
 				   (tRTPcpuSum / num_threads_active > opt_cpu_limit_new_thread &&
 				    tRTPcpuMin > opt_cpu_limit_new_thread && 
 				    (heap_pb_used_perc + heap_pb_trash_perc) > opt_heap_limit_new_thread) ||
 				   (num_threads_active == 1 &&
 				    tRTPcpuMax > (opt_cpu_limit_new_thread / 2) && 
 				    (heap_pb_used_perc + heap_pb_trash_perc) > opt_heap_limit_new_thread)) {
-					if(num_threads_active == 1 || (++do_add_thread_counter) >= 2) {
+					if(num_threads_active == 1 || (++do_add_thread_counter) >= 5) {
 						double heap_pb_used_trash_perc = heap_pb_used_perc + heap_pb_trash_perc;
-						int newThreads = heap_pb_used_trash_perc > 20 ? 6 :
-								 heap_pb_used_trash_perc > 16 ? 5 :
-								 heap_pb_used_trash_perc > 13 ? 4 :
-								 heap_pb_used_trash_perc > 10 ? 3 :
-								 heap_pb_used_trash_perc >  5 ? 2 :
+						int newThreads = heap_pb_used_trash_perc > 80 ? 4 :
+								 heap_pb_used_trash_perc > 60 ? 3 :
+								 heap_pb_used_trash_perc > 40 ? 2 :
 												1;
+						syslog(LOG_NOTICE,
+						       "try create new rtp threads: %i, "
+						       "num_threads_active: %i, "
+						       "tRTPcpuSum: %.2lf, "
+						       "tRTPcpuMin: %.2lf, "
+						       "tRTPcpuMax: %.2lf, "
+						       "opt_cpu_limit_new_thread_high: %i, "
+						       "opt_cpu_limit_new_thread: %i, "
+						       "heap_pb_used_perc: %.2lf, "
+						       "heap_pb_trash_perc: %.2lf, "
+						       "opt_heap_limit_new_thread: %i",
+						       newThreads,
+						       num_threads_active,
+						       tRTPcpuSum,
+						       tRTPcpuMin,
+						       tRTPcpuMax,
+						       opt_cpu_limit_new_thread_high,
+						       opt_cpu_limit_new_thread,
+						       heap_pb_used_perc,
+						       heap_pb_trash_perc,
+						       opt_heap_limit_new_thread);
 						for(int i = 0; i < newThreads; i++) {
 							if(add_rtp_read_thread()) {
 								syslog(LOG_NOTICE, "create rtp thread");

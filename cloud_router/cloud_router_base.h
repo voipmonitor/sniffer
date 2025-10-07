@@ -662,7 +662,7 @@ public:
 	static void *listen_process(void *arg);
 	void listen_process(int index);
 	virtual void createConnection(cSocket *socket);
-	virtual void evData(u_char *data, size_t dataLen, vmIP ip);
+	virtual void evData(u_char *data, size_t dataLen, vmIP ip, cSocket *socket);
 	void setStartVerbString(const char *startVerbString);
 	vmIP getListenSocketIP() {
 		return(listen_socket[0] ? listen_socket[0]->getIPL() : vmIP(0));

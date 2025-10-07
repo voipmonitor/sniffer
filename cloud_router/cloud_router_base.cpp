@@ -1501,7 +1501,7 @@ void cServer::listen_process(int index) {
 				break;
 			}
 			if(dataLen > 0) {
-				evData(data, dataLen, ip);
+				evData(data, dataLen, ip, listen_socket[index]);
 			} else {
 				USLEEP(1000);
 			}
@@ -1515,7 +1515,7 @@ void cServer::createConnection(cSocket *socket) {
 	connection->connection_start();
 }
 
-void cServer::evData(u_char */*data*/, size_t /*dataLen*/, vmIP /*ip*/) {
+void cServer::evData(u_char */*data*/, size_t /*dataLen*/, vmIP /*ip*/, cSocket */*socket*/) {
 }
 
 void cServer::setStartVerbString(const char *startVerbString) {

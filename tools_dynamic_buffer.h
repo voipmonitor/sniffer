@@ -305,7 +305,8 @@ public:
 	}
 	void addTarPosInCall(u_int64_t pos);
 	bool isFull() {
-		return(this->chunk_buffer_size > 4 * 128 * 1024);
+		extern int opt_pcap_dump_tar_chunkbuffer_max_kb;
+		return(this->chunk_buffer_size > (unsigned)opt_pcap_dump_tar_chunkbuffer_max_kb * 1024);
 	}
 	static u_int64_t getChunkBuffersSumsize() {
 		return(chunk_buffers_sumsize);
