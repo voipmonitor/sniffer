@@ -149,6 +149,7 @@ extern string binaryNameWithPath;
 extern char configfile[1024];
 extern int ownPidStart;
 extern int ownPidFork;
+extern bool opt_pcap_dump_tar_bypass;
 pid_t mysqlPid = 0;
 
 extern TarQueue *tarQueue[2];
@@ -1861,17 +1862,27 @@ void PcapDumper::close(bool updateFilesQueue) {
 					call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_4);
 				}
 				#endif
-				if(this->call) {
-					asyncClose->add(this->handle, updateFilesQueue,
-							this->call, this,
-							this->typeSpoolFile, this->fileName.c_str());
-					#if DEBUG_ASYNC_TAR_WRITE
-					if((this->type == sip || this->type == rtp) && call) {
-						call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_5);
-					}
-					#endif
+				FileZipHandler *handler = (FileZipHandler*)this->handle;
+				if(opt_pcap_dump_tar_bypass && handler->tar) {
+					handler->close();
+					delete handler;
+					this->handle = NULL;
+					this->state = state_close;
+					// TODO: addtofilesqueue
+					return;
 				} else {
-					asyncClose->add(this->handle);
+					if(this->call) {
+						asyncClose->add(this->handle, updateFilesQueue,
+								this->call, this,
+								this->typeSpoolFile, this->fileName.c_str());
+						#if DEBUG_ASYNC_TAR_WRITE
+						if((this->type == sip || this->type == rtp) && call) {
+							call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_5);
+						}
+						#endif
+					} else {
+						asyncClose->add(this->handle);
+					}
 				}
 			}
 			this->handle = NULL;
@@ -1988,13 +1999,22 @@ void RtpGraphSaver::close(bool updateFilesQueue) {
 			this->handle = NULL;
 		} else {
 			Call *call = (Call*)this->rtp->call_owner;
-			if(call) {
-				asyncClose->add(this->handle, updateFilesQueue,
-						call, this,
-						this->typeSpoolFile, this->fileName.c_str(),
-						this->handle->size);
+			if(opt_pcap_dump_tar_bypass && this->handle->tar) {
+				this->handle->close();
+				delete this->handle;
+				this->handle = NULL;
+				// TODO: addtofilesqueue
+				// TODO: setCompleteAsyncClose
+				return;
 			} else {
-				asyncClose->add(this->handle);
+				if(call) {
+					asyncClose->add(this->handle, updateFilesQueue,
+							call, this,
+							this->typeSpoolFile, this->fileName.c_str(),
+							this->handle->size);
+				} else {
+					asyncClose->add(this->handle);
+				}
 			}
 			state_async_close = _sac_sent;
 			this->handle = NULL;
@@ -4737,12 +4757,17 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool force) {
 		return(true);
 	}
 	if(enableAsyncWrite && !force) {
-		if(dumpHandler) {
-			asyncClose->addWrite((pcap_dumper_t*)this, data, length);
+		if(opt_pcap_dump_tar_bypass && tar) {
+			_directWriteToFile(data, length);
+			return(true);
 		} else {
-			asyncClose->addWrite(this, data, length);
+			if(dumpHandler) {
+				asyncClose->addWrite((pcap_dumper_t*)this, data, length);
+			} else {
+				asyncClose->addWrite(this, data, length);
+			}
+			return(true);
 		}
-		return(true);
 	} else {
 		return(this->_directWriteToFile(data, length, force));
 	}
