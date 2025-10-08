@@ -458,6 +458,7 @@ public:
 	uint32_t sum_silence_changes;
 	bool confirm_both_sides_by_sdp;
 	bool stopped_jb_due_to_high_ooo;
+	bool changing_codec;
 
 	/* RTCP data */
 	struct rtcp_t {

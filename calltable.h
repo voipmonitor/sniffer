@@ -205,7 +205,8 @@ enum eCdrBitFlag {
 	_CDR_BIT_PROTO_TCP,
 	_CDR_BIT_PROTO_UDP,
 	_CDR_BIT_PROTO_TLS,
-	_CDR_BIT_STOPPED_JB_DUE_TO_HIGH_OOO
+	_CDR_BIT_STOPPED_JB_DUE_TO_HIGH_OOO,
+	_CDR_BIT_CHANGING_CODEC_IN_STREAM
 };
 
 #define CDR_CHANGE_SRC_PORT_CALLER		CDR_FLAG(_CDR_BIT_CHANGE_SRC_PORT_CALLER)
@@ -232,6 +233,7 @@ enum eCdrBitFlag {
 #define CDR_PCAP_DUMP_ERROR_CAPLEN		CDR_FLAG(_CDR_BIT_PCAP_DUMP_ERROR_CAPLEN)
 #define CDR_RTP_DUPL_SEQ			CDR_FLAG(_CDR_BIT_RTP_DUPL_SEQ)
 #define CDR_STOPPED_JB_DUE_TO_HIGH_OOO		CDR_FLAG(_CDR_BIT_STOPPED_JB_DUE_TO_HIGH_OOO)
+#define CDR_CHANGING_CODEC_IN_STREAM		CDR_FLAG(_CDR_BIT_CHANGING_CODEC_IN_STREAM)
 
 #define CDR_SAVE_FLAGS				CDR_FLAG(_CDR_BIT_SAVE_FLAGS)
 #define CDR_SAVE_SIP_PCAP			CDR_FLAG(_CDR_BIT_SAVE_SIP_PCAP)
@@ -252,6 +254,7 @@ enum eCdrBitFlag {
 #define CDR_RTP_STREAM_IS_CALLED		(1 << 3)
 #define CDR_RTP_STREAM_IS_SRTP			(1 << 4)
 #define CDR_RTP_STOPPED_JB_DUE_TO_HIGH_OOO	(1 << 5)
+#define CDR_RTP_CHANGING_CODEC			(1 << 6)
 
 #define SS7_IAM 1
 #define SS7_SAM 2
@@ -3060,6 +3063,7 @@ public:
 	bool suppress_rtp_read_due_to_insufficient_hw_performance;
 	bool suppress_rtp_proc_due_to_insufficient_hw_performance;
 	bool stopped_jb_due_to_high_ooo;
+	bool changing_codec_in_stream;
 	#if EXPERIMENTAL_SEPARATE_PROCESSSING
 	volatile bool sp_sent_close_call;
 	volatile bool sp_arrived_rtp_streams;

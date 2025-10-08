@@ -2219,7 +2219,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			u_int64_t tarBufferSize = ChunkBuffer::getChunkBuffersSumsize();
 			if(tarBufferSize) {
 				outStr << "tarB[" << setprecision(0) << tarBufferSize / 1024 / 1024 << "MB] ";
-				//outStr << "tarB[" << setprecision(1) << tarBufferSize / 1024 << "kB] ";
+				//outStr << "tarB[" << setprecision(1) << tarBufferSize / 1024. << "kB] ";
 			}
 			if(sverb.log_profiler) {
 				lapTime.push_back(getTimeMS_rdtsc());

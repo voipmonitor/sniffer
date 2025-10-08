@@ -956,6 +956,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	suppress_rtp_read_due_to_insufficient_hw_performance = false;
 	suppress_rtp_proc_due_to_insufficient_hw_performance = false;
 	stopped_jb_due_to_high_ooo = false;
+	changing_codec_in_stream = false;
 	
 	#if EXPERIMENTAL_SEPARATE_PROCESSSING
 	sp_sent_close_call = false;
@@ -2162,6 +2163,20 @@ bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 		packetS->header_ip_offset = packetS->dataoffset - sizeof(struct iphdr2) - sizeof(udphdr2);
 	}
 	*/
+
+	/*
+	static int _rtp_c;
+	++_rtp_c;
+	cout << "RTP " << _rtp_c << endl
+	     << " * " << hex << curSSRC << dec
+	     << " " << packetS->saddr_().getString() << ":" << packetS->source_().getString() << " -> "
+	     << packetS->daddr_().getString() << ":" << packetS->dest_().getString() << endl;
+	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
+		cout << " - " << hex << rtp_i->ssrc2 << dec
+		     << " " << rtp_i->saddr.getString() << ":" << rtp_i->sport.getString() << " -> "
+		     << rtp_i->daddr.getString() << ":" << rtp_i->dport.getString() << endl;
+	}
+	*/
 	
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
 		if(rtp_i->ssrc2 == curSSRC) {
@@ -2221,6 +2236,10 @@ bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 				// check if codec did not changed but ignore payload 13 and 19 which is CNG and 101 which is DTMF
 				int oldcodec = rtp_i->codec;
 				if(curpayload == 13 or curpayload == 19 or rtp_i->codec == PAYLOAD_TELEVENT or rtp_i->payload2 == curpayload) {
+					goto read;
+				} else if((rtp_i->payload2 == 0 && curpayload == 8) || (rtp_i->payload2 == 8 && curpayload == 0)) {
+					rtp_i->changing_codec = true;
+					this->changing_codec_in_stream = true;
 					goto read;
 				} else {
 					// check if the stream started with DTMF
@@ -2313,9 +2332,26 @@ read:
 						}
 						return(rtp_read_rslt);
 					} else if(oldcodec != rtp_i->codec){
+						rtp_i->changing_codec = true;
+						this->changing_codec_in_stream = true;
+						if((oldcodec == 0 && rtp_i->codec == 8) || (oldcodec == 8 && rtp_i->codec == 0)) {
+							goto read;
+						} else {
+							for(int j = 0; j < rtp_size(); j++) { RTP *rtp_j = rtp_stream_by_index(j);
+								if(rtp_j->ssrc2 == curSSRC &&
+								   rtp_j->eqAddrPort(packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_()) &&
+								   rtp_j->payload2 == curpayload) {
+									 i = j;
+									 rtp_i = rtp_j;
+									 goto read;
+								}
+							}
+						}
+						/*
 						//codec changed and it is not DTMF, reset ssrc so the stream will not match and new one is used
 						if(verbosity > 1) printf("mchange [%d] [%d]?\n", rtp_i->codec, oldcodec);
 						rtp_i->ssrc2 = 0;
+						*/
 					} else {
 						//if(verbosity > 1) printf("wtf lastseq[%u] seq[%u] saddr[%u] dport[%u] oldcodec[%u] rtp_stream_by_index(i)->codec[%u] rtp_stream_by_index(i)->payload2[%u] curpayload[%u]\n", rtp_stream_by_index(i)->last_seq, tmprtp.getSeqNum(), packetS->saddr_(), packetS->dest_(), oldcodec, rtp_stream_by_index(i)->codec, rtp_stream_by_index(i)->payload2, curpayload);
 					}
@@ -6970,6 +7006,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(stopped_jb_due_to_high_ooo) {
 		cdr_flags |= CDR_STOPPED_JB_DUE_TO_HIGH_OOO;
 	}
+	if(changing_codec_in_stream) {
+		cdr_flags |= CDR_CHANGING_CODEC_IN_STREAM;
+	}
 	
 	cdr_flags |= CDR_SAVE_FLAGS;
 	if(this->save_sip_pcap) {
@@ -8283,6 +8322,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					if(rtp_i->stopped_jb_due_to_high_ooo) {
 						flags |=  CDR_RTP_STOPPED_JB_DUE_TO_HIGH_OOO;
 					}
+					if(rtp_i->changing_codec) {
+						flags |=  CDR_RTP_CHANGING_CODEC;
+					}
 					rtps.add(flags, "flags", !flags);
 				}
 				if(existsColumns.cdr_rtp_duration) {
@@ -8968,6 +9010,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 				if(rtp_i->stopped_jb_due_to_high_ooo) {
 					flags |=  CDR_RTP_STOPPED_JB_DUE_TO_HIGH_OOO;
+				}
+				if(rtp_i->changing_codec) {
+					flags |=  CDR_RTP_CHANGING_CODEC;
 				}
 				if(flags) {
 					rtps.add(flags, "flags");

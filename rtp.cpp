@@ -427,6 +427,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	sum_silence_changes = 0;
 	confirm_both_sides_by_sdp = false;
 	stopped_jb_due_to_high_ooo = false;
+	changing_codec = false;
 
 	change_packetization_iterator = 0;
 	srtp_decrypt = NULL;

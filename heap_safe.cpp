@@ -49,6 +49,20 @@ static unsigned heap_vm_shift = 4;
 #endif //SEPARATE_HEAP_FOR_HUGETABLE
 
 
+static u_int16_t _get_unix_tid() {
+	static volatile int sync;
+	static volatile u_int16_t tid_counter;
+	static __thread u_int16_t tid;
+	if(tid) {
+		return(tid);
+	}
+	__SYNC_LOCK(sync);
+	tid = ++tid_counter;
+	__SYNC_UNLOCK(sync);
+	return(tid);
+}
+
+
 inline void *_heapsafe_alloc(size_t sizeOfObject) {
 	#if SEPARATE_HEAP_FOR_HUGETABLE
 	if(heap_vm_hp_active && 
@@ -173,7 +187,7 @@ inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NUL
 					begin->memory_type = ++memoryStatLength;
 					unsigned int tid = 0;
 					if(MCB_STACK) {
-						tid = get_unix_tid();
+						tid = _get_unix_tid();
 						__SYNC_INC(threadRecursion[tid]);
 					}
 					memoryStatType[memory_type] = begin->memory_type;
@@ -186,7 +200,7 @@ inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NUL
 				__SYNC_UNLOCK(memoryStat_sync);
 				__SYNC_ADD(memoryStat[begin->memory_type], sizeOfObject);
 			} else if(MCB_STACK) {
-				unsigned int tid = get_unix_tid();
+				unsigned int tid = _get_unix_tid();
 				sHeapSafeMemoryControlBlockEx *beginEx = (sHeapSafeMemoryControlBlockEx*)begin;
 				if(!threadRecursion[tid]) {
 					if(threadStackSize[tid]) {
@@ -702,7 +716,7 @@ std::string getMemoryStat(bool all) {
 	std::ostringstream outStr;
 	if(HeapSafeCheck & _HeapSafeErrorBeginEnd && sverb.memory_stat) {
 		u_int64_t sum = 0;
-		unsigned int tid = get_unix_tid();
+		unsigned int tid = _get_unix_tid();
 		__SYNC_INC(threadRecursion[tid]);
 		__SYNC_LOCK(memoryStat_sync);
 		std::map<std::string, u_int32_t>::iterator iter = memoryStatType.begin();
