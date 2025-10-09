@@ -1252,8 +1252,8 @@ int Registers::getCount() {
 }
 
 void Registers::getCountActiveBySensors(map<int, u_int32_t> *count) {
-	lock_registers_erase();
 	lock_registers();
+	lock_registers_erase();
 	for(map<RegisterId, Register*>::iterator iter_reg = registers.begin(); iter_reg != registers.end(); iter_reg++) {
 		iter_reg->second->lock_states();
 		RegisterState *state = iter_reg->second->getLastState();
@@ -1262,8 +1262,8 @@ void Registers::getCountActiveBySensors(map<int, u_int32_t> *count) {
 		}
 		iter_reg->second->unlock_states();
 	}
-	unlock_registers();
 	unlock_registers_erase();
+	unlock_registers();
 }
 
 void Registers::init_db(SqlDb *sqlDb) {
@@ -1546,14 +1546,14 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 		*zip = zipParam == "yes";
 	}
  
-	lock_registers_erase();
 	lock_registers();
+	lock_registers_erase();
 	
 	u_int32_t list_registers_size = registers.size();
 	u_int32_t list_registers_count = 0;
 	Register **list_registers = new FILE_LINE(20005) Register*[list_registers_size];
 	
-	//cout << "**** 001 " << getTimeMS() << endl;
+	//u_int64_t start_time = getTimeMS_rdtsc();
 	
 	for(map<RegisterId, Register*>::iterator iter_reg = registers.begin(); iter_reg != registers.end(); iter_reg++) {
 		if(states_count) {
@@ -1584,9 +1584,10 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 		list_registers[list_registers_count++] = iter_reg->second;
 	}
 	
-	//cout << "**** 002 " << getTimeMS() << endl;
-	
 	unlock_registers();
+	
+	//u_int64_t run_time_1 = getTimeMS_rdtsc();
+	//cout << " *** Registers::getDataTableJson 1 " << (run_time_1 - start_time) << endl;
 	
 	list<RecordArray> records;
 	for(unsigned i = 0; i < list_registers_count; i++) {
@@ -1600,6 +1601,9 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 	delete [] list_registers;
 	
 	unlock_registers_erase();
+	
+	//u_int64_t run_time_2 = getTimeMS_rdtsc();
+	//cout << " *** Registers::getDataTableJson 2 " << (run_time_2 - run_time_1) << endl;
 	
 	string table;
 	string header = "[";
@@ -1737,8 +1741,8 @@ void Registers::cleanupByJson(char *params) {
 		}
 	}
 	
-	lock_registers_erase();
 	lock_registers();
+	lock_registers_erase();
 	
 	for(map<RegisterId, Register*>::iterator iter_reg = registers.begin(); iter_reg != registers.end(); ) {
 		bool okState = false;
@@ -1761,8 +1765,8 @@ void Registers::cleanupByJson(char *params) {
 		}
 	}
 	
-	unlock_registers();
 	unlock_registers_erase();
+	unlock_registers();
 }
 
 void Registers::startTimer() {
