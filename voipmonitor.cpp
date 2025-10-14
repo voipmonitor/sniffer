@@ -6603,7 +6603,10 @@ void cConfig::addConfigItems() {
 						->addValues("ext:2"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("destroy_calls_in_storing_cdr", &opt_destroy_calls_in_storing_cdr));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("preprocess_packet_stack", &opt_preprocess_packet_stack))
-						->addValues("moodycamel:2"));
+						#if ENABLE_MOODY_CAMEL
+						->addValues("moodycamel:2")
+						#endif
+						);
 			setDisableIfEnd();
 	group("manager");
 		addConfigItem((new FILE_LINE(42162) cConfigItem_string("managerip", opt_manager_ip, sizeof(opt_manager_ip)))

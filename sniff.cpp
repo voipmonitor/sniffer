@@ -9946,11 +9946,13 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 	this->_sync_count = 0;
 	this->term_preProcess = false;
 	this->stackSipBasic = NULL;
-	this->stackSipMoodyCamel = NULL;
 	this->stackRtpBasic = NULL;
-	this->stackRtpMoodyCamel = NULL;
 	this->stackOtherBasic = NULL;
+	#if ENABLE_MOODY_CAMEL
+	this->stackSipMoodyCamel = NULL;
+	this->stackRtpMoodyCamel = NULL;
 	this->stackOtherMoodyCamel = NULL;
+	#endif
 	if(typePreProcessThread == ppt_detach) {
 		if(opt_preprocess_packet_stack == 1) {
 			this->stackSipBasic = 
@@ -9971,6 +9973,7 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 									 opt_preprocess_packets_qring_length, 
 									opt_t2_boost_direct_rtp ? 5 : 1,
 									200);
+		#if ENABLE_MOODY_CAMEL
 		} else if(opt_preprocess_packet_stack == 2) {
 			this->stackSipMoodyCamel = 
 				new FILE_LINE(0) BoundedMoodycamel<void*>(opt_preprocess_packets_qring_item_length ?
@@ -9984,6 +9987,7 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 				new FILE_LINE(0) BoundedMoodycamel<void*>(opt_preprocess_packets_qring_item_length ?
 									   opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
 									   opt_preprocess_packets_qring_length);
+		#endif
 		}
 	}
 	this->outThreadState = 0;
@@ -10076,6 +10080,7 @@ PreProcessPacket::~PreProcessPacket() {
 		this->stackOtherBasic->destroyAll_u_char();
 		delete this->stackOtherBasic;
 	}
+	#if ENABLE_MOODY_CAMEL
 	if(this->stackSipMoodyCamel) {
 		u_char *p;
 		while(this->stackSipMoodyCamel->pop((void**)&p)) {
@@ -10097,6 +10102,7 @@ PreProcessPacket::~PreProcessPacket() {
 		}
 		delete this->stackOtherMoodyCamel;
 	}
+	#endif
 	while(rtp_delay_queue.size()) {
 		delete rtp_delay_queue.front();
 		rtp_delay_queue.pop();

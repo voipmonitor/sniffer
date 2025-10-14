@@ -10,7 +10,9 @@
 #include "websocket.h"
 #include "pcap_queue.h"
 
+#if ENABLE_MOODY_CAMEL
 #include "concurrentqueue/concurrentqueue_bounded.h"
+#endif
 
 
 #define LF_CHAR '\n'
@@ -882,15 +884,24 @@ public:
 		if(packetS->need_sip_process) {
 			p[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack(this->typePreProcessThread);
 			p[1] = opt_preprocess_packet_stack == 1 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackSipBasic :
-			       opt_preprocess_packet_stack == 2 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackSipMoodyCamel : NULL;
+			       #if ENABLE_MOODY_CAMEL
+			       opt_preprocess_packet_stack == 2 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackSipMoodyCamel : 
+			       #endif
+			       NULL;
 		} else if(!packetS->pflags.other_processing()) {
 			p[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack(this->typePreProcessThread);
 			p[1] = opt_preprocess_packet_stack == 1 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackRtpBasic :
-			       opt_preprocess_packet_stack == 2 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackRtpMoodyCamel : NULL;
+			       #if ENABLE_MOODY_CAMEL
+			       opt_preprocess_packet_stack == 2 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackRtpMoodyCamel :
+			       #endif
+			       NULL;
 		} else {
 			p[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_other_pop_from_stack(this->typePreProcessThread);
 			p[1] = opt_preprocess_packet_stack == 1 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackOtherBasic :
-			       opt_preprocess_packet_stack == 2 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackOtherMoodyCamel : NULL;
+			       #if ENABLE_MOODY_CAMEL
+			       opt_preprocess_packet_stack == 2 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackOtherMoodyCamel :
+			       #endif
+			       NULL;
 		}
 		extern bool use_push_batch_limit_ms;
 		u_int64_t time_us = use_push_batch_limit_ms ? packetS->getTimeUS() : 0;
@@ -1346,11 +1357,13 @@ public:
 				++allocStackCounter[0];
 				return(packetS);
 			}
+		#if ENABLE_MOODY_CAMEL
 		} else if(opt_preprocess_packet_stack == 2) {
 			if(this->stackSipMoodyCamel->pop((void**)&packetS)) {
 				++allocStackCounter[0];
 				return(packetS);
 			}
+		#endif
 		}
 		packetS = new FILE_LINE(28006) packet_s_process;
 		++allocCounter[0];
@@ -1365,11 +1378,13 @@ public:
 				++allocStackCounter[0];
 				return(packetS);
 			}
+		#if ENABLE_MOODY_CAMEL
 		} else if(opt_preprocess_packet_stack == 2) {
 			if(this->stackRtpMoodyCamel->pop((void**)&packetS)) {
 				++allocStackCounter[0];
 				return(packetS);
 			}
+		#endif
 		}
 		packetS = packet_s_process_0::create();
 		++allocCounter[0];
@@ -1384,11 +1399,13 @@ public:
 				++allocStackCounter[0];
 				return(packetS);
 			}
+		#if ENABLE_MOODY_CAMEL
 		} else if(opt_preprocess_packet_stack == 2) {
 			if(this->stackOtherMoodyCamel->pop((void**)&packetS)) {
 				++allocStackCounter[0];
 				return(packetS);
 			}
+		#endif
 		}
 		packetS = new FILE_LINE(0) packet_s_stack;
 		++allocCounter[0];
@@ -1539,8 +1556,10 @@ public:
 	inline bool _push_to_stack(packet_s_stack *packetS, u_int16_t queue_index) {
 		if(opt_preprocess_packet_stack == 1) {
 			return(((cHeapItemsPointerStack*)packetS->p_stack)->push((void*)packetS, queue_index));
+		#if ENABLE_MOODY_CAMEL
 		} else if(opt_preprocess_packet_stack == 2) {
 			return(((BoundedMoodycamel<void*>*)packetS->p_stack)->push((void*)packetS));
+		#endif
 		}
 	}
 	inline eTypePreProcessThread getTypePreProcessThread() {
@@ -1798,15 +1817,24 @@ private:
 		if(packetS_detach->need_sip_process) {
 			packetS_detach->p_pointer[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack(this->typePreProcessThread);
 			packetS_detach->p_pointer[1] = opt_preprocess_packet_stack == 1 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackSipBasic :
-						       opt_preprocess_packet_stack == 2 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackSipMoodyCamel : NULL;
+						       #if ENABLE_MOODY_CAMEL
+						       opt_preprocess_packet_stack == 2 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackSipMoodyCamel :
+						       #endif
+						       NULL;
 		} else if(!packetS_detach->pflags.other_processing()) {
 			packetS_detach->p_pointer[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack(this->typePreProcessThread);
 			packetS_detach->p_pointer[1] = opt_preprocess_packet_stack == 1 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackRtpBasic :
-						       opt_preprocess_packet_stack == 2 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackRtpMoodyCamel : NULL;
+						       #if ENABLE_MOODY_CAMEL
+						       opt_preprocess_packet_stack == 2 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackRtpMoodyCamel :
+						       #endif
+						       NULL;
 		} else {
 			packetS_detach->p_pointer[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_other_pop_from_stack(this->typePreProcessThread);
 			packetS_detach->p_pointer[1] = opt_preprocess_packet_stack == 1 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackOtherBasic :
-						       opt_preprocess_packet_stack == 2 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackOtherMoodyCamel : NULL;
+						       #if ENABLE_MOODY_CAMEL
+						       opt_preprocess_packet_stack == 2 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackOtherMoodyCamel :
+						       #endif
+						       NULL;
 		}
 	}
 	inline void process_DETACH(packet_s *packetS_detach) {
@@ -1981,11 +2009,13 @@ private:
 	volatile int _sync_count;
 	bool term_preProcess;
 	cHeapItemsPointerStack *stackSipBasic;
-	BoundedMoodycamel<void*> *stackSipMoodyCamel;
 	cHeapItemsPointerStack *stackRtpBasic;
-	BoundedMoodycamel<void*> *stackRtpMoodyCamel;
 	cHeapItemsPointerStack *stackOtherBasic;
+	#if ENABLE_MOODY_CAMEL
+	BoundedMoodycamel<void*> *stackSipMoodyCamel;
+	BoundedMoodycamel<void*> *stackRtpMoodyCamel;
 	BoundedMoodycamel<void*> *stackOtherMoodyCamel;
+	#endif
 	volatile int outThreadState;
 	unsigned long allocCounter[2];
 	unsigned long allocStackCounter[2];
