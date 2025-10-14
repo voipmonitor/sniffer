@@ -761,6 +761,9 @@ public:
 	static string getConfigMenuString();
 	bool getLineFromReadBuffer(string *line);
 	bool needTarPos();
+	static u_int64_t getBuffersSumcapacity() {
+		return(buffers_sumcapacity);
+	}
 private:
 	bool _flushBuffer(bool force = false);
 	void _flushTarBuffer();
@@ -805,8 +808,6 @@ public:
 	int time;
 	u_int64_t size;
 	bool existsData;
-	u_int64_t counter;
-	static u_int64_t scounter;
 	u_int32_t userData;
 	eTypeFile typeFile;
 	unsigned indexFile;
@@ -815,6 +816,7 @@ public:
 	bool eof;
 private:
 	volatile int _sync_write_lock;
+	static volatile u_int64_t buffers_sumcapacity;
 };
 
 class PcapDumper {
@@ -845,6 +847,7 @@ public:
 	void setEnableAsyncWrite(int asyncwrite) {
 		_asyncwrite = asyncwrite;
 	}
+	bool getEnableAsyncWrite();
 	void setTypeCompress(FileZipHandler::eTypeCompress typeCompress) {
 		_typeCompress = typeCompress;
 	}
@@ -1008,7 +1011,6 @@ private:
 	FileZipHandler *handle;
 	bool existsContent;
 	bool enableAutoOpen;
-	int _asyncwrite;
 	volatile eStateAsyncClose state_async_close;
 };
 

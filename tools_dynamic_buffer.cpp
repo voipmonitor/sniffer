@@ -1366,6 +1366,8 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 	case add_simple: {
 		sChunk chunk;
 		chunk.chunk = new FILE_LINE(40015) char[datalen];
+		chunk.chunk_capacity = datalen;
+		__SYNC_ADD(ChunkBuffer::chunk_buffers_sumcapacity, datalen);
 		memcpy_heapsafe(chunk.chunk, data, datalen,
 				__FILE__, __LINE__);
 		chunk.len = datalen;
@@ -1401,6 +1403,8 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 				   this->lastChunk->len == this->chunk_fix_len) {
 					sChunk chunk;
 					chunk.chunk = new FILE_LINE(40016) char[this->chunk_fix_len];
+					chunk.chunk_capacity = this->chunk_fix_len;
+					__SYNC_ADD(ChunkBuffer::chunk_buffers_sumcapacity, this->chunk_fix_len);
 					chunk.len = 0;
 					chunk.decompress_len = (u_int32_t)-1;
 					this->chunkBuffer.push_back(chunk);
@@ -1428,6 +1432,8 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 			if(!(this->len % this->chunk_fix_len)) {
 				sChunk chunk;
 				chunk.chunk = new FILE_LINE(40017) char[this->chunk_fix_len];
+				chunk.chunk_capacity = this->chunk_fix_len;
+				__SYNC_ADD(ChunkBuffer::chunk_buffers_sumcapacity, this->chunk_fix_len);
 				this->chunkBuffer.push_back(chunk);
 				++this->chunkBuffer_countItems;
 				this->lastChunk = &(*(--this->chunkBuffer.end()));
@@ -1849,3 +1855,4 @@ void ChunkBuffer::strange_log(const char *error) {
 }
 
 volatile u_int64_t ChunkBuffer::chunk_buffers_sumsize = 0;
+volatile u_int64_t ChunkBuffer::chunk_buffers_sumcapacity = 0;

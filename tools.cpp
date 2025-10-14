@@ -1705,6 +1705,19 @@ bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t
 	}
 }
 
+bool PcapDumper::getEnableAsyncWrite() {
+	if(this->_asyncwrite < 0) {
+		if(opt_pcap_dump_bufflength) {
+			FileZipHandler *handler = (FileZipHandler*)this->handle;
+			return(handler->enableAsyncWrite);
+		} else {
+			return(opt_pcap_dump_asyncwrite);
+		}
+	} else {
+		return(this->_asyncwrite);
+	}
+}
+
 #define PCAP_DUMPER_PACKET_HEADER_SIZE 16
 #define PCAP_DUMPER_HEADER_SIZE 24
 
@@ -1841,7 +1854,7 @@ void PcapDumper::close(bool updateFilesQueue) {
 			call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_2);
 		}
 		#endif
-		if((this->_asyncwrite < 0 ? opt_pcap_dump_asyncwrite : this->_asyncwrite) == 0) {
+		if(!this->getEnableAsyncWrite()) {
 			#if DEBUG_ASYNC_TAR_WRITE
 			if((this->type == sip || this->type == rtp) && call) {
 				call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_not_async);
@@ -1862,27 +1875,17 @@ void PcapDumper::close(bool updateFilesQueue) {
 					call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_4);
 				}
 				#endif
-				FileZipHandler *handler = (FileZipHandler*)this->handle;
-				if(opt_pcap_dump_tar_bypass && handler->tar) {
-					handler->close();
-					delete handler;
-					this->handle = NULL;
-					this->state = state_close;
-					// TODO: addtofilesqueue
-					return;
-				} else {
-					if(this->call) {
-						asyncClose->add(this->handle, updateFilesQueue,
-								this->call, this,
-								this->typeSpoolFile, this->fileName.c_str());
-						#if DEBUG_ASYNC_TAR_WRITE
-						if((this->type == sip || this->type == rtp) && call) {
-							call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_5);
-						}
-						#endif
-					} else {
-						asyncClose->add(this->handle);
+				if(this->call) {
+					asyncClose->add(this->handle, updateFilesQueue,
+							this->call, this,
+							this->typeSpoolFile, this->fileName.c_str());
+					#if DEBUG_ASYNC_TAR_WRITE
+					if((this->type == sip || this->type == rtp) && call) {
+						call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_5);
 					}
+					#endif
+				} else {
+					asyncClose->add(this->handle);
 				}
 			}
 			this->handle = NULL;
@@ -1925,7 +1928,6 @@ RtpGraphSaver::RtpGraphSaver(RTP *rtp) {
 	this->handle = NULL;
 	this->existsContent = false;
 	this->enableAutoOpen = false;
-	this->_asyncwrite = opt_pcap_dump_asyncwrite ? 1 : 0;
 	this->state_async_close = _sac_na;
 }
 
@@ -1947,7 +1949,7 @@ bool RtpGraphSaver::open(eTypeSpoolFile typeSpoolFile, const char *fileName) {
 		}
 	}
 	*/
-	this->handle = new FILE_LINE(38003) FileZipHandler(opt_pcap_dump_bufflength, this->_asyncwrite, opt_gzipGRAPH,
+	this->handle = new FILE_LINE(38003) FileZipHandler(opt_pcap_dump_bufflength, -1, opt_gzipGRAPH,
 							   false, rtp && rtp->call_owner ? (Call*)rtp->call_owner : 0,
 							   FileZipHandler::graph_rtp, rtp ? rtp->ssrc_index : 0);
 	if(!this->handle->open(typeSpoolFile, fileName)) {
@@ -1993,28 +1995,19 @@ void RtpGraphSaver::close(bool updateFilesQueue) {
 		uint16_t packetization = uint16_t(this->rtp->packetization);
 		this->write((char*)&packetization, 2);
 		#endif
-		if(this->_asyncwrite == 0) {
+		if(!this->handle->enableAsyncWrite) {
 			this->handle->close();
 			delete this->handle;
 			this->handle = NULL;
 		} else {
 			Call *call = (Call*)this->rtp->call_owner;
-			if(opt_pcap_dump_tar_bypass && this->handle->tar) {
-				this->handle->close();
-				delete this->handle;
-				this->handle = NULL;
-				// TODO: addtofilesqueue
-				// TODO: setCompleteAsyncClose
-				return;
+			if(call) {
+				asyncClose->add(this->handle, updateFilesQueue,
+						call, this,
+						this->typeSpoolFile, this->fileName.c_str(),
+						this->handle->size);
 			} else {
-				if(call) {
-					asyncClose->add(this->handle, updateFilesQueue,
-							call, this,
-							this->typeSpoolFile, this->fileName.c_str(),
-							this->handle->size);
-				} else {
-					asyncClose->add(this->handle);
-				}
+				asyncClose->add(this->handle);
 			}
 			state_async_close = _sac_sent;
 			this->handle = NULL;
@@ -4539,12 +4532,17 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 			      bufferLength;
 	if(bufferLength) {
 		this->buffer = new FILE_LINE(38015) char[bufferLength];
+		__SYNC_ADD(FileZipHandler::buffers_sumcapacity, bufferLength);
 	} else {
 		this->buffer = NULL;
 	}
 	this->useBufferLength = 0;
 	this->tarBuffer = NULL;
 	this->tarBufferCreated = false;
+	if(enableAsyncWrite < 0) {
+		enableAsyncWrite = opt_pcap_dump_asyncwrite &&
+				   !(this->tar && opt_pcap_dump_tar_bypass);
+	}
 	this->enableAsyncWrite = enableAsyncWrite && !is_read_from_file_simple();
 	this->typeCompress = checkCompressType(typeCompress);
 	this->dumpHandler = dumpHandler;
@@ -4552,7 +4550,6 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	this->time = call ? call->calltime_s() : 0;
 	this->size = 0;
 	this->existsData = false;
-	this->counter = ++scounter;
 	this->userData = 0;
 	this->typeFile = typeFile;
 	this->indexFile = indexFile;
@@ -4568,6 +4565,7 @@ FileZipHandler::~FileZipHandler() {
 	this->close();
 	if(this->buffer) {
 		delete [] this->buffer;
+		__SYNC_SUB(FileZipHandler::buffers_sumcapacity, bufferLength);
 	}
 	if(this->tarBuffer) {
 		delete this->tarBuffer;
@@ -4757,17 +4755,12 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool force) {
 		return(true);
 	}
 	if(enableAsyncWrite && !force) {
-		if(opt_pcap_dump_tar_bypass && tar) {
-			_directWriteToFile(data, length);
-			return(true);
+		if(dumpHandler) {
+			asyncClose->addWrite((pcap_dumper_t*)this, data, length);
 		} else {
-			if(dumpHandler) {
-				asyncClose->addWrite((pcap_dumper_t*)this, data, length);
-			} else {
-				asyncClose->addWrite(this, data, length);
-			}
-			return(true);
+			asyncClose->addWrite(this, data, length);
 		}
+		return(true);
 	} else {
 		return(this->_directWriteToFile(data, length, force));
 	}
@@ -5249,7 +5242,7 @@ bool FileZipHandler::getLineFromReadBuffer(string *line) {
 	return(false);
 }
 
-u_int64_t FileZipHandler::scounter = 0;
+volatile u_int64_t FileZipHandler::buffers_sumcapacity = 0;
 
 #define TCPDUMP_MAGIC		0xa1b2c3d4
 #define NSEC_TCPDUMP_MAGIC	0xa1b23c4d
@@ -5259,7 +5252,7 @@ pcap_dumper_t *__pcap_dump_open(pcap_t *p, eTypeSpoolFile typeSpoolFile, const c
 				Call_abstract *call, PcapDumper::eTypePcapDump type) {
 	if(opt_pcap_dump_bufflength) {
 		FileZipHandler *handler = new FILE_LINE(38021) FileZipHandler(_bufflength < 0 ? opt_pcap_dump_bufflength : _bufflength, 
-									      _asyncwrite < 0 ? opt_pcap_dump_asyncwrite : _asyncwrite, 
+									      _asyncwrite,
 									      _typeCompress == FileZipHandler::compress_default ? 
 									       (type == PcapDumper::sip ? opt_pcap_dump_zip_sip :
 										type == PcapDumper::rtp ? opt_pcap_dump_zip_rtp :

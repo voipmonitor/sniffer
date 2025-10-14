@@ -97,7 +97,7 @@ public:
 		return(check() &&
 		       pb_used_size + 
 		       pb_trash_size +
-		       pb_pool_size + add < max_buffer_mem_own_use * 0.9);
+		       pb_pool_size + add < _max_buffer_mem_own_use_pb());
 	}
 	bool check__pb__add_pool(size_t add) {
 		extern int opt_dpdk_rotate_packetbuffer_pool_max_perc;
@@ -111,8 +111,8 @@ public:
 	}
 	bool check__asyncwrite__add(size_t add) {
 		return((check() &&
-		        asyncwrite_size + add < max_buffer_mem_own_use * 0.9) ||
-		       asyncwrite_size + add < max_buffer_mem_own_use * 0.1);
+		        asyncwrite_size + add < _max_buffer_mem_own_use_pb()) ||
+		       asyncwrite_size + add < _max_buffer_mem_own_use_asyncwrite());
 	}
 	bool check() {
 		return(sum() < max_buffer_mem_own_use);
@@ -126,22 +126,42 @@ public:
 	double getPerc_pb() {
 		return((double)(pb_used_size + 
 				pb_trash_size + 
-				pb_pool_size) / (max_buffer_mem_own_use * 0.9) * 100);
+				pb_pool_size) / _max_buffer_mem_own_use_pb() * 100);
 	}
 	double getPerc_pb_used() {
-		return((double)pb_used_size / (max_buffer_mem_own_use * 0.9) * 100);
+		return((double)pb_used_size / _max_buffer_mem_own_use_pb() * 100);
 	}
 	double getPerc_pb_used_dequeu() {
-		return((double)pb_used_dequeu_size / (max_buffer_mem_own_use * 0.9) * 100);
+		return((double)pb_used_dequeu_size / _max_buffer_mem_own_use_pb() * 100);
 	}
 	double getPerc_pb_trash() {
-		return((double)pb_trash_size / (max_buffer_mem_own_use * 0.9) * 100);
+		return((double)pb_trash_size / _max_buffer_mem_own_use_pb() * 100);
 	}
 	double getPerc_pb_pool() {
-		return((double)pb_pool_size / (max_buffer_mem_own_use * 0.9) * 100);
+		return((double)pb_pool_size / _max_buffer_mem_own_use_pb() * 100);
 	}
 	double getPerc_asyncwrite() {
-		return((double)asyncwrite_size / (max_buffer_mem_own_use * 0.9) * 100);
+		return((double)asyncwrite_size / _max_buffer_mem_own_use_pb() * 100);
+	}
+	u_int64_t _max_buffer_mem_own_use_pb() {
+		u_int16_t __asyncwrite_perc = _asyncwrite_perc();
+		return(__asyncwrite_perc ?
+			max_buffer_mem_own_use * (1. - 1./__asyncwrite_perc) :
+			max_buffer_mem_own_use);
+	}
+	u_int64_t _max_buffer_mem_own_use_asyncwrite() {
+		u_int16_t __asyncwrite_perc = _asyncwrite_perc();
+		return(__asyncwrite_perc ?
+			max_buffer_mem_own_use * (1./__asyncwrite_perc) : 
+			0);
+	}
+	u_int16_t _asyncwrite_perc() {
+		extern int opt_pcap_dump_asyncwrite;
+		extern int opt_pcap_dump_tar;
+		extern bool opt_pcap_dump_tar_bypass;
+		return(!opt_pcap_dump_asyncwrite ? 0 :
+		       opt_pcap_dump_tar && opt_pcap_dump_tar_bypass ? 5 :
+		       10);
 	}
 	void PcapQueue_readFromFifo__blockStoreTrash_time_set(unsigned long time) {
 		if(pb_trash_minTime == (unsigned long)-1 ||

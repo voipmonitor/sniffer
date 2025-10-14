@@ -201,9 +201,11 @@ public:
 				chunk = NULL;
 				__SYNC_SUB(chunkBuffer->chunk_buffer_size, len);
 				__SYNC_SUB(ChunkBuffer::chunk_buffers_sumsize, len);
+				__SYNC_SUB(ChunkBuffer::chunk_buffers_sumcapacity, chunk_capacity);
 			}
 		}
 		char *chunk;
+		u_int32_t chunk_capacity;
 	};
 	struct sChunkIterateCompleteBufferInfo {
 		sChunkIterateCompleteBufferInfo() {
@@ -311,6 +313,9 @@ public:
 	static u_int64_t getChunkBuffersSumsize() {
 		return(chunk_buffers_sumsize);
 	}
+	static u_int64_t getChunkBuffersSumcapacity() {
+		return(chunk_buffers_sumcapacity);
+	}
 	inline bool get_warning_try_write_to_closed_tar() {
 		return(warning_try_write_to_closed_tar);
 	}
@@ -350,6 +355,7 @@ private:
 	u_int64_t created_at;
 	bool warning_try_write_to_closed_tar;
 static volatile u_int64_t chunk_buffers_sumsize;
+static volatile u_int64_t chunk_buffers_sumcapacity;
 };      
 
 

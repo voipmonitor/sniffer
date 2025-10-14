@@ -4321,9 +4321,8 @@ Call::convertRawToWav(void **transcribe_call, int thread_index) {
 		}
 		if(complete.size() > 0 && !sverb.test_fftw) {
 			extern int opt_pcap_dump_bufflength;
-			extern int opt_pcap_dump_asyncwrite;
 			extern FileZipHandler::eTypeCompress opt_gzip_audiograph;
-			FileZipHandler *handle = new FILE_LINE(0) FileZipHandler(opt_pcap_dump_bufflength, opt_pcap_dump_asyncwrite, opt_gzip_audiograph,
+			FileZipHandler *handle = new FILE_LINE(0) FileZipHandler(opt_pcap_dump_bufflength, -1, opt_gzip_audiograph,
 										 false, this,
 										 FileZipHandler::audiograph, 0);
 			string audiograph_extension = string("audiograph") + (opt_gzip_audiograph == FileZipHandler::gzip ? ".gz" : "");
@@ -4332,7 +4331,7 @@ Call::convertRawToWav(void **transcribe_call, int thread_index) {
 				handle->initTarbuffer();
 			}
 			handle->write((char*)complete.data(), complete.size());
-			if(opt_pcap_dump_asyncwrite) {
+			if(handle->enableAsyncWrite) {
 				extern AsyncClose *asyncClose;
 				asyncClose->add(handle);
 			} else {

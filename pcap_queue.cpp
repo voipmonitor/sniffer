@@ -2045,11 +2045,13 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 		   (opt_dpdk_copy_packetbuffer || opt_dpdk_prealloc_packetbuffer)) {
 			outStr << "|p" << setprecision(0) << heap_pb_pool_perc;
 		}
-		outStr << "|a" << setprecision(0) << useAsyncWriteBuffer
-		       << "] ";
-		if(opt_rrd) {
-			rrd_set_value(RRD_VALUE_ratio, useAsyncWriteBuffer);
+		if(useAsyncWriteBuffer > 0) {
+			outStr << "|a" << setprecision(0) << useAsyncWriteBuffer;
+			if(opt_rrd) {
+				rrd_set_value(RRD_VALUE_ratio, useAsyncWriteBuffer);
+			}
 		}
+		outStr << "] ";
 		unsigned int dequeu_time = buffersControl.get_dequeu_time();
 		if(heap_pb_used_dequeu_perc > 0 || dequeu_time) {
 			outStr << "deq["
@@ -2216,10 +2218,15 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			if(tarCopy) {
 				outStr << "tarMq[" << tarCopy->queueLength() << "] ";
 			}
-			u_int64_t tarBufferSize = ChunkBuffer::getChunkBuffersSumsize();
-			if(tarBufferSize) {
-				outStr << "tarB[" << setprecision(0) << tarBufferSize / 1024 / 1024 << "MB] ";
+			u_int64_t tarBufferSize = ChunkBuffer::getChunkBuffersSumcapacity();
+			if(tarBufferSize > 0) {
+				outStr << "tarB[" << setprecision(1) << tarBufferSize / 1024 / 1024. << "MB] ";
 				//outStr << "tarB[" << setprecision(1) << tarBufferSize / 1024. << "kB] ";
+			}
+			u_int64_t fileBufferSize = FileZipHandler::getBuffersSumcapacity();
+			if(fileBufferSize) {
+				outStr << "fileB[" << setprecision(1) << fileBufferSize / 1024 / 1024. << "MB] ";
+				//outStr << "tarB[" << setprecision(1) << fileBufferSize / 1024. << "kB] ";
 			}
 			if(sverb.log_profiler) {
 				lapTime.push_back(getTimeMS_rdtsc());
