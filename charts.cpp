@@ -1591,7 +1591,7 @@ void cChartInterval::clear() {
 		for(int src_dst = 0; src_dst < 2; src_dst++) {
 			if(cCdrStat::enableBySrcDst(src_dst)) {
 				map<vmIP, sSeriesDataCdrStat*> **seriesDataCdrStat = src_dst == 0 ? &stat.src : &stat.dst;
-				if(seriesDataCdrStat) {
+				if(seriesDataCdrStat && *seriesDataCdrStat) {
 					for(map<vmIP, sSeriesDataCdrStat*>::iterator iter = (*seriesDataCdrStat)->begin(); iter != (*seriesDataCdrStat)->end(); iter++) {
 						for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_2 = iter->second->data.begin(); iter_2 != iter->second->data.end(); iter_2++) {
 							delete iter_2->second;
@@ -1608,7 +1608,7 @@ void cChartInterval::clear() {
 		for(int src_dst = 0; src_dst < 2; src_dst++) {
 		for(int by_type = 0; by_type < 3; by_type++) {
 			if(cCdrProblems::enableBySrcDst(src_dst) && cCdrProblems::enableByType(by_type)) {
-				map<sProblemId, sCdrProblems*> **cdrProblems;
+				map<sProblemId, sCdrProblems*> **cdrProblems = NULL;
 				switch(by_type) {
 				case 0:
 					cdrProblems = src_dst == 0 ? &problems.ip_src : &problems.ip_dst;
@@ -1620,7 +1620,7 @@ void cChartInterval::clear() {
 					cdrProblems = src_dst == 0 ? &problems.comb_src : &problems.comb_dst;
 					break;
 				}
-				if(cdrProblems) {
+				if(cdrProblems && *cdrProblems) {
 					for(map<sProblemId, sCdrProblems*>::iterator iter = (*cdrProblems)->begin(); iter != (*cdrProblems)->end(); iter++) {
 						delete iter->second;
 					}
