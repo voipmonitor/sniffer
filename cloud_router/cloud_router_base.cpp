@@ -1130,6 +1130,7 @@ u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string 
 	}
 	size_t maxReadLength = 10 * 1024;
 	bool rsltRead = true;
+	readBlockError = _sbe_na;
 	readBuffer.clear();
 	size_t readLength = sizeof(sBlockHeader);
 	bool blockHeaderOK = false;
@@ -1146,6 +1147,7 @@ u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string 
 							blockHeaderOK = true;
 						} else {
 							rsltRead = false;
+							readBlockError = _sbe_bad_block_header;
 							break;
 						}
 					}
@@ -1167,6 +1169,7 @@ u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string 
 								delete [] rsa_data;
 							} else {
 								rsltRead = false;
+								readBlockError = _sbe_failed_private_decrypt;
 							}
 						} else if(typeEncode == _te_aes) {
 							u_char *aes_data;
@@ -1181,10 +1184,12 @@ u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string 
 								delete [] aes_data;
 							} else  {
 								rsltRead = false;
+								readBlockError = _sbe_failed_aes_decrypt;
 							}
 						}
 						if(rsltRead && !checkSumReadBuffer()) {
 							rsltRead = false;
+							readBlockError = _sbe_bad_checksum;
 						}
 						break;
 					}
@@ -1193,6 +1198,7 @@ u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string 
 				USLEEP(1000);
 				if((timeout && getTimeUS() > startTime + timeout * 1000000ull) || terminate) {
 					rsltRead = false;
+					readBlockError = _sbe_timeout;
 					break;
 				}
 			}
@@ -1391,6 +1397,18 @@ void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainde
 	if(CR_VERBOSE().socket_decode) {
 		syslog(LOG_INFO, "decode %s", verb_str.c_str());
 	}
+}
+
+const char *cSocketBlock::getSocketBlockErrorStr(eSocketBlockError error) {
+	switch(error) {
+	case _sbe_timeout: return("timeout");
+	case _sbe_bad_block_header: return("bad block header");
+	case _sbe_failed_private_decrypt: return("failed private decrypt");
+	case _sbe_failed_aes_decrypt: return("failed aes decrypt");
+	case _sbe_bad_checksum: return("bad checksum");
+	case _sbe_na: return("na");
+	}
+	return("na");
 }
 
 bool cSocketBlock::checkSumReadBuffer() {
@@ -1683,7 +1701,8 @@ void cReceiver::receive_process() {
 			start_ok = true;
 			u_char *data;
 			size_t dataLen;
-			data = receive_socket->readBlockTimeout(&dataLen, 30, use_encode_data ? cSocket::_te_aes : cSocket::_te_na, "", false, 1024 * 1024);
+			data = receive_socket->readBlockTimeout(&dataLen, receive_socket->getTimeouts().readblock_receiver, 
+								use_encode_data ? cSocket::_te_aes : cSocket::_te_na, "", false, 1024 * 1024);
 			if(data) {
 				if(string((char*)data, dataLen) != "ping") {
 					evData(data, dataLen);
@@ -1695,7 +1714,7 @@ void cReceiver::receive_process() {
 					}
 				}
 			} else if(!((receive_socket && receive_socket->isTerminate()) || CR_TERMINATE())) {
-				receive_socket->setError("timeout");
+				receive_socket->setError(receive_socket->getSocketBlockErrorStr(receive_socket->getReadBlockError()));
 			}
 		} else if(rslt == 0) {
 			sleep(1);

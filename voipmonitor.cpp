@@ -1604,6 +1604,7 @@ int opt_mirror_connect_maximum_time_diff_s = 2;
 int opt_client_server_connect_maximum_time_diff_s = 2;
 int opt_receive_packetbuffer_maximum_time_diff_s = 30;
 int opt_client_server_sleep_ms_if_queue_is_full = 1000;
+int opt_client_server_receiver_timeout_s = 0;
 
 int opt_livesniffer_timeout_s = 0;
 int opt_livesniffer_tablesize_max_mb = 0;
@@ -7525,6 +7526,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("server_cp_store_simple_connect_response", &snifferServerOptions.cp_store_simple_connect_response));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_connect_maximum_time_diff_s", &opt_client_server_connect_maximum_time_diff_s));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_sleep_ms_if_queue_is_full", &opt_client_server_sleep_ms_if_queue_is_full));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_receiver_timeout", &opt_client_server_receiver_timeout_s));
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("vmcodecs_path", opt_vmcodecs_path, sizeof(opt_vmcodecs_path)));

@@ -360,11 +360,13 @@ public:
 			read = 1;
 			write = 1;
 			readblock = 300;
+			readblock_receiver = 30;
 		}
 		int await;
 		int read;
 		int write;
 		int readblock;
+		int readblock_receiver;
 	};
 public:
 	cSocket(const char *name, bool autoClose = false);
@@ -466,6 +468,14 @@ public:
 	u_int64_t getLastTimeOkWrite() {
 		return(lastTimeOkWrite);
 	}
+	sTimeouts getTimeouts() {
+		sTimeouts timeouts_rslt = timeouts;
+		extern int opt_client_server_receiver_timeout_s;
+		if(opt_client_server_receiver_timeout_s > 0) {
+			timeouts_rslt.readblock_receiver = opt_client_server_receiver_timeout_s;
+		}
+		return(timeouts_rslt);
+	}
 protected:
 	void clearError();
 	void sleep(int s);
@@ -495,6 +505,15 @@ protected:
 
 
 class cSocketBlock : public cSocket {
+public:
+	enum eSocketBlockError {
+		_sbe_na,
+		_sbe_bad_block_header,
+		_sbe_failed_private_decrypt,
+		_sbe_failed_aes_decrypt,
+		_sbe_bad_checksum,
+		_sbe_timeout
+	};
 public:
 	struct sBlockHeader {
 		sBlockHeader(const char *header_string) {
@@ -637,6 +656,10 @@ public:
 	u_char *getReadBufferAllocBegin() {
 		return(readBuffer.buffer);
 	}
+	eSocketBlockError getReadBlockError() {
+		return(readBlockError);
+	}
+	const char *getSocketBlockErrorStr(eSocketBlockError error);
 protected:
 	bool checkSumReadBuffer();
 	u_int32_t dataSum(u_char *data, size_t dataLen);
@@ -645,6 +668,7 @@ protected:
 	cRsa rsa;
 private:
 	char *block_header_string;
+	eSocketBlockError readBlockError;
 };
 
 
