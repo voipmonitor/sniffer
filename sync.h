@@ -32,10 +32,22 @@
 #define __SYNC_SUB(vint, sub) __sync_sub_and_fetch(&(vint), sub);
 #define __SYNC_INCR(vint, length) if((vint + 1) == length) { __SYNC_NULL(vint); } else { __SYNC_INC(vint); }
 
+#if defined __ATOMIC_RELAXED
+#define ATOMIC_INC_RELAXED(vint) __atomic_add_fetch(&(vint), 1, __ATOMIC_RELAXED)
+#else
+#define ATOMIC_INC_RELAXED(vint) __SYNC_INC(vint)
+#endif
+
 #if defined __ATOMIC_ACQUIRE
 #define ATOMIC_LOAD(vint) __atomic_load_n(&(vint), __ATOMIC_ACQUIRE)
 #else
 #define ATOMIC_LOAD(vint) (vint)
+#endif
+
+#if defined __ATOMIC_RELAXED
+#define ATOMIC_LOAD_RELAXED(vint) __atomic_load_n(&(int), __ATOMIC_RELAXED); 
+#else
+#define ATOMIC_LOAD_RELAXED(vint) (vint)
 #endif
 
 #if defined __ATOMIC_SEQ_CST

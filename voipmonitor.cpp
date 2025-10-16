@@ -1678,6 +1678,19 @@ static cCreatePartitions CreatePartitions;
 #define MUTEX_UNLOCK(x)  pthread_mutex_unlock(&(x))
 #define THREAD_ID        pthread_self(  )
 
+
+#if INVITE_COUNTERS
+vmIP invite_counters_ip_src;
+vmIP invite_counters_ip_dst;
+volatile u_int64_t counter_1_read_from_interface;
+volatile u_int64_t counter_2_pb_process_packet_in;
+volatile u_int64_t counter_3_pb_process_packet_out;
+volatile u_int64_t counter_4_process_sip;
+volatile u_int64_t counter_11_defrag_error_1;
+volatile u_int64_t counter_12_defrag_error_2;
+#endif
+
+
 void set_context_config();
 void dns_lookup_common_hostnames();
 void daemonizeOutput(string error);
@@ -7660,6 +7673,10 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("lock_calls_usleep", &opt_lock_calls_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("usleep_minimal", &opt_usleep_minimal));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sniffer_threads_ext", &opt_sniffer_threads_ext));
+					#if INVITE_COUNTERS
+					addConfigItem(new FILE_LINE(0) cConfigItem_ip("invite_counters_ip_src", &invite_counters_ip_src));
+					addConfigItem(new FILE_LINE(0) cConfigItem_ip("invite_counters_ip_dst", &invite_counters_ip_dst));
+					#endif
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));

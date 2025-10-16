@@ -11873,6 +11873,18 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 		     << system_time_ms_2 - packet_time_ms << endl;
 	}
 	#endif
+	
+	#if INVITE_COUNTERS
+	extern vmIP invite_counters_ip_src;
+	extern vmIP invite_counters_ip_dst;
+	extern volatile u_int64_t counter_4_process_sip;
+	if((!invite_counters_ip_src.isSet() || invite_counters_ip_src == packetS->saddr_()) &&
+	   (!invite_counters_ip_dst.isSet() || invite_counters_ip_dst == packetS->daddr_()) &&
+	   packetS->datalen_() > 6 && !strncasecmp(packetS->data_(), "INVITE", 6)) {
+		ATOMIC_INC_RELAXED(counter_4_process_sip);
+	}
+	#endif
+	
 	if(!opt_t2_boost_direct_rtp && !parallel_threads) {
 		++counter_all_packets;
 	}
