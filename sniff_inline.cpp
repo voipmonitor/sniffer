@@ -743,6 +743,22 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 							iphdr2 *header_ip_prev = (iphdr2*)(HPP(*header_packet) + headers_ip_offset[i]);
 							header_ip_prev->set_tot_len(ppd->header_ip->get_tot_len() + (ppd->header_ip_offset - headers_ip_offset[i]));
 							header_ip_prev->clear_frag_data();
+							extern unsigned opt_udp_port_vxlan;
+							if(opt_udp_port_vxlan &&
+							   header_ip_prev->get_protocol() == IPPROTO_UDP) {
+								udphdr2 *udphdr = (udphdr2*)((char*)header_ip_prev + header_ip_prev->get_hdr_size());
+								if((unsigned)udphdr->get_dest() == opt_udp_port_vxlan) {
+									udphdr->len = htons(header_ip_prev->get_tot_len() - header_ip_prev->get_hdr_size());
+								}
+							}
+							extern unsigned opt_udp_port_hperm;
+							if(opt_udp_port_hperm &&
+							   header_ip_prev->get_protocol() == IPPROTO_UDP) {
+								udphdr2 *udphdr = (udphdr2*)((char*)header_ip_prev + header_ip_prev->get_hdr_size());
+								if((unsigned)udphdr->get_dest() == opt_udp_port_hperm) {
+									udphdr->len = htons(header_ip_prev->get_tot_len() - header_ip_prev->get_hdr_size());
+								}
+							}
 						}
 						ppd->pid.flags |= FLAG_FRAGMENTED;
 						if(sverb.defrag) {
