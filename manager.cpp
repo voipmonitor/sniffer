@@ -2847,21 +2847,21 @@ int Mgmt_d_lc_for_destroy(Mgmt_params *params) {
 			for(size_t i = 0; i < vectCall.size(); i++) {
 				call = vectCall[i];
 				CallBranch *c_branch = call->branch_main();
-				outStr.width(15);
-				outStr << c_branch->caller << " -> ";
-				outStr.width(15);
-				outStr << call->get_called(c_branch) << "  "
-					<< sqlDateTimeString(call->calltime_s()) << "  ";
-				outStr.width(6);
-				outStr << call->duration_s() << "s  "
-					<< sqlDateTimeString(call->destroy_call_at) << "  "
-					<< call->fbasename;
-				outStr << endl;
+				outStr << setw(20) << left << c_branch->caller << " -> "
+				       << setw(20) << left << call->get_called(c_branch) << "  "
+				       << sqlDateTimeString(call->calltime_s()) << "  "
+				       << setw(7) << right << call->duration_s() << "s  "
+				       << (call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at) : "    -  -     :  :  ")  << "  "
+				       << setw(3) << right << c_branch->lastSIPresponseNum << "  "
+				       << call->fbasename
+				       << endl;
 			}
+			outStr << "-----------" << endl;
+		} else {
+			outStr << "empty";
 		}
 		calltable->unlock_calls_queue();
 	}
-	outStr << "-----------" << endl;
 	return(params->sendString(&outStr));
 }
 int Mgmt_d_lc_bye(Mgmt_params *params) {
@@ -2898,20 +2898,20 @@ int Mgmt_d_lc_bye(Mgmt_params *params) {
 		for(size_t i = 0; i < vectCall.size(); i++) {
 			call = vectCall[i];
 			CallBranch *c_branch = call->branch_main();
-			outStr.width(15);
-			outStr << c_branch->caller << " -> ";
-			outStr.width(15);
-			outStr << call->get_called(c_branch) << "  "
-				<< sqlDateTimeString(call->calltime_s()) << "  ";
-			outStr.width(6);
-			outStr << call->duration_s() << "s  "
-				<< (call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at) : "    -  -     :  :  ")  << "  "
-				<< call->fbasename;
-			outStr << endl;
+			outStr << setw(20) << left << c_branch->caller << " -> "
+			       << setw(20) << left << call->get_called(c_branch) << "  "
+			       << sqlDateTimeString(call->calltime_s()) << "  "
+			       << setw(7) << right << call->duration_s() << "s  "
+			       << (call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at) : "    -  -     :  :  ")  << "  "
+			       << setw(3) << right << c_branch->lastSIPresponseNum << "  "
+			       << call->fbasename
+			       << endl;
 		}
+		outStr << "-----------" << endl;
+	} else {
+		outStr << "empty";
 	}
 	calltable->unlock_calls_listMAP();
-	outStr << "-----------" << endl;
 	return(params->sendString(&outStr));
 }
 
@@ -2920,7 +2920,15 @@ int Mgmt_d_lc_all(Mgmt_params *params) {
 		params->registerCommand("d_lc_all", "d_lc_all");
 		return(0);
 	}
-
+	unsigned duration_limit = 0;
+	unsigned age_limit = 0;
+	char *p;
+	if((p = strstr(params->buf, "duration>")) != NULL) {
+		duration_limit = atol(p + 9);
+	}
+	if((p = strstr(params->buf, "age>")) != NULL) {
+		age_limit = atol(p + 4);
+	}
 	ostringstream outStr;
 	if(!calltable && !terminating) {
 		outStr << "sniffer not initialized yet" << endl;
@@ -2929,13 +2937,20 @@ int Mgmt_d_lc_all(Mgmt_params *params) {
 	Call *call;
 	vector<Call*> vectCall;
 	calltable->lock_calls_listMAP();
+	u_int32_t act_time_s = getTimeS_rdtsc();
 	if(opt_call_id_alternative[0]) {
 		for(list<Call*>::iterator callIT = calltable->calls_list.begin(); callIT != calltable->calls_list.end(); ++callIT) {
-			vectCall.push_back(*callIT);
+			if((!duration_limit || (*callIT)->duration_s() > duration_limit) &&
+			   (!age_limit || (*callIT)->calltime_s() + age_limit < act_time_s)) {
+				vectCall.push_back(*callIT);
+			}
 		}
 	} else {
 		for(map<string, Call*>::iterator callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
-			vectCall.push_back(callMAPIT->second);
+			if((!duration_limit || callMAPIT->second->duration_s() > duration_limit) &&
+			   (!age_limit || callMAPIT->second->calltime_s() + age_limit < act_time_s)) {
+				vectCall.push_back(callMAPIT->second);
+			}
 		}
 	}
 	if(vectCall.size()) {
@@ -2943,22 +2958,23 @@ int Mgmt_d_lc_all(Mgmt_params *params) {
 		for(size_t i = 0; i < vectCall.size(); i++) {
 			call = vectCall[i];
 			CallBranch *c_branch = call->branch_main();
-			outStr.width(15);
-			outStr << c_branch->caller << " -> ";
-			outStr.width(15);
-			outStr << call->get_called(c_branch) << "  "
-				<< sqlDateTimeString(call->calltime_s()) << "  ";
-			outStr.width(6);
-			outStr << call->duration_s() << "s  "
-				<< (call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at) : "    -  -     :  :  ")  << "  ";
-			outStr.width(3);
-			outStr << c_branch->lastSIPresponseNum << "  "
-				<< call->fbasename;
-			outStr << endl;
+			outStr << setw(20) << left << c_branch->caller << " -> "
+			       << setw(20) << left << call->get_called(c_branch) << "  "
+			       << sqlDateTimeString(call->calltime_s()) << "  "
+			       << setw(7) << right << call->duration_s() << "s  "
+			       << (call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at) : "    -  -     :  :  ")  << "  "
+			       << setw(3) << right << c_branch->lastSIPresponseNum << "  "
+			       << call->fbasename << "  "
+			       << "hash_queue_counter: " << call->hash_queue_counter << ", "
+			       << "rtppacketsinqueue: " << call->rtppacketsinqueue << ", "
+			       << "useInListCalls: " << call->useInListCalls
+			       << endl;
 		}
+		outStr << "-----------" << endl;
+	} else {
+		outStr << "empty";
 	}
 	calltable->unlock_calls_listMAP();
-	outStr << "-----------" << endl;
 	return(params->sendString(&outStr));
 }
 
