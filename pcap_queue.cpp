@@ -4270,6 +4270,10 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 	}
 	*/
 	if(if_unlikely(opt_pb_read_from_file[0])) {
+		if(opt_pb_read_from_file_max_packets && packets_counter > opt_pb_read_from_file_max_packets) {
+			syslog(LOG_NOTICE,"packetbuffer - exceed limit of read packets, exiting");
+			return(-1);
+		}
 		if((*header)->caplen > this->pcap_snaplen) {
 			(*header)->caplen = this->pcap_snaplen;
 		}
@@ -4314,10 +4318,6 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 			}
 		} else if(!opt_unlimited_read && !opt_nonstop_read_quick && heap_pb_used_perc > 5) {
 			USLEEP(50);
-		}
-		if(opt_pb_read_from_file_max_packets && packets_counter > opt_pb_read_from_file_max_packets) {
-			syslog(LOG_NOTICE,"packetbuffer - exceed limit of read packets, exiting");
-			return(-1);
 		}
 	} else {
 		extern int opt_use_oneshot_buffer;
@@ -6654,46 +6654,48 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 						       opt_pcap_queue_use_blocks_read_check, &checkProtocolData);
 			
 			#if INVITE_COUNTERS
-			extern vmIP invite_counters_ip_src;
-			extern vmIP invite_counters_ip_dst;
-			extern volatile u_int64_t counter_1_read_from_interface;
-			if(opt_pcap_queue_use_blocks_read_check && checkProtocolData.header_ip_offset > 0 && checkProtocolData.header_ip_offset) {
-				unsigned header_ip_offset = checkProtocolData.header_ip_offset;
-				iphdr2 *header_ip = (iphdr2*)(pcap_next_ex_packet + checkProtocolData.header_ip_offset);
-				while(true) {
-					int next_header_ip_offset = findNextHeaderIp(header_ip, header_ip_offset,
-										     pcap_next_ex_packet, pcap_next_ex_header->caplen);
-					if(next_header_ip_offset == 0) {
-						break;
-					} else if(next_header_ip_offset < 0) {
-						header_ip = NULL;
-						break;
-					} else {
-						header_ip = (iphdr2*)((u_char*)header_ip + next_header_ip_offset);
-						header_ip_offset += next_header_ip_offset;
+			if(res > 0) {
+				extern vmIP invite_counters_ip_src;
+				extern vmIP invite_counters_ip_dst;
+				extern volatile u_int64_t counter_1_read_from_interface;
+				if(opt_pcap_queue_use_blocks_read_check && checkProtocolData.header_ip_offset > 0 && checkProtocolData.header_ip_offset) {
+					unsigned header_ip_offset = checkProtocolData.header_ip_offset;
+					iphdr2 *header_ip = (iphdr2*)(pcap_next_ex_packet + checkProtocolData.header_ip_offset);
+					while(true) {
+						int next_header_ip_offset = findNextHeaderIp(header_ip, header_ip_offset,
+											     pcap_next_ex_packet, pcap_next_ex_header->caplen);
+						if(next_header_ip_offset == 0) {
+							break;
+						} else if(next_header_ip_offset < 0) {
+							header_ip = NULL;
+							break;
+						} else {
+							header_ip = (iphdr2*)((u_char*)header_ip + next_header_ip_offset);
+							header_ip_offset += next_header_ip_offset;
+						}
 					}
-				}
-				if(header_ip && header_ip_offset < pcap_next_ex_header->caplen) {
-					u_int16_t frag_data = header_ip->get_frag_data();
-					if((!opt_udpfrag || !header_ip->get_frag_offset(frag_data)) &&
-					   (!invite_counters_ip_src.isSet() || invite_counters_ip_src == header_ip->get_saddr()) &&
-					   (!invite_counters_ip_dst.isSet() || invite_counters_ip_dst == header_ip->get_daddr())) {
-						char *data = NULL;
-						int datalen = 0;
-						packet_flags pflags;
-						pflags.init();
-						u_int8_t header_ip_protocol = 0;
-						if(header_ip) {
-							header_ip_protocol = header_ip->get_protocol(pcap_next_ex_header->caplen - header_ip_offset);
-							if(header_ip_protocol == IPPROTO_UDP) {
-								udphdr2 *header_udp = (udphdr2*)((char*) header_ip + header_ip->get_hdr_size());
-								datalen = get_udp_data_len(header_ip, header_udp, &data, pcap_next_ex_packet, pcap_next_ex_header->caplen);
-							} else if(header_ip_protocol == IPPROTO_TCP) {
-								tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
-								datalen = get_tcp_data_len(header_ip, header_tcp, &data, pcap_next_ex_packet, pcap_next_ex_header->caplen);
-							}
-							if(datalen > 6 && !strncasecmp(data, "INVITE", 6)) {
-								ATOMIC_INC_RELAXED(counter_1_read_from_interface);
+					if(header_ip && header_ip_offset < pcap_next_ex_header->caplen) {
+						u_int16_t frag_data = header_ip->get_frag_data();
+						if((!opt_udpfrag || !header_ip->get_frag_offset(frag_data)) &&
+						   (!invite_counters_ip_src.isSet() || invite_counters_ip_src == header_ip->get_saddr()) &&
+						   (!invite_counters_ip_dst.isSet() || invite_counters_ip_dst == header_ip->get_daddr())) {
+							char *data = NULL;
+							int datalen = 0;
+							packet_flags pflags;
+							pflags.init();
+							u_int8_t header_ip_protocol = 0;
+							if(header_ip) {
+								header_ip_protocol = header_ip->get_protocol(pcap_next_ex_header->caplen - header_ip_offset);
+								if(header_ip_protocol == IPPROTO_UDP) {
+									udphdr2 *header_udp = (udphdr2*)((char*) header_ip + header_ip->get_hdr_size());
+									datalen = get_udp_data_len(header_ip, header_udp, &data, pcap_next_ex_packet, pcap_next_ex_header->caplen);
+								} else if(header_ip_protocol == IPPROTO_TCP) {
+									tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
+									datalen = get_tcp_data_len(header_ip, header_tcp, &data, pcap_next_ex_packet, pcap_next_ex_header->caplen);
+								}
+								if(datalen > 6 && !strncasecmp(data, "INVITE", 6)) {
+									ATOMIC_INC_RELAXED(counter_1_read_from_interface);
+								}
 							}
 						}
 					}

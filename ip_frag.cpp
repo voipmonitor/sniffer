@@ -22,6 +22,9 @@ void cIpFrag::cleanup(unsigned int tv_sec, bool all,
 	if(cleanup_limit < 0) {
 		cleanup_limit = 30;
 	}
+	#if INVITE_COUNTERS
+	unsigned invite_counters = 0;
+	#endif
 	for(unsigned fdata_thread_index = 0; fdata_thread_index < fdata_threads_split; fdata_thread_index++) {
 		for(map<pair<vmIP, u_int32_t>, sFrags*>::iterator it_d = fdata[fdata_thread_index].begin(); it_d != fdata[fdata_thread_index].end(); ) {
 			sFrags *frags = it_d->second;
@@ -30,31 +33,39 @@ void cIpFrag::cleanup(unsigned int tv_sec, bool all,
 			    ((tv_sec - frags->begin()->second->ts) > cleanup_limit))) {
 				for(map<u_int16_t, sFrag*>::iterator it_s = frags->begin(); it_s != frags->end(); it_s++) {
 					#if INVITE_COUNTERS
+					u_char *packet;
+					unsigned header_ip_offset;
+					unsigned caplen;
+					iphdr2 *header_ip;
 					if(it_s->second->header_packet) {
-						u_char *packet = HPP(it_s->second->header_packet);
-						unsigned header_ip_offset = it_s->second->header_packet->header_ip_offset;
-						unsigned caplen = HPH(it_s->second->header_packet)->caplen;
-						iphdr2 *header_ip = (iphdr2*)(it_s->second->header_packet->packet + header_ip_offset);
-						extern vmIP invite_counters_ip_src;
-						extern vmIP invite_counters_ip_dst;
-						extern volatile u_int64_t counter_12_defrag_error_2;
-						if(header_ip &&
-						   (!invite_counters_ip_src.isSet() || invite_counters_ip_src == header_ip->get_saddr()) &&
-						   (!invite_counters_ip_dst.isSet() || invite_counters_ip_dst == header_ip->get_daddr())) {
-							char *data = NULL;
-							int datalen = 0;
-							u_int8_t header_ip_protocol = 0;
-							header_ip_protocol = header_ip->get_protocol(caplen - header_ip_offset);
-							if(header_ip_protocol == IPPROTO_UDP) {
-								udphdr2 *header_udp = (udphdr2*)((char*) header_ip + header_ip->get_hdr_size());
-								datalen = get_udp_data_len(header_ip, header_udp, &data, packet, caplen);
-							} else if(header_ip_protocol == IPPROTO_TCP) {
-								tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
-								datalen = get_tcp_data_len(header_ip, header_tcp, &data, packet, caplen);
-							}
-							if(datalen > 6 && !strncasecmp(data, "INVITE", 6)) {
-								ATOMIC_INC_RELAXED(counter_12_defrag_error_2);
-							}
+						packet = HPP(it_s->second->header_packet);
+						caplen = HPH(it_s->second->header_packet)->caplen;
+					} else {
+						packet = ((sHeaderPacketPQout*)it_s->second->header_packet_pqout)->packet;
+						caplen = ((sHeaderPacketPQout*)it_s->second->header_packet_pqout)->header->get_caplen();
+					}
+					header_ip_offset = it_s->second->header_ip_offset;
+					header_ip = (iphdr2*)(packet + header_ip_offset);
+					extern vmIP invite_counters_ip_src;
+					extern vmIP invite_counters_ip_dst;
+					extern volatile u_int64_t counter_12_defrag_error_2;
+					if(header_ip &&
+					   (!invite_counters_ip_src.isSet() || invite_counters_ip_src == header_ip->get_saddr()) &&
+					   (!invite_counters_ip_dst.isSet() || invite_counters_ip_dst == header_ip->get_daddr())) {
+						char *data = NULL;
+						int datalen = 0;
+						u_int8_t header_ip_protocol = 0;
+						header_ip_protocol = header_ip->get_protocol(caplen - header_ip_offset);
+						if(header_ip_protocol == IPPROTO_UDP) {
+							udphdr2 *header_udp = (udphdr2*)((char*) header_ip + header_ip->get_hdr_size());
+							datalen = get_udp_data_len(header_ip, header_udp, &data, packet, caplen);
+						} else if(header_ip_protocol == IPPROTO_TCP) {
+							tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
+							datalen = get_tcp_data_len(header_ip, header_tcp, &data, packet, caplen);
+						}
+						if(datalen > 6 && !strncasecmp(data, "INVITE", 6)) {
+							ATOMIC_INC_RELAXED(counter_12_defrag_error_2);
+							++invite_counters;
 						}
 					}
 					#endif
@@ -70,6 +81,11 @@ void cIpFrag::cleanup(unsigned int tv_sec, bool all,
 			}
 		}
 	}
+	#if INVITE_COUNTERS
+	if(all && invite_counters > 0 && is_terminating()) {
+		syslog(LOG_INFO, "cIpFrag::cleanup - invites : %u", invite_counters);
+	}
+	#endif
 }
 
 #endif
