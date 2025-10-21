@@ -9319,6 +9319,12 @@ void set_context_config() {
 		if(opt_pcap_dump_tar_compress_audiograph) {
 			opt_gzip_audiograph = FileZipHandler::compress_na;
 		}
+		if(!CONFIG.isSet("tar_bypass") &&
+		   opt_pcap_dump_zip_sip == FileZipHandler::compress_na &&
+		   opt_pcap_dump_zip_rtp == FileZipHandler::lzo &&
+		   opt_gzipGRAPH == FileZipHandler::compress_na) {
+			opt_pcap_dump_tar_bypass = true;
+		}
 	}
 	
 	if(opt_spooldir_2_main[0] && opt_cachedir[0]) {
@@ -9747,6 +9753,12 @@ void set_context_config() {
 	if(opt_sniffer_threads_ext) {
 		sverb.sniffer_threads_ext = true;
 	}
+	
+	#if ENABLE_MOODY_CAMEL
+	if(!CONFIG.isSet("preprocess_packet_stack")) {
+		opt_preprocess_packet_stack = 2;
+	}
+	#endif
 }
 
 void check_context_config() {
