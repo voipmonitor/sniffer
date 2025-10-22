@@ -6741,8 +6741,10 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(42203) cConfigItem_type_compress("pcap_dump_zip_sip", &opt_pcap_dump_zip_sip));
 					addConfigItem((new FILE_LINE(42204) cConfigItem_integer("pcap_dump_ziplevel_sip", &opt_pcap_dump_compresslevel_sip))
+						->addValue("default", INT_MIN)
 						->addAlias("pcap_dump_compresslevel_sip"));
-					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_dump_compress_strategy_sip", &opt_pcap_dump_compress_sip_zstdstrategy));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pcap_dump_compress_strategy_sip", &opt_pcap_dump_compress_sip_zstdstrategy))
+						->addValue("default", INT_MIN));
 					addConfigItem((new FILE_LINE(42205) cConfigItem_yesno("tar_compress_sip", &opt_pcap_dump_tar_compress_sip))
 						->addValues(Tar::getTarCompressConfigValues().c_str()));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_sip_level_gzip", &opt_pcap_dump_tar_sip_level_gzip));
@@ -6777,14 +6779,17 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(42212) cConfigItem_type_compress("pcap_dump_zip_rtp", &opt_pcap_dump_zip_rtp));
 					addConfigItem((new FILE_LINE(42213) cConfigItem_integer("pcap_dump_ziplevel_rtp", &opt_pcap_dump_compresslevel_rtp))
+						->addValue("default", INT_MIN)
 						->addAlias("pcap_dump_compresslevel_rtp"));
-					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_dump_compress_strategy_rtp", &opt_pcap_dump_compress_rtp_zstdstrategy));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pcap_dump_compress_strategy_rtp", &opt_pcap_dump_compress_rtp_zstdstrategy))
+						->addValue("default", INT_MIN));
 					addConfigItem((new FILE_LINE(42214) cConfigItem_yesno("tar_compress_rtp", &opt_pcap_dump_tar_compress_rtp))
 						->addValues(Tar::getTarCompressConfigValues().c_str()));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_rtp_level_gzip", &opt_pcap_dump_tar_rtp_level_gzip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_rtp_level_lzma", &opt_pcap_dump_tar_rtp_level_lzma));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_rtp_level_zstd", &opt_pcap_dump_tar_rtp_level_zstd));
-					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_rtp_strategy_zstd", &opt_pcap_dump_tar_rtp_zstdstrategy));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("tar_rtp_strategy_zstd", &opt_pcap_dump_tar_rtp_zstdstrategy))
+						->addValue("default", INT_MIN));
 					addConfigItem(new FILE_LINE(42216) cConfigItem_type_compress("tar_internalcompress_rtp", &opt_pcap_dump_tar_internalcompress_rtp));
 					addConfigItem(new FILE_LINE(42217) cConfigItem_integer("tar_internal_rtp_level", &opt_pcap_dump_tar_internal_gzip_rtp_level));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_local_instances", &opt_srtp_rtp_local_instances));
@@ -6798,14 +6803,17 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(42219) cConfigItem_type_compress("pcap_dump_zip_graph", &opt_gzipGRAPH));
 					addConfigItem((new FILE_LINE(42220) cConfigItem_integer("pcap_dump_ziplevel_graph", &opt_pcap_dump_compresslevel_graph))
+						->addValue("default", INT_MIN)
 						->addAlias("pcap_dump_compresslevel_graph"));
-					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_dump_compress_strategy_graph", &opt_pcap_dump_compress_graph_zstdstrategy));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pcap_dump_compress_strategy_graph", &opt_pcap_dump_compress_graph_zstdstrategy))
+						->addValue("default", INT_MIN));
 					addConfigItem((new FILE_LINE(42221) cConfigItem_yesno("tar_compress_graph", &opt_pcap_dump_tar_compress_graph))
 						->addValues(Tar::getTarCompressConfigValues().c_str()));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_graph_level_gzip", &opt_pcap_dump_tar_graph_level_gzip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_graph_level_lzma", &opt_pcap_dump_tar_graph_level_lzma));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_graph_level_zstd", &opt_pcap_dump_tar_graph_level_zstd));
-					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_graph_strategy_zstd", &opt_pcap_dump_tar_graph_zstdstrategy));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("tar_graph_strategy_zstd", &opt_pcap_dump_tar_graph_zstdstrategy))
+						->addValue("default", INT_MIN));
 					addConfigItem(new FILE_LINE(42223) cConfigItem_type_compress("tar_internalcompress_graph", &opt_pcap_dump_tar_internalcompress_graph));
 					addConfigItem(new FILE_LINE(42224) cConfigItem_integer("tar_internal_graph_level", &opt_pcap_dump_tar_internal_gzip_graph_level));
 		subgroup("AUDIO");
@@ -6866,14 +6874,17 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_type_compress("pcap_dump_zip_audiograph", &opt_gzip_audiograph));
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pcap_dump_ziplevel_audiograph", &opt_pcap_dump_compresslevel_audiograph))
+						->addValue("default", INT_MIN)
 						->addAlias("pcap_dump_compresslevel_audiograph"));
-					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_dump_compress_strategy_audiograph", &opt_pcap_dump_compress_audiograph_zstdstrategy));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pcap_dump_compress_strategy_audiograph", &opt_pcap_dump_compress_audiograph_zstdstrategy))
+						->addValue("default", INT_MIN));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("tar_compress_audiograph", &opt_pcap_dump_tar_compress_audiograph))
 						->addValues(Tar::getTarCompressConfigValues().c_str()));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_audiograph_level_gzip", &opt_pcap_dump_tar_audiograph_level_gzip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_audiograph_level_lzma", &opt_pcap_dump_tar_audiograph_level_lzma));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_audiograph_level_zstd", &opt_pcap_dump_tar_audiograph_level_zstd));
-					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_audiograph_strategy_zstd", &opt_pcap_dump_tar_audiograph_zstdstrategy));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("tar_audiograph_strategy_zstd", &opt_pcap_dump_tar_audiograph_zstdstrategy))
+						->addValue("default", INT_MIN));
 					addConfigItem(new FILE_LINE(0) cConfigItem_type_compress("tar_internalcompress_audiograph", &opt_pcap_dump_tar_internalcompress_audiograph));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_internal_audiograph_level", &opt_pcap_dump_tar_internal_gzip_audiograph_level));
 		setDisableIfEnd();
