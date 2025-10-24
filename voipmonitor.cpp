@@ -106,6 +106,7 @@
 #include "separate_processing.h"
 #include "crc.h"
 #include "transcribe.h"
+#include "siprec.h"
 
 #if HAVE_LIBTCMALLOC_HEAPPROF
 #include <gperftools/heap-profiler.h>
@@ -1210,6 +1211,14 @@ string opt_tar_move_source_trim_path;
 int opt_tar_move_max_threads = 2;
 
 int opt_upgrade_try_http_if_https_fail = 0;
+
+string opt_siprec_bind_ip;
+int opt_siprec_bind_port;
+bool opt_siprec_bind_udp = true;
+int opt_siprec_rtp_min = 10000;
+int opt_siprec_rtp_max = 20000;
+int opt_siprec_rtp_stream_timeout_s = 10;
+int opt_siprec_rtp_streams_max_threads = 4;
 
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
 int storing_cdr_tid;
@@ -3399,6 +3408,9 @@ int main_init_read();
 void main_term_read();
 void main_init_sqlstore();
 
+void start_servers();
+void stop_servers();
+
 bool is_set_gui_params() {
 	return(opt_untar_gui_params ||
 	       opt_unlzo_gui_params || 
@@ -5184,22 +5196,6 @@ int main_init_read() {
 	}
 	#endif
 	
-	if(!ssl_client_random_tcp_host.empty() && ssl_client_random_tcp_port) {
-		clientRandomServerStart(ssl_client_random_tcp_host.c_str(), ssl_client_random_tcp_port);
-	}
-	
-	if(opt_ipfix && !opt_ipfix_bind_ip.empty() && opt_ipfix_bind_port) {
-		IPFixServerStart(opt_ipfix_bind_ip.c_str(), opt_ipfix_bind_port);
-	}
-	
-	if(opt_hep && !opt_hep_bind_ip.empty() && opt_hep_bind_port) {
-		HEP_ServerStart(opt_hep_bind_ip.c_str(), opt_hep_bind_port, opt_hep_bind_udp);
-	}
-	
-	if(opt_ribbonsbc_listen && !opt_ribbonsbc_bind_ip.empty() && opt_ribbonsbc_bind_port) {
-		RibbonSbc_ServerStart(opt_ribbonsbc_bind_ip.c_str(), opt_ribbonsbc_bind_port, opt_ribbonsbc_bind_udp);
-	}
-	
 	clear_readend();
 	
 	#if EXPERIMENTAL_SEPARATE_PROCESSSING
@@ -5320,6 +5316,8 @@ int main_init_read() {
 		if(!wdt && !is_read_from_file() && opt_fork && enable_wdt && rightPSversion && bashPresent) {
 			wdt = new FILE_LINE(0) WDT;
 		}
+		
+		start_servers();
 
 		while(!is_terminating()) {
 			u_int64_t startTimeMS = getTimeMS_rdtsc();
@@ -5425,6 +5423,8 @@ int main_init_read() {
 			#endif
 			
 		}
+		
+		stop_servers();
 		
 		if(wdt && !hot_restarting) {
 			delete wdt;
@@ -5646,22 +5646,6 @@ void main_term_read() {
 		termSipMsg();
 	}
 	
-	if(!ssl_client_random_tcp_host.empty() && ssl_client_random_tcp_port) {
-		clientRandomServerStop();
-	}
-	
-	if(opt_ipfix && !opt_ipfix_bind_ip.empty() && opt_ipfix_bind_port) {
-		IPFixServerStop();
-	}
-	
-	if(opt_hep && !opt_hep_bind_ip.empty() && opt_hep_bind_port) {
-		HEP_ServerStop();
-	}
-	
-	if(opt_ribbonsbc_listen && !opt_ribbonsbc_bind_ip.empty() && opt_ribbonsbc_bind_port) {
-		RibbonSbc_ServerStop();
-	}
-
 	terminate_processpacket();
 	
 	if(sipSendSocket) {
@@ -6076,6 +6060,50 @@ void main_init_sqlstore() {
 	}
 	if(!isCloud() && is_server() && !is_read_from_file_simple()) {
 		snifferServerSetSqlStore(sqlStore);
+	}
+}
+
+void start_servers() {
+	if(!ssl_client_random_tcp_host.empty() && ssl_client_random_tcp_port) {
+		clientRandomServerStart(ssl_client_random_tcp_host.c_str(), ssl_client_random_tcp_port);
+	}
+	
+	if(opt_ipfix && !opt_ipfix_bind_ip.empty() && opt_ipfix_bind_port) {
+		IPFixServerStart(opt_ipfix_bind_ip.c_str(), opt_ipfix_bind_port);
+	}
+	
+	if(opt_hep && !opt_hep_bind_ip.empty() && opt_hep_bind_port) {
+		HEP_ServerStart(opt_hep_bind_ip.c_str(), opt_hep_bind_port, opt_hep_bind_udp);
+	}
+	
+	if(opt_ribbonsbc_listen && !opt_ribbonsbc_bind_ip.empty() && opt_ribbonsbc_bind_port) {
+		RibbonSbc_ServerStart(opt_ribbonsbc_bind_ip.c_str(), opt_ribbonsbc_bind_port, opt_ribbonsbc_bind_udp);
+	}
+	
+	if(!opt_siprec_bind_ip.empty() && opt_siprec_bind_port) {
+		sipRecStart();
+	}
+}
+
+void stop_servers() {
+	if(!ssl_client_random_tcp_host.empty() && ssl_client_random_tcp_port) {
+		clientRandomServerStop();
+	}
+	
+	if(opt_ipfix && !opt_ipfix_bind_ip.empty() && opt_ipfix_bind_port) {
+		IPFixServerStop();
+	}
+	
+	if(opt_hep && !opt_hep_bind_ip.empty() && opt_hep_bind_port) {
+		HEP_ServerStop();
+	}
+	
+	if(opt_ribbonsbc_listen && !opt_ribbonsbc_bind_ip.empty() && opt_ribbonsbc_bind_port) {
+		RibbonSbc_ServerStop();
+	}
+	
+	if(!opt_siprec_bind_ip.empty() && opt_siprec_bind_port) {
+		sipRecStop();
 	}
 }
 
@@ -7540,6 +7568,14 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_connect_maximum_time_diff_s", &opt_client_server_connect_maximum_time_diff_s));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_sleep_ms_if_queue_is_full", &opt_client_server_sleep_ms_if_queue_is_full));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_receiver_timeout", &opt_client_server_receiver_timeout_s));
+		subgroup("siprec");
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("siprec_bind", &opt_siprec_bind_ip));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_bind_port", &opt_siprec_bind_port));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("siprec_udp", &opt_siprec_bind_udp));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_rtp_min", &opt_siprec_rtp_min));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_rtp_max", &opt_siprec_rtp_max));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_rtp_stream_timeout_s", &opt_siprec_rtp_stream_timeout_s));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_rtp_streams_max_threads", &opt_siprec_rtp_streams_max_threads));
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("vmcodecs_path", opt_vmcodecs_path, sizeof(opt_vmcodecs_path)));
@@ -8352,6 +8388,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "packetbuffer_send")		sverb.packetbuffer_send = 1;
 	else if(verbParam == "dpdk")				sverb.dpdk = 1;
 	else if(verbParam == "dpdk_timer")			sverb.dpdk_timer = 1;
+	else if(verbParam == "siprec")				sverb.siprec = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;

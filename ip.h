@@ -402,6 +402,9 @@ struct vmIP {
 			return(4);
 		#endif
 	}
+	inline int vi() const {
+		return(v());
+	}
 	inline bool is_net_mask(int bits) {
 		return(bits > 0 && bits < this->bits());
 	}

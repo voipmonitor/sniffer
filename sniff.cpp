@@ -13213,6 +13213,24 @@ void *ProcessRtpPacket::outThreadFunction() {
 			#endif
 			usleepCounter = 0;
 			usleepSumTimeForPushBatch = 0;
+			/* test solution for non-shifted thread buffer
+			if(this->type == distribute) {
+				if(rtp_threads) {
+					u_int32_t now_s = getTimeS_rdtsc();
+					extern int num_threads_max;
+					for(int i = 0; i < num_threads_max; i++) {
+						if(rtp_threads[i].threadId && rtp_threads[i].remove_flag &&
+						   rtp_threads[i].last_use_time_s + 30 < now_s) {
+							if(!opt_t2_boost) {
+								rtp_threads[i].push_batch();
+							} else {
+								rtp_threads[i].push_thread_buffer(indexThread);
+							}
+						}
+					}
+				}
+			}
+			*/
 		} else {
 			extern unsigned int opt_push_batch_limit_ms;
 			if(usleepSumTimeForPushBatch > opt_push_batch_limit_ms * 1000 && !is_terminating()) {

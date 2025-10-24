@@ -564,7 +564,7 @@ void cHEP_Server::createConnection(cSocket *socket) {
 	connection->connection_start();
 }
 
-void cHEP_Server::evData(u_char *data, size_t dataLen, vmIP ip, cSocket *socket) {
+void cHEP_Server::evData(u_char *data, size_t dataLen, vmIP ip, vmPort port, cSocket *socket) {
 	processData(data, dataLen, ip);
 }
 

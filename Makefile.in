@@ -53,6 +53,7 @@ objects = $(shell ls -1 *.cpp | sed 's/\.cpp/.o/' | tr "\n" " ") $(shell ls -1 j
 
 JSONLIB = $(shell pkg-config --libs @LIBJSON_NAME@)
 JSONCFLAGS = $(shell pkg-config --cflags @LIBJSON_NAME@)
+XML2CFLAGS = $(shell pkg-config --cflags libxml-2.0)
 
 MYSQLLIB=@MYSQLLIB@
 MYSQLINC=@MYSQLINCLUDE@
@@ -95,7 +96,7 @@ STATIC_LIBS = $(shell echo "${STATIC_LIBS_RAW}" | tr ' ' '\n' | grep -v -E '^(${
 else
 STATIC_LIBS = ${STATIC_LIBS_RAW}
 endif
-INCLUDES = @LIBCDIRINC@ ${DPDKINC} -I/usr/local/include ${MYSQLINC} -I jitterbuffer/ ${JSONCFLAGS} ${GLIBCFLAGS} @OPENSSLDIRINC@
+INCLUDES = @LIBCDIRINC@ ${DPDKINC} -I/usr/local/include ${MYSQLINC} -I jitterbuffer/ ${JSONCFLAGS} ${GLIBCFLAGS} ${XML2CFLAGS} @OPENSSLDIRINC@
 LIBS_PATH = ${DPDKLIB} -L/usr/local/lib/ @OPENSSLDIRLIB@ ${GLIBLIBPATH}
 CXXFLAGS +=  -Wall -Wno-deprecated-declarations -Wno-unused-result -fPIC -g3 -O3 @FLTO@ -march=$(GCCARCH) ${MTUNE} ${INCLUDES} ${FBSDDEF} ${MYSQL_WITHOUT_SSL_SUPPORT} @HEAPPROF_CXXFLAG@ @DPDK_CFLAGS@
 CFLAGS += ${CXXFLAGS}

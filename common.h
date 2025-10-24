@@ -159,6 +159,7 @@ struct sVerbose {
 	int packetbuffer_send;
 	int dpdk;
 	int dpdk_timer;
+	int siprec;
 	int _debug1;
 	int _debug2;
 	int _debug3;

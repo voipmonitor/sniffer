@@ -1664,6 +1664,13 @@ void test() {
 		}
 		break;
 		
+	case 12:
+		{
+		extern void siprec_test();
+		siprec_test();
+		while(!is_terminating()) usleep(1000);
+		}
+		
 	case _param_reindex_all:
 	case _param_run_cleanspool:
 	case _param_run_cleanspool_maxdays:

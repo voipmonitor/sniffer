@@ -783,7 +783,7 @@ bool cSocket::_write(u_char *data, size_t *dataLen) {
 	return(true);
 }
 
-bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock, bool debug, vmIP *ip) {
+bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock, bool debug, vmIP *ip, vmPort *port) {
 	if(isError() || !okHandle()) {
 		if(debug) {
 			cout << "cSocket::read " << handle
@@ -835,17 +835,22 @@ bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock, bool de
 	if(doRead) {
 		errno = 0;
 		ssize_t recvLen;
-		if(ip) {
+		if(ip || port) {
 			sockaddr_in6 cliaddr;
 			socklen_t cliaddr_len = sizeof(cliaddr);
 			recvLen = recvfrom(handle, data, *dataLen, 0,
 					   (sockaddr*)&cliaddr, &cliaddr_len);
 			if((cliaddr.sin6_family == AF_INET6 && VM_IPV6_B) ||
 			   cliaddr.sin6_family == AF_INET) {
-				if(cliaddr.sin6_family == AF_INET6) {
-					ip->setIPv6(cliaddr.sin6_addr, true);
-				} else {
-					ip->setIPv4(((sockaddr_in*)&cliaddr)->sin_addr.s_addr, true);
+				if(ip) {
+					if(cliaddr.sin6_family == AF_INET6) {
+						ip->setIPv6(cliaddr.sin6_addr, true);
+					} else {
+						ip->setIPv4(((sockaddr_in*)&cliaddr)->sin_addr.s_addr, true);
+					}
+				}
+				if(port) {
+					port->setPort(cliaddr.sin6_port, true);
 				}
 			}
 		} else {
@@ -1515,11 +1520,12 @@ void cServer::listen_process(int index) {
 		while(!((listen_socket[index] && listen_socket[index]->isTerminate()) || CR_TERMINATE())) {
 			dataLen = dataLen_max;
 			vmIP ip;
-			if(!listen_socket[index]->read(data, &dataLen, false, false, &ip) && listen_socket[index]->isError()) {
+			vmPort port;
+			if(!listen_socket[index]->read(data, &dataLen, false, false, &ip, &port) && listen_socket[index]->isError()) {
 				break;
 			}
 			if(dataLen > 0) {
-				evData(data, dataLen, ip, listen_socket[index]);
+				evData(data, dataLen, ip, port, listen_socket[index]);
 			} else {
 				USLEEP(1000);
 			}
@@ -1533,7 +1539,7 @@ void cServer::createConnection(cSocket *socket) {
 	connection->connection_start();
 }
 
-void cServer::evData(u_char */*data*/, size_t /*dataLen*/, vmIP /*ip*/, cSocket */*socket*/) {
+void cServer::evData(u_char */*data*/, size_t /*dataLen*/, vmIP /*ip*/, vmPort /*port*/, cSocket */*socket*/) {
 }
 
 void cServer::setStartVerbString(const char *startVerbString) {

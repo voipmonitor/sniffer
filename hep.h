@@ -154,7 +154,7 @@ public:
 	cHEP_Server(bool udp);
 	virtual ~cHEP_Server();
 	void createConnection(cSocket *socket);
-	void evData(u_char *data, size_t dataLen, vmIP ip, cSocket *socket);
+	void evData(u_char *data, size_t dataLen, vmIP ip, vmPort port, cSocket *socket);
 };
 
 class cHEP_Connection : public cServerConnection, public cHEP_ProcessData {
