@@ -9801,12 +9801,6 @@ void set_context_config() {
 	if(opt_sniffer_threads_ext) {
 		sverb.sniffer_threads_ext = true;
 	}
-	
-	#if ENABLE_MOODY_CAMEL
-	if(!CONFIG.isSet("preprocess_packet_stack")) {
-		opt_preprocess_packet_stack = 2;
-	}
-	#endif
 }
 
 void check_context_config() {
