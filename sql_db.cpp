@@ -10571,9 +10571,10 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 	extern char opt_database_backup_to_date[20];
 	u_int64_t minIdToMasterInSlaveSrc = 0;
 	if(opt_database_backup_from_date[0] && slaveCalldateColumn && existsCalldateInSlaveTableSrc) {
-		sqlDbSrc->query(string("select min(") + slaveIdToMasterColumn + ") as min_id from " + slaveTableName +
-				" where " + slaveCalldateColumn + " = " + 
-				"(select min(" + slaveCalldateColumn + ") from " + slaveTableName + " where " + slaveCalldateColumn + " > '" + opt_database_backup_from_date + "')");
+		sqlDbSrc->query(string("select ") + masterTableName + ".id as min_id from " + masterTableName + " " + 
+				"join " + slaveTableName + " on (" + slaveTableName + "." + slaveIdToMasterColumn + " = " + masterTableName + ".id) " +
+				"where " + masterTableName + "." + masterCalldateColumn + " > '" + opt_database_backup_from_date + "' " +
+				"order by " + masterTableName + "." + masterCalldateColumn + ", " + masterTableName + ".id limit 1");
 		minIdToMasterInSlaveSrc = atoll(sqlDbSrc->fetchRow()["min_id"].c_str());
 	} else {
 		sqlDbSrc->query(string("select min(") + slaveIdToMasterColumn + ") as min_id from " + slaveTableName);
@@ -10587,9 +10588,10 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 	}
 	u_int64_t maxIdToMasterInSlaveSrc = 0;
 	if(opt_database_backup_to_date[0] && slaveCalldateColumn && existsCalldateInSlaveTableSrc) {
-		sqlDbSrc->query(string("select max(") + slaveIdToMasterColumn + ") as max_id from " + slaveTableName +
-				" where " + slaveCalldateColumn + " = " +
-				"(select max(" + slaveCalldateColumn + ") from " + slaveTableName + " where " + slaveCalldateColumn + " < '" + opt_database_backup_to_date + "')");
+		sqlDbSrc->query(string("select ") + masterTableName + ".id as max_id from " + masterTableName + " " + 
+				"join " + slaveTableName + " on (" + slaveTableName + "." + slaveIdToMasterColumn + " = " + masterTableName + ".id) " +
+				"where " + masterTableName + "." + masterCalldateColumn + " < '" + opt_database_backup_to_date + "' " +
+				"order by " + masterTableName + "." + masterCalldateColumn + " desc, " + masterTableName + ".id desc limit 1");
 		maxIdToMasterInSlaveSrc = atoll(sqlDbSrc->fetchRow()["max_id"].c_str());
 	} else {
 		sqlDbSrc->query(string("select max(") + slaveIdToMasterColumn + ") as max_id from " + slaveTableName);
