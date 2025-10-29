@@ -3128,7 +3128,7 @@ void *rtp_read_thread_func(void *arg) {
 	return NULL;
 }
 
-static volatile u_int32_t last_tp_read_thread_operation_at = 0;
+static volatile u_int32_t last_rtp_read_thread_operation_at = 0;
 
 bool add_rtp_read_thread() {
 	extern int num_threads_start;
@@ -3151,7 +3151,7 @@ bool add_rtp_read_thread() {
 			rslt = true;
 		}
 		++num_threads_active;
-		last_tp_read_thread_operation_at = getTimeS_rdtsc();
+		last_rtp_read_thread_operation_at = getTimeS_rdtsc();
 	}
 	unlock_add_remove_rtp_threads();
 	return(rslt);
@@ -3171,10 +3171,10 @@ bool set_remove_rtp_read_thread() {
 	   (num_threads_active == num_threads_max ||
 	    (!rtp_threads[num_threads_active].remove_flag &&
 	     !rtp_threads[num_threads_active].threadId)) &&
-	   last_tp_read_thread_operation_at + 60 < getTimeS_rdtsc()) {
+	   last_rtp_read_thread_operation_at + 60 < getTimeS_rdtsc()) {
 		rtp_threads[num_threads_active - 1].remove_flag = true;
 		--num_threads_active;
-		last_tp_read_thread_operation_at = getTimeS_rdtsc();
+		last_rtp_read_thread_operation_at = getTimeS_rdtsc();
 		rslt = true;
 	}
 	unlock_add_remove_rtp_threads();
@@ -13155,6 +13155,7 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 	last_race_log[1] = 0;
 	#endif
 	this->calls = 0;
+	this->last_rtp_rh_thread_operation_at = 0;
 }
 
 ProcessRtpPacket::~ProcessRtpPacket() {
@@ -14027,13 +14028,16 @@ void ProcessRtpPacket::addRtpRhThread() {
 	if(this->process_rtp_packets_hash_next_threads < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS &&
 	   (opt_process_rtp_packets_hash_next_thread_max <= 0 || this->process_rtp_packets_hash_next_threads < opt_process_rtp_packets_hash_next_thread_max)) {
 		this->process_rtp_packets_hash_next_threads_mod = 1;
+		last_rtp_rh_thread_operation_at = getTimeS_rdtsc();
 	}
 }
 
 void ProcessRtpPacket::removeRtpRhThread() {
 	if(this->process_rtp_packets_hash_next_threads > 0 &&
-	   (opt_process_rtp_packets_hash_next_thread <= 0 || this->process_rtp_packets_hash_next_threads > opt_process_rtp_packets_hash_next_thread)) {
+	   (opt_process_rtp_packets_hash_next_thread <= 0 || this->process_rtp_packets_hash_next_threads > opt_process_rtp_packets_hash_next_thread) &&
+	   last_rtp_rh_thread_operation_at + 60 < getTimeS_rdtsc()) {
 		this->process_rtp_packets_hash_next_threads_mod = -1;
+		last_rtp_rh_thread_operation_at = getTimeS_rdtsc();
 	}
 }
 
@@ -14045,10 +14049,12 @@ void ProcessRtpPacket::addRtpRdThread() {
 		processRtpPacketDistribute[process_rtp_packets_distribute_threads_use] = _processRtpPacketDistribute;
 		++process_rtp_packets_distribute_threads_use;
 		unlockAddRtpRdThread();
+		last_rtp_rd_thread_operation_at = getTimeS_rdtsc();
 	}
 }
 
 volatile int ProcessRtpPacket::_sync_add_rtp_rd_threads = 0;
+u_int32_t ProcessRtpPacket::last_rtp_rd_thread_operation_at = 0;
 
 void rtp_read_thread::init(int threadNum, size_t qring_length) {
 	this->threadId = 0;

@@ -2457,6 +2457,8 @@ private:
 	#if SNIFFER_THREADS_EXT
 	cThreadMonitor::sThread *thread_data;
 	#endif
+	u_int32_t last_rtp_rh_thread_operation_at;
+	static u_int32_t last_rtp_rd_thread_operation_at;
 friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
 friend inline void *_ProcessRtpPacket_nextThreadFunction(void *arg);
 };
