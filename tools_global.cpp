@@ -3098,6 +3098,12 @@ string cNormReftabs::sip_response(string value, sParams *params, bool cmp_log) {
 		} else if(is_sip_uri(sd[i].str)) {
 			sd[i].str = "";
 			x = true;
+		} else if(is_ip(sd[i].str)) {
+			sd[i].str = "IP";
+			x = true;
+		} else if(is_ip_port(sd[i].str)) {
+			sd[i].str = "IP:port";
+			x = true;
 		}
 	}
 	if(x) {
@@ -3222,6 +3228,7 @@ string cNormReftabs::ua(string value, bool cmp_log) {
 		   is_mac(sd[i].str) ||
 		   is_mac_with_prefix(sd[i].str) ||
 		   is_ip(sd[i].str) ||
+		   is_ip_port(sd[i].str) ||
 		   is_sn(sd[i].str)) {
 			sd[i].str = "";
 			x = true;
@@ -3350,8 +3357,13 @@ bool cNormReftabs::is_mac_with_prefix(string &v) {
 }
 
 bool cNormReftabs::is_ip(string &v) {
-	sockaddr_in sa;
-	return(inet_pton(AF_INET, v.c_str(), &sa.sin_addr) != 0);
+	vmIP ip;
+	return(ip.setFromString(v.c_str()));
+}
+
+bool cNormReftabs::is_ip_port(string &v) {
+	vmIPport ip;
+	return(ip.setFromString(v.c_str()));
 }
 
 bool cNormReftabs::is_sn(string &v) {

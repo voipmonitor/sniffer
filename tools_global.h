@@ -1461,6 +1461,7 @@ private:
 	static bool is_mac(string &v);
 	static bool is_mac_with_prefix(string &v);
 	static bool is_ip(string &v);
+	static bool is_ip_port(string &v);
 	static bool is_sn(string &v);
 	static bool check_string(const char *v, bool alpha, bool digit =  false, bool hexalpha = false, const char *other = NULL);
 	static bool check_string(string &v, bool alpha, bool digit =  false, bool hexalpha = false, const char *other = NULL);
