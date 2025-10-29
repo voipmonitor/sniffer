@@ -10216,6 +10216,9 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 				    batch_index < batch_index_end; 
 				    batch_index += batch_index_skip) {
 					this->process_DETACH_X_1(batch[batch_index], qring_detach_active_push_item->batch[batch_index]);
+					#if DETACH_X_MOD_1
+					this->process_DETACH_X_2(qring_detach_active_push_item->batch[batch_index]);
+					#endif
 				} }
 				break;
 			case ppt_detach: {
@@ -10429,7 +10432,9 @@ void *PreProcessPacket::outThreadFunction() {
 									thread_data->inc_packets_out(tm_caplen[completed]);
 								}
 								#endif
+								#if not DETACH_X_MOD_1
 								this->process_DETACH_X_2(qring_detach_active_push_item->batch[completed]);
+								#endif
 								++completed;
 							} else {
 								extern unsigned int opt_sip_batch_usleep;
@@ -10445,6 +10450,9 @@ void *PreProcessPacket::outThreadFunction() {
 						    batch_index < count / (_next_threads_count + 1); 
 						    batch_index++) {
 							this->process_DETACH_X_1(batch_detach_x->batch[batch_index], qring_detach_active_push_item->batch[batch_index]);
+							#if DETACH_X_MOD_1
+							this->process_DETACH_X_2(qring_detach_active_push_item->batch[batch_index]);
+							#endif
 						}
 					}
 					for(int i = 0; i < _next_threads_count; i++) {
@@ -10467,7 +10475,9 @@ void *PreProcessPacket::outThreadFunction() {
 							thread_data->inc_packets_out(tm_caplen[batch_index]);
 						}
 						#endif
+						#if not DETACH_X_MOD_1
 						this->process_DETACH_X_2(qring_detach_active_push_item->batch[batch_index]);
+						#endif
 					}
 				} else {
 					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
@@ -13120,6 +13130,7 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 	this->thread_data = NULL;
 	#endif
 	this->term_processRtp = false;
+	this->last_rtp_threads_push = 0;
 	this->_sync_count = 0;
 	for(int i = 0; i < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS; i++) {
 		this->hash_next_threads[i].null();
@@ -13213,10 +13224,9 @@ void *ProcessRtpPacket::outThreadFunction() {
 			#endif
 			usleepCounter = 0;
 			usleepSumTimeForPushBatch = 0;
-			/* test solution for non-shifted thread buffer
-			if(this->type == distribute) {
-				if(rtp_threads) {
-					u_int32_t now_s = getTimeS_rdtsc();
+			if(this->type == distribute && rtp_threads) {
+				u_int32_t now_s = getTimeS_rdtsc();
+				if(last_rtp_threads_push + 10 < now_s) {
 					extern int num_threads_max;
 					for(int i = 0; i < num_threads_max; i++) {
 						if(rtp_threads[i].threadId && rtp_threads[i].remove_flag &&
@@ -13228,9 +13238,9 @@ void *ProcessRtpPacket::outThreadFunction() {
 							}
 						}
 					}
+					last_rtp_threads_push = now_s;
 				}
 			}
-			*/
 		} else {
 			extern unsigned int opt_push_batch_limit_ms;
 			if(usleepSumTimeForPushBatch > opt_push_batch_limit_ms * 1000 && !is_terminating()) {

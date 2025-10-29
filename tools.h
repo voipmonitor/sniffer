@@ -3685,6 +3685,12 @@ public:
 #endif
 
 #if HEAP_ITEM_STACK_TYPE_VOID
+
+#if DETACH_X_MOD_1
+#define HEAP_ITEM_STACK_TLS true
+#define HEAP_ITEM_STACK_TLS_MAX_SLOTS 50
+#endif
+
 class cHeapItemsPointerStack {
 private:
 	struct sHeapItemsPool {
@@ -3711,29 +3717,53 @@ public:
 	cHeapItemsPointerStack(u_int32_t size_max,
 			       u_int16_t pop_queues_max = 10, u_int16_t push_queues_max = 10) {
 		this->size_max = size_max;
+		#if not HEAP_ITEM_STACK_TLS
 		this->pop_queues_max = pop_queues_max;
 		this->push_queues_max = push_queues_max;
 		this->pop_queues = new FILE_LINE(39025) sHeapItemsPool[this->pop_queues_max];
 		this->push_queues = new FILE_LINE(39026) sHeapItemsPool[this->push_queues_max];
+		#else
+		slot_id_lock();
+		slot_id = slot_id_used;
+		__SYNC_INC(slot_id_used);
+		slot_id_unlock();
+		#endif
 		this->pop_qp = NULL;
 		this->pop_qp_size = 0;
 		this->stack = new FILE_LINE(39027) rqueue_quick<sHeapItemsPool>(this->size_max / HEAP_ITEM_POOL_SIZE, 0, 0, NULL, false);
 	}
 	~cHeapItemsPointerStack() {
+		#if not HEAP_ITEM_STACK_TLS
 		delete [] this->pop_queues;
 		delete [] this->push_queues;
+		#endif
 		delete this->stack;
 	}
 	inline bool push(void *item, u_int16_t push_queue_index) {
+		sHeapItemsPool *pool;
+		#if HEAP_ITEM_STACK_TLS
+		static __thread sHeapItemsPool *pool_slots[HEAP_ITEM_STACK_TLS_MAX_SLOTS];
+		if(!pool_slots[slot_id]) {
+			pool_slots[slot_id] = new FILE_LINE(0) sHeapItemsPool;
+		}
+		pool = pool_slots[slot_id];
+		#else
 		if(push_queue_index >= push_queues_max) {
 			return(false);
 		}
-		sHeapItemsPool *pool = &this->push_queues[push_queue_index];
+		pool = &this->push_queues[push_queue_index];
+		#endif
 		if(pool->pool_size < HEAP_ITEM_POOL_SIZE) {
 			pool->pool[pool->pool_size] = item;
 			++pool->pool_size;
 		} else {
-			if(stack->push(&this->push_queues[push_queue_index], false, push_queues_max > 1)) {
+			if(stack->push(pool, false, 
+				#if HEAP_ITEM_STACK_TLS
+				true
+				#else
+				push_queues_max > 1
+				#endif
+				)) {
 				pool->pool[0] = item;
 				pool->pool_size = 1;
 				//cout << "+" << flush;
@@ -3743,19 +3773,34 @@ public:
 		}
 		return(true);
 	}
-	inline int pop(void **item, u_int16_t pop_queue_index) {
+	inline bool pop(void **item, u_int16_t pop_queue_index) {
+		sHeapItemsPool *pool;
+		#if HEAP_ITEM_STACK_TLS
+		static __thread sHeapItemsPool *pool_slots[HEAP_ITEM_STACK_TLS_MAX_SLOTS];
+		if(!pool_slots[slot_id]) {
+			pool_slots[slot_id] = new FILE_LINE(0) sHeapItemsPool;
+		}
+		pool = pool_slots[slot_id];
+		#else
 		/* disable - speed optimize
 		if(pop_queue_index >= pop_queues_max) {
 			syslog(LOG_ERR, "too big pop_queue_index");
 			return(false);
 		}
 		*/
-		sHeapItemsPool *pool = &this->pop_queues[pop_queue_index];
+		pool = &this->pop_queues[pop_queue_index];
+		#endif
 		if(pool->pool_size > 0) {
 			--pool->pool_size;
 			*item = pool->pool[pool->pool_size];
 		} else {
-			if(stack->pop(&this->pop_queues[pop_queue_index], false, pop_queues_max > 1)) {
+			if(stack->pop(pool, false,
+				#if HEAP_ITEM_STACK_TLS
+				true
+				#else
+				push_queues_max > 1
+				#endif
+				)) {
 				pool->pool_size = HEAP_ITEM_POOL_SIZE - 1;
 				*item = pool->pool[pool->pool_size];
 				//cout << "P" << flush;
@@ -3765,7 +3810,10 @@ public:
 		}
 		return(true);
 	}
-	inline u_int8_t popq(void **item) {
+	inline bool popq(void **item) {
+		#if HEAP_ITEM_STACK_TLS
+		return(pop(item, 0));
+		#else
 		if(this->pop_queues->pool_size > 0) {
 			--this->pop_queues->pool_size;
 			*item = this->pop_queues->pool[this->pop_queues->pool_size];
@@ -3778,9 +3826,11 @@ public:
 			}
 		}
 		return(true);
+		#endif
 	}
 	template <class type_pool>
 	void destroyAll() {
+		#if not HEAP_ITEM_STACK_TLS
 		for(unsigned i = 0; i < this->pop_queues_max; i++) {
 			this->pop_queues[i].destroyAll<type_pool>();
 		}
@@ -3791,8 +3841,10 @@ public:
 		while(stack->pop(&pool, false, true)) {
 			pool.destroyAll<type_pool>();
 		}
+		#endif
 	}
 	void destroyAll_u_char() {
+		#if not HEAP_ITEM_STACK_TLS
 		for(unsigned i = 0; i < this->pop_queues_max; i++) {
 			this->pop_queues[i].destroyAll_u_char();
 		}
@@ -3803,13 +3855,24 @@ public:
 		while(stack->pop(&pool, false, true)) {
 			pool.destroyAll_u_char();
 		}
+		#endif
 	}
+	#if HEAP_ITEM_STACK_TLS
+	static void slot_id_lock() { __SYNC_LOCK(slot_id_sync); }
+	static void slot_id_unlock() { __SYNC_UNLOCK(slot_id_sync); }
+	#endif
 public:
 	u_int32_t size_max;
+	#if not HEAP_ITEM_STACK_TLS
 	u_int16_t pop_queues_max;
 	u_int16_t push_queues_max;
 	sHeapItemsPool *pop_queues;
 	sHeapItemsPool *push_queues;
+	#else
+	unsigned slot_id;
+	static volatile unsigned slot_id_used;
+	static volatile int slot_id_sync;
+	#endif
 	u_int16_t pop_qp_size;
 	sHeapItemsPool *pop_qp;
 	rqueue_quick<sHeapItemsPool> *stack;

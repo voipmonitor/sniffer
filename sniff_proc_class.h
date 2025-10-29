@@ -2446,6 +2446,7 @@ private:
 	bool term_processRtp;
 	s_hash_next_thread hash_next_threads[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
 	volatile int8_t *hash_find_flag;
+	u_int32_t last_rtp_threads_push;
 	volatile int _sync_count;
 	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
 	unsigned push_thread;
