@@ -10385,7 +10385,7 @@ void *PreProcessPacket::outThreadFunction() {
 				batch_detach_x = this->qring_detach_x[this->readit];
 				#if SNIFFER_THREADS_EXT
 				u_int32_t tm_caplen[batch_detach_x->count];
-				if(sverb.sniffer_threads_ext && thread_data) {
+				if(sverb.sniffer_threads_ext > 1 && thread_data) {
 					for(unsigned batch_index = 0; batch_index < batch_detach_x->count; batch_index++) {
 						tm_caplen[batch_index] = batch_detach_x->batch[batch_index]->hp.header->get_caplen();
 						thread_data->inc_packets_in(tm_caplen[batch_index]);
@@ -10428,7 +10428,7 @@ void *PreProcessPacket::outThreadFunction() {
 							if(completed < count &&
 							   this->items_flag[completed] != 0) {
 								#if SNIFFER_THREADS_EXT
-								if(sverb.sniffer_threads_ext && thread_data) {
+								if(sverb.sniffer_threads_ext > 1 && thread_data) {
 									thread_data->inc_packets_out(tm_caplen[completed]);
 								}
 								#endif
@@ -10471,7 +10471,7 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 					for(unsigned batch_index = completed; batch_index < count; batch_index++) {
 						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data) {
+						if(sverb.sniffer_threads_ext > 1 && thread_data) {
 							thread_data->inc_packets_out(tm_caplen[batch_index]);
 						}
 						#endif
@@ -10482,7 +10482,7 @@ void *PreProcessPacket::outThreadFunction() {
 				} else {
 					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data) {
+						if(sverb.sniffer_threads_ext > 1 && thread_data) {
 							thread_data->inc_packets_out(tm_caplen[batch_index]);
 						}
 						#endif
@@ -10508,7 +10508,7 @@ void *PreProcessPacket::outThreadFunction() {
 				batch_detach = this->qring_detach[this->readit];
 				#if SNIFFER_THREADS_EXT
 				u_int32_t tm_caplen[batch_detach->count];
-				if(sverb.sniffer_threads_ext && thread_data) {
+				if(sverb.sniffer_threads_ext > 1 && thread_data) {
 					for(unsigned batch_index = 0; batch_index < batch_detach->count; batch_index++) {
 						tm_caplen[batch_index] = batch_detach->batch[batch_index]->header_pt->caplen;
 						thread_data->inc_packets_in(tm_caplen[batch_index]);
@@ -10551,7 +10551,7 @@ void *PreProcessPacket::outThreadFunction() {
 							if(completed < count &&
 							   this->items_flag[completed] != 0) {
 								#if SNIFFER_THREADS_EXT
-								if(sverb.sniffer_threads_ext && thread_data) {
+								if(sverb.sniffer_threads_ext > 1 && thread_data) {
 									thread_data->inc_packets_out(tm_caplen[completed]);
 								}
 								#endif
@@ -10608,7 +10608,7 @@ void *PreProcessPacket::outThreadFunction() {
 						packet_s_process* p = (packet_s_process*)(batch_detach->batch[batch_index]->p_pointer[0]);
 						if(p) {
 							#if SNIFFER_THREADS_EXT
-							if(sverb.sniffer_threads_ext && thread_data) {
+							if(sverb.sniffer_threads_ext > 1 && thread_data) {
 								thread_data->inc_packets_out(tm_caplen[batch_index]);
 							}
 							#endif
@@ -10631,7 +10631,7 @@ void *PreProcessPacket::outThreadFunction() {
 				} else {
 					for(unsigned batch_index = 0; batch_index < batch_detach->count; batch_index++) {
 						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data) {
+						if(sverb.sniffer_threads_ext > 1 && thread_data) {
 							thread_data->inc_packets_out(tm_caplen[batch_index]);
 						}
 						#endif
@@ -10675,7 +10675,7 @@ void *PreProcessPacket::outThreadFunction() {
 				batch = this->qring[this->readit];
 				#if SNIFFER_THREADS_EXT
 				u_int32_t tm_caplen[batch->count];
-				if(sverb.sniffer_threads_ext && thread_data) {
+				if(sverb.sniffer_threads_ext > 1 && thread_data) {
 					for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
 						tm_caplen[batch_index] = batch->batch[batch_index]->header_pt->caplen;
 						thread_data->inc_packets_in(tm_caplen[batch_index]);
@@ -10800,7 +10800,7 @@ void *PreProcessPacket::outThreadFunction() {
 						if(completed < count &&
 						   this->items_flag[completed] != 0) {
 							#if SNIFFER_THREADS_EXT
-							if(sverb.sniffer_threads_ext && thread_data) {
+							if(sverb.sniffer_threads_ext > 1 && thread_data) {
 								thread_data->inc_packets_out(tm_caplen[completed]);
 							}
 							#endif
@@ -10847,7 +10847,7 @@ void *PreProcessPacket::outThreadFunction() {
 				}
 				for(unsigned batch_index = completed; batch_index < count; batch_index++) {
 					#if SNIFFER_THREADS_EXT
-					if(sverb.sniffer_threads_ext && thread_data) {
+					if(sverb.sniffer_threads_ext > 1 && thread_data) {
 						thread_data->inc_packets_out(tm_caplen[batch_index]);
 					}
 					#endif
@@ -10895,7 +10895,7 @@ void *PreProcessPacket::outThreadFunction() {
 				batch = this->qring[this->readit];
 				#if SNIFFER_THREADS_EXT
 				u_int32_t tm_caplen[batch->count];
-				if(sverb.sniffer_threads_ext && thread_data) {
+				if(sverb.sniffer_threads_ext > 1 && thread_data) {
 					for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
 						tm_caplen[batch_index] = batch->batch[batch_index]->header_pt->caplen;
 						thread_data->inc_packets_in(tm_caplen[batch_index]);
@@ -11029,7 +11029,7 @@ void *PreProcessPacket::outThreadFunction() {
 						calltable->unlock_calls_listMAP();
 						for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 							#if SNIFFER_THREADS_EXT
-							if(sverb.sniffer_threads_ext && thread_data) {
+							if(sverb.sniffer_threads_ext > 1 && thread_data) {
 								thread_data->inc_packets_out(tm_caplen[batch_index]);
 							}
 							#endif
@@ -11098,7 +11098,7 @@ void *PreProcessPacket::outThreadFunction() {
 						}
 						for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 							#if SNIFFER_THREADS_EXT
-							if(sverb.sniffer_threads_ext && thread_data) {
+							if(sverb.sniffer_threads_ext > 1 && thread_data) {
 								thread_data->inc_packets_out(tm_caplen[batch_index]);
 							}
 							#endif
@@ -11115,7 +11115,7 @@ void *PreProcessPacket::outThreadFunction() {
 				} else {
 					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data) {
+						if(sverb.sniffer_threads_ext > 1 && thread_data) {
 							thread_data->inc_packets_out(tm_caplen[batch_index]);
 						}
 						#endif
@@ -11142,7 +11142,7 @@ void *PreProcessPacket::outThreadFunction() {
 				batch = this->qring[this->readit];
 				#if SNIFFER_THREADS_EXT
 				u_int32_t tm_caplen[batch->count];
-				if(sverb.sniffer_threads_ext && thread_data) {
+				if(sverb.sniffer_threads_ext > 1 && thread_data) {
 					for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
 						tm_caplen[batch_index] = batch->batch[batch_index]->header_pt->caplen;
 						thread_data->inc_packets_in(tm_caplen[batch_index]);
@@ -11195,7 +11195,7 @@ void *PreProcessPacket::outThreadFunction() {
 							if(completed < count &&
 							   this->items_flag[completed] != 0) {
 								#if SNIFFER_THREADS_EXT
-								if(sverb.sniffer_threads_ext && thread_data) {
+								if(sverb.sniffer_threads_ext > 1 && thread_data) {
 									thread_data->inc_packets_out(tm_caplen[completed]);
 								}
 								#endif
@@ -11214,7 +11214,7 @@ void *PreProcessPacket::outThreadFunction() {
 							for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 								if(this->items_thread_index[batch_index] == 0) {
 									#if SNIFFER_THREADS_EXT
-									if(sverb.sniffer_threads_ext && thread_data) {
+									if(sverb.sniffer_threads_ext > 1 && thread_data) {
 										thread_data->inc_packets_out(tm_caplen[batch_index]);
 									}
 									#endif
@@ -11224,7 +11224,7 @@ void *PreProcessPacket::outThreadFunction() {
 						} else {
 							for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 								#if SNIFFER_THREADS_EXT
-								if(sverb.sniffer_threads_ext && thread_data) {
+								if(sverb.sniffer_threads_ext > 1 && thread_data) {
 									thread_data->inc_packets_out(tm_caplen[batch_index]);
 								}
 								#endif
@@ -11249,7 +11249,7 @@ void *PreProcessPacket::outThreadFunction() {
 				} else {
 					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data) {
+						if(sverb.sniffer_threads_ext > 1 && thread_data) {
 							thread_data->inc_packets_out(tm_caplen[batch_index]);
 						}
 						#endif
@@ -11290,7 +11290,7 @@ void *PreProcessPacket::outThreadFunction() {
 					    rtp_delay_queue_last_time >= rtp_delay_queue_pop_item->batch[i]->getTimeUS() + rtp_delay_queue__max_length_ms * 1000)) {
 						++rtp_delay_queue_pop_item->count_processed;
 						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data) {
+						if(sverb.sniffer_threads_ext > 1 && thread_data) {
 							thread_data->inc_packets_in(rtp_delay_queue_pop_item->batch[i]->header_pt->caplen);
 							thread_data->inc_packets_out(rtp_delay_queue_pop_item->batch[i]->header_pt->caplen);
 						}
@@ -11311,7 +11311,7 @@ void *PreProcessPacket::outThreadFunction() {
 				exists_used = true;
 				batch = this->qring[this->readit];
 				#if SNIFFER_THREADS_EXT
-				if(sverb.sniffer_threads_ext && thread_data) {
+				if(sverb.sniffer_threads_ext > 1 && thread_data) {
 					for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
 						thread_data->inc_packets_in(batch->batch[batch_index]->header_pt->caplen);
 					}
@@ -11323,7 +11323,7 @@ void *PreProcessPacket::outThreadFunction() {
 				for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 					packetS = batch->batch[batch_index];
 					#if SNIFFER_THREADS_EXT
-					if(sverb.sniffer_threads_ext && thread_data) {
+					if(sverb.sniffer_threads_ext > 1 && thread_data) {
 						thread_data->inc_packets_out(packetS->header_pt->caplen);
 					}
 					#endif
@@ -13189,7 +13189,7 @@ void *ProcessRtpPacket::outThreadFunction() {
 		if(this->qring[this->readit]->used == 1) {
 			batch_packet_s_process *batch = this->qring[this->readit];
 			#if SNIFFER_THREADS_EXT
-			if(sverb.sniffer_threads_ext && thread_data) {
+			if(sverb.sniffer_threads_ext > 1 && thread_data) {
 				for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
 					thread_data->inc_packets_in(batch->batch[batch_index]->header_pt->caplen);
 				}
@@ -13471,7 +13471,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 						batch->batch[batch_index_distribute] = NULL;
 						if(this->hash_find_flag[batch_index_distribute] == 1) {
 							#if SNIFFER_THREADS_EXT
-							if(sverb.sniffer_threads_ext && thread_data) {
+							if(sverb.sniffer_threads_ext > 1 && thread_data) {
 								thread_data->inc_packets_out(packetS->header_pt->caplen);
 							}
 							#endif
@@ -13575,7 +13575,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 			batch->batch[batch_index_distribute] = NULL;
 			if(this->hash_find_flag[batch_index_distribute] == 1) {
 				#if SNIFFER_THREADS_EXT
-				if(sverb.sniffer_threads_ext && thread_data) {
+				if(sverb.sniffer_threads_ext > 1 && thread_data) {
 					thread_data->inc_packets_out(packetS->header_pt->caplen);
 				}
 				#endif
@@ -13661,7 +13661,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 			}
 			if(packetS->call_info.length) {
 				#if SNIFFER_THREADS_EXT
-				if(sverb.sniffer_threads_ext && thread_data) {
+				if(sverb.sniffer_threads_ext > 1 && thread_data) {
 					thread_data->inc_packets_out(packetS->header_pt->caplen);
 				}
 				#endif

@@ -8329,17 +8329,19 @@ string cThreadMonitor::output(int indexPstat, int outputFlags) {
 				} else {
 					outStr << setw(10) << " ";
 				}
-				// traffic
-				outStr << "  ";
-				sTraffic *iter_tr = &iter_dp->traffic;
-				if(iter_tr->packets_cnt_in > 0 || iter_tr->packets_cnt_out > 0) {
-				       outStr << " " << setw(5) << right << format_metric((double)iter_tr->packets_cnt_in / iter_tr->time_us * 1e6, 3, "--- ") << "p"
-					      << " " << setw(5) << right << format_metric((double)iter_tr->packets_size_in * 8 / iter_tr->time_us * 1e6, 3, "--- ") << "b"
-					      << " -> "
-					      << " " << setw(5) << right << format_metric((double)iter_tr->packets_cnt_out / iter_tr->time_us * 1e6, 3, "--- ") << "p"
-					      << " " << setw(5) << right << format_metric((double)iter_tr->packets_size_out * 8 / iter_tr->time_us * 1e6, 3, "--- ") << "b";
-				} else {
-					outStr << setw(32) << " ";
+				if(sverb.sniffer_threads_ext > 1) {
+					// traffic
+					outStr << "  ";
+					sTraffic *iter_tr = &iter_dp->traffic;
+					if(iter_tr->packets_cnt_in > 0 || iter_tr->packets_cnt_out > 0) {
+					       outStr << " " << setw(5) << right << format_metric((double)iter_tr->packets_cnt_in / iter_tr->time_us * 1e6, 3, "--- ") << "p"
+						      << " " << setw(5) << right << format_metric((double)iter_tr->packets_size_in * 8 / iter_tr->time_us * 1e6, 3, "--- ") << "b"
+						      << " -> "
+						      << " " << setw(5) << right << format_metric((double)iter_tr->packets_cnt_out / iter_tr->time_us * 1e6, 3, "--- ") << "p"
+						      << " " << setw(5) << right << format_metric((double)iter_tr->packets_size_out * 8 / iter_tr->time_us * 1e6, 3, "--- ") << "b";
+					} else {
+						outStr << setw(32) << " ";
+					}
 				}
 				// buffer push
 				outStr << "  ";

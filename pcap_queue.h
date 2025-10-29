@@ -1486,7 +1486,7 @@ private:
 	}
 	#if SNIFFER_THREADS_EXT
 	inline void tm_inc_packets_out(sHeaderPacketPQout *hp) {
-		if(sverb.sniffer_threads_ext && thread_data) {
+		if(sverb.sniffer_threads_ext > 1 && thread_data) {
 			thread_data->inc_packets_out(hp->header->get_caplen());
 		}
 	}

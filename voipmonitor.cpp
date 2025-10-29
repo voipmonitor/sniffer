@@ -504,7 +504,7 @@ unsigned int opt_rtp_batch_usleep = 10;
 unsigned int opt_lock_calls_usleep = 10;
 unsigned int opt_usleep_force = 0;
 unsigned int opt_usleep_minimal = 0;
-bool opt_sniffer_threads_ext = false;
+int opt_sniffer_threads_ext = 0;
 int opt_cleanup_calls_period = 10;
 int opt_destroy_calls_period = 2;
 int opt_safe_cleanup_calls = 1;
@@ -7719,7 +7719,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("rtp_batch_usleep", &opt_rtp_batch_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("lock_calls_usleep", &opt_lock_calls_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("usleep_minimal", &opt_usleep_minimal));
-					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sniffer_threads_ext", &opt_sniffer_threads_ext));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sniffer_threads_ext", &opt_sniffer_threads_ext))
+						->addValues("ext:2"));
 					#if INVITE_COUNTERS
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("invite_counters_ip_src", &invite_counters_ip_src));
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("invite_counters_ip_dst", &invite_counters_ip_dst));
@@ -8290,7 +8291,7 @@ void parse_verb_param(string verbParam) {
 		verbParam == "memory_stat_ex_log")		{ sverb.memory_stat = 1; sverb.memory_stat_log = 1; }
 	else if(verbParam.substr(0, 25) == "memory_stat_ignore_limit=")
 								sverb.memory_stat_ignore_limit = atoi(verbParam.c_str() + 25);
-	else if(verbParam == "sniffer_threads_ext")		sverb.sniffer_threads_ext = 1;
+	else if(verbParam == "sniffer_threads_ext")		sverb.sniffer_threads_ext = 2;
 	else if(verbParam == "alloc_stat")			sverb.alloc_stat = 1;
 	else if(verbParam == "qfiles")				sverb.qfiles = 1;
 	else if(verbParam == "query_error")			sverb.query_error = 1;
@@ -9799,7 +9800,7 @@ void set_context_config() {
 	}
 	
 	if(opt_sniffer_threads_ext) {
-		sverb.sniffer_threads_ext = true;
+		sverb.sniffer_threads_ext = opt_sniffer_threads_ext;
 	}
 }
 

@@ -5013,7 +5013,7 @@ PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 
 inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packet) {
 	#if SNIFFER_THREADS_EXT
-	if(sverb.sniffer_threads_ext && thread_data) {
+	if(sverb.sniffer_threads_ext > 1 && thread_data) {
 		thread_data->inc_packets_out(HPH(*header_packet)->caplen);
 	}
 	#endif
@@ -5574,7 +5574,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 					}
 				} else {
 					#if SNIFFER_THREADS_EXT
-					if(sverb.sniffer_threads_ext && thread_data) {
+					if(sverb.sniffer_threads_ext > 1 && thread_data) {
 						thread_data->inc_packets_in(pcap_next_ex_header->caplen);
 					}
 					#endif
@@ -5707,7 +5707,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 					continue;
 				}
 				#if SNIFFER_THREADS_EXT
-				if(sverb.sniffer_threads_ext && thread_data) {
+				if(sverb.sniffer_threads_ext > 1 && thread_data) {
 					thread_data->inc_packets_in(pcap_next_ex_header->caplen);
 				}
 				#endif
@@ -5844,7 +5844,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 		case defrag: {
 			POP_FROM_PREV_THREAD;
 			#if SNIFFER_THREADS_EXT
-			if(sverb.sniffer_threads_ext && thread_data) {
+			if(sverb.sniffer_threads_ext > 1 && thread_data) {
 				thread_data->inc_packets_in(HPH(hpii.header_packet)->caplen);
 			}
 			#endif
@@ -5870,7 +5870,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 		case md2: {
 			POP_FROM_PREV_THREAD;
 			#if SNIFFER_THREADS_EXT
-			if(sverb.sniffer_threads_ext && thread_data) {
+			if(sverb.sniffer_threads_ext > 1 && thread_data) {
 				thread_data->inc_packets_in(HPH(hpii.header_packet)->caplen);
 			}
 			#endif
@@ -5899,7 +5899,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 		case dedup: {
 			POP_FROM_PREV_THREAD;
 			#if SNIFFER_THREADS_EXT
-			if(sverb.sniffer_threads_ext && thread_data) {
+			if(sverb.sniffer_threads_ext > 1 && thread_data) {
 				thread_data->inc_packets_in(HPH(hpii.header_packet)->caplen);
 			}
 			#endif
@@ -6456,7 +6456,7 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 						copy_block_no_active_index = (dispatch_data.copy_block_active_index + 1) % 2;
 						if(dispatch_data.copy_block_full[copy_block_no_active_index]) {
 							#if SNIFFER_THREADS_EXT
-							if(sverb.sniffer_threads_ext && thread_data) {
+							if(sverb.sniffer_threads_ext > 1 && thread_data) {
 								thread_data->inc_packets_in(dispatch_data.copy_block[copy_block_no_active_index]->size_packets,
 											    dispatch_data.copy_block[copy_block_no_active_index]->count);
 							}
@@ -6491,7 +6491,7 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 							#endif
 							block->copy(dispatch_data.copy_block[copy_block_no_active_index]);
 							#if SNIFFER_THREADS_EXT
-							if(sverb.sniffer_threads_ext && thread_data) {
+							if(sverb.sniffer_threads_ext > 1 && thread_data) {
 								thread_data->inc_packets_out(block->size_packets, block->count);
 							}
 							#endif
@@ -6629,7 +6629,7 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 					#endif
 					this->push_block(block);
 					#if SNIFFER_THREADS_EXT
-					if(sverb.sniffer_threads_ext && thread_data) {
+					if(sverb.sniffer_threads_ext > 1 && thread_data) {
 						thread_data->inc_packets_out(block->size_packets, block->count);
 					}
 					#endif
@@ -6743,7 +6743,7 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 				continue;
 			}
 			#if SNIFFER_THREADS_EXT
-			if(sverb.sniffer_threads_ext && thread_data) {
+			if(sverb.sniffer_threads_ext > 1 && thread_data) {
 				thread_data->inc_packets_in(pcap_next_ex_header->caplen);
 			}
 			#endif
@@ -6807,7 +6807,7 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 				continue;
 			}
 			#if SNIFFER_THREADS_EXT
-			if(sverb.sniffer_threads_ext && thread_data) {
+			if(sverb.sniffer_threads_ext > 1 && thread_data) {
 				thread_data->inc_packets_in(block->size_packets, block->count);
 			}
 			#endif
@@ -6817,7 +6817,7 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 			this->processBlock(block);
 			this->push_block(block);
 			#if SNIFFER_THREADS_EXT
-			if(sverb.sniffer_threads_ext && thread_data) {
+			if(sverb.sniffer_threads_ext > 1 && thread_data) {
 				thread_data->inc_packets_out(block->size_packets, block->count);
 			}
 			#endif
@@ -7316,7 +7316,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				hpi = this->readThreads[minThreadTimeIndex]->POP();
 				if(hpi.header_packet) {
 					#if SNIFFER_THREADS_EXT
-					if(sverb.sniffer_threads_ext && thread_data_main) {
+					if(sverb.sniffer_threads_ext > 1 && thread_data_main) {
 						thread_data_main->inc_packets_in(hpi.header_packet->header.caplen);
 					}
 					#endif
@@ -7408,7 +7408,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				USLEEP(100);
 			} else if(res > 0) {
 				#if SNIFFER_THREADS_EXT
-				if(sverb.sniffer_threads_ext && thread_data_main) {
+				if(sverb.sniffer_threads_ext > 1 && thread_data_main) {
 					thread_data_main->inc_packets_in(pcap_next_ex_header->caplen);
 				}
 				#endif
@@ -7669,7 +7669,7 @@ void *PcapQueue_readFromInterface::writeThreadFunction(void *arg, unsigned int a
 			pcap_block_store *blockStore;
 			if(this->block_qring->pop(&blockStore, false)) {
 				#if SNIFFER_THREADS_EXT
-				if(sverb.sniffer_threads_ext && thread_data_write) {
+				if(sverb.sniffer_threads_ext > 1 && thread_data_write) {
 					thread_data_write->inc_packets_in(blockStore->size_packets, blockStore->count);
 				}
 				#endif
@@ -7685,7 +7685,7 @@ void *PcapQueue_readFromInterface::writeThreadFunction(void *arg, unsigned int a
 				this->check_bypass_buffer();
 				blockStoreBypassQueue->push(blockStore);
 				#if SNIFFER_THREADS_EXT
-				if(sverb.sniffer_threads_ext && thread_data_write) {
+				if(sverb.sniffer_threads_ext > 1 && thread_data_write) {
 					thread_data_write->inc_packets_out(blockStore->size_packets, blockStore->count);
 				}
 				#endif
@@ -8068,7 +8068,7 @@ void PcapQueue_readFromInterface::check_bypass_buffer() {
 
 void PcapQueue_readFromInterface::push_blockstore(pcap_block_store **block_store) {
 	#if SNIFFER_THREADS_EXT
-	if(sverb.sniffer_threads_ext && thread_data_main) {
+	if(sverb.sniffer_threads_ext > 1 && thread_data_main) {
 		thread_data_main->inc_packets_out((*block_store)->size_packets, (*block_store)->count);
 	}
 	#endif
@@ -8759,14 +8759,14 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 				#endif
 				#if SNIFFER_THREADS_EXT
 				size_t blockCountPackets = blockStore->count;
-				if(sverb.sniffer_threads_ext && thread_data_main) {
+				if(sverb.sniffer_threads_ext > 1 && thread_data_main) {
 					thread_data_main->inc_packets_in(blockSizePackets, blockCountPackets);
 				}
 				#endif
 				if(blockStore->compress()) {
 					if(this->pcapStoreQueue.push(blockStore, false)) {
 						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data_main) {
+						if(sverb.sniffer_threads_ext > 1 && thread_data_main) {
 							thread_data_main->inc_packets_out(blockSizePackets, blockCountPackets);
 						}
 						#endif
@@ -8866,7 +8866,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 		this->pcapStoreQueue.pop(&blockStore);
 		if(blockStore) {
 			#if SNIFFER_THREADS_EXT
-			if(sverb.sniffer_threads_ext && thread_data_write) {
+			if(sverb.sniffer_threads_ext > 1 && thread_data_write) {
 				thread_data_write->inc_packets_in(blockStore->size_packets, blockStore->count);
 			}
 			#endif
@@ -8992,7 +8992,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 								hp_out.header_ip_last_offset = 0xFFFF;
 								this->processPacket(&hp_out);
 								#if SNIFFER_THREADS_EXT
-								if(sverb.sniffer_threads_ext && thread_data_write) {
+								if(sverb.sniffer_threads_ext > 1 && thread_data_write) {
 									thread_data_write->inc_packets_out(hp_out.header->get_caplen());
 								}
 								#endif
@@ -9082,7 +9082,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						hp_out.header_ip_last_offset = 0xFFFF;
 						this->processPacket(&hp_out);
 						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data_write) {
+						if(sverb.sniffer_threads_ext > 1 && thread_data_write) {
 							thread_data_write->inc_packets_out(hp_out.header->get_caplen());
 						}
 						#endif
@@ -9171,7 +9171,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						hp_out.header_ip_last_offset = 0xFFFF;
 						this->processPacket(&hp_out);
 						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data_write) {
+						if(sverb.sniffer_threads_ext > 1 && thread_data_write) {
 							thread_data_write->inc_packets_out(hp_out.header->get_caplen());
 						}
 						#endif
@@ -9210,7 +9210,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						hp_out.header_ip_last_offset = 0xFFFF;
 						this->processPacket(&hp_out);
 						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data_write) {
+						if(sverb.sniffer_threads_ext > 1 && thread_data_write) {
 							thread_data_write->inc_packets_out(hp_out.header->get_caplen());
 						}
 						#endif
