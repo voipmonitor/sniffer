@@ -646,12 +646,25 @@ Tar::tar_read_block_ev(char *data) {
 void 
 Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t /*pos*/, u_int32_t len) {
 	unsigned cmpLengthNameInTar = strlen(fileHeader.name);
-	if(reg_match(fileHeader.name, "#[0-9]+$", __FILE__, __LINE__) ||
-	   reg_match(fileHeader.name, "_[0-9]{1,6}$", __FILE__, __LINE__)) {
-		while(isdigit(fileHeader.name[cmpLengthNameInTar - 1])) {
-			--cmpLengthNameInTar;
+	const char *part_separator = NULL;
+	const char *p = strrchr(fileHeader.name, '#');
+	if(p) part_separator = p;
+	p = strrchr(fileHeader.name, '_');
+	if(p && (!part_separator || p > part_separator)) part_separator = p;
+	unsigned l_part = cmpLengthNameInTar - (part_separator - fileHeader.name) - 1;
+	if(part_separator && l_part > 0 && l_part <= (*part_separator == '#' ? 10 : 6) && isdigit(*(part_separator + 1))) {
+		p  = part_separator + 1;
+		bool ok_only_digit = true;
+		while(*p) {
+			if(!isdigit(*p)) {
+				ok_only_digit = false;
+				break;
+			}
+			++p;
 		}
-		--cmpLengthNameInTar;
+		if(ok_only_digit) {
+			cmpLengthNameInTar -= l_part + 1;
+		}
 	}
 	if(((this->readData.filename.length() > TAR_FILENAME_RESERVE_LIMIT || 
 	     cmpLengthNameInTar == this->readData.filename.length()) &&
