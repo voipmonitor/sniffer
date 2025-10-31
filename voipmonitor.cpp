@@ -500,6 +500,7 @@ unsigned opt_usleep_mod_pause_spin_limit = 100;
 unsigned opt_usleep_mod_sched_yield_spin_limit = 100;
 unsigned int opt_lock_calls_hash_usleep = 10;
 unsigned int opt_sip_batch_usleep = 10;
+unsigned int opt_sip_batch_sync_usleep = 10;
 unsigned int opt_rtp_batch_usleep = 10;
 unsigned int opt_lock_calls_usleep = 10;
 unsigned int opt_usleep_force = 0;
@@ -4996,35 +4997,6 @@ int main_init_read() {
 			}
 		}
 		
-		#if CALLX_MOD_OLDVER
-		if(opt_t2_boost && opt_t2_boost_call_threads > 0) {
-			bool autoStartCallX = false;
-			preProcessPacketCallX = new FILE_LINE(0) PreProcessPacket*[preProcessPacketCallX_count + 1];
-			for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
-				preProcessPacketCallX[i] = new FILE_LINE(0) PreProcessPacket(PreProcessPacket::ppt_pp_callx, i);
-				if(autoStartCallX) {
-					preProcessPacketCallX[i]->startOutThread();
-				}
-			}
-			if(autoStartCallX) {
-				preProcessPacketCallX_state = PreProcessPacket::callx_process;
-			}
-			if(calltable->enableCallFindX()) {
-				preProcessPacketCallFindX = new FILE_LINE(0) PreProcessPacket*[preProcessPacketCallX_count];
-				for(int i = 0; i < preProcessPacketCallX_count; i++) {
-					preProcessPacketCallFindX[i] = new FILE_LINE(0) PreProcessPacket(PreProcessPacket::ppt_pp_callfindx, i);
-				}
-				for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
-					preProcessPacketCallX[i]->startOutThread();
-				}
-				for(int i = 0; i < preProcessPacketCallX_count; i++) {
-					preProcessPacketCallFindX[i]->startOutThread();
-				}
-				preProcessPacketCallX_state = PreProcessPacket::callx_find;
-			}
-		}
-		#endif
-		
 		//autostart for fork mode if t2cpu > 50%
 		if(
 		   #if DEBUG_DTLS_QUEUE
@@ -6603,14 +6575,12 @@ void cConfig::addConfigItems() {
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread", &opt_pre_process_packets_next_thread))
 						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
 						->addValues("yes:1|y:1|no:0|n:0"));
-					#if not CALLX_MOD_OLDVER
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread_find_call", &opt_pre_process_packets_next_thread_find_call))
 						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
 						->addValues("yes:1|y:1|no:0|n:0"));
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread_process_call", &opt_pre_process_packets_next_thread_process_call))
 						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
 						->addValues("yes:1|y:1|no:0|n:0"));
-					#endif
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread_detach", &opt_pre_process_packets_next_thread_detach))
 						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
 						->addValues("yes:1|y:1|no:0|n:0"));
@@ -7716,6 +7686,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("usleep_mod_sched_yield_spin_limit", &opt_usleep_mod_sched_yield_spin_limit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("lock_calls_hash_usleep", &opt_lock_calls_hash_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_batch_usleep", &opt_sip_batch_usleep));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_batch_sync_usleep", &opt_sip_batch_sync_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("rtp_batch_usleep", &opt_rtp_batch_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("lock_calls_usleep", &opt_lock_calls_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("usleep_minimal", &opt_usleep_minimal));

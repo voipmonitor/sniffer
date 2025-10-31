@@ -1116,6 +1116,15 @@ public:
 	inline u_int64_t getRelTime(struct timeval *ts) {
 		return(getTimeUS(ts) > first_packet_time_us ? getTimeUS(ts) - first_packet_time_us : 0);
 	}
+	inline u_int64_t get_created_at() { 
+		return(created_at);
+	}
+	inline void setClosed() { 
+		closed = true;
+	}
+	inline bool isClosed() { 
+		return(closed);
+	}
 public:
 	volatile uint8_t alloc_flag;
 	int type_base;
@@ -1147,6 +1156,7 @@ private:
 	volatile int chunkBuffersCount;
 	#endif
 	u_int64_t created_at;
+	bool closed;
 friend class cDestroyCallsInfo;
 friend class ChunkBuffer;
 friend class cSeparateProcessing;
@@ -3058,8 +3068,10 @@ public:
 	bool sdp_exists_media_type_image;
 	bool sdp_exists_media_type_video;
 	bool sdp_exists_media_type_application;
+	#if not PROCESS_PACKETS_INDIC_MOD_1
 	volatile int in_preprocess_queue_before_process_packet;
 	volatile u_int32_t in_preprocess_queue_before_process_packet_at[2];
+	#endif
 	bool suppress_rtp_read_due_to_insufficient_hw_performance;
 	bool suppress_rtp_proc_due_to_insufficient_hw_performance;
 	bool stopped_jb_due_to_high_ooo;
@@ -3425,9 +3437,6 @@ public:
 	queue<string> files_sqlqueue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	list<Call*> calls_list;
 	map<string, Call*> calls_listMAP;
-	#if CALLX_MOD_OLDVER
-	map<string, Call*> *calls_listMAP_X;
-	#endif
 	map<sStreamIds2, Call*> calls_by_stream_callid_listMAP;
 	map<sStreamId2, Call*> calls_by_stream_id2_listMAP;
 	map<sStreamId, Call*> calls_by_stream_listMAP;
@@ -3503,12 +3512,6 @@ public:
 		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_listMAP, opt_lock_calls_usleep);
 		/*pthread_mutex_lock(&calls_listMAPlock);*/
 	}
-	#if CALLX_MOD_OLDVER
-	void lock_calls_listMAP_X(u_int8_t ci) {
-		extern unsigned int opt_lock_calls_usleep;
-		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_listMAP_X[ci], opt_lock_calls_usleep);
-	}
-	#endif
 	void lock_calls_mergeMAP() {
 		extern unsigned int opt_lock_calls_usleep;
 		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_mergeMAP, opt_lock_calls_usleep);
@@ -3568,9 +3571,6 @@ public:
 	void unlock_registers_deletequeue() { __SYNC_UNLOCK(this->_sync_lock_registers_deletequeue); }
 	void unlock_files_queue() { __SYNC_UNLOCK(this->_sync_lock_files_queue); /*pthread_mutex_unlock(&flock);*/ }
 	void unlock_calls_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_listMAP); /*pthread_mutex_unlock(&calls_listMAPlock);*/ }
-	#if CALLX_MOD_OLDVER
-	void unlock_calls_listMAP_X(u_int8_t ci) { __SYNC_UNLOCK(this->_sync_lock_calls_listMAP_X[ci]); }
-	#endif
 	void unlock_calls_mergeMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_mergeMAP); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ }
 	void unlock_calls_diameter_from_sip_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_diameter_from_sip_listMAP); }
 	void unlock_calls_diameter_to_sip_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_diameter_to_sip_listMAP); }
@@ -3602,13 +3602,6 @@ public:
 	
 	size_t getCountCalls();
 	
-	#if CALLX_MOD_OLDVER
-	bool enableCallX();
-	bool useCallX();
-	bool enableCallFindX();
-	bool useCallFindX();
-	#endif
-
 	/**
 	 * @brief find Call by call_id
 	 *
@@ -3651,6 +3644,7 @@ public:
 				}
 				rslt_call->call_id_alternative_unlock();
 			}
+			#if not PROCESS_PACKETS_INDIC_MOD_1
 			if(time && !rslt_call->stopProcessing) {
 				__SYNC_INC(rslt_call->in_preprocess_queue_before_process_packet);
 				#if DEBUG_PREPROCESS_QUEUE
@@ -3661,6 +3655,7 @@ public:
 				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
 				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 			}
+			#endif
 		}
 		unlock_calls_listMAP();
 		return(rslt_call);
@@ -3671,6 +3666,7 @@ public:
 		map<string, Call*>::iterator callMAPIT = calls_listMAP.find(call_idS);
 		if(callMAPIT != calls_listMAP.end()) {
 			rslt_call = callMAPIT->second;
+			#if not PROCESS_PACKETS_INDIC_MOD_1
 			if(time && !rslt_call->stopProcessing) {
 				__SYNC_INC(rslt_call->in_preprocess_queue_before_process_packet);
 				#if DEBUG_PREPROCESS_QUEUE
@@ -3681,6 +3677,7 @@ public:
 				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
 				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 			}
+			#endif
 		}
 		return(rslt_call);
 	}
@@ -3690,6 +3687,7 @@ public:
 		map<string, Call*>::iterator callMAPIT = map_calls->find(call_idS);
 		if(callMAPIT != map_calls->end()) {
 			rslt_call = callMAPIT->second;
+			#if not PROCESS_PACKETS_INDIC_MOD_1
 			if(time && !rslt_call->stopProcessing) {
 				__SYNC_INC(rslt_call->in_preprocess_queue_before_process_packet);
 				#if DEBUG_PREPROCESS_QUEUE
@@ -3700,32 +3698,10 @@ public:
 				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
 				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 			}
+			#endif
 		}
 		return(rslt_call);
 	}
-	#if CALLX_MOD_OLDVER
-	Call *find_by_call_id_x(u_int8_t ci, char *call_id, unsigned long call_id_len, time_t time) {
-		Call *rslt_call = NULL;
-		string call_idS = call_id_len ? string(call_id, call_id_len) : string(call_id);
-		lock_calls_listMAP_X(ci);
-		map<string, Call*>::iterator callMAPIT = calls_listMAP_X[ci].find(call_idS);
-		if(callMAPIT != calls_listMAP_X[ci].end()) {
-			rslt_call = callMAPIT->second;
-			if(time) {
-				__SYNC_INC(rslt_call->in_preprocess_queue_before_process_packet);
-				#if DEBUG_PREPROCESS_QUEUE
-					cout << " *** ++ in_preprocess_queue_before_process_packet (2) : "
-					     << rslt_call->call_id << " : "
-					     << rslt_call->in_preprocess_queue_before_process_packet << endl;
-				#endif
-				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
-				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
-			}
-		}
-		unlock_calls_listMAP_X(ci);
-		return(rslt_call);
-	}
-	#endif
 	Call *find_by_stream_callid(vmIP sip, vmPort sport, vmIP dip, vmPort dport, const char *callid) {
 		Call *rslt_call = NULL;
 		lock_calls_listMAP();
@@ -3764,6 +3740,7 @@ public:
 		map<string, Call*>::iterator mergeMAPIT = calls_mergeMAP.find(call_idS);
 		if(mergeMAPIT != calls_mergeMAP.end()) {
 			rslt_call = mergeMAPIT->second;
+			#if not PROCESS_PACKETS_INDIC_MOD_1
 			if(time) {
 				__SYNC_INC(rslt_call->in_preprocess_queue_before_process_packet);
 				#if DEBUG_PREPROCESS_QUEUE
@@ -3774,6 +3751,7 @@ public:
 				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
 				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 			}
+			#endif
 		}
 		unlock_calls_mergeMAP();
 		unlock_calls_listMAP();
@@ -3808,21 +3786,6 @@ public:
 					break;
 				}
 			}
-			#if CALLX_MOD_OLDVER
-			if(!rslt_call && useCallFindX()) {
-				extern int preProcessPacketCallX_count;
-				for(int i = 0; i < preProcessPacketCallX_count && !rslt_call; i++) {
-					if(lock) lock_calls_listMAP_X(i);
-					for(map<string, Call*>::iterator iter = calls_listMAP_X[i].begin(); iter != calls_listMAP_X[i].end(); iter++) {
-						if((long long)(iter->second) == callreference) {
-							rslt_call = iter->second;
-							break;
-						}
-					}
-					if(lock) unlock_calls_listMAP_X(i);
-				}
-			}
-			#endif
 		}
 		if(lock) unlock_calls_listMAP();
 		return(rslt_call);
@@ -4182,9 +4145,6 @@ private:
 	#endif
 	volatile int _sync_lock_calls_hash;
 	volatile int _sync_lock_calls_listMAP;
-	#if CALLX_MOD_OLDVER
-	volatile int *_sync_lock_calls_listMAP_X;
-	#endif
 	volatile int _sync_lock_calls_mergeMAP;
 	volatile int _sync_lock_calls_diameter_from_sip_listMAP;
 	volatile int _sync_lock_calls_diameter_to_sip_listMAP;

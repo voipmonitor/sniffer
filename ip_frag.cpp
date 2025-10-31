@@ -5,8 +5,6 @@
 #include "sniff_inline.h"
 
 
-#if not DEFRAG_MOD_OLDVER
-
 cIpFrag::cIpFrag(unsigned fdata_threads_split) {
 	this->fdata_threads_split = fdata_threads_split > 1 ? fdata_threads_split : 1;
 	fdata = new sDefrag[this->fdata_threads_split];
@@ -87,5 +85,3 @@ void cIpFrag::cleanup(unsigned int tv_sec, bool all,
 	}
 	#endif
 }
-
-#endif

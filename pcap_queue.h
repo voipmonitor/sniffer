@@ -349,14 +349,12 @@ struct pcapProcessData {
 			this->dedup_buffer_ct_md5 = new FILE_LINE(0) cPacketDuplBuffer(cPacketDuplBuffer::_hashtable, _dedup_md5);
 			#endif
 		}
-		#if not DEFRAG_MOD_OLDVER
 		extern int opt_udpfrag;
 		if(opt_udpfrag) {
 			ip_defrag = new FILE_LINE(0) cIpFrag();
 		} else {
 			ip_defrag = NULL;
 		}
-		#endif
 	}
 	~pcapProcessData() {
 		if(this->dedup_buffer) {
@@ -369,11 +367,7 @@ struct pcapProcessData {
 		#endif
 		extern int opt_udpfrag;
 		if(opt_udpfrag) {
-			#if not DEFRAG_MOD_OLDVER
 			delete ip_defrag;
-			#else
-			ipfrag_prune(0, true, &ipfrag_data, -1, 0);
-			#endif
 		}
 	}
 	void null() {
@@ -382,11 +376,7 @@ struct pcapProcessData {
 		#if DEDUPLICATE_COLLISION_TEST
 		not_null_size += sizeof(dedup_buffer_ct_md5);
 		#endif
-		#if not DEFRAG_MOD_OLDVER
 		not_null_size += sizeof(ip_defrag);
-		#else
-		not_null_size += sizeof(ipfrag_data_s);
-		#endif
 		memset((void*)this, 0, sizeof(pcapProcessData) - not_null_size);
 	}
 	ether_header *header_eth;
@@ -407,11 +397,7 @@ struct pcapProcessData {
 	#if DEDUPLICATE_COLLISION_TEST
 	cPacketDuplBuffer *dedup_buffer_ct_md5;
 	#endif
-	#if not DEFRAG_MOD_OLDVER
 	cIpFrag *ip_defrag;
-	#else
-	ipfrag_data_s ipfrag_data;
-	#endif
 };
 
 class PcapQueue_readFromInterface_base {
@@ -1506,11 +1492,7 @@ private:
 	pthread_t out_thread_handle;
 	pstat_data threadPstatData[2][2];
 	int outThreadId;
-	#if not DEFRAG_MOD_OLDVER
 	cIpFrag *ip_defrag;
-	#else
-	ipfrag_data_s ipfrag_data;
-	#endif
 	unsigned ipfrag_lastcleanup;
 	unsigned defrag_counter;
 	cPacketDuplBuffer *dedup_buffer;

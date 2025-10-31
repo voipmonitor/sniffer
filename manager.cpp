@@ -5003,11 +5003,7 @@ int Mgmt_thread(Mgmt_params *params) {
 	} else if(!strcasecmp(thread_params[0], "sip_t2")) {
 		if(!strcasecmp(thread_params[1], "add")) {
 			if(opt_t2_boost) {
-				#if not CALLX_MOD_OLDVER
 				return(params->sendString("not supported in t2_boost mode\n"));
-				#else
-				PreProcessPacket::autoStartCallX_PreProcessPacket();
-				#endif
 			} else {
 				PreProcessPacket::autoStartNextLevelPreProcessPacket();
 			}
@@ -5053,7 +5049,6 @@ int Mgmt_thread(Mgmt_params *params) {
 				return(params->sendString("ok\n"));
 			}
 		}
-	#if not CALLX_MOD_OLDVER
 	} else if(!strcasecmp(thread_params[0], "sip_find_callc")) {
 		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 		if(preProcessPacket[PreProcessPacket::ppt_pp_find_call]) {
@@ -5076,7 +5071,6 @@ int Mgmt_thread(Mgmt_params *params) {
 				return(params->sendString("ok\n"));
 			}
 		}
-	#endif
 	} else if(!strcasecmp(thread_params[0], "ac")) {
 		extern AsyncClose *asyncClose;
 		if(asyncClose) {
@@ -5159,6 +5153,10 @@ int Mgmt_usleep(Mgmt_params *params) {
 	} else if(!strcasecmp(us_params[0], "set_sip_batch")) {
 		extern unsigned int opt_sip_batch_usleep;
 		opt_sip_batch_usleep = atoi(us_params[1]);
+		return(params->sendString("ok\n"));
+	} else if(!strcasecmp(us_params[0], "set_sip_batch_sync")) {
+		extern unsigned int opt_sip_batch_sync_usleep;
+		opt_sip_batch_sync_usleep = atoi(us_params[1]);
 		return(params->sendString("ok\n"));
 	} else if(!strcasecmp(us_params[0], "set_rtp_batch")) {
 		extern unsigned int opt_rtp_batch_usleep;

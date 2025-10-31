@@ -8316,358 +8316,6 @@ void readdump_libnids(pcap_t *handle) {
 #endif
 */
 
-
-#if DEFRAG_MOD_OLDVER
-
-
-inline void ipfrag_delete_node(ip_frag_s *node, int pushToStack_queue_index) {
-	if(node->header_packet) {
-		PUSH_HP(&node->header_packet, pushToStack_queue_index);
-	}
-	if(node->header_packet_pqout) {
-		((sHeaderPacketPQout*)node->header_packet_pqout)->destroy_or_unlock_blockstore();
-		delete ((sHeaderPacketPQout*)node->header_packet_pqout);
-	}
-	delete node;
-}
-
-/*
-
-defragment packets from queue and allocates memory for new header and packet which is returned 
-in **header an **packet 
-
-*/
-inline int _ipfrag_dequeue(ip_frag_queue *queue, 
-			   sHeaderPacket **header_packet, sHeaderPacketPQout *header_packet_pqout,
-			   int pushToStack_queue_index) {
-	//walk queue
-
-	if(!queue) return 1;
-	if(!queue->size()) return 1;
-
-	// prepare newpacket structure and header structure
-	u_int32_t totallen = queue->begin()->second->header_ip_offset;
-	unsigned i = 0;
-	for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
-		totallen += it->second->len;
-		if(i) {
-			totallen -= it->second->iphdr_len;
-		}
-		i++;
-	}
-	if(totallen > 0xFFFF + queue->begin()->second->header_ip_offset) {
-		if(sverb.defrag_overflow) {
-			ip_frag_queue_it_t it = queue->begin();
-			if(it != queue->end()) {
-				ip_frag_s *node = it->second;
-				iphdr2 *iph = (iphdr2*)((u_char*)HPP(node->header_packet) + node->header_ip_offset);
-				syslog(LOG_NOTICE, "ipfrag overflow: %i src ip: %s dst ip: %s", totallen, iph->get_saddr().getString().c_str(), iph->get_daddr().getString().c_str());
-			}
-		}
-		totallen = 0xFFFF + queue->begin()->second->header_ip_offset;
-	}
-	
-	unsigned int additionallen = 0;
-	iphdr2 *iphdr = NULL;
-	i = 0;
-	unsigned int len = 0;
-	
-	if(header_packet) {
-		*header_packet = CREATE_HP(totallen);
-		sPacketInfoData pid;
-		for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
-			ip_frag_s *node = it->second;
-			if(i == 0) {
-				// for first packet copy ethernet header and ip header
-				if(node->header_ip_offset) {
-					memcpy_heapsafe(HPP(*header_packet), *header_packet,
-							HPP(node->header_packet), node->header_packet,
-							node->header_ip_offset);
-					len += node->header_ip_offset;
-					iphdr = (iphdr2*)(HPP(*header_packet) + len);
-				}
-				memcpy_heapsafe(HPP(*header_packet) + len, *header_packet,
-						HPP(node->header_packet) + node->header_ip_offset, node->header_packet,
-						node->len);
-				len += node->len;
-				pid = node->header_packet->pid;
-			} else {
-				if(len < totallen) {
-					unsigned cpy_len = min((unsigned)(node->len - node->iphdr_len), totallen - len);
-					memcpy_heapsafe(HPP(*header_packet) + len, *header_packet,
-							HPP(node->header_packet) + node->header_ip_offset + node->iphdr_len, node->header_packet,
-							cpy_len);
-					len += cpy_len;
-					additionallen += cpy_len;
-				}
-			}
-			if(i == queue->size() - 1) {
-				memcpy_heapsafe(HPH(*header_packet), *header_packet, 
-						HPH(node->header_packet), node->header_packet,
-						sizeof(struct pcap_pkthdr));
-				HPH(*header_packet)->len = totallen;
-				HPH(*header_packet)->caplen = totallen;
-				(*header_packet)->pid = pid;
-			}
-			ipfrag_delete_node(node, pushToStack_queue_index);
-			i++;
-		}
-	} else {
-		header_packet_pqout->header = new FILE_LINE(26012) pcap_pkthdr_plus;
-		header_packet_pqout->packet = new FILE_LINE(26013) u_char[totallen];
-		header_packet_pqout->block_store = NULL;
-		header_packet_pqout->block_store_index = 0;
-		header_packet_pqout->block_store_locked = false;
-		header_packet_pqout->header_ip_last_offset = 0xFFFF;
-		sPacketInfoData pid;
-		for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
-			ip_frag_s *node = it->second;
-			if(i == 0) {
-				// for first packet copy ethernet header and ip header
-				if(node->header_ip_offset) {
-					memcpy_heapsafe(header_packet_pqout->packet, header_packet_pqout->packet,
-							((sHeaderPacketPQout*)node->header_packet_pqout)->packet, 
-							((sHeaderPacketPQout*)node->header_packet_pqout)->block_store ?
-							 ((sHeaderPacketPQout*)node->header_packet_pqout)->block_store->block :
-							 ((sHeaderPacketPQout*)node->header_packet_pqout)->packet,
-							node->header_ip_offset);
-					len += node->header_ip_offset;
-					iphdr = (iphdr2*)(header_packet_pqout->packet + len);
-				}
-				memcpy_heapsafe(header_packet_pqout->packet + len, header_packet_pqout->packet,
-						((sHeaderPacketPQout*)node->header_packet_pqout)->packet + node->header_ip_offset, 
-						((sHeaderPacketPQout*)node->header_packet_pqout)->block_store ?
-						 ((sHeaderPacketPQout*)node->header_packet_pqout)->block_store->block :
-						 ((sHeaderPacketPQout*)node->header_packet_pqout)->packet,
-						node->len);
-				len += node->len;
-				pid = ((sHeaderPacketPQout*)node->header_packet_pqout)->header->pid;
-			} else {
-				// for rest of a packets append only data 
-				if(len < totallen) {
-					unsigned cpy_len = min((unsigned)(node->len - node->iphdr_len), totallen - len);
-					memcpy_heapsafe(header_packet_pqout->packet + len, header_packet_pqout->packet,
-							((sHeaderPacketPQout*)node->header_packet_pqout)->packet + node->header_ip_offset + node->iphdr_len, 
-							((sHeaderPacketPQout*)node->header_packet_pqout)->block_store ?
-							 ((sHeaderPacketPQout*)node->header_packet_pqout)->block_store->block :
-							 ((sHeaderPacketPQout*)node->header_packet_pqout)->packet,
-							cpy_len);
-					len += cpy_len;
-					additionallen += cpy_len;
-				}
-			}
-			if(i == queue->size() - 1) {
-				memcpy_heapsafe(header_packet_pqout->header, header_packet_pqout->header,
-						((sHeaderPacketPQout*)node->header_packet_pqout)->header,
-						((sHeaderPacketPQout*)node->header_packet_pqout)->block_store ?
-						 ((sHeaderPacketPQout*)node->header_packet_pqout)->block_store->block :
-						 (u_char*)((sHeaderPacketPQout*)node->header_packet_pqout)->header,
-						sizeof(pcap_pkthdr_plus));
-				header_packet_pqout->header->set_len(totallen);
-				header_packet_pqout->header->set_caplen(totallen);
-				header_packet_pqout->header->pid = pid;
-			}
-			ipfrag_delete_node(node, 0);
-			i++;
-		}
-	}
-	if(iphdr) {
-		//increase IP header length 
-		iphdr->set_tot_len(iphdr->get_tot_len() + additionallen);
-		// reset checksum
-		iphdr->set_check(0);
-		// reset fragment flag to 0
-		iphdr->clear_frag_data();
-	}
-	
-	return 1;
-}
-
-inline int _ipfrag_add(ip_frag_queue *queue, 
-		       sHeaderPacket **header_packet, sHeaderPacketPQout *header_packet_pqout,
-		       unsigned int header_ip_offset, unsigned int len,
-		       int pushToStack_queue_index) {
- 
-	iphdr2 *header_ip = header_packet ?
-			     (iphdr2*)((HPP(*header_packet)) + header_ip_offset) :
-			     (iphdr2*)(header_packet_pqout->packet + header_ip_offset);
-
-	u_int16_t frag_data = header_ip->get_frag_data();
-	unsigned int offset_d = header_ip->get_frag_offset(frag_data);
-
-	if(!header_ip->is_more_frag(frag_data) && offset_d) {
-		// this packet do not set more fragment indicator but contains offset which means that it is the last packet
-		queue->has_last = true;
-	}
-
-	if(!queue->count(offset_d)) {
-		// this offset number is not yet in the queue - add packet to queue which automatically sort it into right position
-
-		// create node
-		ip_frag_s *node = new FILE_LINE(26014) ip_frag_s;
-
-		if(header_packet) {
-			node->ts = HPH(*header_packet)->ts.tv_sec;
-			node->header_packet = *header_packet;
-			node->header_packet_pqout = NULL;
-			*header_packet = NULL;
-		} else {
-			node->ts = header_packet_pqout->header->get_tv_sec();
-			node->header_packet_pqout = new FILE_LINE(26015) sHeaderPacketPQout;
-			node->header_packet = NULL;
-			*(sHeaderPacketPQout*)node->header_packet_pqout = *header_packet_pqout;
-			((sHeaderPacketPQout*)node->header_packet_pqout)->alloc_and_copy_blockstore();
-		}
-		
-		node->header_ip_offset = header_ip_offset;
-		node->len = len;
-		node->offset = offset_d;
-		node->iphdr_len = header_ip->get_hdr_size() - 
-				  (header_ip->_get_protocol() == IPPROTO_ESP ? IPPROTO_ESP_HEADER_SIZE : 0);
-
-		// add to queue (which will sort it automatically
-		(*queue)[offset_d] = node;
-	} else {
-		// node with that offset already exists - discard
-		return -1;
-	}
-
-	// now check if packets in queue are complete - if yes - defragment - if not, do nithing
-	int ok = true;
-	unsigned int lastoffset = 0;
-	if(queue->has_last and queue->begin()->second->offset == 0) {
-		// queue has first and last packet - check if there are all middle fragments
-		for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
-			ip_frag_s *node = it->second;
-			if((node->offset != lastoffset)) {
-				ok = false;
-				break;
-			}
-			lastoffset += node->len - node->iphdr_len;
-		}
-	} else {
-		// queue does not contain a last packet and does not contain a first packet
-		ok = false;
-	}
-
-	if(ok) {
-		// all packets -> defragment 
-		_ipfrag_dequeue(queue, header_packet, header_packet_pqout, pushToStack_queue_index);
-		return 1;
-	} else {
-		return 0;
-	}
-}
-
-inline int ipfrag_add(ip_frag_queue *queue, 
-		      sHeaderPacket **header_packet, 
-		      unsigned int header_ip_offset, unsigned int len,
-		      int pushToStack_queue_index) {
-	return(_ipfrag_add(queue, 
-			   header_packet, NULL,
-			   header_ip_offset, len,
-			   pushToStack_queue_index));
-}
-
-inline int ipfrag_add(ip_frag_queue *queue, 
-		      sHeaderPacketPQout *header_packet_pqout, 
-		      unsigned int header_ip_offset, unsigned int len) {
-	return(_ipfrag_add(queue, 
-			   NULL, header_packet_pqout,
-			   header_ip_offset, len,
-			   -1));
-}
-
-/* 
-
-function inserts packet into fragmentation queue and if all packets within fragmented IP are 
-complete it will dequeue and construct large packet from all fragmented packets. 
-
-return: if packet is defragmented from all pieces function returns 1 and set header and packet 
-pinters to new allocated data which has to be freed later. If packet is only queued function
-returns 0 and header and packet remains same
-
-*/
-inline int _handle_defrag(iphdr2 *header_ip, 
-			  sHeaderPacket **header_packet, sHeaderPacketPQout *header_packet_pqout, 
-			  ipfrag_data_s *ipfrag_data,
-			  int pushToStack_queue_index) {
- 
-	//copy header ip to tmp beacuse it can happen that during exectuion of this function the header_ip can be 
-	//overwriten in kernel ringbuffer if the ringbuffer is small and thus header_ip->saddr can have different value 
-	iphdr2 *header_ip_orig = (iphdr2*)new FILE_LINE(0) u_char[header_ip->get_hdr_size()];
-	memcpy(header_ip_orig, header_ip, header_ip->get_hdr_size());
-
-	// get queue from ip_frag_stream based on source ip address and ip->id identificator (2-dimensional map array)
-	ip_frag_queue *queue = ipfrag_data->ip_frag_stream[header_ip_orig->get_saddr()][header_ip_orig->get_frag_id()];
-	if(!queue) {
-		// queue does not exists yet - create it and assign to map 
-		queue = new FILE_LINE(26016) ip_frag_queue;
-		ipfrag_data->ip_frag_stream[header_ip_orig->get_saddr()][header_ip_orig->get_frag_id()] = queue;
-	}
-	int res = header_packet ?
-		   ipfrag_add(queue,
-			      header_packet, 
-			      (u_char*)header_ip - HPP(*header_packet), header_ip_orig->get_tot_len(),
-			      pushToStack_queue_index) :
-		   ipfrag_add(queue,
-			      header_packet_pqout, 
-			      (u_char*)header_ip - header_packet_pqout->packet, header_ip_orig->get_tot_len());
-	if(res > 0) {
-		// packet was created from all pieces - delete queue and remove it from map
-		ipfrag_data->ip_frag_stream[header_ip_orig->get_saddr()].erase(header_ip_orig->get_frag_id());
-		delete queue;
-	};
-	
-	delete [] header_ip_orig;
-	
-	return res;
-}
-
-int handle_defrag(iphdr2 *header_ip, sHeaderPacket **header_packet, ipfrag_data_s *ipfrag_data,
-		  int pushToStack_queue_index) {
-	return(_handle_defrag(header_ip, header_packet, NULL, ipfrag_data,
-			      pushToStack_queue_index));
-}
-
-int handle_defrag(iphdr2 *header_ip, void *header_packet_pqout, ipfrag_data_s *ipfrag_data) {
-	return(_handle_defrag(header_ip, NULL, (sHeaderPacketPQout*)header_packet_pqout, ipfrag_data,
-			      -1));
-}
-
-void ipfrag_prune(unsigned int tv_sec, bool all, ipfrag_data_s *ipfrag_data,
-		  int pushToStack_queue_index, int prune_limit) {
- 
-	if(prune_limit < 0) {
-		prune_limit = 30;
-	}
-	ip_frag_queue *queue;
-	for (ipfrag_data->ip_frag_streamIT = ipfrag_data->ip_frag_stream.begin(); ipfrag_data->ip_frag_streamIT != ipfrag_data->ip_frag_stream.end(); ipfrag_data->ip_frag_streamIT++) {
-		for (ipfrag_data->ip_frag_streamITinner = (*ipfrag_data->ip_frag_streamIT).second.begin(); ipfrag_data->ip_frag_streamITinner != (*ipfrag_data->ip_frag_streamIT).second.end();) {
-			queue = ipfrag_data->ip_frag_streamITinner->second;
-			if(!queue->size()) {
-				ipfrag_data->ip_frag_streamIT->second.erase(ipfrag_data->ip_frag_streamITinner++);
-				delete queue;
-				continue;
-			}
-			if(all or ((tv_sec - queue->begin()->second->ts) > prune_limit)) {
-				for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
-					ip_frag_s *node = it->second;
-					ipfrag_delete_node(node, pushToStack_queue_index);
-				}
-				ipfrag_data->ip_frag_streamIT->second.erase(ipfrag_data->ip_frag_streamITinner++);
-				delete queue;
-				continue;
-			}
-			ipfrag_data->ip_frag_streamITinner++;
-		}
-	}
-}
-
-
-#endif
-
-
 bool open_global_pcap_handle(const char *pcap, string *error) {
 	char errbuf[PCAP_ERRBUF_SIZE];
 	if(pcap == string("/dev/stdin")) {
@@ -10001,13 +9649,9 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 	this->next_threads_count = opt_t2_boost &&
 				   (typePreProcessThread == ppt_detach_x || 
 				    typePreProcessThread == ppt_detach || 
-				    typePreProcessThread == ppt_sip
-				    #if not CALLX_MOD_OLDVER
-				    ||
+				    typePreProcessThread == ppt_sip ||
 				    typePreProcessThread == ppt_pp_find_call ||
-				    typePreProcessThread == ppt_pp_process_call
-				    #endif
-				    ) ?
+				    typePreProcessThread == ppt_pp_process_call) ?
 				    min(max(get_opt_pre_process_packets_next_thread(), 0), min(get_opt_pre_process_packets_next_thread_max(), MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) :
 				    0;
 	this->next_threads_count_mod = 0;
@@ -10243,7 +9887,6 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 					}
 				} }
 				break;
-			#if not CALLX_MOD_OLDVER
 			case ppt_pp_find_call: {
 				if(next_thread_data->mode == 2) {
 					packet_s_process **batch = (packet_s_process**)next_thread_data->batch;
@@ -10319,7 +9962,6 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 					}
 				} }
 				break;
-			#endif
 			default:
 				break;
 			}
@@ -10359,13 +10001,9 @@ void *PreProcessPacket::outThreadFunction() {
 		if(this->next_threads_count_mod &&
 		   (this->typePreProcessThread == ppt_detach_x ||
 		    this->typePreProcessThread == ppt_detach ||
-		    this->typePreProcessThread == ppt_sip
-		    #if not CALLX_MOD_OLDVER
-		    ||
+		    this->typePreProcessThread == ppt_sip ||
 		    this->typePreProcessThread == ppt_pp_find_call ||
-		    this->typePreProcessThread == ppt_pp_process_call
-		    #endif
-		   )) {
+		    this->typePreProcessThread == ppt_pp_process_call)) {
 			if(this->next_threads_count_mod > 0) {
 				createNextThread();
 			} else if(this->next_threads_count_mod < 0) {
@@ -10437,9 +10075,9 @@ void *PreProcessPacket::outThreadFunction() {
 								#endif
 								++completed;
 							} else {
-								extern unsigned int opt_sip_batch_usleep;
-								if(opt_sip_batch_usleep) {
-									USLEEP(opt_sip_batch_usleep);
+								extern unsigned int opt_sip_batch_sync_usleep;
+								if(opt_sip_batch_sync_usleep) {
+									USLEEP(opt_sip_batch_sync_usleep);
 								} else {
 									__ASM_PAUSE;
 								}
@@ -10460,9 +10098,9 @@ void *PreProcessPacket::outThreadFunction() {
 							sem_wait(&this->next_threads[i].sem_sync[1]);
 						} else {
 							while(this->next_threads[i].next_data.processing) { 
-								extern unsigned int opt_sip_batch_usleep;
-								if(opt_sip_batch_usleep) {
-									USLEEP(opt_sip_batch_usleep);
+								extern unsigned int opt_sip_batch_sync_usleep;
+								if(opt_sip_batch_sync_usleep) {
+									USLEEP(opt_sip_batch_sync_usleep);
 								} else {
 									__ASM_PAUSE;
 								}
@@ -10573,9 +10211,9 @@ void *PreProcessPacket::outThreadFunction() {
 								}
 								++completed;
 							} else {
-								extern unsigned int opt_sip_batch_usleep;
-								if(opt_sip_batch_usleep) {
-									USLEEP(opt_sip_batch_usleep);
+								extern unsigned int opt_sip_batch_sync_usleep;
+								if(opt_sip_batch_sync_usleep) {
+									USLEEP(opt_sip_batch_sync_usleep);
 								} else {
 									__ASM_PAUSE;
 								}
@@ -10594,9 +10232,9 @@ void *PreProcessPacket::outThreadFunction() {
 							sem_wait(&this->next_threads[i].sem_sync[1]);
 						} else {
 							while(this->next_threads[i].next_data.processing) { 
-								extern unsigned int opt_sip_batch_usleep;
-								if(opt_sip_batch_usleep) {
-									USLEEP(opt_sip_batch_usleep);
+								extern unsigned int opt_sip_batch_sync_usleep;
+								if(opt_sip_batch_sync_usleep) {
+									USLEEP(opt_sip_batch_sync_usleep);
 								} else {
 									__ASM_PAUSE;
 								}
@@ -10807,9 +10445,9 @@ void *PreProcessPacket::outThreadFunction() {
 							processNextAction(batch->batch[completed]);
 							++completed;
 						} else {
-							extern unsigned int opt_sip_batch_usleep;
-							if(opt_sip_batch_usleep) {
-								USLEEP(opt_sip_batch_usleep);
+							extern unsigned int opt_sip_batch_sync_usleep;
+							if(opt_sip_batch_sync_usleep) {
+								USLEEP(opt_sip_batch_sync_usleep);
 							} else {
 								__ASM_PAUSE;
 							}
@@ -10835,9 +10473,9 @@ void *PreProcessPacket::outThreadFunction() {
 							sem_wait(&this->next_threads[i].sem_sync[1]);
 						} else {
 							while(this->next_threads[i].next_data.processing) {
-								extern unsigned int opt_sip_batch_usleep;
-								if(opt_sip_batch_usleep) {
-									USLEEP(opt_sip_batch_usleep);
+								extern unsigned int opt_sip_batch_sync_usleep;
+								if(opt_sip_batch_sync_usleep) {
+									USLEEP(opt_sip_batch_sync_usleep);
 								} else {
 									__ASM_PAUSE;
 								}
@@ -10888,7 +10526,6 @@ void *PreProcessPacket::outThreadFunction() {
 					tcpReassemblySipExt->cleanup_simple();
 				}
 			}
-		#if not CALLX_MOD_OLDVER
 		} else if(this->typePreProcessThread == ppt_pp_find_call) {
 			if(this->qring[this->readit]->used == 1) {
 				exists_used = true;
@@ -10964,9 +10601,9 @@ void *PreProcessPacket::outThreadFunction() {
 								   (packetS->call || packetS->call_created)) {
 									++completed;
 								} else {
-									extern unsigned int opt_sip_batch_usleep;
-									if(opt_sip_batch_usleep) {
-										USLEEP(opt_sip_batch_usleep);
+									extern unsigned int opt_sip_batch_sync_usleep;
+									if(opt_sip_batch_sync_usleep) {
+										USLEEP(opt_sip_batch_sync_usleep);
 									} else {
 										__ASM_PAUSE;
 									}
@@ -10998,9 +10635,9 @@ void *PreProcessPacket::outThreadFunction() {
 								sem_wait(&this->next_threads[i].sem_sync[1]);
 							} else {
 								while(this->next_threads[i].next_data.processing) { 
-									extern unsigned int opt_sip_batch_usleep;
-									if(opt_sip_batch_usleep) {
-										USLEEP(opt_sip_batch_usleep);
+									extern unsigned int opt_sip_batch_sync_usleep;
+									if(opt_sip_batch_sync_usleep) {
+										USLEEP(opt_sip_batch_sync_usleep);
 									} else {
 										__ASM_PAUSE;
 									}
@@ -11064,9 +10701,9 @@ void *PreProcessPacket::outThreadFunction() {
 								   (packetS->call || packetS->call_created)) {
 									++completed;
 								} else {
-									extern unsigned int opt_sip_batch_usleep;
-									if(opt_sip_batch_usleep) {
-										USLEEP(opt_sip_batch_usleep);
+									extern unsigned int opt_sip_batch_sync_usleep;
+									if(opt_sip_batch_sync_usleep) {
+										USLEEP(opt_sip_batch_sync_usleep);
 									} else {
 										__ASM_PAUSE;
 									}
@@ -11087,9 +10724,9 @@ void *PreProcessPacket::outThreadFunction() {
 								sem_wait(&this->next_threads[i].sem_sync[1]);
 							} else {
 								while(this->next_threads[i].next_data.processing) { 
-									extern unsigned int opt_sip_batch_usleep;
-									if(opt_sip_batch_usleep) {
-										USLEEP(opt_sip_batch_usleep);
+									extern unsigned int opt_sip_batch_sync_usleep;
+									if(opt_sip_batch_sync_usleep) {
+										USLEEP(opt_sip_batch_sync_usleep);
 									} else {
 										__ASM_PAUSE;
 									}
@@ -11201,9 +10838,9 @@ void *PreProcessPacket::outThreadFunction() {
 								#endif
 								++completed;
 							} else {
-								extern unsigned int opt_sip_batch_usleep;
-								if(opt_sip_batch_usleep) {
-									USLEEP(opt_sip_batch_usleep);
+								extern unsigned int opt_sip_batch_sync_usleep;
+								if(opt_sip_batch_sync_usleep) {
+									USLEEP(opt_sip_batch_sync_usleep);
 								} else {
 									__ASM_PAUSE;
 								}
@@ -11237,9 +10874,9 @@ void *PreProcessPacket::outThreadFunction() {
 							sem_wait(&this->next_threads[i].sem_sync[1]);
 						} else {
 							while(this->next_threads[i].next_data.processing) { 
-								extern unsigned int opt_sip_batch_usleep;
-								if(opt_sip_batch_usleep) {
-									USLEEP(opt_sip_batch_usleep);
+								extern unsigned int opt_sip_batch_sync_usleep;
+								if(opt_sip_batch_sync_usleep) {
+									USLEEP(opt_sip_batch_sync_usleep);
 								} else {
 									__ASM_PAUSE;
 								}
@@ -11271,7 +10908,6 @@ void *PreProcessPacket::outThreadFunction() {
 					calltable->applyHashModifyQueue(true);
 				}
 			}
-		#endif
 		} else if(this->typePreProcessThread == ppt_pp_rtp && rtp_delay_queue__use) {
 			if(!rtp_delay_queue_pop_item) {
 				__SYNC_LOCK(rtp_delay_queue_lock);
@@ -11354,22 +10990,14 @@ void *PreProcessPacket::outThreadFunction() {
 							this->process_SIP_EXTEND(packetS);
 							if(opt_preprocess_packets_qring_force_push &&
 							   batch_index == count - 1) {
-								#if not CALLX_MOD_OLDVER
 								preProcessPacket[ppt_pp_find_call]->push_batch();
-								#else
-								preProcessPacket[ppt_pp_call]->push_batch();
-								#endif
 								preProcessPacket[ppt_pp_register]->push_batch();
-								#if CALLX_MOD_OLDVER
-								preProcessPacket[ppt_pp_sip_other]->push_batch();
-								#endif
 								preProcessPacket[ppt_pp_diameter]->push_batch();
 								if(!opt_t2_boost && !opt_t2_boost_direct_rtp) {
 									preProcessPacket[ppt_pp_rtp]->push_batch();
 								}
 							}
 							break;
-						#if not CALLX_MOD_OLDVER
 						case ppt_pp_find_call:
 							this->process_FIND_CALL(packetS);
 							if(opt_preprocess_packets_qring_force_push &&
@@ -11381,17 +11009,6 @@ void *PreProcessPacket::outThreadFunction() {
 						case ppt_pp_process_call:
 							this->process_PROCESS_CALL(packetS, 0, true);
 							break;
-						#else
-						case ppt_pp_call:
-							this->process_CALL(packetS);
-							break;
-						case ppt_pp_callx:
-							this->process_CALLX(packetS);
-							break;
-						case ppt_pp_callfindx:
-							this->process_CallFindX(packetS);
-							break;
-						#endif
 						case ppt_pp_register:
 							this->process_REGISTER(packetS);
 							break;
@@ -11468,15 +11085,8 @@ void *PreProcessPacket::outThreadFunction() {
 					preProcessPacket[ppt_pp_other]->push_batch();
 					break;
 				case ppt_extend:
-					#if not CALLX_MOD_OLDVER
 					preProcessPacket[ppt_pp_find_call]->push_batch();
-					#else
-					preProcessPacket[ppt_pp_call]->push_batch();
-					#endif
 					preProcessPacket[ppt_pp_register]->push_batch();
-					#if CALLX_MOD_OLDVER
-					preProcessPacket[ppt_pp_sip_other]->push_batch();
-					#endif
 					preProcessPacket[ppt_pp_diameter]->push_batch();
 					if(!opt_t2_boost && !opt_t2_boost_direct_rtp) {
 						preProcessPacket[ppt_pp_rtp]->push_batch();
@@ -11488,7 +11098,6 @@ void *PreProcessPacket::outThreadFunction() {
 						}
 					}
 					break;
-				#if not CALLX_MOD_OLDVER
 				case ppt_pp_find_call:
 					preProcessPacket[ppt_pp_process_call]->push_batch();
 					preProcessPacket[ppt_pp_sip_other]->push_batch();
@@ -11499,36 +11108,6 @@ void *PreProcessPacket::outThreadFunction() {
 						calltable->applyHashModifyQueue(true);
 					}
 					break;
-				#else
-				case ppt_pp_call:
-					if(opt_t2_boost && preProcessPacketCallX_state == PreProcessPacket::callx_process && 
-					   preProcessPacketCallX[0]->isActiveOutThread()) {
-						for(int i = 0; i < preProcessPacketCallX_count; i++) {
-							preProcessPacketCallX[i]->push_batch();
-						}
-					} else {
-						if(hash_modify_queue_length_ms) {
-							calltable->applyHashModifyQueue(true);
-						}
-					}
-					if(!opt_t2_boost || preProcessPacketCallX_state == PreProcessPacket::callx_na) {
-						_process_packet__cleanup_calls(NULL, 0, __FILE__, __LINE__);
-						if(hash_modify_queue_length_ms) {
-							calltable->applyHashModifyQueue(true);
-						}
-					}
-					break;
-				case ppt_pp_callx:
-					if(opt_t2_boost && preProcessPacketCallX_state != PreProcessPacket::callx_na &&
-					   preProcessPacketCallX[0]->isActiveOutThread() &&
-					   (int)idPreProcessThread == preProcessPacketCallX_count) {
-						_process_packet__cleanup_calls(NULL, 0, __FILE__, __LINE__);
-					}
-					break;
-				case ppt_pp_callfindx:
-					preProcessPacketCallX[idPreProcessThread]->push_batch();
-					break;
-				#endif
 				case ppt_pp_register:
 					_process_packet__cleanup_registers(NULL);
 					break;
@@ -11678,23 +11257,12 @@ void PreProcessPacket::push_batch_nothread() {
 		}
 		break;
 	case ppt_extend:
-		#if not CALLX_MOD_OLDVER
 		if(!preProcessPacket[ppt_pp_find_call]->outThreadState) {
 			preProcessPacket[ppt_pp_find_call]->push_batch();
 		}
-		#else
-		if(!preProcessPacket[ppt_pp_call]->outThreadState) {
-			preProcessPacket[ppt_pp_call]->push_batch();
-		}
-		#endif
 		if(!preProcessPacket[ppt_pp_register]->outThreadState) {
 			preProcessPacket[ppt_pp_register]->push_batch();
 		}
-		#if CALLX_MOD_OLDVER
-		if(!preProcessPacket[ppt_pp_sip_other]->outThreadState) {
-			preProcessPacket[ppt_pp_sip_other]->push_batch();
-		}
-		#endif
 		if(!preProcessPacket[ppt_pp_diameter]->outThreadState) {
 			preProcessPacket[ppt_pp_diameter]->push_batch();
 		}
@@ -11711,7 +11279,6 @@ void PreProcessPacket::push_batch_nothread() {
 			}
 		}
 		break;
-	#if not CALLX_MOD_OLDVER
 	case ppt_pp_find_call:
 		if(!preProcessPacket[ppt_pp_process_call]->outThreadState) {
 			preProcessPacket[ppt_pp_process_call]->push_batch();
@@ -11723,37 +11290,6 @@ void PreProcessPacket::push_batch_nothread() {
 	case ppt_pp_process_call:
 		_process_packet__cleanup_calls(NULL, 0, __FILE__, __LINE__);
 		break;
-	#else
-	case ppt_pp_call:
-		if(opt_t2_boost && preProcessPacketCallX_state == PreProcessPacket::callx_process) {
-			for(int i = 0; i < preProcessPacketCallX_count; i++) {
-				if(!preProcessPacketCallX[i]->outThreadState) {
-					preProcessPacketCallX[i]->push_batch();
-				}
-			}
-		}
-		if(!opt_t2_boost || preProcessPacketCallX_state == PreProcessPacket::callx_na) {
-			_process_packet__cleanup_calls(NULL, 0, __FILE__, __LINE__);
-			if(hash_modify_queue_length_ms) {
-				calltable->applyHashModifyQueue(true);
-			}
-		}
-		break;
-	case ppt_pp_callx:
-		if(opt_t2_boost && 
-		   (int)idPreProcessThread == preProcessPacketCallX_count) {
-			_process_packet__cleanup_calls(NULL, 0, __FILE__, __LINE__);
-			if(hash_modify_queue_length_ms) {
-				calltable->applyHashModifyQueue(true);
-			}
-		}
-		break;
-	case ppt_pp_callfindx:
-		if(!preProcessPacketCallX[idPreProcessThread]->outThreadState) {
-			preProcessPacketCallX[idPreProcessThread]->push_batch();
-		}
-		break;
-	#endif
 	case ppt_pp_register:
 		_process_packet__cleanup_registers(NULL);
 		break;
@@ -12082,76 +11618,20 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 	#endif
 	if(packetS->typeContentIsSip()) {
 		packetS->blockstore_addflag(101 /*pb lock flag*/);
-		#if not CALLX_MOD_OLDVER
 		if(!packetS->is_register()) {
 			preProcessPacket[ppt_pp_find_call]->push_packet(packetS);
 		} else {
 			preProcessPacket[ppt_pp_register]->push_packet(packetS);
 		}
-		#else
-		int push_to_thread = -1;
-		if(!packetS->is_register()) {
-			if(opt_t2_boost && preProcessPacketCallX_state == PreProcessPacket::callx_find &&
-			   preProcessPacketCallFindX[0]->isActiveOutThread()) {
-				preProcessPacketCallFindX[packetS->get_callid_sipextx_index()]->push_packet(packetS);
-				return;
-			} else {
-				this->process_findSipCall(&packetS);
-				this->process_createSipCall(&packetS);
-				if(packetS->_findCall && packetS->call) {
-					if(packetS->call->isAllocFlagOK() && !packetS->call->stopProcessing) {
-						push_to_thread = ppt_pp_call;
-					} else {
-						if(!packetS->call->stopProcessing && !packetS->call->bad_flags_warning[0]) {
-							syslog(LOG_WARNING, "WARNING: bad flags in call: %s: alloc_flag: %i, stop_processing: %i (process_SIP_EXTEND)", 
-							       packetS->get_callid(),
-							       packetS->call->alloc_flag, packetS->call->stopProcessing);
-							packetS->call->bad_flags_warning[0] = true;
-						}
-					}
-				} else if(packetS->_createCall && packetS->call_created) {
-					push_to_thread = ppt_pp_call;
-				}
-			}
-			if(push_to_thread < 0) {
-				if((packetS->is_options() && (opt_sip_options || livesnifferfilterUseSipTypes.u_options)) ||
-				   (packetS->is_subscribe() && (opt_sip_subscribe || livesnifferfilterUseSipTypes.u_subscribe)) ||
-				   (packetS->is_notify() && (opt_sip_notify || livesnifferfilterUseSipTypes.u_notify))) {
-					push_to_thread = ppt_pp_sip_other;
-				}
-			}
-		} else {
-			if(opt_sip_register || livesnifferfilterUseSipTypes.u_register) {
-				push_to_thread = ppt_pp_register;
-			}
-		}
-		if(push_to_thread >= 0) {
-			preProcessPacket[push_to_thread]->push_packet(packetS);
-		} else {
-			PACKET_S_PROCESS_DESTROY(&packetS);
-		}
-		#endif
 	} else if(packetS->typeContentIsSkinny()) {
 		packetS->blockstore_addflag(102 /*pb lock flag*/);
-		#if not CALLX_MOD_OLDVER
 		preProcessPacket[ppt_pp_find_call]->push_packet(packetS);
-		#else
-		preProcessPacket[ppt_pp_call]->push_packet(packetS);
-		#endif
 	} else if(packetS->typeContentIsMgcp()) {
 		//packetS->blockstore_addflag(102 /*pb lock flag*/);
-		#if not CALLX_MOD_OLDVER
 		preProcessPacket[ppt_pp_find_call]->push_packet(packetS);
-		#else
-		preProcessPacket[ppt_pp_call]->push_packet(packetS);
-		#endif
 	} else if(packetS->typeContentIsIpFixQos()) {
 		//packetS->blockstore_addflag(102 /*pb lock flag*/);
-		#if not CALLX_MOD_OLDVER
 		preProcessPacket[ppt_pp_find_call]->push_packet(packetS);
-		#else
-		preProcessPacket[ppt_pp_call]->push_packet(packetS);
-		#endif
 	} else if(packetS->typeContentIsDiameter()) {
 		preProcessPacket[ppt_pp_diameter]->push_packet(packetS);
 	} else if(!opt_t2_boost) {
@@ -12159,8 +11639,6 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 		preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
 	}
 }
-
-#if not CALLX_MOD_OLDVER
 
 void PreProcessPacket::process_FIND_CALL(packet_s_process *packetS) {
 	if(packetS->typeContentIsSip()) {
@@ -12244,6 +11722,7 @@ void PreProcessPacket::process_PROCESS_CALL(packet_s_process *packetS, int threa
 			} else {
 				process_packet_sip_call(packetS);
 			}
+			#if not PROCESS_PACKETS_INDIC_MOD_1
 			if(packetS->_findCall && packetS->call) {
 				__SYNC_DEC(packetS->call->in_preprocess_queue_before_process_packet);
 				#if DEBUG_PREPROCESS_QUEUE
@@ -12260,6 +11739,7 @@ void PreProcessPacket::process_PROCESS_CALL(packet_s_process *packetS, int threa
 					     << packetS->call_created->in_preprocess_queue_before_process_packet << endl;
 				#endif
 			}
+			#endif
 		}
 	} else if(packetS->typeContentIsSkinny()) {
 		if(opt_ipaccount && packetS->block_store) {
@@ -12274,119 +11754,15 @@ void PreProcessPacket::process_PROCESS_CALL(packet_s_process *packetS, int threa
 		handle_mgcp(packetS);
 	} else if(packetS->typeContentIsIpFixQos()) {
 		process_packet_ipfix_qos(packetS);
+		#if not PROCESS_PACKETS_INDIC_MOD_1
 		__SYNC_DEC(packetS->call->in_preprocess_queue_before_process_packet);
+		#endif
 	}
 	if(callCleanupCalls) {
 		_process_packet__cleanup_calls(packetS, 0, __FILE__, __LINE__);
 	}
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 10 + threadIndex);
 }
-
-#else
-
-void PreProcessPacket::process_CALL(packet_s_process *packetS) {
-	if(packetS->typeContentIsSip() && !packetS->is_register()) {
-		if(opt_ipaccount && packetS->block_store) {
-			packetS->block_store->setVoipPacket(packetS->block_store_index);
-		}
-		Call *call = packetS->call ? packetS->call : packetS->call_created;
-		bool bad_flags = call && (call->alloc_flag != 1 || (opt_safe_cleanup_calls ? call->stopProcessing : call->attemptsClose != 0));
-		if(!bad_flags) {
-			if(opt_detect_alone_bye && call && call->typeIs(BYE)) {
-				process_packet_sip_alone_bye(packetS);
-			} else {
-				if(opt_t2_boost && preProcessPacketCallX_state == PreProcessPacket::callx_process &&
-				   preProcessPacketCallX[0]->isActiveOutThread()) {
-					preProcessPacketCallX[call ? call->counter % preProcessPacketCallX_count : 0]->push_packet(packetS);
-					return;
-				} else {
-					process_packet_sip_call(packetS);
-				}
-			}
-			if(opt_quick_save_cdr != 2) {
-				_process_packet__cleanup_calls(packetS, 0, __FILE__, __LINE__);
-			}
-			if(packetS->_findCall && packetS->call) {
-				__SYNC_DEC(packetS->call->in_preprocess_queue_before_process_packet);
-				#if DEBUG_PREPROCESS_QUEUE
-					cout << " *** -- in_preprocess_queue_before_process_packet (1) : "
-					     << packetS->call->call_id << " : "
-					     << packetS->call->in_preprocess_queue_before_process_packet << endl;
-				#endif
-				if(packetS->pflags.tcp) {
-					packetS->call->protocol_is_tcp = true;
-				} else {
-					packetS->call->protocol_is_udp = true;
-				}
-			}
-			if(packetS->_createCall && packetS->call_created) {
-				__SYNC_DEC(packetS->call_created->in_preprocess_queue_before_process_packet);
-				#if DEBUG_PREPROCESS_QUEUE
-					cout << " *** -- in_preprocess_queue_before_process_packet (2) : "
-					     << packetS->call_created->call_id << " : "
-					     << packetS->call_created->in_preprocess_queue_before_process_packet << endl;
-				#endif
-			}
-		}
-		if(opt_quick_save_cdr == 2) {
-			_process_packet__cleanup_calls(packetS, 0, __FILE__, __LINE__);
-		}
-	} else if(packetS->typeContentIsSkinny()) {
-		if(opt_ipaccount && packetS->block_store) {
-			packetS->block_store->setVoipPacket(packetS->block_store_index);
-		}
-		_process_packet__cleanup_calls(packetS, 0, __FILE__, __LINE__);
-		handle_skinny(packetS->header_pt, packetS->packet, packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), packetS->data_(), packetS->datalen_(), packetS->dataoffset_(),
-			      get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip);
-	} else if(packetS->typeContentIsMgcp()) {
-		if(opt_ipaccount && packetS->block_store) {
-			packetS->block_store->setVoipPacket(packetS->block_store_index);
-		}
-		_process_packet__cleanup_calls(packetS, 0, __FILE__, __LINE__);
-		handle_mgcp(packetS);
-	}
-	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 0);
-}
-
-void PreProcessPacket::process_CALLX(packet_s_process *packetS) {
-	process_packet_sip_call(packetS);
-	if(idPreProcessThread == 0) {
-		_process_packet__cleanup_calls(packetS, 0, __FILE__, __LINE__);
-	}
-	if(packetS->_findCall && packetS->call) {
-		__SYNC_DEC(packetS->call->in_preprocess_queue_before_process_packet);
-		#if DEBUG_PREPROCESS_QUEUE
-			cout << " *** -- in_preprocess_queue_before_process_packet (3) : "
-			     << packetS->call->call_id << " : "
-			     << packetS->call->in_preprocess_queue_before_process_packet << endl;
-		#endif
-	}
-	if(packetS->_createCall && packetS->call_created) {
-		__SYNC_DEC(packetS->call_created->in_preprocess_queue_before_process_packet);
-		#if DEBUG_PREPROCESS_QUEUE
-			cout << " *** -- in_preprocess_queue_before_process_packet (4) "
-			     << packetS->call_created->call_id << " : "
-			     << packetS->call_created->in_preprocess_queue_before_process_packet << endl;
-		#endif
-	}
-	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 10 + idPreProcessThread);
-}
-
-void PreProcessPacket::process_CallFindX(packet_s_process *packetS) {
-	packetS->call = calltable->find_by_call_id_x(idPreProcessThread, packetS->get_callid(), 0, packetS->getTime_s());
-	packetS->_findCall = true;
-	if(packetS->enableCreateCall()) {
-		packetS->call_created = new_invite_register(packetS, packetS->sip_method, packetS->get_callid(), idPreProcessThread);
-		packetS->_createCall = true;
-	}
-	if(packetS->call || packetS->call_created) {
-		preProcessPacketCallX[idPreProcessThread]->push_packet(packetS);
-	} else {
-		PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 20 + idPreProcessThread);
-	}
-}
-
-#endif
 
 void PreProcessPacket::process_REGISTER(packet_s_process *packetS) {
 	if(packetS->typeContentIsSip() && packetS->is_register()) {
@@ -13006,28 +12382,6 @@ void PreProcessPacket::autoStartNextLevelPreProcessPacket() {
 		autoStartNextLevelPreProcessPacket_last_time_s = getTimeS();
 	}
 }
-
-#if CALLX_MOD_OLDVER
-void PreProcessPacket::autoStartCallX_PreProcessPacket() {
-	if(opt_t2_boost) {
-		for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
-			if(!preProcessPacketCallX[i]->outThreadState) {
-				preProcessPacketCallX[i]->startOutThread();
-			}
-		}
-		if(calltable->enableCallFindX()) {
-			for(int i = 0; i < preProcessPacketCallX_count; i++) {
-				if(!preProcessPacketCallFindX[i]->outThreadState) {
-					preProcessPacketCallFindX[i]->startOutThread();
-				}
-			}
-			preProcessPacketCallX_state = PreProcessPacket::callx_find;
-		} else {
-			preProcessPacketCallX_state = PreProcessPacket::callx_process;
-		}
-	}
-}
-#endif
 
 void PreProcessPacket::_packetS_destroy(packet_s_process_0 *packetS) {
 	PACKET_S_PROCESS_DESTROY(&packetS);

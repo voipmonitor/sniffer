@@ -679,11 +679,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					return(0);
 				}
 				// packet is fragmented
-				#if not DEFRAG_MOD_OLDVER
 				if(ppd->ip_defrag->defrag(ppd->header_ip, header_packet, NULL, 0, pushToStack_queue_index) > 0) {
-				#else
-				if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index) > 0) {
-				#endif
 					// packets are reassembled
 					ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
 					ppd->pid.flags |= FLAG_FRAGMENTED;
@@ -732,11 +728,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			if(ppd->header_ip->is_more_frag(frag_data) || ppd->header_ip->get_frag_offset(frag_data)) {
 				is_ip_frag = 1;
 				if((ppf & ppf_defrag) && opt_udpfrag) {
-					#if not DEFRAG_MOD_OLDVER
 					if(ppd->ip_defrag->defrag(ppd->header_ip, header_packet, NULL, 0, pushToStack_queue_index) > 0) {
-					#else
-					if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index) > 0) {
-					#endif
 						ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
 						ppd->header_ip->clear_frag_data();
 						for(unsigned i = 0; i < headers_ip_counter; i++) {
@@ -788,11 +780,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 	if((ppf & ppf_defrag) && ppd->header_ip) {
 		// if IP defrag is enabled, run each 10 seconds cleaning 
 		if(opt_udpfrag && (ppd->ipfrag_lastprune + 10) < HPH(*header_packet)->ts.tv_sec) {
-			#if not DEFRAG_MOD_OLDVER
 			ppd->ip_defrag->cleanup(HPH(*header_packet)->ts.tv_sec, false, pushToStack_queue_index, -1);
-			#else
-			ipfrag_prune(HPH(*header_packet)->ts.tv_sec, false, &ppd->ipfrag_data, pushToStack_queue_index, -1);
-			#endif
 			ppd->ipfrag_lastprune = HPH(*header_packet)->ts.tv_sec;
 			//TODO it would be good to still pass fragmented packets even it does not contain the last semant, the ipgrad_prune just wipes all unfinished frags
 		}
