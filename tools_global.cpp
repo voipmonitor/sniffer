@@ -52,6 +52,7 @@ void *vm_pthread_create_start_routine(void *arg) {
 	threadMonitor.registerThread(tid, thread_data.description.c_str());
 	#endif
 	void *rslt = thread_data.start_routine(thread_data.arg);
+	vm_thread_destruct_item(NULL);
 	#ifdef CLOUD_ROUTER_CLIENT
 	termTimeCacheForThread();
 	threadMonitor.unregisterThread(tid);
@@ -118,6 +119,22 @@ int vm_pthread_create(const char *thread_description,
 	}
 	#endif
 	return(rslt);
+}
+
+void vm_thread_destruct_item(cVmThreadDestructItem *item) {
+	static __thread void *list_items;
+	if(item && !list_items) {
+		list_items = new FILE_LINE(0) list<cVmThreadDestructItem*>;
+	}
+	list<cVmThreadDestructItem*> *_list_items = (list<cVmThreadDestructItem*>*)list_items;
+	if(item) {
+		_list_items->push_back(item);
+	} else if(_list_items) {
+		for(list<cVmThreadDestructItem*>::iterator iter = _list_items->begin(); iter != _list_items->end(); iter++) {
+			delete *iter;
+		}
+		delete _list_items;
+	}
 }
 
 bool pthread_set_affinity(pthread_t thread, vector<int> *cores_set, vector<int> *cores_unset) {

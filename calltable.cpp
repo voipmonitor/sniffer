@@ -14092,14 +14092,14 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 			if(allCallsCount >= allCallsMax) break;
 		}
 	} else {
-		for(list<Call*>::iterator iter = calltable->calls_list.begin(); iter != calltable->calls_list.end(); ) {
+		for(list<Call*>::iterator iter = calltable->calls_list.begin(); iter != calltable->calls_list.end(); iter++) {
 			allCalls[allCallsCount++] = *iter;
 			if(allCallsCount >= allCallsMax) break;
 		}
 	 
 	}
 	if(calls_by_stream_callid_listMAP.size() && allCallsCount < allCallsMax - 1) {
-		for(map<sStreamIds2, Call*>::iterator iter = calls_by_stream_callid_listMAP.begin(); iter != calls_by_stream_callid_listMAP.end(); ) {
+		for(map<sStreamIds2, Call*>::iterator iter = calls_by_stream_callid_listMAP.begin(); iter != calls_by_stream_callid_listMAP.end(); iter++) {
 			allCalls[allCallsCount++] = iter->second;
 			if(allCallsCount >= allCallsMax) break;
 		}

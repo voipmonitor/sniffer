@@ -3713,6 +3713,20 @@ private:
 		u_int16_t pool_size;
 		void *pool[HEAP_ITEM_POOL_SIZE];
 	};
+	#if HEAP_ITEM_STACK_TLS
+	class cHeapItemsPoolAutoDestruct : public cVmThreadDestructItem {
+	public:
+		cHeapItemsPoolAutoDestruct(sHeapItemsPool *hip) {
+			this->hip = hip;
+		}
+		~cHeapItemsPoolAutoDestruct() {
+			hip->destroyAll_u_char();
+			delete hip;
+		}
+	private:
+		sHeapItemsPool *hip;
+	};
+	#endif
 public:
 	cHeapItemsPointerStack(u_int32_t size_max,
 			       u_int16_t pop_queues_max = 10, u_int16_t push_queues_max = 10) {
@@ -3745,6 +3759,7 @@ public:
 		static __thread sHeapItemsPool *pool_slots[HEAP_ITEM_STACK_TLS_MAX_SLOTS];
 		if(!pool_slots[slot_id]) {
 			pool_slots[slot_id] = new FILE_LINE(0) sHeapItemsPool;
+			vm_thread_destruct_item(new cHeapItemsPoolAutoDestruct(pool_slots[slot_id]));
 		}
 		pool = pool_slots[slot_id];
 		#else
@@ -3779,6 +3794,7 @@ public:
 		static __thread sHeapItemsPool *pool_slots[HEAP_ITEM_STACK_TLS_MAX_SLOTS];
 		if(!pool_slots[slot_id]) {
 			pool_slots[slot_id] = new FILE_LINE(0) sHeapItemsPool;
+			vm_thread_destruct_item(new cHeapItemsPoolAutoDestruct(pool_slots[slot_id]));
 		}
 		pool = pool_slots[slot_id];
 		#else
@@ -3837,11 +3853,11 @@ public:
 		for(unsigned i = 0; i < this->push_queues_max; i++) {
 			this->push_queues[i].destroyAll<type_pool>();
 		}
+		#endif
 		sHeapItemsPool pool;
 		while(stack->pop(&pool, false, true)) {
 			pool.destroyAll<type_pool>();
 		}
-		#endif
 	}
 	void destroyAll_u_char() {
 		#if not HEAP_ITEM_STACK_TLS
@@ -3851,11 +3867,11 @@ public:
 		for(unsigned i = 0; i < this->push_queues_max; i++) {
 			this->push_queues[i].destroyAll_u_char();
 		}
+		#endif
 		sHeapItemsPool pool;
 		while(stack->pop(&pool, false, true)) {
 			pool.destroyAll_u_char();
 		}
-		#endif
 	}
 	#if HEAP_ITEM_STACK_TLS
 	static void slot_id_lock() { __SYNC_LOCK(slot_id_sync); }

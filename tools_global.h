@@ -318,6 +318,12 @@ inline unsigned int usleep(unsigned int useconds, const char *file, int line) {
 #endif
 
 
+class cVmThreadDestructItem {
+public:
+	virtual ~cVmThreadDestructItem() {};
+};
+
+
 int vm_pthread_create(const char *thread_description,
 		      pthread_t *thread, pthread_attr_t *attr,
 		      void *(*start_routine) (void *), void *arg, 
@@ -333,6 +339,8 @@ inline int vm_pthread_create_autodestroy(const char *thread_description,
 				 src_file, src_file_line,
 				 true));
 }
+
+void vm_thread_destruct_item(cVmThreadDestructItem *item);
 
 bool pthread_set_affinity(pthread_t thread, string cores_set, string cores_unset);
 bool pthread_set_affinity(pthread_t thread, vector<int> *cores_set, vector<int> *cores_unset);
