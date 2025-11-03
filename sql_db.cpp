@@ -10569,8 +10569,9 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 	}
 	extern char opt_database_backup_from_date[20];
 	extern char opt_database_backup_to_date[20];
+	extern bool opt_database_backup_detect_from_to_calldate_in_slave;
 	u_int64_t minIdToMasterInSlaveSrc = 0;
-	if(opt_database_backup_from_date[0] && slaveCalldateColumn && existsCalldateInSlaveTableSrc) {
+	if(opt_database_backup_from_date[0] && opt_database_backup_detect_from_to_calldate_in_slave && slaveCalldateColumn && existsCalldateInSlaveTableSrc) {
 		sqlDbSrc->query(string("select ") + masterTableName + ".id as min_id from " + masterTableName + " " + 
 				"straight_join " + slaveTableName + " on (" + slaveTableName + "." + slaveIdToMasterColumn + " = " + masterTableName + ".id" + 
 				(masterCalldateColumn && slaveCalldateColumn ?
@@ -10590,7 +10591,7 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 		return;
 	}
 	u_int64_t maxIdToMasterInSlaveSrc = 0;
-	if(opt_database_backup_to_date[0] && slaveCalldateColumn && existsCalldateInSlaveTableSrc) {
+	if(opt_database_backup_to_date[0] && opt_database_backup_detect_from_to_calldate_in_slave && slaveCalldateColumn && existsCalldateInSlaveTableSrc) {
 		sqlDbSrc->query(string("select ") + masterTableName + ".id as max_id from " + masterTableName + " " + 
 				"straight_join " + slaveTableName + " on (" + slaveTableName + "." + slaveIdToMasterColumn + " = " + masterTableName + ".id" + 
 				(masterCalldateColumn && slaveCalldateColumn ?

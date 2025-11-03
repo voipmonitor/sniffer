@@ -612,6 +612,7 @@ bool opt_database_backup_skip_register = false;
 bool opt_database_backup_check_src_tables = false;
 bool opt_database_backup_merge_reference_tables = false;
 int opt_database_backup_slave_record_safe_gap = 100;
+bool opt_database_backup_detect_from_to_calldate_in_slave = false;
 char opt_mos_lqo_bin[1024] = "pesq";
 char opt_mos_lqo_ref[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
 char opt_mos_lqo_ref16[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original_16khz.wav";
@@ -6414,6 +6415,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_check_src_tables", &opt_database_backup_check_src_tables));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_merge_reference_tables", &opt_database_backup_merge_reference_tables));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("database_backup_slave_record_safe_gap", &opt_database_backup_slave_record_safe_gap));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_detect_from_to_calldate_in_slave", &opt_database_backup_detect_from_to_calldate_in_slave));
 	group("sniffer mode");
 		// SNIFFER MODE
 		subgroup("main");
