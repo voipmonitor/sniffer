@@ -443,6 +443,7 @@ cSocket::cSocket(const char *name, bool autoClose) {
 	this->autoClose = autoClose;
 	port = 0;
 	udp = false;
+	need_local_ip_port = false;
 	ip.clear();
 	handle = -1;
 	enableWriteReconnect = false;
@@ -472,6 +473,10 @@ void cSocket::setHostsPort(sHosts hosts, u_int16_t port) {
 
 void cSocket::setUdp(bool udp) {
 	this->udp = udp;
+}
+
+void cSocket::setNeedLocalIpPort(bool need_local_ip_port) {
+	this->need_local_ip_port = need_local_ip_port;
 }
 
 void cSocket::setXorKey(string xor_key) {
@@ -554,14 +559,11 @@ bool cSocket::connect(unsigned loopSleepS) {
 				}
 			}
 			if(CR_VERBOSE().socket_connect) {
-				sockaddr_in myaddr;
-				socklen_t len = sizeof(myaddr);
-				getsockname(handle, (sockaddr*)&myaddr, &len);
 				ostringstream verbstr;
 				verbstr << "OK connect (" << name << ")"
 					<< " - " << getHostPort()
 					<< " handle " << handle
-					<< " local ip:port " << inet_ntoa(myaddr.sin_addr) << " : " << ntohs(myaddr.sin_port);
+					<< " local ip:port " << getLocalIPL().getString() << " : " << getLocalPort().getString();
 				syslog(LOG_INFO, "%s", verbstr.str().c_str());
 			}
 			rslt = true;
@@ -605,6 +607,15 @@ bool cSocket::listen() {
 	}
 	int on = 1;
 	setsockopt(handle, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+	if(udp && need_local_ip_port) {
+		if(ip.is_v6()) {
+			#if VM_IPV6
+			setsockopt(handle, IPPROTO_IPV6, IPV6_RECVPKTINFO, &on, sizeof(on));
+			#endif
+		} else {
+			setsockopt(handle, IPPROTO_IP, IP_PKTINFO, &on, sizeof(on));
+		}
+	}
 	int rsltListen;
 	do {
 		while(socket_bind(handle, ip, port) == -1 && !terminate && !CR_TERMINATE()) {
@@ -783,7 +794,7 @@ bool cSocket::_write(u_char *data, size_t *dataLen) {
 	return(true);
 }
 
-bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock, bool debug, vmIP *ip, vmPort *port) {
+bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock, bool debug, vmIP *ip, vmPort *port, vmIP *local_ip, vmPort *local_port) {
 	if(isError() || !okHandle()) {
 		if(debug) {
 			cout << "cSocket::read " << handle
@@ -802,7 +813,7 @@ bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock, bool de
 		int rsltPool = poll(fds, 1, timeouts.read * 1000);
 		if(debug) {
 			cout << "cSocket::read " << handle
-			     << " pool rslt " << rsltPool 
+			     << " pool rslt " << rsltPool
 			     << " fds[0].revents " << fds[0].revents << endl;
 		}
 		if(rsltPool < 0) {
@@ -835,7 +846,84 @@ bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock, bool de
 	if(doRead) {
 		errno = 0;
 		ssize_t recvLen;
-		if(ip || port) {
+		if(local_ip || local_port) {
+			sockaddr_storage src_addr;
+			struct iovec iov;
+			iov.iov_base = data;
+			iov.iov_len = *dataLen;
+			#if VM_IPV6
+			char control_buf[CMSG_SPACE(sizeof(struct in6_pktinfo))];
+			#else
+			char control_buf[CMSG_SPACE(sizeof(struct in_pktinfo))];
+			#endif
+			struct msghdr msg;
+			memset(&msg, 0, sizeof(msg));
+			msg.msg_name = &src_addr;
+			msg.msg_namelen = sizeof(src_addr);
+			msg.msg_iov = &iov;
+			msg.msg_iovlen = 1;
+			msg.msg_control = control_buf;
+			msg.msg_controllen = sizeof(control_buf);
+			recvLen = recvmsg(handle, &msg, 0);
+			if(recvLen > 0) {
+				if(ip || port) {
+					if(src_addr.ss_family == AF_INET) {
+						sockaddr_in *addr_in = (sockaddr_in*)&src_addr;
+						if(ip) {
+							ip->setIPv4(addr_in->sin_addr.s_addr, true);
+						}
+						if(port) {
+							port->setPort(addr_in->sin_port, true);
+						}
+					}
+					#if VM_IPV6
+					else if(src_addr.ss_family == AF_INET6) {
+						sockaddr_in6 *addr_in6 = (sockaddr_in6*)&src_addr;
+						if(ip) {
+							ip->setIPv6(addr_in6->sin6_addr, true);
+						}
+						if(port) {
+							port->setPort(addr_in6->sin6_port, true);
+						}
+					}
+					#endif
+				}
+				for(struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+					if(cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_PKTINFO) {
+						struct in_pktinfo *pktinfo = (struct in_pktinfo*)CMSG_DATA(cmsg);
+						if(local_ip) {
+							local_ip->setIPv4(pktinfo->ipi_addr.s_addr, true);
+						}
+						break;
+					}
+					#if VM_IPV6
+					else if(cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_PKTINFO) {
+						struct in6_pktinfo *pktinfo = (struct in6_pktinfo*)CMSG_DATA(cmsg);
+						if(local_ip) {
+							local_ip->setIPv6(pktinfo->ipi6_addr, true);
+						}
+						break;
+					}
+					#endif
+				}
+				if(local_port) {
+					sockaddr_storage local_addr;
+					socklen_t local_addr_len = sizeof(local_addr);
+					if(getsockname(handle, (sockaddr*)&local_addr, &local_addr_len) == 0) {
+						if(local_addr.ss_family == AF_INET) {
+							sockaddr_in *addr_in = (sockaddr_in*)&local_addr;
+							local_port->setPort(addr_in->sin_port, true);
+						}
+						#if VM_IPV6
+						else if(local_addr.ss_family == AF_INET6) {
+							sockaddr_in6 *addr_in6 = (sockaddr_in6*)&local_addr;
+							local_port->setPort(addr_in6->sin6_port, true);
+						}
+						#endif
+					}
+				}
+			}
+		} else if(ip || port) {
 			sockaddr_in6 cliaddr;
 			socklen_t cliaddr_len = sizeof(cliaddr);
 			recvLen = recvfrom(handle, data, *dataLen, 0,
@@ -997,6 +1085,52 @@ bool cSocket::checkHandleWrite() {
 	}
 	return(true);
 	
+}
+
+vmIP cSocket::getLocalIPL() {
+	vmIP local_ip;
+	if(handle < 0) {
+		return(local_ip);
+	}
+	sockaddr_storage local_addr;
+	socklen_t addr_len = sizeof(local_addr);
+	if(getsockname(handle, (sockaddr*)&local_addr, &addr_len) < 0) {
+		return(local_ip);
+	}
+	if(local_addr.ss_family == AF_INET) {
+		sockaddr_in *addr_in = (sockaddr_in*)&local_addr;
+		local_ip.setIPv4(addr_in->sin_addr.s_addr, true);
+	}
+	#if VM_IPV6
+	else if(local_addr.ss_family == AF_INET6) {
+		sockaddr_in6 *addr_in6 = (sockaddr_in6*)&local_addr;
+		local_ip.setIPv6(addr_in6->sin6_addr, true);
+	}
+	#endif
+	return(local_ip);
+}
+
+vmPort cSocket::getLocalPort() {
+	vmPort local_port;
+	if(handle < 0) {
+		return(local_port);
+	}
+	sockaddr_storage local_addr;
+	socklen_t addr_len = sizeof(local_addr);
+	if(getsockname(handle, (sockaddr*)&local_addr, &addr_len) < 0) {
+		return(local_port);
+	}
+	if(local_addr.ss_family == AF_INET) {
+		sockaddr_in *addr_in = (sockaddr_in*)&local_addr;
+		local_port.setPort(addr_in->sin_port, true);
+	}
+	#if VM_IPV6
+	else if(local_addr.ss_family == AF_INET6) {
+		sockaddr_in6 *addr_in6 = (sockaddr_in6*)&local_addr;
+		local_port.setPort(addr_in6->sin6_port, true);
+	}
+	#endif
+	return(local_port);
 }
 
 void cSocket::setError(eSocketError error, const char *descr) {
@@ -1433,6 +1567,7 @@ u_int32_t cSocketBlock::dataSum(u_char *data, size_t dataLen) {
 cServer::cServer(bool udp, bool simple_read) {
 	this->udp = udp;
 	this->simple_read = simple_read || udp;
+	this->need_local_ip_port = false;
 	for(unsigned i = 0; i < MAX_LISTEN_SOCKETS; i++) {
 		listen_socket[i] = NULL;
 		listen_thread[i] = 0;
@@ -1448,6 +1583,9 @@ bool cServer::listen_start(const char *name, string host, u_int16_t port, unsign
 	listen_socket[index]->setHostPort(host, port);
 	if(udp) {
 		listen_socket[index]->setUdp(true);
+	}
+	if(need_local_ip_port) {
+		listen_socket[index]->setNeedLocalIpPort(true);
 	}
 	if(!listen_socket[index]->listen()) {
 		delete listen_socket[index];
@@ -1519,13 +1657,16 @@ void cServer::listen_process(int index) {
 		u_char *data = new FILE_LINE(0) u_char[dataLen_max];
 		while(!((listen_socket[index] && listen_socket[index]->isTerminate()) || CR_TERMINATE())) {
 			dataLen = dataLen_max;
-			vmIP ip;
-			vmPort port;
-			if(!listen_socket[index]->read(data, &dataLen, false, false, &ip, &port) && listen_socket[index]->isError()) {
+			vmIP ip, local_ip;
+			vmPort port, local_port;
+			if(!listen_socket[index]->read(data, &dataLen, false, false, 
+						       &ip, &port,
+						       need_local_ip_port ? &local_ip : NULL, need_local_ip_port ? &local_port : NULL) && 
+			   listen_socket[index]->isError()) {
 				break;
 			}
 			if(dataLen > 0) {
-				evData(data, dataLen, ip, port, listen_socket[index]);
+				evData(data, dataLen, ip, port, local_ip, local_port, listen_socket[index]);
 			} else {
 				USLEEP(1000);
 			}
@@ -1539,7 +1680,7 @@ void cServer::createConnection(cSocket *socket) {
 	connection->connection_start();
 }
 
-void cServer::evData(u_char */*data*/, size_t /*dataLen*/, vmIP /*ip*/, vmPort /*port*/, cSocket */*socket*/) {
+void cServer::evData(u_char */*data*/, size_t /*dataLen*/, vmIP /*ip*/, vmPort /*port*/, vmIP /*local_ip*/, vmPort /*local_port*/, cSocket */*socket*/) {
 }
 
 void cServer::setStartVerbString(const char *startVerbString) {

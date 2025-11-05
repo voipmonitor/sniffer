@@ -398,7 +398,7 @@ string cSipRecCall::createInviteRequest(bool use_real_ip_ports) {
 	if(invite.empty()) {
 		return("");
 	}
-	sInvite last_invite = invite.back();
+	sInvite &last_invite = invite.back();
 	ostringstream request;
 	request << last_invite.request_line << "\r\n";
 	map<string, string>::iterator it;
@@ -484,7 +484,7 @@ string cSipRecCall::createInviteResponse(bool use_real_ip_ports) {
 	if(invite.empty()) {
 		return("");
 	}
-	sInvite last_invite = invite.back();
+	sInvite &last_invite = invite.back();
 	ostringstream response;
 	response << "SIP/2.0 200 OK\r\n";
 	map<string, string>::iterator it;
@@ -495,6 +495,11 @@ string cSipRecCall::createInviteResponse(bool use_real_ip_ports) {
 		response << "From: " << it->second << "\r\n";
 	}
 	if((it = last_invite.tags.find("to")) != last_invite.tags.end()) {
+		string to_value = it->second;
+		if(to_value.find("tag=") == string::npos) {
+			string tag = GetStringMD5(id.callid + intToString(start_time_us));
+			it->second += ";tag=" + tag;
+		}
 		response << "To: " << it->second << "\r\n";
 	}
 	if((it = last_invite.tags.find("call-id")) != last_invite.tags.end()) {
@@ -503,9 +508,7 @@ string cSipRecCall::createInviteResponse(bool use_real_ip_ports) {
 	if((it = last_invite.tags.find("cseq")) != last_invite.tags.end()) {
 		response << "CSeq: " << it->second << "\r\n";
 	}
-	if((it = last_invite.tags.find("contact")) != last_invite.tags.end()) {
-		response << "Contact: " << it->second << "\r\n";
-	}
+	response << ("Contact: <sip:" + local_ip.getString() + ":" + local_port.getString() + ">") << "\r\n";
 	response << "Content-Type: application/sdp\r\n";
 	response << "Content-Disposition: session\r\n";
 	ostringstream sdp_body;
@@ -515,9 +518,9 @@ string cSipRecCall::createInviteResponse(bool use_real_ip_ports) {
 		sdp_body << "s=Call\r\n";
 		sdp_body << "c=IN IP" << metadata.called_ip.vi() << " " << metadata.called_ip.getString() << "\r\n";
 	} else {
-		sdp_body << "o=siprec " << start_time_us << " 0 IN IP" << sip_rec->getBindIP().vi() << " " << sip_rec->getBindIP().getString() << "\r\n";
+		sdp_body << "o=siprec " << start_time_us << " 0 IN IP" << local_ip.vi() << " " << local_ip.getString() << "\r\n";
 		sdp_body << "s=SIPREC Session\r\n";
-		sdp_body << "c=IN IP" << sip_rec->getBindIP().vi() << " " << sip_rec->getBindIP().getString() << "\r\n";
+		sdp_body << "c=IN IP" << local_ip.vi() << " " << local_ip.getString() << "\r\n";
 	}
 	sdp_body << "t=0 0\r\n";
 	if(use_real_ip_ports) {
@@ -1151,6 +1154,7 @@ int cSipRecStreams::findThreadWithMinStreams() {
 
 cSipRecServer::cSipRecServer(bool udp) 
  : cServer(udp, true) {
+	setNeedLocalIpPort();
 }
 
 cSipRecServer::~cSipRecServer() {
@@ -1164,8 +1168,8 @@ void cSipRecServer::createConnection(cSocket *socket) {
 	connection->connection_start();
 }
 
-void cSipRecServer::evData(u_char *data, size_t dataLen, vmIP ip, vmPort port, cSocket *socket) {
-	sip_rec->processData(data, dataLen, ip, port, socket);
+void cSipRecServer::evData(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket) {
+	sip_rec->processData(data, dataLen, ip, port, local_ip, local_port, socket);
 }
 
 
@@ -1177,7 +1181,7 @@ cSipRecConnection::~cSipRecConnection() {
 }
 
 void cSipRecConnection::evData(u_char *data, size_t dataLen) {
-	sip_rec->processData(data, dataLen, socket->getIPL(), socket->getPort(), socket);
+	sip_rec->processData(data, dataLen, socket->getIPL(), socket->getPort(), socket->getLocalIPL(), socket->getLocalPort(), socket);
 }
 
 void cSipRecConnection::connection_process() {
@@ -1386,18 +1390,18 @@ void cSipRec::initRtpPortsHeap() {
 	}
 }
 
-void cSipRec::processData(u_char *data, size_t dataLen, vmIP ip, vmPort port, cSocket *socket) {
+void cSipRec::processData(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket) {
 	if(dataLen < 6) return;
 	if(!strncasecmp((char*)data, "INVITE", 6)) {
-		processInvite(data, dataLen, ip, port, socket);
+		processInvite(data, dataLen, ip, port, local_ip, local_port, socket);
 	} else if(!strncasecmp((char*)data, "BYE", 3)) {
-		processBye(data, dataLen, ip, port, socket);
+		processBye(data, dataLen, ip, port, local_ip, local_port, socket);
 	} else if(!strncasecmp((char*)data, "CANCEL", 6)) {
-		processCancel(data, dataLen, ip, port, socket);
+		processCancel(data, dataLen, ip, port, local_ip, local_port, socket);
 	}
 }
 
-void cSipRec::processInvite(u_char *data, size_t dataLen, vmIP ip, vmPort port, cSocket *socket) {
+void cSipRec::processInvite(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket) {
 	if(verbose) {
 		cout << " *** INVITE REQUEST" << endl;
 		cout << string((char*)data, dataLen) << endl;
@@ -1419,6 +1423,8 @@ void cSipRec::processInvite(u_char *data, size_t dataLen, vmIP ip, vmPort port, 
 		call->clearSdpData();
 	}
 	unlock();
+	call->local_ip = local_ip;
+	call->local_port = local_port;
 	sendPacket(data, dataLen, ip, port, bind_ip, bind_port);
 	call->parseXmlMetadata();
 	call->parseSdpData();
@@ -1434,7 +1440,7 @@ void cSipRec::processInvite(u_char *data, size_t dataLen, vmIP ip, vmPort port, 
 	sendPacket((u_char*)response.c_str(), response.length(), bind_ip, bind_port, ip, port);
 }
 
-void cSipRec::processBye(u_char *data, size_t dataLen, vmIP ip, vmPort port, cSocket *socket) {
+void cSipRec::processBye(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket) {
 	if(verbose) {
 		cout << " *** BYE REQUEST" << endl;
 		cout << string((char*)data, dataLen) << endl;
@@ -1468,7 +1474,7 @@ void cSipRec::processBye(u_char *data, size_t dataLen, vmIP ip, vmPort port, cSo
 	deleteCall(call);
 }
 
-void cSipRec::processCancel(u_char *data, size_t dataLen, vmIP ip, vmPort port, cSocket *socket) {
+void cSipRec::processCancel(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket) {
 	if(verbose) {
 		cout << " *** CANCEL REQUEST" << endl;
 		cout << string((char*)data, dataLen) << endl;

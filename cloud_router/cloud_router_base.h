@@ -374,6 +374,7 @@ public:
 	void setHostPort(string host, u_int16_t port);
 	void setHostsPort(sHosts hosts, u_int16_t port);
 	void setUdp(bool udp);
+	void setNeedLocalIpPort(bool need_local_ip_port);
 	void setXorKey(string xor_key);
 	bool connect(unsigned loopSleepS = 0);
 	bool listen();
@@ -383,7 +384,7 @@ public:
 	bool write(const char *data);
 	bool write(string &data);
 	bool _write(u_char *data, size_t *dataLen);
-	bool read(u_char *data, size_t *dataLen, bool quietEwouldblock = false, bool debug = false, vmIP *ip = NULL, vmPort *port = NULL);
+	bool read(u_char *data, size_t *dataLen, bool quietEwouldblock = false, bool debug = false, vmIP *ip = NULL, vmPort *port = NULL, vmIP *local_ip = NULL, vmPort *local_port = NULL);
 	bool writeXorKeyEnc(u_char *data, size_t dataLen);
 	bool readXorKeyDec(u_char *data, size_t *dataLen);
 	bool writeAesEnc(u_char *data, size_t dataLen, bool final);
@@ -432,6 +433,8 @@ public:
 	vmIP getIPL() {
 		return(ip);
 	}
+	vmIP getLocalIPL();
+	vmPort getLocalPort();
 	u_int16_t getPort() {
 		return(port);
 	}
@@ -486,6 +489,7 @@ protected:
 	sHosts hosts;
 	u_int16_t port;
 	bool udp;
+	bool need_local_ip_port;
 	vmIP ip;
 	sTimeouts timeouts;
 	int handle;
@@ -681,12 +685,13 @@ private:
 public:
 	cServer(bool udp = false, bool simple_read = false);
 	virtual ~cServer();
+	void setNeedLocalIpPort() { need_local_ip_port = true; }
 	bool listen_start(const char *name, string host, u_int16_t port, unsigned index = 0);
 	void listen_stop(unsigned index = 0);
 	static void *listen_process(void *arg);
 	void listen_process(int index);
 	virtual void createConnection(cSocket *socket);
-	virtual void evData(u_char *data, size_t dataLen, vmIP ip, vmPort port, cSocket *socket);
+	virtual void evData(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket);
 	void setStartVerbString(const char *startVerbString);
 	vmIP getListenSocketIP() {
 		return(listen_socket[0] ? listen_socket[0]->getIPL() : vmIP(0));
@@ -697,6 +702,7 @@ public:
 protected:
 	bool udp;
 	bool simple_read;
+	bool need_local_ip_port;
 	cSocketBlock *listen_socket[MAX_LISTEN_SOCKETS];
 	pthread_t listen_thread[MAX_LISTEN_SOCKETS];
 	string startVerbString;

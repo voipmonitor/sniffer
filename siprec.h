@@ -169,6 +169,8 @@ public:
 	sCancel cancel;
 	sMetadata metadata;
 	sSdp sdp;
+	vmIP local_ip;
+	vmPort local_port;
 };
 
 class cSipRecStream {
@@ -236,7 +238,7 @@ public:
 	cSipRecServer(bool udp);
 	virtual ~cSipRecServer();
 	void createConnection(cSocket *socket);
-	void evData(u_char *data, size_t dataLen, vmIP ip, vmPort port, cSocket *socket);
+	void evData(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket);
 };
 
 class cSipRecConnection : public cServerConnection {
@@ -277,15 +279,16 @@ public:
 	vmPort getRtpPort();
 	void freeRtpPort(vmPort port);
 	void initRtpPortsHeap();
-	void processData(u_char *data, size_t dataLen, vmIP ip, vmPort port, cSocket *socket);
-	void processInvite(u_char *data, size_t dataLen, vmIP ip, vmPort port, cSocket *socket);
-	void processBye(u_char *data, size_t dataLen, vmIP ip, vmPort port, cSocket *socket);
-	void processCancel(u_char *data, size_t dataLen, vmIP ip, vmPort port, cSocket *socket);
+	void processData(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket);
+	void processInvite(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket);
+	void processBye(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket);
+	void processCancel(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket);
 	void sendPacket(u_char *data, unsigned dataLen, vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port);
 	void deleteCall(cSipRecCall *call);
 	bool addStream(cSipRecCall *call, vmPort port);
 	void stopStream(vmPort port);
 	vmIP getBindIP() { return(bind_ip); }
+	vmPort getBindPort() { return(bind_port); }
 	unsigned getRtpStreamTimeout() { return(rtp_stream_timeout_s); }
 private:
 	bool sendResponse(string &response, vmIP ip, vmPort port, cSocket *socket);

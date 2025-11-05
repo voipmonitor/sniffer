@@ -37,7 +37,7 @@ public:
 	cRibbonSbc_Server(bool udp);
 	virtual ~cRibbonSbc_Server();
 	void createConnection(cSocket *socket);
-	void evData(u_char *data, size_t dataLen, vmIP ip, vmPort port, cSocket *socket);
+	void evData(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket);
 };
 
 class cRibbonSbc_Connection : public cServerConnection, public cRibbonSbc_ProcessData {
