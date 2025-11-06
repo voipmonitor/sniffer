@@ -9099,6 +9099,9 @@ void SqlDb_mysql::checkDbMode() {
 				}
 				opt_rtp_stat_partition_oldver = true;
 				opt_log_sensor_partition_oldver = true;
+				for(int by_type = 0; by_type < 3; by_type++) {
+					opt_cdr_problems_partition_oldver[by_type] = true;
+				}
 			} else {
 				if(opt_cdr_partition) {
 					if(this->isOldVerPartition("cdr%")) {
