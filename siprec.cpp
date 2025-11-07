@@ -1233,8 +1233,9 @@ void cSipRecThread::stop() {
 }
 
 
-cSipRecStreams::cSipRecStreams(unsigned max_threads) {
+cSipRecStreams::cSipRecStreams(unsigned max_threads, unsigned max_streams_per_thread) {
 	this->max_threads = max_threads;
+	this->max_streams_per_thread = max_streams_per_thread;
 	this->threads_count = 0;
 	threads = new FILE_LINE(0) cSipRecThread*[max_threads];
 	for(unsigned i = 0; i < max_threads; i++) {
@@ -1256,7 +1257,7 @@ cSipRecStreams::~cSipRecStreams() {
 	delete [] threads;
 }
 
-bool cSipRecStreams::addStream(cSipRecCall *call, vmPort port) {
+bool cSipRecStreams::addStream(cSipRecCall *call, vmPort port, int *thread_idx_rslt) {
 	lock();
 	if(stream_by_thread.find(port) != stream_by_thread.end()) {
 		unlock();
@@ -1264,7 +1265,10 @@ bool cSipRecStreams::addStream(cSipRecCall *call, vmPort port) {
 	}
 	int thread_idx = findThreadWithMinStreams();
 	bool new_thread_created = false;
-	if(thread_idx < 0) {
+	if(thread_idx < 0 ||
+	   (threads_count < max_threads &&
+	    thread_idx >= 0 &&
+	    threads[thread_idx]->getStreamsCount() >= max_streams_per_thread)) {
 		if(threads_count >= max_threads) {
 			unlock();
 			return(false);
@@ -1285,6 +1289,9 @@ bool cSipRecStreams::addStream(cSipRecCall *call, vmPort port) {
 	}
 	stream_by_thread[port] = thread_idx;
 	unlock();
+	if(thread_idx_rslt) {
+		*thread_idx_rslt = thread_idx;
+	}
 	return(true);
 }
 
@@ -1496,6 +1503,7 @@ cSipRec::cSipRec() {
 	rtp_port_max = 20000;
 	rtp_stream_timeout_s = 300;
 	rtp_streams_max_threads = 2;
+	rtp_streams_max_per_thread = 100;
 	use_real_caller_called = true;
 	use_real_sip_ip_ports = true;
 	use_real_rtp_ip_ports = false;
@@ -1532,8 +1540,12 @@ void cSipRec::setRtpStreamTimeout(unsigned rtp_stream_timeout_s) {
 	this->rtp_stream_timeout_s = rtp_stream_timeout_s;
 }
 
-void cSipRec::setRtpStreamManThreads(unsigned rtp_streams_max_threads) {
+void cSipRec::setRtpStreamsMaxThreads(unsigned rtp_streams_max_threads) {
 	this->rtp_streams_max_threads = rtp_streams_max_threads;
+}
+
+void cSipRec::setRtpStreamsMaxPerThread(unsigned rtp_streams_max_per_thread) {
+	this->rtp_streams_max_per_thread = rtp_streams_max_per_thread;
 }
 
 void cSipRec::setUseRealCallerCalled(bool use_real_caller_called) {
@@ -1555,7 +1567,7 @@ void cSipRec::setVerbose(bool verbose) {
 void cSipRec::startServer() {
 	checkParams();
 	packet_sender = new FILE_LINE(0) cSipRecPacketSender();
-	streams = new FILE_LINE(0) cSipRecStreams(rtp_streams_max_threads);
+	streams = new FILE_LINE(0) cSipRecStreams(rtp_streams_max_threads, rtp_streams_max_per_thread);
 	server = new FILE_LINE(0) cSipRecServer(bind_udp);
 	server->setStartVerbString("START SIPREC LISTEN");
 	server->listen_start("siprec_server", bind_ip, bind_port);
@@ -1813,9 +1825,13 @@ void cSipRec::deleteCall(cSipRecCall *call, const char *reason) {
 
 bool cSipRec::addStream(cSipRecCall *call, vmPort port) {
 	if(streams) {
-		bool rslt = streams->addStream(call, port);
+		int thread_idx_rslt;
+		bool rslt = streams->addStream(call, port, &thread_idx_rslt);
 		if(verbose) {
-			cout << " *** ADD STREAM " << call->id.getString() << " - " << port.getString() << " - " << (rslt ? "OK" : "FAILED") << endl;
+			cout << " *** ADD STREAM " << call->id.getString() << " - " << port.getString() 
+			     << " - " << (rslt ? "OK" : "FAILED") 
+			     << (rslt ? " - thread " + intToString(thread_idx_rslt) : "")
+			     << endl;
 		}
 		return(rslt);
 	}
@@ -1867,6 +1883,7 @@ void sipRecStart() {
 	extern int opt_siprec_rtp_max;
 	extern int opt_siprec_rtp_stream_timeout_s;
 	extern int opt_siprec_rtp_streams_max_threads;
+	extern int opt_siprec_rtp_streams_max_per_thread;
 	sip_rec = new cSipRec();
 	sip_rec->setRtpPortsLimit(opt_siprec_rtp_min, opt_siprec_rtp_max);
 	sip_rec->setBindParams(str_2_vmIP(opt_siprec_bind_ip.c_str()), opt_siprec_bind_port, opt_siprec_bind_udp);
@@ -1874,7 +1891,10 @@ void sipRecStart() {
 		sip_rec->setRtpStreamTimeout(opt_siprec_rtp_stream_timeout_s);
 	}
 	if(opt_siprec_rtp_streams_max_threads > 0) {
-		sip_rec->setRtpStreamManThreads(opt_siprec_rtp_streams_max_threads);
+		sip_rec->setRtpStreamsMaxThreads(opt_siprec_rtp_streams_max_threads);
+	}
+	if(opt_siprec_rtp_streams_max_per_thread > 0) {
+		sip_rec->setRtpStreamsMaxPerThread(opt_siprec_rtp_streams_max_per_thread);
 	}
 	sip_rec->setUseRealCallerCalled(true);
 	sip_rec->setUseRealSipIpPorts(true);

@@ -253,9 +253,9 @@ private:
 
 class cSipRecStreams {
 public:
-	cSipRecStreams(unsigned max_threads);
+	cSipRecStreams(unsigned max_threads, unsigned max_streams_per_thread);
 	~cSipRecStreams();
-	bool addStream(cSipRecCall *call, vmPort port);
+	bool addStream(cSipRecCall *call, vmPort port, int *thread_idx_rslt);
 	void stopStream(vmPort port);
 	void stopAllStreams();
 	void stopAllThreads();
@@ -265,6 +265,7 @@ private:
 	void unlock() { __SYNC_UNLOCK(_sync_lock); }
 private:
 	unsigned max_threads;
+	unsigned max_streams_per_thread;
 	unsigned threads_count;
 	cSipRecThread **threads;
 	map<vmPort, unsigned> stream_by_thread;
@@ -311,7 +312,8 @@ public:
 	void setRtpPortsLimit(unsigned rtp_port_min, unsigned rtp_port_max);
 	void setBindParams(vmIP ip, vmPort port, bool udp);
 	void setRtpStreamTimeout(unsigned rtp_stream_timeout_s);
-	void setRtpStreamManThreads(unsigned rtp_streams_max_threads);
+	void setRtpStreamsMaxThreads(unsigned rtp_streams_max_threads);
+	void setRtpStreamsMaxPerThread(unsigned rtp_streams_max_per_thread);
 	void setUseRealCallerCalled(bool use_real_caller_called);
 	void setUseRealSipIpPorts(bool use_real_sip_ip_ports);
 	void setUseRealRtpIpPorts(bool use_real_rtp_ip_ports);
@@ -349,6 +351,7 @@ private:
 	cSipRecPacketSender *packet_sender;
 	unsigned rtp_stream_timeout_s;
 	unsigned rtp_streams_max_threads;
+	unsigned rtp_streams_max_per_thread;
 	bool use_real_caller_called;
 	bool use_real_sip_ip_ports;
 	bool use_real_rtp_ip_ports;

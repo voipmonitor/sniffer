@@ -1221,6 +1221,7 @@ int opt_siprec_rtp_min = 10000;
 int opt_siprec_rtp_max = 20000;
 int opt_siprec_rtp_stream_timeout_s = 300;
 int opt_siprec_rtp_streams_max_threads = 2;
+int opt_siprec_rtp_streams_max_per_thread = 100;
 
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
 int storing_cdr_tid;
@@ -7559,6 +7560,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_rtp_max", &opt_siprec_rtp_max));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_rtp_stream_timeout_s", &opt_siprec_rtp_stream_timeout_s));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_rtp_streams_max_threads", &opt_siprec_rtp_streams_max_threads));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_rtp_streams_max_per_thread", &opt_siprec_rtp_streams_max_per_thread));
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("vmcodecs_path", opt_vmcodecs_path, sizeof(opt_vmcodecs_path)));
