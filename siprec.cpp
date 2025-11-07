@@ -20,6 +20,8 @@ static cSipRec *sip_rec;
 
 
 cSipRecCall::cSipRecCall() {
+	start_time_us = getTimeUS();
+	ref_count = 1;
 }
 
 cSipRecCall::~cSipRecCall() {
@@ -45,8 +47,13 @@ bool cSipRecCall::parseInvite(const char *invite_str, vmIP src_ip) {
 			size_t boundary_pos = ct_it->second.find("boundary=");
 			if(boundary_pos != string::npos) {
 				string boundary = ct_it->second.substr(boundary_pos + 9);
-				if(boundary[0] == '"') {
-					boundary = boundary.substr(1, boundary.find('"', 1) - 1);
+				if(!boundary.empty() && boundary[0] == '"') {
+					size_t quote_end = boundary.find('"', 1);
+					if(quote_end != string::npos) {
+						boundary = boundary.substr(1, quote_end - 1);
+					} else {
+						boundary = boundary.substr(1);
+					}
 				} else {
 					size_t end = boundary.find_first_of(" ;\r\n");
 					if(end != string::npos) {
@@ -58,7 +65,7 @@ bool cSipRecCall::parseInvite(const char *invite_str, vmIP src_ip) {
 				while((pos = body.find(delimiter, pos)) != string::npos) {
 					pos += delimiter.length();
 					pos = skip_cr_lf(body, pos);
-					if(body[pos] == '-' && body[pos + 1] == '-') {
+					if(pos + 1 < body.length() && body[pos] == '-' && body[pos + 1] == '-') {
 						break;
 					}
 					sContent content;
@@ -66,7 +73,7 @@ bool cSipRecCall::parseInvite(const char *invite_str, vmIP src_ip) {
 						size_t line_end = body.find('\n', pos);
 						if(line_end == string::npos) break;
 						size_t line_len = line_end - pos;
-						if(body[line_end - 1] == '\r') line_len--;
+						if(line_end > 0 && body[line_end - 1] == '\r') line_len--;
 						if(line_len == 0) {
 							pos = line_end + 1;
 							break;
@@ -98,8 +105,8 @@ bool cSipRecCall::parseInvite(const char *invite_str, vmIP src_ip) {
 					if(next_delim != string::npos) {
 						content.content = body.substr(pos, next_delim - pos);
 						pos = next_delim;
-						if(body[pos] == '\r') pos++;
-						if(body[pos] == '\n') pos++;
+						if(pos < body.length() && body[pos] == '\r') pos++;
+						if(pos < body.length() && body[pos] == '\n') pos++;
 					} else {
 						break;
 					}
@@ -164,6 +171,23 @@ void cSipRecCall::addInvite(const sInvite &inv) {
 	invite.push_back(inv);
 }
 
+void cSipRecCall::detectFromToTag() {
+	if(invite.empty()) {
+		return;
+	}
+	sInvite &last_invite = invite.back();
+	map<string, string>::iterator it;
+	if((it = last_invite.tags.find("from")) != last_invite.tags.end()) {
+		from_tag = extractTag(it->second);
+	}
+	if((it = last_invite.tags.find("to")) != last_invite.tags.end()) {
+		to_tag = extractTag(it->second);
+		if(to_tag.empty()) {
+			to_tag = GetStringMD5(id.callid + intToString(start_time_us));
+		}
+	}
+}
+
 const char *cSipRecCall::getXmlMetadata() {
 	if(invite.empty()) return(NULL);
 	for(vector<sContent>::iterator it = invite.back().contents.begin(); it != invite.back().contents.end(); it++) {
@@ -211,44 +235,90 @@ bool cSipRecCall::parseXmlMetadata(const char *xml) {
 		}
 	}
 	*/
+	map<string, eParticipantType> participant_id_to_type;
 	int participant_count = 0;
-	vector<string> stream_labels;
 	for(xmlNodePtr node = root->children; node; node = node->next) {
 		if(node->type != XML_ELEMENT_NODE) continue;
 		if(xmlStrcmp(node->name, (xmlChar*)"participant") == 0) {
-			bool is_caller = (participant_count == 0);
-			parseParticipantNode(node, is_caller);
-			participant_count++;
-			if(participant_count >= 2) break;
+			xmlChar* participant_id = xmlGetProp(node, (xmlChar*)"participant_id");
+			if(participant_id) {
+				eParticipantType participant_type = (participant_count == 0) ? participant_type_caller : participant_type_called;
+				bool is_caller = (participant_type == participant_type_caller);
+				parseParticipantNode(node, is_caller);
+				participant_id_to_type[string((char*)participant_id)] = participant_type;
+				xmlFree(participant_id);
+				participant_count++;
+				if(participant_count >= 2) break;
+			}
 		}
 	}
+	map<string, string> stream_id_to_label;
+	vector<string> stream_labels_ordered;
 	for(xmlNodePtr node = root->children; node; node = node->next) {
 		if(node->type != XML_ELEMENT_NODE) continue;
 		if(xmlStrcmp(node->name, (xmlChar*)"stream") == 0) {
+			xmlChar* stream_id = xmlGetProp(node, (xmlChar*)"stream_id");
 			for(xmlNodePtr child = node->children; child; child = child->next) {
 				if(child->type == XML_ELEMENT_NODE &&
 				   xmlStrcmp(child->name, (xmlChar*)"label") == 0) {
 					xmlChar* label = xmlNodeGetContent(child);
-					bool label_ok = false;
-					if(label) {
-						if(*(char*)label) {
-							stream_labels.push_back((char*)label);
-							label_ok = true;
+					if(label && *(char*)label) {
+						string label_str((char*)label);
+						stream_labels_ordered.push_back(label_str);
+						if(stream_id) {
+							stream_id_to_label[string((char*)stream_id)] = label_str;
 						}
 						xmlFree(label);
 					}
-					if(label_ok) {
-						break;
+					break;
+				}
+			}
+			if(stream_id) {
+				xmlFree(stream_id);
+			}
+		}
+	}
+	bool direction_resolved = false;
+	for(xmlNodePtr node = root->children; node; node = node->next) {
+		if(node->type != XML_ELEMENT_NODE) continue;
+		if(xmlStrcmp(node->name, (xmlChar*)"participantstreamassoc") == 0) {
+			xmlChar* participant_id = xmlGetProp(node, (xmlChar*)"participant_id");
+			if(!participant_id) continue;
+			string participant_id_str((char*)participant_id);
+			map<string, eParticipantType>::iterator part_it = participant_id_to_type.find(participant_id_str);
+			xmlFree(participant_id);
+			if(part_it == participant_id_to_type.end()) continue;
+			eParticipantType participant_type = part_it->second;
+			for(xmlNodePtr child = node->children; child; child = child->next) {
+				if(child->type == XML_ELEMENT_NODE &&
+				   xmlStrcmp(child->name, (xmlChar*)"send") == 0) {
+					xmlChar* send_stream_id = xmlNodeGetContent(child);
+					if(send_stream_id && *(char*)send_stream_id) {
+						string stream_id_str((char*)send_stream_id);
+						map<string, string>::iterator label_it = stream_id_to_label.find(stream_id_str);
+						if(label_it != stream_id_to_label.end()) {
+							if(participant_type == participant_type_caller) {
+								metadata.caller_label = label_it->second;
+								direction_resolved = true;
+							} else if(participant_type == participant_type_called) {
+								metadata.called_label = label_it->second;
+								direction_resolved = true;
+							}
+						}
+						xmlFree(send_stream_id);
 					}
+					break;
 				}
 			}
 		}
 	}
-	if(stream_labels.size() >= 1) {
-		metadata.caller_label = stream_labels[0];
-	}
-	if(stream_labels.size() >= 2) {
-		metadata.called_label = stream_labels[1];
+	if(!direction_resolved) {
+		if(stream_labels_ordered.size() >= 1) {
+			metadata.caller_label = stream_labels_ordered[0];
+		}
+		if(stream_labels_ordered.size() >= 2) {
+			metadata.called_label = stream_labels_ordered[1];
+		}
 	}
 	xmlFreeDoc(doc);
 	return(isCompletedXmlMetadata(false));
@@ -348,6 +418,7 @@ void cSipRecCall::clearSdpData() {
 }
 
 void cSipRecCall::startStreams() {
+	if(!sip_rec) return;
 	for(vector<sSdpMedia>::iterator it = sdp.media.begin(); it != sdp.media.end(); it++) {
 		if(!it->active) {
 			sip_rec->addStream(this, it->reverse_port);
@@ -356,9 +427,10 @@ void cSipRecCall::startStreams() {
 }
 
 void cSipRecCall::stopStreams() {
+	if(!sip_rec) return;
 	for(vector<sSdpMedia>::iterator it = sdp.media.begin(); it != sdp.media.end(); it++) {
 		if(it->active) {
-			sip_rec->stopStream(it->reverse_port);
+			sip_rec->stopStream(this, it->reverse_port);
 		}
 	}
 }
@@ -394,7 +466,7 @@ void cSipRecCall::setReverseRtpPorts() {
 	}
 }
 
-string cSipRecCall::createInviteRequest(bool use_real_ip_ports) {
+string cSipRecCall::createInviteRequest(bool use_real_caller_called, bool use_direction_separation, bool use_real_rtp_ip_ports) {
 	if(invite.empty()) {
 		return("");
 	}
@@ -406,10 +478,18 @@ string cSipRecCall::createInviteRequest(bool use_real_ip_ports) {
 		request << "Via: " << it->second << "\r\n";
 	}
 	if((it = last_invite.tags.find("from")) != last_invite.tags.end()) {
-		request << "From: " << it->second << "\r\n";
+		if(use_real_caller_called && !metadata.caller_aor.empty()) {
+			request << "From: " << ("<" + metadata.caller_aor + ">" + (!from_tag.empty() ? ";tag=" + from_tag : "")) << "\r\n";
+		} else {
+			request << "From: " << it->second << "\r\n";
+		}
 	}
 	if((it = last_invite.tags.find("to")) != last_invite.tags.end()) {
-		request << "To: " << it->second << "\r\n";
+		if(use_real_caller_called && !metadata.called_aor.empty()) {
+			request << "To: <" << metadata.called_aor << ">\r\n";
+		} else {
+			request << "To: " << it->second << "\r\n";
+		}
 	}
 	if((it = last_invite.tags.find("call-id")) != last_invite.tags.end()) {
 		request << "Call-ID: " << it->second << "\r\n";
@@ -423,17 +503,17 @@ string cSipRecCall::createInviteRequest(bool use_real_ip_ports) {
 	request << "Content-Type: application/sdp\r\n";
 	ostringstream sdp_body;
 	sdp_body << "v=0\r\n";
-	if(use_real_ip_ports && metadata.caller_ip.isSet()) {
+	if(use_real_rtp_ip_ports && metadata.caller_ip.isSet()) {
 		sdp_body << "o=caller " << start_time_us << " 0 IN IP" << metadata.caller_ip.vi() << " " << metadata.caller_ip.getString() << "\r\n";
-		sdp_body << "s=Call\r\n";
+		sdp_body << "s=SIPREC Session\r\n";
 		sdp_body << "c=IN IP" << metadata.caller_ip.vi() << " " << metadata.caller_ip.getString() << "\r\n";
 	} else {
 		sdp_body << "o=caller " << start_time_us << " 0 IN IP" << sdp.c_in.vi() << " " << sdp.c_in.getString() << "\r\n";
-		sdp_body << "s=Call\r\n";
+		sdp_body << "s=SIPREC Session\r\n";
 		sdp_body << "c=IN IP" << sdp.c_in.vi() << " " << sdp.c_in.getString() << "\r\n";
 	}
 	sdp_body << "t=0 0\r\n";
-	if(use_real_ip_ports) {
+	if(use_real_rtp_ip_ports) {
 		for(vector<sSdpMedia>::iterator it = sdp.media.begin(); it != sdp.media.end(); it++) {
 			if(it->direction == sdp_media_direction_caller) {
 				sdp_body << "m=" << it->media_type << " " << metadata.caller_rtp_port.getPort() << " "
@@ -454,23 +534,31 @@ string cSipRecCall::createInviteRequest(bool use_real_ip_ports) {
 			}
 		}
 	} else {
+		bool is_set_booth_direction = sdp.isSetBothDirections();
+		unsigned i = 0;
 		for(vector<sSdpMedia>::iterator it = sdp.media.begin(); it != sdp.media.end(); it++) {
-			sdp_body << "m=" << it->media_type << " " << it->port.getPort() << " "
-				 << it->transport_protocol;
-			for(vector<sSdpPayload>::iterator p_it = it->payloads.begin(); p_it != it->payloads.end(); p_it++) {
-				sdp_body << " " << p_it->payload;
-			}
-			sdp_body << "\r\n";
-			for(vector<sSdpPayload>::iterator p_it = it->payloads.begin(); p_it != it->payloads.end(); p_it++) {
-				if(!p_it->codec.empty()) {
-					sdp_body << "a=rtpmap:" << p_it->payload << " "
-						 << p_it->codec;
-					if(p_it->sampling_freq > 0) {
-						sdp_body << "/" << p_it->sampling_freq;
+			eSdpMediaDirection dir = is_set_booth_direction ?
+						  it->direction :
+						  (i % 2 ? sdp_media_direction_called : sdp_media_direction_caller);
+			if(!use_direction_separation || dir == sdp_media_direction_caller) {
+				sdp_body << "m=" << it->media_type << " " << it->port.getPort() << " "
+					 << it->transport_protocol;
+				for(vector<sSdpPayload>::iterator p_it = it->payloads.begin(); p_it != it->payloads.end(); p_it++) {
+					sdp_body << " " << p_it->payload;
+				}
+				sdp_body << "\r\n";
+				for(vector<sSdpPayload>::iterator p_it = it->payloads.begin(); p_it != it->payloads.end(); p_it++) {
+					if(!p_it->codec.empty()) {
+						sdp_body << "a=rtpmap:" << p_it->payload << " "
+							 << p_it->codec;
+						if(p_it->sampling_freq > 0) {
+							sdp_body << "/" << p_it->sampling_freq;
+						}
+						sdp_body << "\r\n";
 					}
-					sdp_body << "\r\n";
 				}
 			}
+			++i;
 		}
 	}
 	string sdp_str = sdp_body.str();
@@ -480,7 +568,7 @@ string cSipRecCall::createInviteRequest(bool use_real_ip_ports) {
 	return(request.str());
 }
 
-string cSipRecCall::createInviteResponse(bool use_real_ip_ports) {
+string cSipRecCall::createInviteResponse(bool use_real_caller_called, bool use_direction_separation, bool use_real_rtp_ip_ports) {
 	if(invite.empty()) {
 		return("");
 	}
@@ -492,15 +580,21 @@ string cSipRecCall::createInviteResponse(bool use_real_ip_ports) {
 		response << "Via: " << it->second << "\r\n";
 	}
 	if((it = last_invite.tags.find("from")) != last_invite.tags.end()) {
-		response << "From: " << it->second << "\r\n";
+		if(use_real_caller_called && !metadata.caller_aor.empty()) {
+			response << "From: " << ("<" + metadata.caller_aor + ">" + (!from_tag.empty() ? ";tag=" + from_tag : "")) << "\r\n";
+		} else {
+			response << "From: " << it->second << "\r\n";
+		}
 	}
 	if((it = last_invite.tags.find("to")) != last_invite.tags.end()) {
-		string to_value = it->second;
-		if(to_value.find("tag=") == string::npos) {
-			string tag = GetStringMD5(id.callid + intToString(start_time_us));
-			it->second += ";tag=" + tag;
+		if(to_tag.empty()) {
+			 to_tag = GetStringMD5(id.callid + intToString(start_time_us));
 		}
-		response << "To: " << it->second << "\r\n";
+		if(use_real_caller_called && !metadata.called_aor.empty()) {
+			response << "To: " << ("<" + metadata.called_aor + ">" + (!to_tag.empty() ? ";tag=" + to_tag : "")) << "\r\n";
+		} else {
+			response << "To: " << (it->second + (it->second.find("tag=") == string::npos && !to_tag.empty() ? ";tag=" + to_tag : "")) << "\r\n";
+		}
 	}
 	if((it = last_invite.tags.find("call-id")) != last_invite.tags.end()) {
 		response << "Call-ID: " << it->second << "\r\n";
@@ -513,20 +607,26 @@ string cSipRecCall::createInviteResponse(bool use_real_ip_ports) {
 	response << "Content-Disposition: session\r\n";
 	ostringstream sdp_body;
 	sdp_body << "v=0\r\n";
-	if(use_real_ip_ports && metadata.called_ip.isSet()) {
-		sdp_body << "o=callee " << start_time_us << " 0 IN IP" << metadata.called_ip.vi() << " " << metadata.called_ip.getString() << "\r\n";
-		sdp_body << "s=Call\r\n";
+	if(use_real_rtp_ip_ports && metadata.called_ip.isSet()) {
+		sdp_body << "o=callee " << (start_time_us+1) << " 0 IN IP" << metadata.called_ip.vi() << " " << metadata.called_ip.getString() << "\r\n";
+		sdp_body << "s=SIPREC Session\r\n";
 		sdp_body << "c=IN IP" << metadata.called_ip.vi() << " " << metadata.called_ip.getString() << "\r\n";
 	} else {
-		sdp_body << "o=siprec " << start_time_us << " 0 IN IP" << local_ip.vi() << " " << local_ip.getString() << "\r\n";
-		sdp_body << "s=SIPREC Session\r\n";
-		sdp_body << "c=IN IP" << local_ip.vi() << " " << local_ip.getString() << "\r\n";
+		if(use_direction_separation) {
+			sdp_body << "o=callee " << (start_time_us+1) << " 0 IN IP" << sdp.c_in.vi() << " " << sdp.c_in.getString() << "\r\n";
+			sdp_body << "s=SIPREC Session\r\n";
+			sdp_body << "c=IN IP" << sdp.c_in.vi() << " " << sdp.c_in.getString() << "\r\n";
+		} else {
+			sdp_body << "o=callee " << (start_time_us+1) << " 0 IN IP" << local_ip.vi() << " " << local_ip.getString() << "\r\n";
+			sdp_body << "s=SIPREC Session\r\n";
+			sdp_body << "c=IN IP" << local_ip.vi() << " " << local_ip.getString() << "\r\n";
+		}
 	}
 	sdp_body << "t=0 0\r\n";
-	if(use_real_ip_ports) {
+	if(use_real_rtp_ip_ports) {
 		for(vector<sSdpMedia>::iterator it = sdp.media.begin(); it != sdp.media.end(); it++) {
 			if(it->direction == sdp_media_direction_called) {
-				sdp_body << "m=" << it->media_type << " " << metadata.caller_rtp_port.getPort() << " "
+				sdp_body << "m=" << it->media_type << " " << metadata.called_rtp_port.getPort() << " "
 					 << it->transport_protocol;
 				for(vector<sSdpPayload>::iterator p_it = it->payloads.begin(); p_it != it->payloads.end(); p_it++) {
 					sdp_body << " " << p_it->payload;
@@ -544,25 +644,33 @@ string cSipRecCall::createInviteResponse(bool use_real_ip_ports) {
 			}
 		}
 	} else {
+		bool is_set_booth_direction = sdp.isSetBothDirections();
+		unsigned i = 0;
 		for(vector<sSdpMedia>::iterator it = sdp.media.begin(); it != sdp.media.end(); it++) {
-			if(it->reverse_port.isSet()) {
-				sdp_body << "m=" << it->media_type << " " << it->reverse_port.getPort() << " "
-					 << it->transport_protocol;
-				for(vector<sSdpPayload>::iterator p_it = it->payloads.begin(); p_it != it->payloads.end(); p_it++) {
-					sdp_body << " " << p_it->payload;
-				}
-				sdp_body << "\r\n";
-				for(vector<sSdpPayload>::iterator p_it = it->payloads.begin(); p_it != it->payloads.end(); p_it++) {
-					if(!p_it->codec.empty()) {
-						sdp_body << "a=rtpmap:" << p_it->payload << " "
-							 << p_it->codec;
-						if(p_it->sampling_freq > 0) {
-							sdp_body << "/" << p_it->sampling_freq;
+			eSdpMediaDirection dir = is_set_booth_direction ?
+						  it->direction :
+						  (i % 2 ? sdp_media_direction_called : sdp_media_direction_caller);
+			if(!use_direction_separation || dir == sdp_media_direction_called) {
+				if(use_direction_separation || it->reverse_port.isSet()) {
+					sdp_body << "m=" << it->media_type << " " << (use_direction_separation ? it->port.getPort() : it->reverse_port.getPort()) << " "
+						 << it->transport_protocol;
+					for(vector<sSdpPayload>::iterator p_it = it->payloads.begin(); p_it != it->payloads.end(); p_it++) {
+						sdp_body << " " << p_it->payload;
+					}
+					sdp_body << "\r\n";
+					for(vector<sSdpPayload>::iterator p_it = it->payloads.begin(); p_it != it->payloads.end(); p_it++) {
+						if(!p_it->codec.empty()) {
+							sdp_body << "a=rtpmap:" << p_it->payload << " "
+								 << p_it->codec;
+							if(p_it->sampling_freq > 0) {
+								sdp_body << "/" << p_it->sampling_freq;
+							}
+							sdp_body << "\r\n";
 						}
-						sdp_body << "\r\n";
 					}
 				}
 			}
+			++i;
 		}
 	}
 	string sdp_str = sdp_body.str();
@@ -572,7 +680,7 @@ string cSipRecCall::createInviteResponse(bool use_real_ip_ports) {
 	return(response.str());
 }
 
-string cSipRecCall::createByeRequest(bool /*use_real_ip_ports*/) {
+string cSipRecCall::createByeRequest(bool use_real_caller_called) {
 	if(bye.request_line.empty()) {
 		return("");
 	}
@@ -583,10 +691,18 @@ string cSipRecCall::createByeRequest(bool /*use_real_ip_ports*/) {
 		request << "Via: " << it->second << "\r\n";
 	}
 	if((it = bye.tags.find("from")) != bye.tags.end()) {
-		request << "From: " << it->second << "\r\n";
+		if(use_real_caller_called && !metadata.caller_aor.empty()) {
+			request << "From: " << ("<" + metadata.caller_aor + ">" + (!from_tag.empty() ? ";tag=" + from_tag : "")) << "\r\n";
+		} else {
+			request << "From: " << it->second << "\r\n";
+		}
 	}
 	if((it = bye.tags.find("to")) != bye.tags.end()) {
-		request << "To: " << it->second << "\r\n";
+		if(use_real_caller_called && !metadata.called_aor.empty()) {
+			request << "To: " << ("<" + metadata.called_aor + ">" + (!to_tag.empty() ? ";tag=" + to_tag : "")) << "\r\n";
+		} else {
+			request << "To: " << (it->second + (it->second.find("tag=") == string::npos && !to_tag.empty() ? ";tag=" + to_tag : "")) << "\r\n";
+		}
 	}
 	if((it = bye.tags.find("call-id")) != bye.tags.end()) {
 		request << "Call-ID: " << it->second << "\r\n";
@@ -599,7 +715,7 @@ string cSipRecCall::createByeRequest(bool /*use_real_ip_ports*/) {
 	return(request.str());
 }
 
-string cSipRecCall::createByeResponse(bool /*use_real_ip_ports*/) {
+string cSipRecCall::createByeResponse(bool use_real_caller_called) {
 	if(bye.request_line.empty()) {
 		return("");
 	}
@@ -610,10 +726,18 @@ string cSipRecCall::createByeResponse(bool /*use_real_ip_ports*/) {
 		response << "Via: " << it->second << "\r\n";
 	}
 	if((it = bye.tags.find("from")) != bye.tags.end()) {
-		response << "From: " << it->second << "\r\n";
+		if(use_real_caller_called && !metadata.caller_aor.empty()) {
+			response << "From: " << ("<" + metadata.caller_aor + ">" + (!from_tag.empty() ? ";tag=" + from_tag : "")) << "\r\n";
+		} else {
+			response << "From: " << it->second << "\r\n";
+		}
 	}
 	if((it = bye.tags.find("to")) != bye.tags.end()) {
-		response << "To: " << it->second << "\r\n";
+		if(use_real_caller_called && !metadata.called_aor.empty()) {
+			response << "To: " << ("<" + metadata.called_aor + ">" + (!to_tag.empty() ? ";tag=" + to_tag : "")) << "\r\n";
+		} else {
+			response << "To: " << (it->second + (it->second.find("tag=") == string::npos && !to_tag.empty() ? ";tag=" + to_tag : "")) << "\r\n";
+		}
 	}
 	if((it = bye.tags.find("call-id")) != bye.tags.end()) {
 		response << "Call-ID: " << it->second << "\r\n";
@@ -626,7 +750,7 @@ string cSipRecCall::createByeResponse(bool /*use_real_ip_ports*/) {
 	return(response.str());
 }
 
-string cSipRecCall::createCancelRequest(bool /*use_real_ip_ports*/) {
+string cSipRecCall::createCancelRequest(bool use_real_caller_called) {
 	if(cancel.request_line.empty()) {
 		return("");
 	}
@@ -637,10 +761,18 @@ string cSipRecCall::createCancelRequest(bool /*use_real_ip_ports*/) {
 		request << "Via: " << it->second << "\r\n";
 	}
 	if((it = cancel.tags.find("from")) != cancel.tags.end()) {
-		request << "From: " << it->second << "\r\n";
+		if(use_real_caller_called && !metadata.caller_aor.empty()) {
+			request << "From: " << ("<" + metadata.caller_aor + ">" + (!from_tag.empty() ? ";tag=" + from_tag : "")) << "\r\n";
+		} else {
+			request << "From: " << it->second << "\r\n";
+		}
 	}
 	if((it = cancel.tags.find("to")) != cancel.tags.end()) {
-		request << "To: " << it->second << "\r\n";
+		if(use_real_caller_called && !metadata.called_aor.empty()) {
+			request << "To: " << ("<" + metadata.called_aor + ">") << "\r\n";
+		} else {
+			request << "To: " << it->second << "\r\n";
+		}
 	}
 	if((it = cancel.tags.find("call-id")) != cancel.tags.end()) {
 		request << "Call-ID: " << it->second << "\r\n";
@@ -653,7 +785,7 @@ string cSipRecCall::createCancelRequest(bool /*use_real_ip_ports*/) {
 	return(request.str());
 }
 
-string cSipRecCall::createCancelResponse(bool /*use_real_ip_ports*/) {
+string cSipRecCall::createCancelResponse(bool use_real_caller_called) {
 	if(cancel.request_line.empty()) {
 		return("");
 	}
@@ -664,10 +796,18 @@ string cSipRecCall::createCancelResponse(bool /*use_real_ip_ports*/) {
 		response << "Via: " << it->second << "\r\n";
 	}
 	if((it = cancel.tags.find("from")) != cancel.tags.end()) {
-		response << "From: " << it->second << "\r\n";
+		if(use_real_caller_called && !metadata.caller_aor.empty()) {
+			response << "From: " << ("<" + metadata.caller_aor + ">" + (!from_tag.empty() ? ";tag=" + from_tag : "")) << "\r\n";
+		} else {
+			response << "From: " << it->second << "\r\n";
+		}
 	}
 	if((it = cancel.tags.find("to")) != cancel.tags.end()) {
-		response << "To: " << it->second << "\r\n";
+		if(use_real_caller_called && !metadata.called_aor.empty()) {
+			response << "To: " << ("<" + metadata.called_aor + ">") << "\r\n";
+		} else {
+			response << "To: " << it->second << "\r\n";
+		}
 	}
 	if((it = cancel.tags.find("call-id")) != cancel.tags.end()) {
 		response << "Call-ID: " << it->second << "\r\n";
@@ -681,8 +821,9 @@ string cSipRecCall::createCancelResponse(bool /*use_real_ip_ports*/) {
 }
 
 void cSipRecCall::evTimeoutStream() {
+	if(!sip_rec) return;
 	if(!sdp.countActive()) {
-		sip_rec->deleteCall(this);
+		sip_rec->deleteCall(this, "timeout stream(s)");
 	}
 }
 
@@ -710,6 +851,19 @@ const char *cSipRecCall::parseSipHeaders(const char *ptr, map<string, string> &t
 		ptr = skip_cr_lf(ptr);
 	}
 	return(ptr);
+}
+
+string cSipRecCall::extractTag(const string& header) {
+	size_t tag_pos = header.find(";tag=");
+	if(tag_pos != string::npos) {
+		size_t tag_end = header.find(';', tag_pos + 5);
+		if(tag_end != string::npos) {
+			return(header.substr(tag_pos, tag_end - tag_pos));
+		} else {
+			return(header.substr(tag_pos));
+		}
+	}
+	return("");
 }
 
 bool cSipRecCall::parseParticipantNode(void *participantNode, bool is_caller) {
@@ -750,7 +904,7 @@ bool cSipRecCall::parseParticipantNode(void *participantNode, bool is_caller) {
 									metadata.caller_port.setPort(5060);
 								} else {
 									metadata.called_ip.setFromString(ip.c_str());
-									metadata.called_port.setPort(5060);
+									metadata.called_port.setPort(5061);
 								}
 							}
 						}
@@ -768,6 +922,7 @@ bool cSipRecCall::parseParticipantNode(void *participantNode, bool is_caller) {
 
 
 cSipRecStream::cSipRecStream(cSipRecCall *call, vmPort port) {
+	call->add_ref();
 	this->call = call;
 	this->port = port;
 	this->socket = -1;
@@ -782,31 +937,56 @@ cSipRecStream::~cSipRecStream() {
 	if(socket >= 0) {
 		close(socket);
 	}
-	sip_rec->freeRtpPort(port);
+	if(sip_rec) {
+		sip_rec->freeRtpPort(port);
+	}
+	call->destroy();
 }
 
 bool cSipRecStream::createSocket() {
-	socket = ::socket(AF_INET, SOCK_DGRAM, 0);
+	bool ipv6 = call->sdp.c_in.is_v6();
+	socket = ::socket(ipv6 ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
 	if(socket < 0) {
 		return(false);
 	}
 	int flags = fcntl(socket, F_GETFL, 0);
 	fcntl(socket, F_SETFL, flags | O_NONBLOCK);
 	int opt = 1;
-	if(setsockopt(socket, IPPROTO_IP, IP_PKTINFO, &opt, sizeof(opt)) < 0) {
-		close(socket);
-		socket = -1;
-		return(false);
-	}
-	sockaddr_in addr;
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(port.getPort());
-	addr.sin_addr.s_addr = INADDR_ANY;
-	if(bind(socket, (sockaddr*)&addr, sizeof(addr)) < 0) {
-		close(socket);
-		socket = -1;
-		return(false);
+	#if VM_IPV6
+	if(ipv6) {
+		if(setsockopt(socket, IPPROTO_IPV6, IPV6_RECVPKTINFO, &opt, sizeof(opt)) < 0) {
+			close(socket);
+			socket = -1;
+			return(false);
+		}
+		sockaddr_in6 addr;
+		memset(&addr, 0, sizeof(addr));
+		addr.sin6_family = AF_INET6;
+		addr.sin6_port = htons(port.getPort());
+		addr.sin6_addr = in6addr_any;
+		if(bind(socket, (sockaddr*)&addr, sizeof(addr)) < 0) {
+			close(socket);
+			socket = -1;
+			return(false);
+		}
+	} else
+	#endif
+	{
+		if(setsockopt(socket, IPPROTO_IP, IP_PKTINFO, &opt, sizeof(opt)) < 0) {
+			close(socket);
+			socket = -1;
+			return(false);
+		}
+		sockaddr_in addr;
+		memset(&addr, 0, sizeof(addr));
+		addr.sin_family = AF_INET;
+		addr.sin_port = htons(port.getPort());
+		addr.sin_addr.s_addr = INADDR_ANY;
+		if(bind(socket, (sockaddr*)&addr, sizeof(addr)) < 0) {
+			close(socket);
+			socket = -1;
+			return(false);
+		}
 	}
 	return(true);
 }
@@ -817,10 +997,7 @@ void cSipRecStream::processPacket(u_char *data, unsigned len, vmIP src_ip, vmPor
 	     << src_ip.getString() << " : " << src_port.getString() << " -> "
 	     << dst_ip.getString() << " : " << dst_port.getString() << endl;
 	*/
-	sip_rec->sendPacket(data, len, src_ip, src_port, dst_ip, dst_port);
-	last_packet_at_ms = getTimeMS_rdtsc();
-	/*
-	//TODO
+	/* ip/port substitution - not yet used
 	cSipRecCall::sSdpMedia *media = NULL;
 	for(vector<cSipRecCall::sSdpMedia>::iterator it = call->sdp.media.begin();
 	    it != call->sdp.media.end(); it++) {
@@ -858,6 +1035,10 @@ void cSipRecStream::processPacket(u_char *data, unsigned len, vmIP src_ip, vmPor
 		return;
 	}
 	*/
+	if(sip_rec) {
+		sip_rec->sendPacket(data, len, src_ip, src_port, dst_ip, dst_port);
+	}
+	last_packet_at_ms = getTimeMS_rdtsc();
 }
 
 
@@ -969,31 +1150,30 @@ void cSipRecThread::thread_fce() {
 }
 
 void cSipRecThread::checkTimeout() {
+	if(!sip_rec) return;
 	u_int64_t now_ms = getTimeMS_rdtsc();
 	if(now_ms - last_check_timeout_ms < 1000) {
 		return;
 	}
 	last_check_timeout_ms = now_ms;
 	lock();
-	vector<vmPort> to_remove;
+	vector<pair<vmPort, cSipRecCall*> > to_remove;
 	for(map<vmPort, cSipRecStream*>::iterator it = streams.begin(); it != streams.end(); it++) {
 		cSipRecStream *stream = it->second;
 		if(sip_rec->getRtpStreamTimeout() > 0) {
 			if((stream->last_packet_at_ms > 0 ?
 			     stream->last_packet_at_ms + sip_rec->getRtpStreamTimeout() * 1000 :
 			     stream->start_at_ms + sip_rec->getRtpStreamTimeout() * 1000) < now_ms) {
-				to_remove.push_back(it->first);
+				stream->call->add_ref();
+				to_remove.push_back(make_pair(it->first, stream->call));
 			}
 		}
 	}
 	unlock();
-	for(vector<vmPort>::iterator it = to_remove.begin(); it != to_remove.end(); it++) {
-		map<vmPort, cSipRecStream*>::iterator stream_it = streams.find(*it);
-		if(stream_it != streams.end()) {
-			cSipRecCall *call = stream_it->second->call;
-			sip_rec->stopStream(*it);
-			call->evTimeoutStream();
-		}
+	for(vector<pair<vmPort, cSipRecCall*> >::iterator it = to_remove.begin(); it != to_remove.end(); it++) {
+		sip_rec->stopStream(it->second, it->first);
+		it->second->evTimeoutStream();
+		it->second->destroy();
 	}
 }
 
@@ -1083,6 +1263,7 @@ bool cSipRecStreams::addStream(cSipRecCall *call, vmPort port) {
 		return(false);
 	}
 	int thread_idx = findThreadWithMinStreams();
+	bool new_thread_created = false;
 	if(thread_idx < 0) {
 		if(threads_count >= max_threads) {
 			unlock();
@@ -1090,9 +1271,15 @@ bool cSipRecStreams::addStream(cSipRecCall *call, vmPort port) {
 		}
 		thread_idx = threads_count;
 		threads[thread_idx] = new FILE_LINE(0) cSipRecThread();
+		new_thread_created = true;
 		threads_count++;
 	}
 	if(!threads[thread_idx]->addStream(call, port)) {
+		if(new_thread_created) {
+			delete threads[thread_idx];
+			threads[thread_idx] = NULL;
+			threads_count--;
+		}
 		unlock();
 		return(false);
 	}
@@ -1201,6 +1388,9 @@ cSipRecPacketSender::cSipRecPacketSender()
 }
 
 cSipRecPacketSender::~cSipRecPacketSender() {
+	if(block_store) {
+		delete block_store;
+	}
 }
 
 void cSipRecPacketSender::sendPacket(u_char *data, unsigned dataLen, vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port) {
@@ -1302,10 +1492,13 @@ void cSipRecPacketSender::evTimer(u_int32_t /*time_s*/, int /*typeTimer*/, void 
 
 
 cSipRec::cSipRec() {
-	rtp_port_min = 0;
-	rtp_port_max = 0;
-	rtp_stream_timeout_s = 10;
-	rtp_streams_max_threads = 4;
+	rtp_port_min = 10000;
+	rtp_port_max = 20000;
+	rtp_stream_timeout_s = 300;
+	rtp_streams_max_threads = 2;
+	use_real_caller_called = true;
+	use_real_sip_ip_ports = true;
+	use_real_rtp_ip_ports = false;
 	_sync_lock = 0;
 	_sync_lock_rtp_ports = 0;
 	verbose = false;
@@ -1343,6 +1536,18 @@ void cSipRec::setRtpStreamManThreads(unsigned rtp_streams_max_threads) {
 	this->rtp_streams_max_threads = rtp_streams_max_threads;
 }
 
+void cSipRec::setUseRealCallerCalled(bool use_real_caller_called) {
+	this->use_real_caller_called = use_real_caller_called;
+}
+
+void cSipRec::setUseRealSipIpPorts(bool use_real_sip_ip_ports) {
+	this->use_real_sip_ip_ports = use_real_sip_ip_ports;
+}
+
+void cSipRec::setUseRealRtpIpPorts(bool use_real_rtp_ip_ports) {
+	this->use_real_rtp_ip_ports = use_real_rtp_ip_ports;
+}
+
 void cSipRec::setVerbose(bool verbose) {
 	this->verbose = verbose;
 }
@@ -1357,11 +1562,12 @@ void cSipRec::startServer() {
 }
 
 vmPort cSipRec::getRtpPort() {
-	if(free_rtp_ports.empty()) {
-		return(vmPort());
-	}
 	u_int16_t port;
 	lock_rtp_ports();
+	if(free_rtp_ports.empty()) {
+		unlock_rtp_ports();
+		return(vmPort());
+	}
 	set<u_int16_t>::iterator it = free_rtp_ports.begin();
 	port = *it;
 	free_rtp_ports.erase(it);
@@ -1383,9 +1589,9 @@ void cSipRec::initRtpPortsHeap() {
 		rtp_port_min = 0;
 		rtp_port_max = 0xFFFF;
 	}
-	for(u_int16_t port = rtp_port_min; port <= rtp_port_max; port += 2) {
+	for(u_int32_t port = rtp_port_min; port <= rtp_port_max; port += 2) {
 		if(port % 2 == 0) {
-			free_rtp_ports.insert(port);
+			free_rtp_ports.insert((u_int16_t)port);
 		}
 	}
 }
@@ -1408,27 +1614,49 @@ void cSipRec::processInvite(u_char *data, size_t dataLen, vmIP ip, vmPort port, 
 	}
 	cSipRecCall *call = new FILE_LINE(0) cSipRecCall;
 	if(!call->parseInvite(string((char*)data, dataLen).c_str(), ip)) {
-		delete call;
+		call->destroy();
 		return;
 	}
 	lock();
 	if(calls_by_call_id.find(call->id) == calls_by_call_id.end()) {
 		calls_by_call_id[call->id] = call;
+		call->add_ref();
+		if(verbose) {
+			cout << " *** CREATE CALL " << call->id.getString() << endl;
+		}
 	} else {
 		cSipRecCall *exists_call = calls_by_call_id[call->id];
 		exists_call->addInvite(call->invite[0]);
-		delete call;
+		exists_call->add_ref();
+		call->destroy();
 		call = exists_call;
 		call->stopStreams();
 		call->clearSdpData();
 	}
 	unlock();
-	call->local_ip = local_ip;
-	call->local_port = local_port;
-	sendPacket(data, dataLen, ip, port, bind_ip, bind_port);
 	call->parseXmlMetadata();
 	call->parseSdpData();
 	call->setSdpMediaDirections();
+	call->detectFromToTag();
+	call->local_ip = local_ip;
+	call->local_port = local_port;
+	string request_int;
+	if(use_real_caller_called || use_real_rtp_ip_ports) {
+		request_int = call->createInviteRequest(use_real_caller_called, true, use_real_rtp_ip_ports);
+	} else {
+		request_int = string((char*)data, dataLen);
+	}
+	vmIP ip_int_src = ip;
+	vmIP ip_int_dst = local_ip;
+	vmPort port_int_src = port;
+	vmPort port_int_dst = local_port;
+	if(use_real_sip_ip_ports && call->metadata.isCompletedCallerdIpPort()) {
+		ip_int_src = call->metadata.caller_ip;
+		ip_int_dst = call->metadata.called_ip;
+		port_int_src = call->metadata.caller_port;
+		port_int_dst = call->metadata.called_port;
+	}
+	sendPacket((u_char*)request_int.c_str(), request_int.length(), ip_int_src, port_int_src, ip_int_dst, port_int_dst);
 	call->setReverseRtpPorts();
 	call->startStreams();
 	string response = call->createInviteResponse();
@@ -1437,7 +1665,14 @@ void cSipRec::processInvite(u_char *data, size_t dataLen, vmIP ip, vmPort port, 
 		cout << response << endl;
 	}
 	sendResponse(response, ip, port, socket);
-	sendPacket((u_char*)response.c_str(), response.length(), bind_ip, bind_port, ip, port);
+	string response_int;
+	if(use_real_caller_called || use_real_rtp_ip_ports) {
+		response_int = call->createInviteResponse(use_real_caller_called, true, use_real_rtp_ip_ports);
+	} else {
+		response_int = response;
+	}
+	sendPacket((u_char*)response_int.c_str(), response_int.length(), ip_int_dst, port_int_dst, ip_int_src, port_int_src);
+	call->destroy();
 }
 
 void cSipRec::processBye(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket) {
@@ -1447,31 +1682,55 @@ void cSipRec::processBye(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmI
 	}
 	cSipRecCall *call = new FILE_LINE(0) cSipRecCall;
 	if(!call->parseBye(string((char*)data, dataLen).c_str(), ip)) {
-		delete call;
+		call->destroy();
 		return;
 	}
 	lock();
 	if(calls_by_call_id.find(call->id) == calls_by_call_id.end()) {
 		unlock();
-		delete call;
+		call->destroy();
 		return;
 	} else {
 		cSipRecCall *exists_call = calls_by_call_id[call->id];
 		exists_call->bye = call->bye;
-		delete call;
+		exists_call->add_ref();
+		call->destroy();
 		call = exists_call;
 	}
 	unlock();
-	sendPacket(data, dataLen, ip, port, bind_ip, bind_port);
+	string request_int;
+	if(use_real_caller_called) {
+		request_int = call->createByeRequest(use_real_caller_called);
+	} else {
+		request_int = string((char*)data, dataLen);
+	}
+	vmIP ip_int_src = ip;
+	vmIP ip_int_dst = local_ip;
+	vmPort port_int_src = port;
+	vmPort port_int_dst = local_port;
+	if(use_real_sip_ip_ports && call->metadata.isCompletedCallerdIpPort()) {
+		ip_int_src = call->metadata.caller_ip;
+		ip_int_dst = call->metadata.called_ip;
+		port_int_src = call->metadata.caller_port;
+		port_int_dst = call->metadata.called_port;
+	}
+	sendPacket((u_char*)request_int.c_str(), request_int.length(), ip_int_src, port_int_src, ip_int_dst, port_int_dst);
 	string response = call->createByeResponse();
 	if(verbose) {
 		cout << " *** BYE RESPONSE" << endl;
 		cout << response << endl;
 	}
 	sendResponse(response, ip, port, socket);
-	sendPacket((u_char*)response.c_str(), response.length(), bind_ip, bind_port, ip, port);
+	string response_int;
+	if(use_real_caller_called) {
+		response_int = call->createByeResponse(use_real_caller_called);
+	} else {
+		response_int = response;
+	}
+	sendPacket((u_char*)response_int.c_str(), response_int.length(), ip_int_dst, port_int_dst, ip_int_src, port_int_src);
 	call->stopStreams();
-	deleteCall(call);
+	deleteCall(call, "bye");
+	call->destroy();
 }
 
 void cSipRec::processCancel(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket) {
@@ -1481,31 +1740,55 @@ void cSipRec::processCancel(u_char *data, size_t dataLen, vmIP ip, vmPort port, 
 	}
 	cSipRecCall *call = new FILE_LINE(0) cSipRecCall;
 	if(!call->parseCancel(string((char*)data, dataLen).c_str(), ip)) {
-		delete call;
+		call->destroy();
 		return;
 	}
 	lock();
 	if(calls_by_call_id.find(call->id) == calls_by_call_id.end()) {
 		unlock();
-		delete call;
+		call->destroy();
 		return;
 	} else {
 		cSipRecCall *exists_call = calls_by_call_id[call->id];
 		exists_call->cancel = call->cancel;
-		delete call;
+		exists_call->add_ref();
+		call->destroy();
 		call = exists_call;
 	}
 	unlock();
-	sendPacket(data, dataLen, ip, port, bind_ip, bind_port);
+	string request_int;
+	if(use_real_caller_called) {
+		request_int = call->createCancelRequest(use_real_caller_called);
+	} else {
+		request_int = string((char*)data, dataLen);
+	}
+	vmIP ip_int_src = ip;
+	vmIP ip_int_dst = local_ip;
+	vmPort port_int_src = port;
+	vmPort port_int_dst = local_port;
+	if(use_real_sip_ip_ports && call->metadata.isCompletedCallerdIpPort()) {
+		ip_int_src = call->metadata.caller_ip;
+		ip_int_dst = call->metadata.called_ip;
+		port_int_src = call->metadata.caller_port;
+		port_int_dst = call->metadata.called_port;
+	}
+	sendPacket((u_char*)request_int.c_str(), request_int.length(), ip_int_src, port_int_src, ip_int_dst, port_int_dst);
 	string response = call->createCancelResponse();
 	if(verbose) {
 		cout << " *** CANCEL RESPONSE" << endl;
 		cout << response << endl;
 	}
 	sendResponse(response, ip, port, socket);
-	sendPacket((u_char*)response.c_str(), response.length(), bind_ip, bind_port, ip, port);
+	string response_int;
+	if(use_real_caller_called) {
+		response_int = call->createCancelResponse(use_real_caller_called);
+	} else {
+		response_int = response;
+	}
+	sendPacket((u_char*)response_int.c_str(), response_int.length(), ip_int_dst, port_int_dst, ip_int_src, port_int_src);
 	call->stopStreams();
-	deleteCall(call);
+	deleteCall(call, "cancel");
+	call->destroy();
 }
 
 void cSipRec::sendPacket(u_char *data, unsigned dataLen, vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port) {
@@ -1514,28 +1797,37 @@ void cSipRec::sendPacket(u_char *data, unsigned dataLen, vmIP src_ip, vmPort src
 	}
 }
 
-void cSipRec::deleteCall(cSipRecCall *call) {
+void cSipRec::deleteCall(cSipRecCall *call, const char *reason) {
 	lock();
 	if(calls_by_call_id.find(call->id) != calls_by_call_id.end()) {
 		calls_by_call_id.erase(call->id);
-		delete call;
 		if(verbose) {
-			cout << " *** DELETE CALL" << endl;
+			cout << " *** DELETE CALL " << call->id.getString() << " - " << reason << endl;
 		}
+		unlock();
+		call->destroy();
+	} else {
+		unlock();
 	}
-	unlock();
 }
 
 bool cSipRec::addStream(cSipRecCall *call, vmPort port) {
 	if(streams) {
-		return(streams->addStream(call, port));
+		bool rslt = streams->addStream(call, port);
+		if(verbose) {
+			cout << " *** ADD STREAM " << call->id.getString() << " - " << port.getString() << " - " << (rslt ? "OK" : "FAILED") << endl;
+		}
+		return(rslt);
 	}
 	return(false);
 }    
 
-void cSipRec::stopStream(vmPort port) {
+void cSipRec::stopStream(cSipRecCall *call, vmPort port) {
 	if(streams) {
 		streams->stopStream(port);
+		if(verbose) {
+			cout << " *** STOP STREAM " << call->id.getString() << " - " << port.getString() << endl;
+		}
 	}
 }
 
@@ -1584,6 +1876,9 @@ void sipRecStart() {
 	if(opt_siprec_rtp_streams_max_threads > 0) {
 		sip_rec->setRtpStreamManThreads(opt_siprec_rtp_streams_max_threads);
 	}
+	sip_rec->setUseRealCallerCalled(true);
+	sip_rec->setUseRealSipIpPorts(true);
+	sip_rec->setUseRealRtpIpPorts(false);
 	sip_rec->setVerbose(sverb.siprec);
 	sip_rec->startServer();
 }

@@ -22,6 +22,9 @@ public:
 			return(this->callid < other.callid ? true : !(this->callid == other.callid) ? false :
 			       this->src_ip < other.src_ip);
 		}
+		string getString() {
+			return(src_ip.getString() + "/" + callid);
+		}
 	};
 	struct sContent {
 		string content_type;
@@ -57,11 +60,19 @@ public:
 		string caller_label;
 		string called_label;
 		bool isCompleted(bool check_rtp_port) {
+			return(isCompletedCallerdAor() &&
+			       isCompletedCallerdIpPort() &&
+			       (!check_rtp_port || isCompletedCallerdRtpPort()));
+		}
+		bool isCompletedCallerdAor() {
+			return(!caller_aor.empty() && !called_aor.empty());
+		}
+		bool isCompletedCallerdIpPort() {
 			return(caller_ip.isSet() && called_ip.isSet() &&
-			       caller_port.isSet() && called_port.isSet() &&
-			       (!check_rtp_port || (caller_rtp_port.isSet() && called_rtp_port.isSet())) &&
-			       !caller_aor.empty() && !called_aor.empty() &&
-			       !caller_label.empty() && !called_label.empty());
+			       caller_port.isSet() && called_port.isSet());
+		}
+		bool isCompletedCallerdRtpPort() {
+			return(caller_rtp_port.isSet() && called_rtp_port.isSet());
 		}
 	};
 	struct sSdpPayload {
@@ -107,6 +118,23 @@ public:
 			}
 			return(count);
 		}
+		bool isSetBothDirections() {
+			bool caller = false;
+			bool called = false;
+			for(vector<sSdpMedia>::iterator it = media.begin(); it != media.end(); it++) {
+				if(it->direction == sdp_media_direction_caller) {
+					caller = true;
+				} else if(it->direction == sdp_media_direction_called) {
+					called = true;
+				}
+			}
+			return(caller && called);
+		}
+	};
+	enum eParticipantType {
+		participant_type_unknown = -1,
+		participant_type_caller = 0,
+		participant_type_called = 1
 	};
 public:
 	cSipRecCall();
@@ -115,6 +143,7 @@ public:
 	bool parseBye(const char *bye_str, vmIP src_ip);
 	bool parseCancel(const char *cancel_str, vmIP src_ip);
 	void addInvite(const sInvite &inv);
+	void detectFromToTag();
 	const char *getXmlMetadata();
 	bool parseXmlMetadata(const char *xml = NULL);
 	bool isCompletedXmlMetadata(bool check_rtp_port);
@@ -125,15 +154,18 @@ public:
 	void stopStreams();
 	int setSdpMediaDirections();
 	void setReverseRtpPorts();
-	string createInviteRequest(bool use_real_ip_ports = false);
-	string createInviteResponse(bool use_real_ip_ports = false);
-	string createByeRequest(bool use_real_ip_ports = false);
-	string createByeResponse(bool use_real_ip_ports = false);
-	string createCancelRequest(bool use_real_ip_ports = false);
-	string createCancelResponse(bool use_real_ip_ports = false);
+	string createInviteRequest(bool use_real_caller_called = false, bool use_direction_separation = false, bool use_real_rtp_ip_ports = false);
+	string createInviteResponse(bool use_real_caller_called = false, bool use_direction_separation = false, bool use_real_rtp_ip_ports = false);
+	string createByeRequest(bool use_real_caller_called = false);
+	string createByeResponse(bool use_real_caller_called = false);
+	string createCancelRequest(bool use_real_caller_called = false);
+	string createCancelResponse(bool use_real_caller_called = false);
 	void evTimeoutStream();
+	void add_ref() { __SYNC_INC(ref_count); }
+	void destroy() { if(__SYNC_DEC(ref_count) == 0) delete this; }
 private:
 	const char *parseSipHeaders(const char *ptr, map<string, string> &tags);
+	string extractTag(const string& header);
 	bool parseParticipantNode(void *participantNode, bool is_caller);
 	const char *find_end_line(const char *ptr) {
 		while(*ptr && *ptr != '\r' && *ptr != '\n') {
@@ -150,7 +182,10 @@ private:
 		return(ptr);
 	}
 	size_t skip_cr_lf(string &str, size_t pos) {
-		if(str[pos] == '\r' && str[pos + 1] == '\n') {
+		if(pos >= str.length()) {
+			return(pos);
+		}
+		if(pos + 1 < str.length() && str[pos] == '\r' && str[pos + 1] == '\n') {
 			pos += 2;
 		} else if(str[pos] == '\n') {
 			pos++;
@@ -162,6 +197,7 @@ private:
 		       *ptr == '\n');
 	}
 public:
+	volatile int ref_count;
 	sId id;
 	u_int64_t start_time_us;
 	vector<sInvite> invite;
@@ -169,6 +205,8 @@ public:
 	sCancel cancel;
 	sMetadata metadata;
 	sSdp sdp;
+	string from_tag;
+	string to_tag;
 	vmIP local_ip;
 	vmPort local_port;
 };
@@ -274,6 +312,9 @@ public:
 	void setBindParams(vmIP ip, vmPort port, bool udp);
 	void setRtpStreamTimeout(unsigned rtp_stream_timeout_s);
 	void setRtpStreamManThreads(unsigned rtp_streams_max_threads);
+	void setUseRealCallerCalled(bool use_real_caller_called);
+	void setUseRealSipIpPorts(bool use_real_sip_ip_ports);
+	void setUseRealRtpIpPorts(bool use_real_rtp_ip_ports);
 	void setVerbose(bool verbose);
 	void startServer();
 	vmPort getRtpPort();
@@ -284,11 +325,9 @@ public:
 	void processBye(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket);
 	void processCancel(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket);
 	void sendPacket(u_char *data, unsigned dataLen, vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port);
-	void deleteCall(cSipRecCall *call);
+	void deleteCall(cSipRecCall *call, const char *reason);
 	bool addStream(cSipRecCall *call, vmPort port);
-	void stopStream(vmPort port);
-	vmIP getBindIP() { return(bind_ip); }
-	vmPort getBindPort() { return(bind_port); }
+	void stopStream(cSipRecCall *call, vmPort port);
 	unsigned getRtpStreamTimeout() { return(rtp_stream_timeout_s); }
 private:
 	bool sendResponse(string &response, vmIP ip, vmPort port, cSocket *socket);
@@ -310,6 +349,9 @@ private:
 	cSipRecPacketSender *packet_sender;
 	unsigned rtp_stream_timeout_s;
 	unsigned rtp_streams_max_threads;
+	bool use_real_caller_called;
+	bool use_real_sip_ip_ports;
+	bool use_real_rtp_ip_ports;
 	volatile int _sync_lock;
 	volatile int _sync_lock_rtp_ports;
 	bool verbose;

@@ -1219,8 +1219,8 @@ int opt_siprec_bind_port;
 bool opt_siprec_bind_udp = true;
 int opt_siprec_rtp_min = 10000;
 int opt_siprec_rtp_max = 20000;
-int opt_siprec_rtp_stream_timeout_s = 10;
-int opt_siprec_rtp_streams_max_threads = 4;
+int opt_siprec_rtp_stream_timeout_s = 300;
+int opt_siprec_rtp_streams_max_threads = 2;
 
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
 int storing_cdr_tid;

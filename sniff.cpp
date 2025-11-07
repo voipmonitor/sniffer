@@ -2600,6 +2600,12 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 	memcpy(sessid, s, sessid_length);
 	sessid[sessid_length] = 0;
 	
+	s = _gettag(sdp_text,sdp_text_len, "s=", &l);
+	if(s && l > 0 &&
+	   strncasestr(s, "siprec", l)) {
+		call->siprec = true;
+	}
+	
 	vmIP ip;
 	int v6_i = VM_IPV6_B && packetS->saddr_().is_v6() ? 0 : 1;
 	for(int i = 0; i < (VM_IPV6_B ? 2 : 1); i++) {

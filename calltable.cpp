@@ -899,6 +899,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	sdp_exists_media_type_image = false;
 	sdp_exists_media_type_video = false;
 	sdp_exists_media_type_application = false;
+	siprec = false;
 	
 	is_ssl = false;
 	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES

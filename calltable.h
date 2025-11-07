@@ -3068,6 +3068,7 @@ public:
 	bool sdp_exists_media_type_image;
 	bool sdp_exists_media_type_video;
 	bool sdp_exists_media_type_application;
+	bool siprec;
 	#if not PROCESS_PACKETS_INDIC_MOD_1
 	volatile int in_preprocess_queue_before_process_packet;
 	volatile u_int32_t in_preprocess_queue_before_process_packet_at[2];
