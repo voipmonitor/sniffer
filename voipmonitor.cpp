@@ -7281,6 +7281,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42334) cConfigItem_string("mos_lqo_ref16", opt_mos_lqo_ref16, sizeof(opt_mos_lqo_ref16)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignore_mos_degradation_for_contiguous_packet_loss_greater_than", &opt_ignore_mos_degradation_for_contiguous_packet_loss_greater_than));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignore_mos_degradation_in_rtp_pause_without_seq_gap", &opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap));
+				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mosmin_f2", &opt_mosmin_f2));
 		subgroup("FAX");
 			addConfigItem(new FILE_LINE(42335) cConfigItem_yesno("faxdetect", &opt_faxt30detect));
 		subgroup("jitterbufer");
