@@ -14076,7 +14076,7 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 	}
 	#endif
 	
-	#if CLEANUP_CALLS_MOD_1
+	#if not CLEANUP_CALLS_MOD_OLDVER
 	
 	unsigned allCallsMax = getCountCalls();
 	if(!allCallsMax) {
@@ -14341,7 +14341,6 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 					iter++;
 				}
 			}
-		 
 		}
 		if(calls_by_stream_callid_listMAP.size()) {
 			for(map<sStreamIds2, Call*>::iterator iter = calls_by_stream_callid_listMAP.begin(); iter != calls_by_stream_callid_listMAP.end(); ) {
@@ -14367,7 +14366,7 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 		}
 	}
 
-	#else // CLEANUP_CALLS_MOD_1
+	#else // CLEANUP_CALLS_MOD_OLDVER
 	 
 	unsigned closeCallsMax = getCountCalls();
 	if(!closeCallsMax) {
@@ -14655,7 +14654,7 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 		}
 	}
 	
-	#endif // CLEANUP_CALLS_MOD_1
+	#endif // CLEANUP_CALLS_MOD_OLDVER
 	
 	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
 	if(opt_conference_processing) {
@@ -14708,7 +14707,7 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 	unlock_calls_queue();
 	
 	delete [] closeCalls;
-	#if CLEANUP_CALLS_MOD_1
+	#if not CLEANUP_CALLS_MOD_OLDVER
 	delete [] allCalls;
 	#endif
 	
