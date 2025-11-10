@@ -8079,7 +8079,7 @@ string getSystemTimezone(int method) {
 }
 
 
-#if DETACH_X_MOD_1
+#if not DETACH_X_MOD_OLDVER
 volatile unsigned cHeapItemsPointerStack::slot_id_used = 0;
 volatile int cHeapItemsPointerStack::slot_id_sync = 0;
 #endif

@@ -3686,7 +3686,7 @@ public:
 
 #if HEAP_ITEM_STACK_TYPE_VOID
 
-#if DETACH_X_MOD_1
+#if not DETACH_X_MOD_OLDVER
 #define HEAP_ITEM_STACK_TLS true
 #define HEAP_ITEM_STACK_TLS_MAX_SLOTS 50
 #endif
@@ -3738,6 +3738,11 @@ public:
 		this->push_queues = new FILE_LINE(39026) sHeapItemsPool[this->push_queues_max];
 		#else
 		slot_id_lock();
+		if(slot_id_used >= HEAP_ITEM_STACK_TLS_MAX_SLOTS) {
+			syslog(LOG_ERR, "cHeapItemsPointerStack: exceeded HEAP_ITEM_STACK_TLS_MAX_SLOTS (%d)", HEAP_ITEM_STACK_TLS_MAX_SLOTS);
+			slot_id_unlock();
+			abort();
+		}
 		slot_id = slot_id_used;
 		__SYNC_INC(slot_id_used);
 		slot_id_unlock();

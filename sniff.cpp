@@ -9866,7 +9866,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 				    batch_index < batch_index_end; 
 				    batch_index += batch_index_skip) {
 					this->process_DETACH_X_1(batch[batch_index], qring_detach_active_push_item->batch[batch_index]);
-					#if DETACH_X_MOD_1
+					#if not DETACH_X_MOD_OLDVER
 					this->process_DETACH_X_2(qring_detach_active_push_item->batch[batch_index]);
 					#endif
 				} }
@@ -10076,7 +10076,7 @@ void *PreProcessPacket::outThreadFunction() {
 									thread_data->inc_packets_out(tm_caplen[completed]);
 								}
 								#endif
-								#if not DETACH_X_MOD_1
+								#if DETACH_X_MOD_OLDVER
 								this->process_DETACH_X_2(qring_detach_active_push_item->batch[completed]);
 								#endif
 								++completed;
@@ -10094,7 +10094,7 @@ void *PreProcessPacket::outThreadFunction() {
 						    batch_index < count / (_next_threads_count + 1); 
 						    batch_index++) {
 							this->process_DETACH_X_1(batch_detach_x->batch[batch_index], qring_detach_active_push_item->batch[batch_index]);
-							#if DETACH_X_MOD_1
+							#if not DETACH_X_MOD_OLDVER
 							this->process_DETACH_X_2(qring_detach_active_push_item->batch[batch_index]);
 							#endif
 						}
@@ -10119,7 +10119,7 @@ void *PreProcessPacket::outThreadFunction() {
 							thread_data->inc_packets_out(tm_caplen[batch_index]);
 						}
 						#endif
-						#if not DETACH_X_MOD_1
+						#if DETACH_X_MOD_OLDVER
 						this->process_DETACH_X_2(qring_detach_active_push_item->batch[batch_index]);
 						#endif
 					}
