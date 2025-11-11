@@ -1,3 +1,18 @@
+2025.11.0 11.11.2025
+====================
+- Implement SIPREC server — tested with the Kamailio SIPREC client [VS-1768] -  voipmonitor.org/doc/siprec
+- CPU optimisations in thread processing (better throughput in extreme traffic)  
+- Significant CPU optimization in untar — previously slow under extreme calls-per-second
+- Add support for the 'encrypt_then_mac' SSL extension to dssl ssl3_record_layer_decoder and ssl_decrypt_record — fixes private key AES128-SHA decryption [VS-1771].
+- Add getservbyname and getservbyport functions to tools/dns_resolver/dns_resolver.c (used for arm64 static builds).
+- Add option mosmin_f2 (YES/no) to suppress assigning mos_f2 to mosmin [VG-3049].
+- Enable joint deduplication for scanned traffic and for HEP reception [VS-1774].
+- Fix verbose-mode issue in process_rtp_header with G.729 packets without payload [VS-1770].
+- Fix sensor names longer than 15 chars — fixes systemd script [VS-1769].
+- Fix missing UDP header length recalculation during IP defragmentation of VXLAN when t2_boost = no (non-default) [VS-1778].
+- Fix value -2147483648 displayed in sensor MySQL configuration [VG-3044].
+
+
 2025.09.1 26.09.2025
 ====================
 - do not set promisc mode for interface 'any' 
