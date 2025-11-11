@@ -55,6 +55,8 @@ public:
 		vmPort called_port;
 		vmPort caller_rtp_port;
 		vmPort called_rtp_port;
+		vmPort caller_rtcp_port;
+		vmPort called_rtcp_port;
 		string caller_aor;
 		string called_aor;
 		string caller_label;
@@ -74,6 +76,9 @@ public:
 		bool isCompletedCallerdRtpPort() {
 			return(caller_rtp_port.isSet() && called_rtp_port.isSet());
 		}
+		bool isCompletedCallerdRtcpPort() {
+			return(caller_rtcp_port.isSet() && called_rtcp_port.isSet());
+		}
 	};
 	struct sSdpPayload {
 	       unsigned payload;
@@ -92,35 +97,71 @@ public:
 		vector<sSdpPayload> payloads;
 		string label;
 		vmPort reverse_port;
+		vmPort rtcp_port;
+		vmPort reverse_rtcp_port;
+		bool rtcp_mux;
 		eSdpMediaDirection direction;
 		bool active;
+		u_int64_t last_packet_at_ms;
 		sSdpMedia() {
 			direction = sdp_media_direction_unknown;
 			active = false;
+			rtcp_mux = false;
+			last_packet_at_ms = 0;
 		}
 	};
 	struct sSdp {
 		vmIP c_in;
 		vector<sSdpMedia> media;
+		volatile int _sync_lock_sdp;
+		sSdp() {
+			_sync_lock_sdp = 0;
+		}
 		void setActive(vmPort port, bool active) {
+			lock();
 			for(vector<sSdpMedia>::iterator it = media.begin(); it != media.end(); it++) {
-				if(it->reverse_port == port) {
+				if(it->reverse_port == port || it->reverse_rtcp_port == port) {
 					it->active = active;
 				}
 			}
+			unlock();
+		}
+		void updateLastPacketTime(vmPort port, u_int64_t time_ms) {
+			lock();
+			for(vector<sSdpMedia>::iterator it = media.begin(); it != media.end(); it++) {
+				if(it->reverse_port == port || it->reverse_rtcp_port == port) {
+					it->last_packet_at_ms = time_ms;
+				}
+			}
+			unlock();
+		}
+		u_int64_t getLastPacketTime(vmPort port) {
+			u_int64_t rslt = 0;
+			lock();
+			for(vector<sSdpMedia>::iterator it = media.begin(); it != media.end(); it++) {
+				if(it->reverse_port == port || it->reverse_rtcp_port == port) {
+					rslt = it->last_packet_at_ms;
+					break;
+				}
+			}
+			unlock();
+			return(rslt);
 		}
 		unsigned countActive() {
 			unsigned count = 0;
+			lock();
 			for(vector<sSdpMedia>::iterator it = media.begin(); it != media.end(); it++) {
 				if(it->active) {
 					++count;
 				}
 			}
+			unlock();
 			return(count);
 		}
 		bool isSetBothDirections() {
 			bool caller = false;
 			bool called = false;
+			lock();
 			for(vector<sSdpMedia>::iterator it = media.begin(); it != media.end(); it++) {
 				if(it->direction == sdp_media_direction_caller) {
 					caller = true;
@@ -128,8 +169,11 @@ public:
 					called = true;
 				}
 			}
+			unlock();
 			return(caller && called);
 		}
+		void lock() { __SYNC_LOCK(_sync_lock_sdp); }
+		void unlock() { __SYNC_UNLOCK(_sync_lock_sdp); }
 	};
 	enum eParticipantType {
 		participant_type_unknown = -1,
@@ -155,7 +199,7 @@ public:
 	int setSdpMediaDirections();
 	void setReverseRtpPorts();
 	string createInviteRequest(bool use_real_caller_called = false, bool use_direction_separation = false, bool use_real_rtp_ip_ports = false);
-	string createInviteResponse(bool use_real_caller_called = false, bool use_direction_separation = false, bool use_real_rtp_ip_ports = false);
+	string createInviteResponse(bool use_real_caller_called = false, bool use_direction_separation = false, bool use_rtp_reverse_ports = false, bool use_real_rtp_ip_ports = false);
 	string createByeRequest(bool use_real_caller_called = false);
 	string createByeResponse(bool use_real_caller_called = false);
 	string createCancelRequest(bool use_real_caller_called = false);
@@ -209,11 +253,12 @@ public:
 	string to_tag;
 	vmIP local_ip;
 	vmPort local_port;
+	int thread_idx;
 };
 
 class cSipRecStream {
 public:
-	cSipRecStream(cSipRecCall *call, vmPort port);
+	cSipRecStream(cSipRecCall *call, vmPort port, bool rtcp);
 	~cSipRecStream();
 	void processPacket(u_char *data, unsigned len, vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port);
 private:
@@ -221,9 +266,9 @@ private:
 public:
 	cSipRecCall *call;
 	vmPort port;
+	bool rtcp;
 	int socket;
 	u_int64_t start_at_ms;
-	u_int64_t last_packet_at_ms;
 };
 
 class cSipRecThread {
@@ -232,7 +277,7 @@ public:
 	~cSipRecThread();
 	static void *_thread_fce(void *arg);
 	void thread_fce();
-	bool addStream(cSipRecCall *call, vmPort port);
+	bool addStream(cSipRecCall *call, vmPort port, bool rtcp);
 	void removeStream(vmPort port);
 	void _removeStream(vmPort port);
 	unsigned getStreamsCount() { return(streams.size()); }
@@ -255,7 +300,7 @@ class cSipRecStreams {
 public:
 	cSipRecStreams(unsigned max_threads, unsigned max_streams_per_thread);
 	~cSipRecStreams();
-	bool addStream(cSipRecCall *call, vmPort port, int *thread_idx_rslt);
+	bool addStream(cSipRecCall *call, vmPort port, bool rtcp);
 	void stopStream(vmPort port);
 	void stopAllStreams();
 	void stopAllThreads();
@@ -317,6 +362,7 @@ public:
 	void setUseRealCallerCalled(bool use_real_caller_called);
 	void setUseRealSipIpPorts(bool use_real_sip_ip_ports);
 	void setUseRealRtpIpPorts(bool use_real_rtp_ip_ports);
+	bool getUseRealRtpIpPorts() { return(use_real_rtp_ip_ports); }
 	void setVerbose(bool verbose);
 	void startServer();
 	vmPort getRtpPort();
@@ -328,8 +374,8 @@ public:
 	void processCancel(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket);
 	void sendPacket(u_char *data, unsigned dataLen, vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port);
 	void deleteCall(cSipRecCall *call, const char *reason);
-	bool addStream(cSipRecCall *call, vmPort port);
-	void stopStream(cSipRecCall *call, vmPort port);
+	bool addStream(cSipRecCall *call, vmPort port, bool rtcp);
+	void stopStream(cSipRecCall *call, vmPort port, bool rtcp);
 	unsigned getRtpStreamTimeout() { return(rtp_stream_timeout_s); }
 private:
 	bool sendResponse(string &response, vmIP ip, vmPort port, cSocket *socket);

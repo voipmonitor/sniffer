@@ -22,6 +22,7 @@ static cSipRec *sip_rec;
 cSipRecCall::cSipRecCall() {
 	start_time_us = getTimeUS();
 	ref_count = 1;
+	thread_idx = -1;
 }
 
 cSipRecCall::~cSipRecCall() {
@@ -343,6 +344,7 @@ int cSipRecCall::parseSdpData(const char *sdp_str) {
 		sdp_str = getSdpData();
 		if(!sdp_str) return(0);
 	}
+	sdp.lock();
 	int media_counter = 0;
 	const char *ptr = sdp_str;
 	const char *line_start;
@@ -404,40 +406,73 @@ int cSipRecCall::parseSdpData(const char *sdp_str) {
 					}
 				} else if(value.compare(0, 6, "label:") == 0) {
 					current_media->label = value.substr(6);
+				} else if(value == "rtcp-mux") {
+					current_media->rtcp_mux = true;
+				} else if(value.compare(0, 5, "rtcp:") == 0) {
+					size_t space = value.find(' ', 5);
+					if(space != string::npos) {
+						current_media->rtcp_port.setPort(atoi(value.c_str() + 5));
+					} else {
+						current_media->rtcp_port.setPort(atoi(value.c_str() + 5));
+					}
 				}
 			}
 			break;
 		}
 	}
+	sdp.unlock();
 	return(media_counter);
 }
 
 void cSipRecCall::clearSdpData() {
+	sdp.lock();
 	sdp.c_in.clear();
 	sdp.media.clear();
+	sdp.unlock();
 }
 
 void cSipRecCall::startStreams() {
 	if(!sip_rec) return;
+	vector<pair<vmPort, bool>> ports_to_add;
+	sdp.lock();
 	for(vector<sSdpMedia>::iterator it = sdp.media.begin(); it != sdp.media.end(); it++) {
 		if(!it->active) {
-			sip_rec->addStream(this, it->reverse_port);
+			ports_to_add.push_back(make_pair(it->reverse_port, false));
+			if(!it->rtcp_mux && it->reverse_rtcp_port.isSet() &&
+			   it->reverse_rtcp_port != it->reverse_port) {
+				ports_to_add.push_back(make_pair(it->reverse_rtcp_port, true));
+			}
 		}
+	}
+	sdp.unlock();
+	for(vector<pair<vmPort, bool>>::iterator it = ports_to_add.begin(); it != ports_to_add.end(); it++) {
+		sip_rec->addStream(this, it->first, it->second);
 	}
 }
 
 void cSipRecCall::stopStreams() {
 	if(!sip_rec) return;
+	vector<pair<vmPort, bool>> ports_to_stop;
+	sdp.lock();
 	for(vector<sSdpMedia>::iterator it = sdp.media.begin(); it != sdp.media.end(); it++) {
 		if(it->active) {
-			sip_rec->stopStream(this, it->reverse_port);
+			ports_to_stop.push_back(make_pair(it->reverse_port, false));
+			if(!it->rtcp_mux && it->reverse_rtcp_port.isSet() &&
+			   it->reverse_rtcp_port != it->reverse_port) {
+				ports_to_stop.push_back(make_pair(it->reverse_rtcp_port, true));
+			}
 		}
+	}
+	sdp.unlock();
+	for(vector<pair<vmPort, bool>>::iterator it = ports_to_stop.begin(); it != ports_to_stop.end(); it++) {
+		sip_rec->stopStream(this, it->first, it->second);
 	}
 }
 
 int cSipRecCall::setSdpMediaDirections() {
 	bool set_direction_to_caller = false;
 	bool set_direction_to_called = false;
+	sdp.lock();
 	for(vector<sSdpMedia>::iterator it = sdp.media.begin(); it != sdp.media.end(); it++) {
 		if(!metadata.caller_label.empty() && it->label == metadata.caller_label) {
 			it->direction = sdp_media_direction_caller;
@@ -445,31 +480,51 @@ int cSipRecCall::setSdpMediaDirections() {
 				metadata.caller_rtp_port = it->port;
 				set_direction_to_caller = true;
 			}
+			if(!metadata.caller_rtcp_port.isSet() && it->port.isSet()) {
+				metadata.caller_rtcp_port = it->rtcp_mux ? it->port :
+							    it->rtcp_port ? it->rtcp_port : vmPort(it->port + 1);
+			}
 		} else if(!metadata.called_label.empty() && it->label == metadata.called_label) {
 			it->direction = sdp_media_direction_called;
 			if(!metadata.called_rtp_port.isSet() && it->port.isSet()) {
 				metadata.called_rtp_port = it->port;
 				set_direction_to_called = true;
 			}
+			if(!metadata.called_rtcp_port.isSet() && it->port.isSet()) {
+				metadata.called_rtcp_port = it->rtcp_mux ? it->port :
+							    it->rtcp_port ? it->rtcp_port : vmPort(it->port + 1);
+			}
 		} else {
 			it->direction = sdp_media_direction_unknown;
 		}
 	}
+	sdp.unlock();
 	return((set_direction_to_caller ? 1 : 0) +
 	       (set_direction_to_called ? 1 : 0));
 }
 
 void cSipRecCall::setReverseRtpPorts() {
 	if(!sip_rec) return;
+	sdp.lock();
 	for(vector<sSdpMedia>::iterator it = sdp.media.begin(); it != sdp.media.end(); it++) {
 		it->reverse_port = sip_rec->getRtpPort();
+		if(it->rtcp_mux) {
+			it->reverse_rtcp_port = it->reverse_port;
+		} else if(it->rtcp_port.isSet() && it->rtcp_port != vmPort(it->port + 1)) {
+			it->reverse_rtcp_port = sip_rec->getRtpPort();
+		} else {
+			it->reverse_rtcp_port = vmPort(it->reverse_port.getPort() + 1);
+		}
 	}
+	sdp.unlock();
 }
 
 string cSipRecCall::createInviteRequest(bool use_real_caller_called, bool use_direction_separation, bool use_real_rtp_ip_ports) {
 	if(invite.empty()) {
 		return("");
 	}
+	bool is_set_booth_direction = sdp.isSetBothDirections();
+	sdp.lock();
 	sInvite &last_invite = invite.back();
 	ostringstream request;
 	request << last_invite.request_line << "\r\n";
@@ -503,7 +558,7 @@ string cSipRecCall::createInviteRequest(bool use_real_caller_called, bool use_di
 	request << "Content-Type: application/sdp\r\n";
 	ostringstream sdp_body;
 	sdp_body << "v=0\r\n";
-	if(use_real_rtp_ip_ports && metadata.caller_ip.isSet()) {
+	if(use_real_rtp_ip_ports && metadata.isCompleted(true)) {
 		sdp_body << "o=caller " << start_time_us << " 0 IN IP" << metadata.caller_ip.vi() << " " << metadata.caller_ip.getString() << "\r\n";
 		sdp_body << "s=SIPREC Session\r\n";
 		sdp_body << "c=IN IP" << metadata.caller_ip.vi() << " " << metadata.caller_ip.getString() << "\r\n";
@@ -513,7 +568,7 @@ string cSipRecCall::createInviteRequest(bool use_real_caller_called, bool use_di
 		sdp_body << "c=IN IP" << sdp.c_in.vi() << " " << sdp.c_in.getString() << "\r\n";
 	}
 	sdp_body << "t=0 0\r\n";
-	if(use_real_rtp_ip_ports) {
+	if(use_real_rtp_ip_ports && metadata.isCompleted(true)) {
 		for(vector<sSdpMedia>::iterator it = sdp.media.begin(); it != sdp.media.end(); it++) {
 			if(it->direction == sdp_media_direction_caller) {
 				sdp_body << "m=" << it->media_type << " " << metadata.caller_rtp_port.getPort() << " "
@@ -531,10 +586,15 @@ string cSipRecCall::createInviteRequest(bool use_real_caller_called, bool use_di
 						sdp_body << "\r\n";
 					}
 				}
+				if(it->rtcp_mux) {
+					sdp_body << "a=rtcp-mux\r\n";
+				}
+				if(!it->rtcp_mux && it->rtcp_port.isSet()) {
+					sdp_body << "a=rtcp:" << it->rtcp_port.getPort() << "\r\n";
+				}
 			}
 		}
 	} else {
-		bool is_set_booth_direction = sdp.isSetBothDirections();
 		unsigned i = 0;
 		for(vector<sSdpMedia>::iterator it = sdp.media.begin(); it != sdp.media.end(); it++) {
 			eSdpMediaDirection dir = is_set_booth_direction ?
@@ -557,6 +617,12 @@ string cSipRecCall::createInviteRequest(bool use_real_caller_called, bool use_di
 						sdp_body << "\r\n";
 					}
 				}
+				if(it->rtcp_mux) {
+					sdp_body << "a=rtcp-mux\r\n";
+				}
+				if(!it->rtcp_mux && it->rtcp_port.isSet()) {
+					sdp_body << "a=rtcp:" << it->rtcp_port.getPort() << "\r\n";
+				}
 			}
 			++i;
 		}
@@ -565,13 +631,16 @@ string cSipRecCall::createInviteRequest(bool use_real_caller_called, bool use_di
 	request << "Content-Length: " << sdp_str.length() << "\r\n";
 	request << "\r\n";
 	request << sdp_str;
+	sdp.unlock();
 	return(request.str());
 }
 
-string cSipRecCall::createInviteResponse(bool use_real_caller_called, bool use_direction_separation, bool use_real_rtp_ip_ports) {
+string cSipRecCall::createInviteResponse(bool use_real_caller_called, bool use_direction_separation, bool use_rtp_reverse_ports, bool use_real_rtp_ip_ports) {
 	if(invite.empty()) {
 		return("");
 	}
+	bool is_set_booth_direction = sdp.isSetBothDirections();
+	sdp.lock();
 	sInvite &last_invite = invite.back();
 	ostringstream response;
 	response << "SIP/2.0 200 OK\r\n";
@@ -607,7 +676,7 @@ string cSipRecCall::createInviteResponse(bool use_real_caller_called, bool use_d
 	response << "Content-Disposition: session\r\n";
 	ostringstream sdp_body;
 	sdp_body << "v=0\r\n";
-	if(use_real_rtp_ip_ports && metadata.called_ip.isSet()) {
+	if(use_real_rtp_ip_ports && metadata.isCompleted(true)) {
 		sdp_body << "o=callee " << (start_time_us+1) << " 0 IN IP" << metadata.called_ip.vi() << " " << metadata.called_ip.getString() << "\r\n";
 		sdp_body << "s=SIPREC Session\r\n";
 		sdp_body << "c=IN IP" << metadata.called_ip.vi() << " " << metadata.called_ip.getString() << "\r\n";
@@ -623,7 +692,7 @@ string cSipRecCall::createInviteResponse(bool use_real_caller_called, bool use_d
 		}
 	}
 	sdp_body << "t=0 0\r\n";
-	if(use_real_rtp_ip_ports) {
+	if(use_real_rtp_ip_ports && metadata.isCompleted(true)) {
 		for(vector<sSdpMedia>::iterator it = sdp.media.begin(); it != sdp.media.end(); it++) {
 			if(it->direction == sdp_media_direction_called) {
 				sdp_body << "m=" << it->media_type << " " << metadata.called_rtp_port.getPort() << " "
@@ -641,33 +710,42 @@ string cSipRecCall::createInviteResponse(bool use_real_caller_called, bool use_d
 						sdp_body << "\r\n";
 					}
 				}
+				if(it->rtcp_mux) {
+					sdp_body << "a=rtcp-mux\r\n";
+				}
+				if(!it->rtcp_mux && it->rtcp_port.isSet()) {
+					sdp_body << "a=rtcp:" << it->rtcp_port.getPort() << "\r\n";
+				}
 			}
 		}
 	} else {
-		bool is_set_booth_direction = sdp.isSetBothDirections();
 		unsigned i = 0;
 		for(vector<sSdpMedia>::iterator it = sdp.media.begin(); it != sdp.media.end(); it++) {
 			eSdpMediaDirection dir = is_set_booth_direction ?
 						  it->direction :
 						  (i % 2 ? sdp_media_direction_called : sdp_media_direction_caller);
 			if(!use_direction_separation || dir == sdp_media_direction_called) {
-				if(use_direction_separation || it->reverse_port.isSet()) {
-					sdp_body << "m=" << it->media_type << " " << (use_direction_separation ? it->port.getPort() : it->reverse_port.getPort()) << " "
-						 << it->transport_protocol;
-					for(vector<sSdpPayload>::iterator p_it = it->payloads.begin(); p_it != it->payloads.end(); p_it++) {
-						sdp_body << " " << p_it->payload;
-					}
-					sdp_body << "\r\n";
-					for(vector<sSdpPayload>::iterator p_it = it->payloads.begin(); p_it != it->payloads.end(); p_it++) {
-						if(!p_it->codec.empty()) {
-							sdp_body << "a=rtpmap:" << p_it->payload << " "
-								 << p_it->codec;
-							if(p_it->sampling_freq > 0) {
-								sdp_body << "/" << p_it->sampling_freq;
-							}
-							sdp_body << "\r\n";
+				sdp_body << "m=" << it->media_type << " " << (use_rtp_reverse_ports ? it->reverse_port.getPort() : it->port.getPort()) << " "
+					 << it->transport_protocol;
+				for(vector<sSdpPayload>::iterator p_it = it->payloads.begin(); p_it != it->payloads.end(); p_it++) {
+					sdp_body << " " << p_it->payload;
+				}
+				sdp_body << "\r\n";
+				for(vector<sSdpPayload>::iterator p_it = it->payloads.begin(); p_it != it->payloads.end(); p_it++) {
+					if(!p_it->codec.empty()) {
+						sdp_body << "a=rtpmap:" << p_it->payload << " "
+							 << p_it->codec;
+						if(p_it->sampling_freq > 0) {
+							sdp_body << "/" << p_it->sampling_freq;
 						}
+						sdp_body << "\r\n";
 					}
+				}
+				if(it->rtcp_mux) {
+					sdp_body << "a=rtcp-mux\r\n";
+				}
+				if(!it->rtcp_mux && (use_rtp_reverse_ports ? it->reverse_rtcp_port.isSet() : it->rtcp_port.isSet())) {
+					sdp_body << "a=rtcp:" << (use_rtp_reverse_ports ? it->reverse_rtcp_port.getPort() : it->rtcp_port.getPort()) << "\r\n";
 				}
 			}
 			++i;
@@ -677,6 +755,7 @@ string cSipRecCall::createInviteResponse(bool use_real_caller_called, bool use_d
 	response << "Content-Length: " << sdp_str.length() << "\r\n";
 	response << "\r\n";
 	response << sdp_str;
+	sdp.unlock();
 	return(response.str());
 }
 
@@ -921,13 +1000,13 @@ bool cSipRecCall::parseParticipantNode(void *participantNode, bool is_caller) {
 }
 
 
-cSipRecStream::cSipRecStream(cSipRecCall *call, vmPort port) {
+cSipRecStream::cSipRecStream(cSipRecCall *call, vmPort port, bool rtcp) {
 	call->add_ref();
 	this->call = call;
 	this->port = port;
+	this->rtcp = rtcp;
 	this->socket = -1;
 	start_at_ms = getTimeMS_rdtsc();
-	last_packet_at_ms = 0;
 	createSocket();
 	call->sdp.setActive(port, true);
 }
@@ -944,7 +1023,9 @@ cSipRecStream::~cSipRecStream() {
 }
 
 bool cSipRecStream::createSocket() {
+	call->sdp.lock();
 	bool ipv6 = call->sdp.c_in.is_v6();
+	call->sdp.unlock();
 	socket = ::socket(ipv6 ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
 	if(socket < 0) {
 		return(false);
@@ -993,52 +1074,42 @@ bool cSipRecStream::createSocket() {
 
 void cSipRecStream::processPacket(u_char *data, unsigned len, vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port) {
 	/*
-	cout << "rtp packet "
+	cout << (rtcp ? "rtcp" : "rtp") << " packet "
 	     << src_ip.getString() << " : " << src_port.getString() << " -> "
 	     << dst_ip.getString() << " : " << dst_port.getString() << endl;
 	*/
-	/* ip/port substitution - not yet used
-	cSipRecCall::sSdpMedia *media = NULL;
-	for(vector<cSipRecCall::sSdpMedia>::iterator it = call->sdp.media.begin();
-	    it != call->sdp.media.end(); it++) {
-		if(it->reverse_port == port) {
-			media = &(*it);
-			break;
+	if(!sip_rec) return;
+	if(sip_rec->getUseRealRtpIpPorts() && call->metadata.isCompleted(true) && 
+	   (!rtcp || call->metadata.isCompletedCallerdRtcpPort())) {
+		cSipRecCall::sSdpMedia *media = NULL;
+		call->sdp.lock();
+		for(vector<cSipRecCall::sSdpMedia>::iterator it = call->sdp.media.begin(); it != call->sdp.media.end(); it++) {
+			if(it->reverse_port == port || (rtcp && it->reverse_rtcp_port == port)) {
+				media = &(*it);
+				break;
+			}
+		}
+		if(!media || media->direction == cSipRecCall::sdp_media_direction_unknown) {
+			call->sdp.unlock();
+			return;
+		}
+		bool is_caller_stream = (media->direction == cSipRecCall::sdp_media_direction_caller);
+		call->sdp.unlock();
+		if(is_caller_stream) {
+			src_ip = call->metadata.caller_ip;
+			src_port = rtcp ? call->metadata.caller_rtcp_port : call->metadata.caller_rtp_port;
+			dst_ip = call->metadata.called_ip;
+			dst_port = rtcp ? call->metadata.called_rtcp_port : call->metadata.called_rtp_port;
+		} else {
+			src_ip = call->metadata.called_ip;
+			src_port = rtcp ? call->metadata.called_rtcp_port : call->metadata.called_rtp_port;
+			dst_ip = call->metadata.caller_ip;
+			dst_port = rtcp ? call->metadata.caller_rtcp_port : call->metadata.caller_rtp_port;
 		}
 	}
-	if(!media) {
-		return;
-	}
-	if(media->direction == cSipRecCall::sdp_media_direction_unknown) {
-		return;
-	}
-	bool is_caller_stream = (media->direction == cSipRecCall::sdp_media_direction_caller);
-	vmIP expected_src_ip;
-	vmPort expected_src_port;
-	vmIP expected_dst_ip;
-	vmPort expected_dst_port;
-	if(is_caller_stream) {
-		expected_src_ip = call->metadata.caller_ip;
-		expected_src_port = call->metadata.caller_port;
-		expected_dst_ip = call->metadata.called_ip;
-		expected_dst_port = call->metadata.called_port;
-	} else {
-		expected_src_ip = call->metadata.called_ip;
-		expected_src_port = call->metadata.called_port;
-		expected_dst_ip = call->metadata.caller_ip;
-		expected_dst_port = call->metadata.caller_port;
-	}
-	if(src_ip != expected_src_ip || src_port != expected_src_port) {
-		return;
-	}
-	if(dst_ip != expected_dst_ip || dst_port != expected_dst_port) {
-		return;
-	}
-	*/
-	if(sip_rec) {
-		sip_rec->sendPacket(data, len, src_ip, src_port, dst_ip, dst_port);
-	}
-	last_packet_at_ms = getTimeMS_rdtsc();
+	sip_rec->sendPacket(data, len, src_ip, src_port, dst_ip, dst_port);
+	u_int64_t now_ms = getTimeMS_rdtsc();
+	call->sdp.updateLastPacketTime(port, now_ms);
 }
 
 
@@ -1157,33 +1228,34 @@ void cSipRecThread::checkTimeout() {
 	}
 	last_check_timeout_ms = now_ms;
 	lock();
-	vector<pair<vmPort, cSipRecCall*> > to_remove;
+	vector<pair<pair<vmPort, bool>, cSipRecCall*>> to_remove;
 	for(map<vmPort, cSipRecStream*>::iterator it = streams.begin(); it != streams.end(); it++) {
 		cSipRecStream *stream = it->second;
 		if(sip_rec->getRtpStreamTimeout() > 0) {
-			if((stream->last_packet_at_ms > 0 ?
-			     stream->last_packet_at_ms + sip_rec->getRtpStreamTimeout() * 1000 :
+			u_int64_t last_packet_ms = stream->call->sdp.getLastPacketTime(it->first);
+			if((last_packet_ms > 0 ?
+			     last_packet_ms + sip_rec->getRtpStreamTimeout() * 1000 :
 			     stream->start_at_ms + sip_rec->getRtpStreamTimeout() * 1000) < now_ms) {
 				stream->call->add_ref();
-				to_remove.push_back(make_pair(it->first, stream->call));
+				to_remove.push_back(make_pair(make_pair(it->first, stream->rtcp), stream->call));
 			}
 		}
 	}
 	unlock();
-	for(vector<pair<vmPort, cSipRecCall*> >::iterator it = to_remove.begin(); it != to_remove.end(); it++) {
-		sip_rec->stopStream(it->second, it->first);
+	for(vector<pair<pair<vmPort, bool>, cSipRecCall*>>::iterator it = to_remove.begin(); it != to_remove.end(); it++) {
+		sip_rec->stopStream(it->second, it->first.first, it->first.second);
 		it->second->evTimeoutStream();
 		it->second->destroy();
 	}
 }
 
-bool cSipRecThread::addStream(cSipRecCall *call, vmPort port) {
+bool cSipRecThread::addStream(cSipRecCall *call, vmPort port, bool rtcp) {
 	lock();
 	if(streams.find(port) != streams.end()) {
 		unlock();
 		return(false);
 	}
-	cSipRecStream *stream = new FILE_LINE(0) cSipRecStream(call, port);
+	cSipRecStream *stream = new FILE_LINE(0) cSipRecStream(call, port, rtcp);
 	if(stream->socket < 0) {
 		delete stream;
 		unlock();
@@ -1257,28 +1329,36 @@ cSipRecStreams::~cSipRecStreams() {
 	delete [] threads;
 }
 
-bool cSipRecStreams::addStream(cSipRecCall *call, vmPort port, int *thread_idx_rslt) {
+bool cSipRecStreams::addStream(cSipRecCall *call, vmPort port, bool rtcp) {
 	lock();
 	if(stream_by_thread.find(port) != stream_by_thread.end()) {
 		unlock();
 		return(false);
 	}
-	int thread_idx = findThreadWithMinStreams();
+	int thread_idx = -1;
 	bool new_thread_created = false;
-	if(thread_idx < 0 ||
-	   (threads_count < max_threads &&
-	    thread_idx >= 0 &&
-	    threads[thread_idx]->getStreamsCount() >= max_streams_per_thread)) {
-		if(threads_count >= max_threads) {
-			unlock();
-			return(false);
+	if(call->thread_idx >= 0) {
+		thread_idx = call->thread_idx;
+	} else {
+		thread_idx = findThreadWithMinStreams();
+		if(thread_idx < 0 ||
+		   (threads_count < max_threads &&
+		    thread_idx >= 0 &&
+		    threads[thread_idx]->getStreamsCount() >= max_streams_per_thread)) {
+			if(threads_count >= max_threads) {
+				unlock();
+				return(false);
+			}
+			thread_idx = threads_count;
+			threads[thread_idx] = new FILE_LINE(0) cSipRecThread();
+			new_thread_created = true;
+			threads_count++;
 		}
-		thread_idx = threads_count;
-		threads[thread_idx] = new FILE_LINE(0) cSipRecThread();
-		new_thread_created = true;
-		threads_count++;
+		if(call->thread_idx == -1) {
+			call->thread_idx = thread_idx;
+		}
 	}
-	if(!threads[thread_idx]->addStream(call, port)) {
+	if(!threads[thread_idx]->addStream(call, port, rtcp)) {
 		if(new_thread_created) {
 			delete threads[thread_idx];
 			threads[thread_idx] = NULL;
@@ -1289,9 +1369,6 @@ bool cSipRecStreams::addStream(cSipRecCall *call, vmPort port, int *thread_idx_r
 	}
 	stream_by_thread[port] = thread_idx;
 	unlock();
-	if(thread_idx_rslt) {
-		*thread_idx_rslt = thread_idx;
-	}
 	return(true);
 }
 
@@ -1671,7 +1748,7 @@ void cSipRec::processInvite(u_char *data, size_t dataLen, vmIP ip, vmPort port, 
 	sendPacket((u_char*)request_int.c_str(), request_int.length(), ip_int_src, port_int_src, ip_int_dst, port_int_dst);
 	call->setReverseRtpPorts();
 	call->startStreams();
-	string response = call->createInviteResponse();
+	string response = call->createInviteResponse(false, false, true);
 	if(verbose) {
 		cout << " *** INVITE RESPONSE" << endl;
 		cout << response << endl;
@@ -1679,7 +1756,7 @@ void cSipRec::processInvite(u_char *data, size_t dataLen, vmIP ip, vmPort port, 
 	sendResponse(response, ip, port, socket);
 	string response_int;
 	if(use_real_caller_called || use_real_rtp_ip_ports) {
-		response_int = call->createInviteResponse(use_real_caller_called, true, use_real_rtp_ip_ports);
+		response_int = call->createInviteResponse(use_real_caller_called, true, false, use_real_rtp_ip_ports);
 	} else {
 		response_int = response;
 	}
@@ -1823,14 +1900,13 @@ void cSipRec::deleteCall(cSipRecCall *call, const char *reason) {
 	}
 }
 
-bool cSipRec::addStream(cSipRecCall *call, vmPort port) {
+bool cSipRec::addStream(cSipRecCall *call, vmPort port, bool rtcp) {
 	if(streams) {
-		int thread_idx_rslt;
-		bool rslt = streams->addStream(call, port, &thread_idx_rslt);
+		bool rslt = streams->addStream(call, port, rtcp);
 		if(verbose) {
-			cout << " *** ADD STREAM " << call->id.getString() << " - " << port.getString() 
-			     << " - " << (rslt ? "OK" : "FAILED") 
-			     << (rslt ? " - thread " + intToString(thread_idx_rslt) : "")
+			cout << " *** ADD STREAM " << (rtcp ? "rtcp" : "rtp") << " " << call->id.getString() << " - " << port.getString()
+			     << " - " << (rslt ? "OK" : "FAILED")
+			     << (rslt ? " - thread " + intToString(call->thread_idx) : "")
 			     << endl;
 		}
 		return(rslt);
@@ -1838,11 +1914,11 @@ bool cSipRec::addStream(cSipRecCall *call, vmPort port) {
 	return(false);
 }    
 
-void cSipRec::stopStream(cSipRecCall *call, vmPort port) {
+void cSipRec::stopStream(cSipRecCall *call, vmPort port, bool rtcp) {
 	if(streams) {
 		streams->stopStream(port);
 		if(verbose) {
-			cout << " *** STOP STREAM " << call->id.getString() << " - " << port.getString() << endl;
+			cout << " *** STOP STREAM " << (rtcp ? "rtcp" : "rtp") << " " << call->id.getString() << " - " << port.getString() << endl;
 		}
 	}
 }
@@ -1898,7 +1974,9 @@ void sipRecStart() {
 	}
 	sip_rec->setUseRealCallerCalled(true);
 	sip_rec->setUseRealSipIpPorts(true);
-	sip_rec->setUseRealRtpIpPorts(false);
+	/* experimental option to change rtp/rtcp ip and ports according to xml metadata
+	sip_rec->setUseRealRtpIpPorts(true);
+	*/
 	sip_rec->setVerbose(sverb.siprec);
 	sip_rec->startServer();
 }
