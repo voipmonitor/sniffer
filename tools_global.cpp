@@ -89,6 +89,13 @@ int vm_pthread_create(const char *thread_description,
 	if(create_attr) {
 		pthread_attr_destroy(&_attr);
 	}
+	if(rslt != 0) {
+		syslog(LOG_ERR, "failed to create thread '%s': %s (errno=%d)",
+		       thread_description ? thread_description : "unknown",
+		       strerror(rslt), rslt);
+		delete thread_data;
+		return(rslt);
+	}
 	#ifdef CLOUD_ROUTER_CLIENT
 	#ifndef __i686__
 	extern bool opt_use_thread_setname;
