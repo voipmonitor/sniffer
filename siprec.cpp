@@ -433,7 +433,7 @@ void cSipRecCall::clearSdpData() {
 
 void cSipRecCall::startStreams() {
 	if(!sip_rec) return;
-	vector<pair<vmPort, bool>> ports_to_add;
+	vector<pair<vmPort, bool> > ports_to_add;
 	sdp.lock();
 	for(vector<sSdpMedia>::iterator it = sdp.media.begin(); it != sdp.media.end(); it++) {
 		if(!it->active) {
@@ -445,14 +445,14 @@ void cSipRecCall::startStreams() {
 		}
 	}
 	sdp.unlock();
-	for(vector<pair<vmPort, bool>>::iterator it = ports_to_add.begin(); it != ports_to_add.end(); it++) {
+	for(vector<pair<vmPort, bool> >::iterator it = ports_to_add.begin(); it != ports_to_add.end(); it++) {
 		sip_rec->addStream(this, it->first, it->second);
 	}
 }
 
 void cSipRecCall::stopStreams() {
 	if(!sip_rec) return;
-	vector<pair<vmPort, bool>> ports_to_stop;
+	vector<pair<vmPort, bool> > ports_to_stop;
 	sdp.lock();
 	for(vector<sSdpMedia>::iterator it = sdp.media.begin(); it != sdp.media.end(); it++) {
 		if(it->active) {
@@ -464,7 +464,7 @@ void cSipRecCall::stopStreams() {
 		}
 	}
 	sdp.unlock();
-	for(vector<pair<vmPort, bool>>::iterator it = ports_to_stop.begin(); it != ports_to_stop.end(); it++) {
+	for(vector<pair<vmPort, bool> >::iterator it = ports_to_stop.begin(); it != ports_to_stop.end(); it++) {
 		sip_rec->stopStream(this, it->first, it->second);
 	}
 }
@@ -1228,7 +1228,7 @@ void cSipRecThread::checkTimeout() {
 	}
 	last_check_timeout_ms = now_ms;
 	lock();
-	vector<pair<pair<vmPort, bool>, cSipRecCall*>> to_remove;
+	vector<pair<pair<vmPort, bool>, cSipRecCall*> > to_remove;
 	for(map<vmPort, cSipRecStream*>::iterator it = streams.begin(); it != streams.end(); it++) {
 		cSipRecStream *stream = it->second;
 		if(sip_rec->getRtpStreamTimeout() > 0) {
@@ -1242,7 +1242,7 @@ void cSipRecThread::checkTimeout() {
 		}
 	}
 	unlock();
-	for(vector<pair<pair<vmPort, bool>, cSipRecCall*>>::iterator it = to_remove.begin(); it != to_remove.end(); it++) {
+	for(vector<pair<pair<vmPort, bool>, cSipRecCall*> >::iterator it = to_remove.begin(); it != to_remove.end(); it++) {
 		sip_rec->stopStream(it->second, it->first.first, it->first.second);
 		it->second->evTimeoutStream();
 		it->second->destroy();
