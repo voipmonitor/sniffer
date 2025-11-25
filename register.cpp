@@ -630,8 +630,8 @@ bool Register::needSaveToDb()
 void Register::addState(Call *call) {
 	flags = call->flags;
 	lock_states();
-	bool isFailed = convRegisterState(call) != rs_Failed;
-	RegisterStates *states = isFailed ? &states_state : &states_failed;
+	bool notFailed = convRegisterState(call) != rs_Failed;
+	RegisterStates *states = notFailed ? &states_state : &states_failed;
 	bool exp_state = false;
 	if(states->eqLast(call, this, &exp_state)) {
 		if(!exp_state) {
@@ -653,7 +653,7 @@ void Register::addState(Call *call) {
 		saveStateToDb(states->last(), _ss_init, 0,
 			      __FILE__, __LINE__);
 	}
-	if(!isFailed) {
+	if(notFailed) {
 		RegisterState *state = states->last();
 		if(state->isOK() && call->reg.regrrddiff > 0) {
 			rrd_sum += call->reg.regrrddiff;
