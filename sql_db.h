@@ -772,6 +772,7 @@ public:
 	void checkColumns_cdr_child(bool log = false);
 	void checkColumns_cdr_stat(bool log = false);
 	void checkColumns_cdr_problems(bool log = false);
+	void checkColumns_cdr_summary(bool log = false);
 	void checkColumns_ss7(bool log = false);
 	void checkColumns_message(bool log = false);
 	void checkColumns_message_child(bool log = false);
@@ -1286,6 +1287,7 @@ void _createMysqlPartitionsCdr(char type, int next_day, int connectId, SqlDb *sq
 void createMysqlPartitionsSs7();
 void createMysqlPartitionsCdrStat();
 void createMysqlPartitionsCdrProblems();
+void createMysqlPartitionsCdrSummary();
 void createMysqlPartitionsRtpStat();
 void createMysqlPartitionsLogSensor();
 void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb = NULL);
@@ -1296,6 +1298,7 @@ void dropMysqlPartitionsCdr();
 void dropMysqlPartitionsSs7();
 void dropMysqlPartitionsCdrStat();
 void dropMysqlPartitionsCdrProblems();
+void dropMysqlPartitionsCdrSummary();
 void dropMysqlPartitionsRtpStat();
 void dropMysqlPartitionsLogSensor();
 void dropMysqlPartitionsBillingAgregation();
@@ -1533,6 +1536,8 @@ public:
 	bool dropCdrStat;
 	bool createCdrProblems;
 	bool dropCdrProblems;
+	bool createCdrSummary;
+	bool dropCdrSummary;
 	bool createRtpStat;
 	bool dropRtpStat;
 	bool createLogSensor;
@@ -1575,6 +1580,8 @@ private:
 	time_t dropPartitionCdrStatAt;
 	time_t createPartitionCdrProblemsAt;
 	time_t dropPartitionCdrProblemsAt;
+	time_t createPartitionCdrSummaryAt;
+	time_t dropPartitionCdrSummaryAt;
 	time_t createPartitionRtpStatAt;
 	time_t dropPartitionRtpStatAt;
 	time_t createPartitionLogSensorAt;

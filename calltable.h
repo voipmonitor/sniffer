@@ -3032,6 +3032,9 @@ public:
 	inline int8_t get_callerd_confirm_rtp_by_both_sides_sdp(int8_t iscaller) {
 		return(ATOMIC_LOAD(callerd_confirm_rtp_by_both_sides_sdp[iscaller]) > 0);
 	}
+	inline int get_payload_rslt() {
+		return(payload_rslt);
+	}
 	
 private:
 	

@@ -1,16 +1,19 @@
 #include "charts.h"
 
 #include "calltable.h"
+#include "sql_db_global.h"
 
 
 extern int opt_nocdr;
-extern int opt_id_sensor;
 extern MySqlStore *sqlStore;
 extern int opt_charts_cache_max_threads;
 extern int opt_cdr_stat_values;
 extern bool opt_cdr_stat_sources;
 extern int opt_cdr_stat_interval;
 extern int opt_cdr_problems_interval;
+extern int opt_cdr_summary_interval;
+extern int opt_cdr_summary_number_length;
+extern bool opt_cdr_summary_number_complete;
 
 
 static sChartTypeDef ChartTypeDef[] = { 
@@ -64,6 +67,7 @@ static sChartTypeDef ChartTypeDef[] = {
 	{ _chartType_clipping_caller,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_clipping_called,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_pdd,			0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
+	{ _chartType_pbd,			0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_acd_avg,			0,	1,	_chartPercType_NA,	0,	_chartSubType_acd_asr },
 	{ _chartType_acd,			0,	1,	_chartPercType_NA,	0,	_chartSubType_acd_asr },
 	{ _chartType_asr_avg,			0,	1,	_chartPercType_NA,	0,	_chartSubType_acd_asr },
@@ -91,10 +95,23 @@ static sChartTypeDef ChartTypeDef[] = {
 static cCharts *chartsCache;
 static cCdrStat *cdrStat;
 static cCdrProblems *cdrProblems;
+static cCdrSummary *cdrSummary;
 
-
-static eChartType chartTypeFromString(string chartType);
+struct sChartType {
+	const char *str;
+	eChartType type;
+};
+struct sValueType {
+	const char *str;
+	eChartValueType type;
+};
+static sChartType *getChartTypes();
+static eChartType chartTypeFromString(string chartString);
+static const char *chartStringFromType(eChartType chartType);
+static const char *chartDbFieldTypeFromType(eChartType chartType);
 static sChartTypeDef getChartTypeDef(eChartType chartType);
+static eChartValueType getChartValueTypeFromString(string valueTypeStr);
+static const char *getChartValueStringFromType(eChartValueType valueType);
 static bool cmpValCondEqLeft(const char *val1, const char *val2);
 
 
@@ -993,7 +1010,7 @@ string cChartIntervalSeriesData::getChartData(cChartInterval *interval) {
 	return(chart_data);
 }
 
-void cChartIntervalSeriesData::store(cChartInterval *interval, vmIP *ip, SqlDb *sqlDb, int src_dst) {
+void cChartIntervalSeriesData::store(cChartInterval *interval, const int *sensor_id, const vmIP *ip, SqlDb *sqlDb, int src_dst) {
 	if(!counter_add) {
 		return;
 	}
@@ -1015,7 +1032,8 @@ void cChartIntervalSeriesData::store(cChartInterval *interval, vmIP *ip, SqlDb *
 		cache_row.add(sqlDateTimeString(interval->timeFrom), "from_time");
 		cache_row.add(*ip, "addr", false, sqlDb, table_name.c_str());
 	}
-	cache_row.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "sensor_id");
+	extern int opt_id_sensor;
+	cache_row.add(sensor_id ? *sensor_id : (opt_id_sensor > 0 ? opt_id_sensor : 0), "sensor_id");
 	cache_row.add(sqlDateTimeString(created_at_s), "created_at");
 	string insert_str;
 	if(!store_counter) {
@@ -1026,11 +1044,23 @@ void cChartIntervalSeriesData::store(cChartInterval *interval, vmIP *ip, SqlDb *
 		SqlDb_row cache_row_update;
 		cache_row_update.add(sqlEscapeString(chart_data), data_column_name);
 		cache_row_update.add(sqlDateTimeString(getTimeS()), "updated_at");
-		cache_row_update.add(store_counter  + 1, "updated_counter");
+		cache_row_update.add(store_counter, "updated_counter");
 		insert_str = MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT +
 			     sqlDb->insertQuery(table_name, cache_row, true, false, true, &cache_row_update));
 	}
-	sqlStore->query_lock(insert_str.c_str(), STORE_PROC_ID_CHARTS_CACHE, 0);
+	if(typeUse == _chartTypeUse_chartCache) {
+		sqlStore->query_lock(insert_str.c_str(), STORE_PROC_ID_CHARTS_CACHE, 0);
+	} else if(typeUse == _chartTypeUse_cdrStat) {
+		extern int opt_mysqlstore_max_threads_cdr;
+		static unsigned int counterSqlStore = 0;
+		sqlStore->query_lock(insert_str.c_str(),
+				     STORE_PROC_ID_CDR,
+				     opt_mysqlstore_max_threads_cdr > 1 &&
+				     sqlStore->getSize(STORE_PROC_ID_CDR, 0) > 1000 ?
+				      counterSqlStore % opt_mysqlstore_max_threads_cdr :
+				      0);
+		++counterSqlStore;
+	}
 	++store_counter;
 }
 
@@ -1096,7 +1126,7 @@ void cChartInterval::sCdrProblems::add(sChartsCallData *call_data, int src_dst) 
 	if(bye == 110) 					++count_bye_code_110;
 }
 
-void cChartInterval::sCdrProblems::store(vmIP *ip, string *number, eProblemType pt, int src_dst, int by_type,
+void cChartInterval::sCdrProblems::store(int sensor_id, const vmIP *ip, const string *number, eProblemType pt, int src_dst, int by_type,
 					 u_int32_t timeFrom, u_int32_t created_at_real, SqlDb *sqlDb) {
 	if(counter_add) {
 		string table_name = "cdr_problems" + cCdrProblems::tableNameSuffix(by_type);
@@ -1110,7 +1140,7 @@ void cChartInterval::sCdrProblems::store(vmIP *ip, string *number, eProblemType 
 			cdr_problems_row.add(sqlEscapeString(*number), "number");
 		}
 		cdr_problems_row.add(pt, "type");
-		cdr_problems_row.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "sensor_id");
+		cdr_problems_row.add(sensor_id, "sensor_id");
 		cdr_problems_row.add(sqlDateTimeString(created_at_real), "created_at");
 		string insert_str;
 		if(!store_counter) {
@@ -1121,11 +1151,19 @@ void cChartInterval::sCdrProblems::store(vmIP *ip, string *number, eProblemType 
 			SqlDb_row cdr_problems_row_update;
 			store(&cdr_problems_row_update);
 			cdr_problems_row_update.add(sqlDateTimeString(getTimeS()), "updated_at");
-			cdr_problems_row_update.add(store_counter  + 1, "updated_counter");
+			cdr_problems_row_update.add(store_counter, "updated_counter");
 			insert_str = MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT +
 				     sqlDb->insertQuery(table_name, cdr_problems_row, true, false, true, &cdr_problems_row_update));
 		}
-		sqlStore->query_lock(insert_str.c_str(), STORE_PROC_ID_CHARTS_CACHE, 0);
+		extern int opt_mysqlstore_max_threads_cdr;
+		static unsigned int counterSqlStore = 0;
+		sqlStore->query_lock(insert_str.c_str(),
+				     STORE_PROC_ID_CDR,
+				     opt_mysqlstore_max_threads_cdr > 1 &&
+				     sqlStore->getSize(STORE_PROC_ID_CDR, 0) > 1000 ?
+				      counterSqlStore % opt_mysqlstore_max_threads_cdr :
+				      0);
+		++counterSqlStore;
 		++store_counter;
 		counter_add = 0;
 	}
@@ -1176,6 +1214,9 @@ cChartInterval::cChartInterval(eChartTypeUse typeUse) {
 	case _chartTypeUse_cdrProblems:
 		memset(&problems, 0, sizeof(problems));
 		break;
+	case _chartTypeUse_cdrSummary:
+		memset(&summary, 0, sizeof(summary));
+		break;
 	default:
 		break;
 	}
@@ -1191,16 +1232,22 @@ void cChartInterval::setInterval_chart(u_int32_t timeFrom, u_int32_t timeTo) {
 	init_chart();
 }
 
-void cChartInterval::setInterval_stat(u_int32_t timeFrom, u_int32_t timeTo, vmIP &ip_src, vmIP &ip_dst) {
+void cChartInterval::setInterval_stat(u_int32_t timeFrom, u_int32_t timeTo, sStatId &src, sStatId &dst) {
 	this->timeFrom = timeFrom;
 	this->timeTo = timeTo;
-	init_stat(ip_src, ip_dst);
+	init_stat(src, dst);
 }
 
 void cChartInterval::setInterval_problems(u_int32_t timeFrom, u_int32_t timeTo, sProblemId &src, sProblemId &dst) {
 	this->timeFrom = timeFrom;
 	this->timeTo = timeTo;
 	init_problems(src, dst);
+}
+
+void cChartInterval::setInterval_summary(u_int32_t timeFrom, u_int32_t timeTo, sSummaryId &sum_id, sSummaryId &sum_nc_id) {
+	this->timeFrom = timeFrom;
+	this->timeTo = timeTo;
+	init_summary(sum_id, sum_nc_id);
 }
 
 void cChartInterval::add_chart(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
@@ -1227,45 +1274,45 @@ void cChartInterval::add_chart(sChartsCallData *call, unsigned call_interval, bo
 
 void cChartInterval::add_stat(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 			      u_int32_t calldate_from, u_int32_t calldate_to,
-			      vmIP &ip_src, vmIP &ip_dst) {
+			      sStatId &src, sStatId &dst) {
 	if(typeUse != _chartTypeUse_cdrStat) {
 		return;
 	}
 	bool update = false;
 	for(int src_dst = 0; src_dst < 2; src_dst++) {
-		vmIP *ip = src_dst == 0 ? &ip_src : &ip_dst;
-		map<vmIP, sSeriesDataCdrStat*> *seriesDataCdrStat = src_dst == 0 ? stat.src : stat.dst;
-		if(cCdrStat::enableBySrcDst(src_dst) && ip->isSet() && seriesDataCdrStat) {
-			map<vmIP, sSeriesDataCdrStat*>::iterator iter_ip = seriesDataCdrStat->find(*ip);
-			if(iter_ip != seriesDataCdrStat->end()) {
+		sStatId *stat_id = src_dst == 0 ? &src : &dst;
+		map<sStatId, sSeriesDataCdrStat*> *seriesDataCdrStat = src_dst == 0 ? stat.src : stat.dst;
+		if(cCdrStat::enableBySrcDst(src_dst) && stat_id->ip.isSet() && seriesDataCdrStat) {
+			map<sStatId, sSeriesDataCdrStat*>::iterator iter_stat = seriesDataCdrStat->find(*stat_id);
+			if(iter_stat != seriesDataCdrStat->end()) {
 				if(beginInInterval && firstInterval) {
-					++iter_ip->second->count;
+					++iter_stat->second->count;
 					if(call->type == sChartsCallData::_call) {
 						if(call->call()->connect_time_us) {
-							++iter_ip->second->count_connected;
+							++iter_stat->second->count_connected;
 						}
 						int lsr = call->branch_main()->lastSIPresponseNum;
 						if(lsr / 100 >= 3 && lsr / 100 <= 6) {
-							++iter_ip->second->count_lsr_3_6[lsr / 100 - 3];
+							++iter_stat->second->count_lsr_3_6[lsr / 100 - 3];
 						}
 					} else {
 						bool connect_duration_null;
 						call->tables_content()->getValue_int(_t_cdr, "connect_duration", false, &connect_duration_null);
 						if(!connect_duration_null) {
-							++iter_ip->second->count_connected;
+							++iter_stat->second->count_connected;
 						}
 						int lsr = call->tables_content()->getValue_int(_t_cdr, "lastSIPresponseNum");
 						if(lsr / 100 >= 3 && lsr / 100 <= 6) {
-							++iter_ip->second->count_lsr_3_6[lsr / 100 - 3];
+							++iter_stat->second->count_lsr_3_6[lsr / 100 - 3];
 						}
 					}
 				}
-				for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_ip->second->data.begin(); iter_series != iter_ip->second->data.end(); iter_series++) {
+				for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_stat->second->data.begin(); iter_series != iter_stat->second->data.end(); iter_series++) {
 					iter_series->second->add(call, call_interval, firstInterval, lastInterval, beginInInterval, 
 								 calldate_from, calldate_to);
 				}
 				update = true;
-				++iter_ip->second->counter_add;
+				++iter_stat->second->counter_add;
 			}
 		}
 	}
@@ -1330,12 +1377,54 @@ void cChartInterval::add_problems(sChartsCallData *call, sProblemId &src, sProbl
 	}
 }
 
+void cChartInterval::add_summary(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
+				 u_int32_t calldate_from, u_int32_t calldate_to,
+				 sSummaryId &sum_id, sSummaryId &sum_nc_id) {
+	if(typeUse != _chartTypeUse_cdrSummary) {
+		return;
+	}
+	bool update = false;
+	for(int si = 0; si < 2; si++) {
+		if(si == 0 || opt_cdr_summary_number_complete) {
+			sSummaryId *_sum_id = si == 0 ? &sum_id : &sum_nc_id;
+			map<sSummaryId, sSeriesDataCdrStat*> *summaryData = si == 0 ? summary.sum : summary.sum_nc;
+			map<sSummaryId, sSeriesDataCdrStat*>::iterator iter_sum = summaryData->find(*_sum_id);
+			if(iter_sum != summaryData->end()) {
+				if(beginInInterval && firstInterval) {
+					++iter_sum->second->count;
+					if(call->type == sChartsCallData::_call) {
+						if(call->call()->connect_time_us) {
+							++iter_sum->second->count_connected;
+						}
+					} else {
+						bool connect_duration_null;
+						call->tables_content()->getValue_int(_t_cdr, "connect_duration", false, &connect_duration_null);
+						if(!connect_duration_null) {
+							++iter_sum->second->count_connected;
+						}
+					}
+				}
+				for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_sum->second->data.begin(); iter_series != iter_sum->second->data.end(); iter_series++) {
+					iter_series->second->add(call, call_interval, firstInterval, lastInterval, beginInInterval,
+								 calldate_from, calldate_to);
+				}
+				update = true;
+				++iter_sum->second->counter_add;
+			}
+		}
+	}
+	if(update) {
+		++counter_add;
+		last_use_at_real = getTimeS();
+	}
+}
+
 void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb) {
 	if(typeUse == _chartTypeUse_chartCache) {
 		if(counter_add) {
 			if(chart.data) {
 				for(map<cChartSeriesId, cChartIntervalSeriesData*>::iterator iter = chart.data->begin(); iter != chart.data->end(); iter++) {
-					iter->second->store(this, NULL, sqlDb, false);
+					iter->second->store(this, NULL, NULL, sqlDb, false);
 				}
 			}
 			counter_add = 0;
@@ -1343,23 +1432,23 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 	} else if(typeUse == _chartTypeUse_cdrStat) {
 		if(counter_add) {
 			for(int src_dst = 0; src_dst < 2; src_dst++) {
-				map<vmIP, sSeriesDataCdrStat*> *seriesDataCdrStat = src_dst == 0 ? stat.src : stat.dst;
+				map<sStatId, sSeriesDataCdrStat*> *seriesDataCdrStat = src_dst == 0 ? stat.src : stat.dst;
 				if(cCdrStat::enableBySrcDst(src_dst) && seriesDataCdrStat) {
 					if(opt_cdr_stat_sources) {
-						for(map<vmIP, sSeriesDataCdrStat*>::iterator iter_ip = seriesDataCdrStat->begin(); iter_ip != seriesDataCdrStat->end(); iter_ip++) {
-							for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_ip->second->data.begin(); iter_series != iter_ip->second->data.end(); iter_series++) {
-								iter_series->second->store(this, (vmIP*)&iter_ip->first, sqlDb, src_dst);
+						for(map<sStatId, sSeriesDataCdrStat*>::iterator iter_stat = seriesDataCdrStat->begin(); iter_stat != seriesDataCdrStat->end(); iter_stat++) {
+							for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_stat->second->data.begin(); iter_series != iter_stat->second->data.end(); iter_series++) {
+								iter_series->second->store(this, &iter_stat->first.sensor_id, &iter_stat->first.ip, sqlDb, src_dst);
 							}
 						}
 					}
 					if(opt_cdr_stat_values) {
-						for(map<vmIP, sSeriesDataCdrStat*>::iterator iter_ip = seriesDataCdrStat->begin(); iter_ip != seriesDataCdrStat->end(); iter_ip++) {
-							if(iter_ip->second->counter_add) {
+						for(map<sStatId, sSeriesDataCdrStat*>::iterator iter_stat = seriesDataCdrStat->begin(); iter_stat != seriesDataCdrStat->end(); iter_stat++) {
+							if(iter_stat->second->counter_add) {
 								list<sFieldValue> fieldValues;
 								unsigned countFieldValuesNotNull = 0;
 								for(unsigned metrics_i = 0; metrics_i < cdrStat->metrics.size(); metrics_i++) {
 									cCdrStat::sMetrics *metrics = &cdrStat->metrics[metrics_i];
-									for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_ip->second->data.begin(); iter_series != iter_ip->second->data.end(); iter_series++) {
+									for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_stat->second->data.begin(); iter_series != iter_stat->second->data.end(); iter_series++) {
 										if(metrics->type_stat == iter_series->second->series->series_id.id) {
 											sFieldValue fieldValue;
 											fieldValue.field = metrics->field;
@@ -1375,17 +1464,17 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 									string table_name = "cdr_stat_values" + cCdrStat::tableNameSuffix(src_dst);
 									SqlDb_row cdr_stat_row;
 									cdr_stat_row.add(sqlDateTimeString(timeFrom), "from_time");
-									cdr_stat_row.add(iter_ip->first, "addr", false, sqlDb, table_name.c_str());
-									cdr_stat_row.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "sensor_id");
+									cdr_stat_row.add(iter_stat->first.ip, "addr", false, sqlDb, table_name.c_str());
+									cdr_stat_row.add(iter_stat->first.sensor_id, "sensor_id");
 									cdr_stat_row.add(sqlDateTimeString(created_at_real), "created_at");
 									string insert_str;
-									if(!iter_ip->second->store_counter) {
-										cdr_stat_row.add(iter_ip->second->count, "count_all");
-										cdr_stat_row.add(iter_ip->second->count_connected, "count_connected");
-										for(unsigned i = 0; i < sizeof(iter_ip->second->count_lsr_3_6) / sizeof(iter_ip->second->count_lsr_3_6[0]); i++) {
+									if(!iter_stat->second->store_counter) {
+										cdr_stat_row.add(iter_stat->second->count, "count_all");
+										cdr_stat_row.add(iter_stat->second->count_connected, "count_connected");
+										for(unsigned i = 0; i < sizeof(iter_stat->second->count_lsr_3_6) / sizeof(iter_stat->second->count_lsr_3_6[0]); i++) {
 											string field_name = "count_lsr_" + intToString(3 + i);
 											if(cCdrStat::exists_columns_check(field_name.c_str(), src_dst)) {
-												cdr_stat_row.add(iter_ip->second->count_lsr_3_6[i], field_name);
+												cdr_stat_row.add(iter_stat->second->count_lsr_3_6[i], field_name);
 											}
 										}
 										for(list<sFieldValue>::iterator iter = fieldValues.begin(); iter != fieldValues.end(); iter++) {
@@ -1393,7 +1482,7 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 												cdr_stat_row.add(iter->value, iter->field, iter->null);
 											}
 										}
-										for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_ip->second->data.begin(); iter_series != iter_ip->second->data.end(); iter_series++) {
+										for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_stat->second->data.begin(); iter_series != iter_stat->second->data.end(); iter_series++) {
 											if(!iter_series->second->series->sourceDataName.empty() &&
 											   cCdrStat::exists_columns_check((iter_series->second->series->sourceDataName + "_source_data").c_str(), src_dst)) {
 												string chart_data = iter_series->second->getChartData(this);
@@ -1406,12 +1495,12 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 											     sqlDb->insertQuery(table_name, cdr_stat_row, true, false, true));
 									} else {
 										SqlDb_row cdr_stat_row_update;
-										cdr_stat_row_update.add(iter_ip->second->count, "count_all");
-										cdr_stat_row_update.add(iter_ip->second->count_connected, "count_connected");
-										for(unsigned i = 0; i < sizeof(iter_ip->second->count_lsr_3_6) / sizeof(iter_ip->second->count_lsr_3_6[0]); i++) {
+										cdr_stat_row_update.add(iter_stat->second->count, "count_all");
+										cdr_stat_row_update.add(iter_stat->second->count_connected, "count_connected");
+										for(unsigned i = 0; i < sizeof(iter_stat->second->count_lsr_3_6) / sizeof(iter_stat->second->count_lsr_3_6[0]); i++) {
 											string field_name = "count_lsr_" + intToString(3 + i);
 											if(cCdrStat::exists_columns_check(field_name.c_str(), src_dst)) {
-												cdr_stat_row_update.add(iter_ip->second->count_lsr_3_6[i], field_name);
+												cdr_stat_row_update.add(iter_stat->second->count_lsr_3_6[i], field_name);
 											}
 										}
 										for(list<sFieldValue>::iterator iter = fieldValues.begin(); iter != fieldValues.end(); iter++) {
@@ -1419,7 +1508,7 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 												cdr_stat_row_update.add(iter->value, iter->field, iter->null);
 											}
 										}
-										for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_ip->second->data.begin(); iter_series != iter_ip->second->data.end(); iter_series++) {
+										for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_stat->second->data.begin(); iter_series != iter_stat->second->data.end(); iter_series++) {
 											if(!iter_series->second->series->sourceDataName.empty() &&
 											   cCdrStat::exists_columns_check((iter_series->second->series->sourceDataName + "_source_data").c_str(), src_dst)) {
 												string chart_data = iter_series->second->getChartData(this);
@@ -1429,14 +1518,22 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 											}
 										}
 										cdr_stat_row_update.add(sqlDateTimeString(getTimeS()), "updated_at");
-										cdr_stat_row_update.add(iter_ip->second->store_counter  + 1, "updated_counter");
+										cdr_stat_row_update.add(iter_stat->second->store_counter, "updated_counter");
 										insert_str = MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT +
 											     sqlDb->insertQuery(table_name, cdr_stat_row, true, false, true, &cdr_stat_row_update));
 									}
-									sqlStore->query_lock(insert_str.c_str(), STORE_PROC_ID_CHARTS_CACHE, 0);
-									++iter_ip->second->store_counter;
+									extern int opt_mysqlstore_max_threads_cdr;
+									static unsigned int counterSqlStore = 0;
+									sqlStore->query_lock(insert_str.c_str(),
+											     STORE_PROC_ID_CDR,
+											     opt_mysqlstore_max_threads_cdr > 1 &&
+											     sqlStore->getSize(STORE_PROC_ID_CDR, 0) > 1000 ?
+											      counterSqlStore % opt_mysqlstore_max_threads_cdr :
+											      0);
+									++counterSqlStore;
+									++iter_stat->second->store_counter;
 								}
-								iter_ip->second->counter_add = 0;
+								iter_stat->second->counter_add = 0;
 							}
 						}
 					}
@@ -1456,7 +1553,7 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 						if(cdrProblems) {
 							for(map<sProblemId, sCdrProblems*>::iterator iter = cdrProblems->begin(); iter != cdrProblems->end(); iter++) {
 								if(iter->second->counter_add) {
-									iter->second->store((vmIP*)&iter->first.ip, NULL, iter->first.pt, src_dst, by_type,
+									iter->second->store(iter->first.sensor_id, &iter->first.ip, NULL, iter->first.pt, src_dst, by_type,
 											    timeFrom, created_at_real, sqlDb);
 								}
 							}
@@ -1467,7 +1564,7 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 						if(cdrProblems) {
 							for(map<sProblemId, sCdrProblems*>::iterator iter = cdrProblems->begin(); iter != cdrProblems->end(); iter++) {
 								if(iter->second->counter_add) {
-									iter->second->store(NULL, (string*)&iter->first.str, iter->first.pt, src_dst, by_type,
+									iter->second->store(iter->first.sensor_id, NULL, &iter->first.str, iter->first.pt, src_dst, by_type,
 											    timeFrom, created_at_real, sqlDb);
 								}
 							}
@@ -1478,7 +1575,7 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 						if(cdrProblems) {
 							for(map<sProblemId, sCdrProblems*>::iterator iter = cdrProblems->begin(); iter != cdrProblems->end(); iter++) {
 								if(iter->second->counter_add) {
-									iter->second->store((vmIP*)&iter->first.ip, (string*)&iter->first.str, iter->first.pt, src_dst, by_type,
+									iter->second->store(iter->first.sensor_id, &iter->first.ip, &iter->first.str, iter->first.pt, src_dst, by_type,
 											    timeFrom, created_at_real, sqlDb);
 								}
 							}
@@ -1488,6 +1585,117 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 				}
 			}}
 			counter_add = 0;
+		}
+	} else if(typeUse == _chartTypeUse_cdrSummary) {
+		if(counter_add) {
+			for(int si = 0; si < 2; si++) {
+				if(si == 0 || opt_cdr_summary_number_complete) {
+					map<sSummaryId, sSeriesDataCdrStat*> *summaryData = si == 0 ? summary.sum : summary.sum_nc;
+					for(map<sSummaryId, sSeriesDataCdrStat*>::iterator iter_sum = summaryData->begin(); iter_sum != summaryData->end(); iter_sum++) {
+						if(iter_sum->second->counter_add) {
+							list<sFieldValue> fieldValues;
+							unsigned countFieldValuesNotNull = 0;
+							for(unsigned metrics_i = 0; metrics_i < cdrSummary->metrics.size(); metrics_i++) {
+								cCdrSummary::sMetrics *metrics = &cdrSummary->metrics[metrics_i];
+								for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_sum->second->data.begin(); iter_series != iter_sum->second->data.end(); iter_series++) {
+									if(metrics->type_series == iter_series->second->series->series_id.id) {
+										sFieldValue fieldValue;
+										fieldValue.field = metrics->field;
+										fieldValue.value = iter_series->second->getValue(metrics->type_value, &fieldValue.null);
+										fieldValues.push_back(fieldValue);
+										if(!fieldValue.null) {
+											++countFieldValuesNotNull;
+										}
+									}
+								}
+							}
+							if(countFieldValuesNotNull) {
+								string table_name = si == 0 ? "cdr_summary" : "cdr_summary_nc";
+								SqlDb_row cdr_sum_row;
+								cdr_sum_row.add(sqlDateTimeString(timeFrom), "from_time");
+								cdr_sum_row.add(iter_sum->first.src_ip, "src_addr", false, sqlDb, table_name.c_str());
+								cdr_sum_row.add(iter_sum->first.dst_ip, "dst_addr", false, sqlDb, table_name.c_str());
+								cdr_sum_row.add(iter_sum->first.src_number, "src_number");
+								cdr_sum_row.add(iter_sum->first.dst_number, "dst_number");
+								cdr_sum_row.add(iter_sum->first.codec, "codec");
+								string lsr_query_str;
+								if(useSetId()) {
+									//cdr_sum_row.add_cb_string(iter_sum->first.lsr_str, "lastSIPresponse_id", cSqlDbCodebook::_cb_sip_response);
+									cdr_sum_row.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_sip_response, iter_sum->first.lsr_str), "lastSIPresponse_id");
+								} else {
+									extern cSqlDbData *dbData;
+									unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, iter_sum->first.lsr_str.c_str(), false, true);
+									if(_cb_id) {
+										cdr_sum_row.add(_cb_id, "lastSIPresponse_id");
+									} else {
+										lsr_query_str = MYSQL_ADD_QUERY_END(string("set @lSresp_id = ") +
+												"getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iter_sum->first.lsr_str) + ")");
+										cdr_sum_row.add(MYSQL_VAR_PREFIX + "@lSresp_id", "lastSIPresponse_id");
+									}
+								}
+								cdr_sum_row.add(iter_sum->first.sensor_id, "sensor_id");
+								cdr_sum_row.add(sqlDateTimeString(created_at_real), "created_at");
+								string insert_str;
+								if(!iter_sum->second->store_counter) {
+									cdr_sum_row.add(iter_sum->second->count, "count_all");
+									cdr_sum_row.add(iter_sum->second->count_connected, "count_connected");
+									for(list<sFieldValue>::iterator iter = fieldValues.begin(); iter != fieldValues.end(); iter++) {
+										if(cCdrSummary::exists_columns_check(iter->field.c_str(), si)) {
+											cdr_sum_row.add(iter->value, iter->field, iter->null);
+										}
+									}
+									for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_sum->second->data.begin(); iter_series != iter_sum->second->data.end(); iter_series++) {
+										if(!iter_series->second->series->sourceDataName.empty() &&
+										   cCdrSummary::exists_columns_check((iter_series->second->series->sourceDataName + "_source_data").c_str(), si)) {
+											string chart_data = iter_series->second->getChartData(this);
+											if(!chart_data.empty()) {
+												cdr_sum_row.add(chart_data, iter_series->second->series->sourceDataName + "_source_data");
+											}
+										}
+									}
+									insert_str = lsr_query_str +
+										     MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT_GROUP +
+										     sqlDb->insertQuery(table_name, cdr_sum_row, true, false, true));
+								} else {
+									SqlDb_row cdr_sum_row_update;
+									cdr_sum_row_update.add(iter_sum->second->count, "count_all");
+									cdr_sum_row_update.add(iter_sum->second->count_connected, "count_connected");
+									for(list<sFieldValue>::iterator iter = fieldValues.begin(); iter != fieldValues.end(); iter++) {
+										if(cCdrSummary::exists_columns_check(iter->field.c_str(), si)) {
+											cdr_sum_row_update.add(iter->value, iter->field, iter->null);
+										}
+									}
+									for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_sum->second->data.begin(); iter_series != iter_sum->second->data.end(); iter_series++) {
+										if(!iter_series->second->series->sourceDataName.empty() &&
+										   cCdrSummary::exists_columns_check((iter_series->second->series->sourceDataName + "_source_data").c_str(), si)) {
+											string chart_data = iter_series->second->getChartData(this);
+											if(!chart_data.empty()) {
+												cdr_sum_row_update.add(chart_data, iter_series->second->series->sourceDataName + "_source_data");
+											}
+										}
+									}
+									cdr_sum_row_update.add(sqlDateTimeString(getTimeS()), "updated_at");
+									cdr_sum_row_update.add(iter_sum->second->store_counter, "updated_counter");
+									insert_str = lsr_query_str +
+										     MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT +
+										     sqlDb->insertQuery(table_name, cdr_sum_row, true, false, true, &cdr_sum_row_update));
+								}
+								extern int opt_mysqlstore_max_threads_cdr;
+								static unsigned int counterSqlStore = 0;
+								sqlStore->query_lock(insert_str.c_str(),
+										     STORE_PROC_ID_CDR,
+										     opt_mysqlstore_max_threads_cdr > 1 &&
+										     sqlStore->getSize(STORE_PROC_ID_CDR, 0) > 1000 ?
+										      counterSqlStore % opt_mysqlstore_max_threads_cdr :
+										      0);
+								++counterSqlStore;
+								++iter_sum->second->store_counter;
+							}
+							iter_sum->second->counter_add = 0;
+						}
+					}
+				}
+			}
 		}
 	}
 	this->last_store_at = act_time;
@@ -1508,19 +1716,19 @@ void cChartInterval::init_chart() {
 	}
 }
 
-void cChartInterval::init_stat(vmIP &ip_src, vmIP &ip_dst) {
+void cChartInterval::init_stat(sStatId &src, sStatId &dst) {
 	if(typeUse == _chartTypeUse_cdrStat) {
 		for(int src_dst = 0; src_dst < 2; src_dst++) {
-			vmIP *ip = src_dst == 0 ? &ip_src : &ip_dst;
-			if(cCdrStat::enableBySrcDst(src_dst) && ip->isSet()) {
-				map<vmIP, sSeriesDataCdrStat*> **seriesDataCdrStat = src_dst == 0 ? &stat.src : &stat.dst;
+			sStatId *stat_id = src_dst == 0 ? &src : &dst;
+			if(cCdrStat::enableBySrcDst(src_dst) && stat_id->ip.isSet()) {
+				map<sStatId, sSeriesDataCdrStat*> **seriesDataCdrStat = src_dst == 0 ? &stat.src : &stat.dst;
 				if(!*seriesDataCdrStat) {
-					*seriesDataCdrStat = new map<vmIP, sSeriesDataCdrStat*>;
+					*seriesDataCdrStat = new map<sStatId, sSeriesDataCdrStat*>;
 				}
-				map<vmIP, sSeriesDataCdrStat*>::iterator iter = (*seriesDataCdrStat)->find(*ip);
+				map<sStatId, sSeriesDataCdrStat*>::iterator iter = (*seriesDataCdrStat)->find(*stat_id);
 				if(iter == (*seriesDataCdrStat)->end()) {
 					sSeriesDataCdrStat *seriesDataItem = new FILE_LINE(0) sSeriesDataCdrStat;
-					(**seriesDataCdrStat)[*ip] = seriesDataItem;
+					(**seriesDataCdrStat)[*stat_id] = seriesDataItem;
 					vector<cChartSeries*> *series = src_dst == 0 ? &cdrStat->series_src : &cdrStat->series_dst;
 					for(unsigned series_i = 0; series_i < series->size(); series_i++) {
 						seriesDataItem->data[series_i] = new FILE_LINE(0) cChartIntervalSeriesData(typeUse, (*series)[series_i], this);
@@ -1577,6 +1785,29 @@ void cChartInterval::init_problems(sProblemId &src, sProblemId &dst) {
 	}
 }
 
+void cChartInterval::init_summary(sSummaryId &sum_id, sSummaryId &sum_nc_id) {
+	if(typeUse == _chartTypeUse_cdrSummary) {
+		for(int si = 0; si < 2; si++) {
+			if(si == 0 || opt_cdr_summary_number_complete) {
+				sSummaryId *_sum_id = si == 0 ? &sum_id : &sum_nc_id;
+				map<sSummaryId, sSeriesDataCdrStat*> **summaryData = si == 0 ? &summary.sum : &summary.sum_nc;
+				if(!*summaryData) {
+					*summaryData = new map<sSummaryId, sSeriesDataCdrStat*>;
+				}
+				map<sSummaryId, sSeriesDataCdrStat*>::iterator iter = (*summaryData)->find(*_sum_id);
+				if(iter == (*summaryData)->end()) {
+					sSeriesDataCdrStat *seriesDataItem = new FILE_LINE(0) sSeriesDataCdrStat;
+					(**summaryData)[*_sum_id] = seriesDataItem;
+					for(unsigned series_i = 0; series_i < cdrSummary->series.size(); series_i++) {
+						seriesDataItem->data[series_i] = new FILE_LINE(0) cChartIntervalSeriesData(typeUse, cdrSummary->series[series_i], this);
+						seriesDataItem->data[series_i]->prepareData();
+					}
+				}
+			}
+		}
+	}
+}
+
 void cChartInterval::clear() {
 	if(typeUse == _chartTypeUse_chartCache) {
 		if(chart.data) {
@@ -1590,9 +1821,9 @@ void cChartInterval::clear() {
 	} else if(typeUse == _chartTypeUse_cdrStat) {
 		for(int src_dst = 0; src_dst < 2; src_dst++) {
 			if(cCdrStat::enableBySrcDst(src_dst)) {
-				map<vmIP, sSeriesDataCdrStat*> **seriesDataCdrStat = src_dst == 0 ? &stat.src : &stat.dst;
+				map<sStatId, sSeriesDataCdrStat*> **seriesDataCdrStat = src_dst == 0 ? &stat.src : &stat.dst;
 				if(seriesDataCdrStat && *seriesDataCdrStat) {
-					for(map<vmIP, sSeriesDataCdrStat*>::iterator iter = (*seriesDataCdrStat)->begin(); iter != (*seriesDataCdrStat)->end(); iter++) {
+					for(map<sStatId, sSeriesDataCdrStat*>::iterator iter = (*seriesDataCdrStat)->begin(); iter != (*seriesDataCdrStat)->end(); iter++) {
 						for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_2 = iter->second->data.begin(); iter_2 != iter->second->data.end(); iter_2++) {
 							delete iter_2->second;
 						}
@@ -1630,6 +1861,23 @@ void cChartInterval::clear() {
 				}
 			}
 		}}
+	} else if(typeUse == _chartTypeUse_cdrSummary) {
+		for(int si = 0; si < 2; si++) {
+			if(si == 0 || opt_cdr_summary_number_complete) {
+				map<sSummaryId, sSeriesDataCdrStat*> **summaryData = si == 0 ? &summary.sum : &summary.sum_nc;
+				if(summaryData && *summaryData) {
+					for(map<sSummaryId, sSeriesDataCdrStat*>::iterator iter = (*summaryData)->begin(); iter != (*summaryData)->end(); iter++) {
+						for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_2 = iter->second->data.begin(); iter_2 != iter->second->data.end(); iter_2++) {
+							delete iter_2->second;
+						}
+						delete iter->second;
+					}
+					(*summaryData)->clear();
+					delete *summaryData;
+					*summaryData = NULL;
+				}
+			}
+		}
 	}
 	counter_add = 0;
 }
@@ -1957,9 +2205,9 @@ cChartSeries::cChartSeries(unsigned int id, const char *config_id, const char *c
 	terminating = 0;
 }
 
-cChartSeries::cChartSeries(eCdrStatType cdrStatType, const char *chart_type, const char *source_data_name) :
- series_id(cdrStatType, "") {
-	typeUse = _chartTypeUse_cdrStat;
+cChartSeries::cChartSeries(eChartTypeUse typeUse, unsigned int id, const char *chart_type, const char *source_data_name) :
+ series_id(id, "") {
+	this->typeUse = typeUse;
 	if(source_data_name) {
 		sourceDataName = source_data_name;
 	}
@@ -2341,7 +2589,9 @@ cCdrStat::cCdrStat() {
 			  opt_cdr_stat_interval <= 30 ? mainInterval / 3 :
 			  opt_cdr_stat_interval <= 60 ? mainInterval / 4 :
 			  30 * 60);
-	intervalCleanup = mainInterval * 2;
+	intervalCleanup = sverb.cdr_stat_interval_cleanup ?
+			   sverb.cdr_stat_interval_cleanup :
+			   mainInterval * 2;
 	intervalExpiration = 5 * 60 * 60;
 	sqlDbStore = NULL;
 	last_store_at = 0;
@@ -2366,19 +2616,19 @@ void cCdrStat::init() {
 }
 
 void cCdrStat::init_series(vector<cChartSeries*> *series, int src_dst) {
-	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_count, "TCH_count", "cc"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_cps, "TCH_cps", "cps"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_minutes, "TCH_minutes"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_asr, "TCH_asr", "asr"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_acd, "TCH_acd", "acd"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_ner, "TCH_ner", "ner"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_seer, "TCH_seer", "seer"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_mos, src_dst == 0 ? "TCH_mos_caller" : "TCH_mos_called", "mos"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_packet_loss, src_dst == 0 ? "TCH_packet_lost_caller" : "TCH_packet_lost_called", "packet_loss"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_jitter, src_dst == 0 ? "TCH_jitter_caller" : "TCH_jitter_called", "jitter"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_delay, src_dst == 0 ? "TCH_delay_caller" : "TCH_delay_called", "delay"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_price_customer, "TCH_price_customer"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_price_operator, "TCH_price_operator"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_count, "TCH_count", "cc"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_cps, "TCH_cps", "cps"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_minutes, "TCH_minutes"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_asr, "TCH_asr", "asr"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_acd, "TCH_acd", "acd"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_ner, "TCH_ner", "ner"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_seer, "TCH_seer", "seer"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_mos, src_dst == 0 ? "TCH_mos_caller" : "TCH_mos_called", "mos"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_packet_loss, src_dst == 0 ? "TCH_packet_lost_caller" : "TCH_packet_lost_called", "packet_loss"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_jitter, src_dst == 0 ? "TCH_jitter_caller" : "TCH_jitter_called", "jitter"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_delay, src_dst == 0 ? "TCH_delay_caller" : "TCH_delay_called", "delay"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_price_customer, "TCH_price_customer"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_price_operator, "TCH_price_operator"));
 }
 
 void cCdrStat::init_metrics(vector<sMetrics> *metrics) {
@@ -2427,18 +2677,23 @@ void cCdrStat::clear() {
 void cCdrStat::add(sChartsCallData *call) {
 	u_int64_t callbegin_us;
 	u_int64_t callend_us;
+	int sensor_id;
 	vmIP ip_src;
 	vmIP ip_dst;
 	if(call->type == sChartsCallData::_call) {
-		callbegin_us = call->call()->calltime_us();
-		callend_us = call->call()->callend_us();
+		Call *_call = call->call();
+		CallBranch *_branch = _call->branch_main();
+		sensor_id = _call->useSensorId;
+		callbegin_us = _call->calltime_us();
+		callend_us = _call->callend_us();
 		if(cCdrStat::enableBySrc()) {
-			ip_src = call->call()->getSipcallerip(call->call()->branch_main());
+			ip_src = _call->getSipcallerip(_branch);
 		}
 		if(cCdrStat::enableByDst()) {
-			ip_dst = call->call()->getSipcalledip(call->call()->branch_main());
+			ip_dst = _call->getSipcalledip(_branch);
 		}
 	} else {
+		sensor_id = call->tables_content()->getValue_int(_t_cdr, "id_sensor");
 		callbegin_us = call->tables_content()->getValue_int(_t_cdr, "calldate");
 		callend_us = call->tables_content()->getValue_int(_t_cdr, "callend");
 		if(cCdrStat::enableBySrc()) {
@@ -2448,6 +2703,12 @@ void cCdrStat::add(sChartsCallData *call) {
 			ip_dst = call->tables_content()->getValue_ip(_t_cdr, "sipcalledip");
 		}
 	}
+	if(sensor_id < 0) {
+		 sensor_id = 0;
+	}
+	sStatId src, dst;
+	src.set(sensor_id, ip_src);
+	dst.set(sensor_id, ip_dst);
 	u_int32_t callbegin_s = callbegin_us / 1000000;
 	u_int32_t callend_s = callend_us / 1000000;
 	u_int32_t callbegin_interval_s = callbegin_s / mainInterval * mainInterval;
@@ -2462,15 +2723,15 @@ void cCdrStat::add(sChartsCallData *call) {
 				first_interval = interval_iter_s;
 			}
 			interval = new FILE_LINE(0) cChartInterval(_chartTypeUse_cdrStat);
-			interval->setInterval_stat(interval_iter_s, interval_iter_s + mainInterval, ip_src, ip_dst);
+			interval->setInterval_stat(interval_iter_s, interval_iter_s + mainInterval, src, dst);
 			intervals[interval_iter_s] = interval;
 		} else {
-			interval->init_stat(ip_src, ip_dst);
+			interval->init_stat(src, dst);
 		}
 		unlock_intervals();
 		interval->add_stat(call, interval_counter, interval_counter == 0, interval_iter_s == callend_interval_s, interval_counter == 0,
 				   callbegin_s, callend_s,
-				   ip_src, ip_dst);
+				   src, dst);
 		++interval_counter;
 	}
 }
@@ -2698,7 +2959,9 @@ cCdrProblems::cCdrProblems() {
 			  opt_cdr_problems_interval <= 30 ? mainInterval / 3 :
 			  opt_cdr_problems_interval <= 60 ? mainInterval / 4 :
 			  30 * 60);
-	intervalCleanup = mainInterval * 2;
+	intervalCleanup = sverb.cdr_problems_interval_cleanup ?
+			   sverb.cdr_problems_interval_cleanup :
+			   mainInterval * 2;
 	intervalExpiration = 5 * 60 * 60;
 	sqlDbStore = NULL;
 	last_store_at = 0;
@@ -2732,21 +2995,26 @@ void cCdrProblems::clear() {
 
 void cCdrProblems::add(sChartsCallData *call) {
 	u_int64_t callbegin_us;
+	int sensor_id;
 	vmIP ip_src;
 	vmIP ip_dst;
 	list<vmIP> ip_proxy;
 	string number_src;
 	string number_dst;
 	if(call->type == sChartsCallData::_call) {
-		callbegin_us = call->call()->calltime_us();
-		ip_src = call->call()->getSipcallerip(call->call()->branch_main());
-		ip_dst = call->call()->getSipcalledip(call->call()->branch_main());
-		for(list<vmIPport>::iterator iter = call->branch_main()->proxies.begin(); iter != call->branch_main()->proxies.end(); iter++) {
+		Call *_call = call->call();
+		CallBranch *_branch = _call->branch_main();
+		sensor_id = _call->useSensorId;
+		callbegin_us = _call->calltime_us();
+		ip_src = _call->getSipcallerip(_branch);
+		ip_dst = _call->getSipcalledip(_branch);
+		for(list<vmIPport>::iterator iter = _branch->proxies.begin(); iter != _branch->proxies.end(); iter++) {
 			ip_proxy.push_back(iter->ip.getIPv4());
 		}
-		number_src = call->call()->branch_main()->caller;
-		number_dst = call->call()->get_called(call->call()->branch_main());
+		number_src = _branch->caller;
+		number_dst = _call->get_called(_branch);
 	} else {
+		sensor_id = call->tables_content()->getValue_int(_t_cdr, "id_sensor");
 		callbegin_us = call->tables_content()->getValue_int(_t_cdr, "calldate");
 		ip_src = call->tables_content()->getValue_ip(_t_cdr, "sipcallerip");
 		ip_dst = call->tables_content()->getValue_ip(_t_cdr, "sipcalledip");
@@ -2759,6 +3027,9 @@ void cCdrProblems::add(sChartsCallData *call) {
 		}
 		number_src = call->tables_content()->getValue_str(_t_cdr, "caller");
 		number_dst = call->tables_content()->getValue_str(_t_cdr, "called");
+	}
+	if(sensor_id < 0) {
+		 sensor_id = 0;
 	}
 	for(int pt = _pt_all; pt <= _pt_from_public_trunks; pt++) {
 		bool ok_type = false;
@@ -2785,8 +3056,9 @@ void cCdrProblems::add(sChartsCallData *call) {
 		}
 		unlock_list_ip();
 		if(ok_type) {
-			sProblemId src(ip_src, number_src, (eProblemType)pt);
-			sProblemId dst(ip_dst, number_dst, (eProblemType)pt);
+			sProblemId src, dst;
+			src.set(sensor_id, ip_src, number_src, (eProblemType)pt);
+			dst.set(sensor_id, ip_dst, number_dst, (eProblemType)pt);
 			u_int32_t callbegin_s = callbegin_us / 1000000;
 			u_int32_t callbegin_interval_s = callbegin_s / mainInterval * mainInterval;
 			cChartInterval* interval = NULL;
@@ -2969,6 +3241,323 @@ map<string, bool> cCdrProblems::exists_columns[3];
 volatile int cCdrProblems::exists_column_sync;
 
 
+cCdrSummary::cCdrSummary() {
+	init();
+	first_interval = 0;
+	maxValuesPartsForPercentile = 1000;
+	mainInterval = opt_cdr_summary_interval * 60;
+	intervalStore = sverb.cdr_summary_interval_store ?
+			 sverb.cdr_summary_interval_store :
+			 mainInterval / 3;
+	intervalCleanup = sverb.cdr_summary_interval_cleanup ?
+			   sverb.cdr_summary_interval_cleanup :
+			   mainInterval * 2;
+	intervalExpiration = 5 * 60 * 60;
+	sqlDbStore = NULL;
+	last_store_at = 0;
+	last_store_at_real = 0;
+	last_cleanup_at = 0;
+	last_cleanup_at_real = 0;
+	sync_intervals = 0;
+}
+
+cCdrSummary::~cCdrSummary() {
+	if(sqlDbStore) {
+		delete sqlDbStore;
+	}
+	clear();
+}
+
+void cCdrSummary::init() {
+	init_series(&series);
+	init_metrics(&metrics);
+}
+
+cCdrSummary::sMetricType *cCdrSummary::get_metric_types() {
+	static sMetricType metric_types[] = {
+		{ _chartType_total, NULL },
+		{ _chartType_count, "avg,min,max" },
+		{ _chartType_cps, "avg,min,max" },
+		{ _chartType_minutes, "max" },
+		{ _chartType_asr, NULL },
+		{ _chartType_acd, NULL },
+		{ _chartType_ner, NULL },
+		{ _chartType_seer, NULL },
+		{ _chartType_pdd, "avg" },
+		{ _chartType_pbd, "avg" },
+		{ _chartType_mos, "avg,perc95,perc99" },
+		{ _chartType_mos_caller, "avg,perc95,perc99" },
+		{ _chartType_mos_called, "avg,perc95,perc99" },
+		{ _chartType_packet_lost, "avg,perc95,perc99" },
+		{ _chartType_packet_lost_caller, "avg,perc95,perc99" },
+		{ _chartType_packet_lost_called, "avg,perc95,perc99" },
+		{ _chartType_jitter, "avg,perc95,perc99" },
+		{ _chartType_jitter_caller, "avg,perc95,perc99" },
+		{ _chartType_jitter_called, "avg,perc95,perc99" },
+		{ _chartType_delay, "avg,perc95,perc99" },
+		{ _chartType_delay_caller, "avg,perc95,perc99" },
+		{ _chartType_delay_called, "avg,perc95,perc99" },
+		{ _chartType_price_customer, "sum" },
+		{ _chartType_price_operator, "sum" },
+		{ (eChartType)0, NULL }
+	};
+	return(metric_types);
+}
+
+void cCdrSummary::init_series(vector<cChartSeries*> *series) {
+	sMetricType *metric_types = get_metric_types();
+	for(unsigned i = 0; metric_types[i].chartType; i++) {
+		string chartStr = chartStringFromType(metric_types[i].chartType);
+		series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrSummary, metric_types[i].chartType, chartStr.c_str(), chartStr.substr(4).c_str()));
+	}
+}
+
+void cCdrSummary::init_metrics(vector<sMetrics> *metrics) {
+	sMetricType *metric_types = get_metric_types();
+	for(unsigned i = 0; metric_types[i].chartType; i++) {
+		vector<eChartValueType> value_types;
+		if(metric_types[i].valueType) {
+			vector<string> value_types_str = explode(metric_types[i].valueType, ',');
+			if(value_types_str.size()) {
+				for(unsigned j = 0; j < value_types_str.size(); j++) {
+					eChartValueType value_type = getChartValueTypeFromString(value_types_str[j]);
+					if(value_type != _chartValueType_na) {
+						value_types.push_back(value_type);
+					}
+				}
+			}
+		}
+		if(!value_types.size()) {
+			value_types.push_back(_chartValueType_na);
+		}
+		for(unsigned j = 0; j < value_types.size(); j++) {
+			string chartStr = chartStringFromType(metric_types[i].chartType);
+			const char *valueTypeStr = getChartValueStringFromType(value_types[j]);
+			string nameMetric = chartStr.substr(4) + (valueTypeStr ? string("_") + valueTypeStr : "");
+			metrics->push_back(sMetrics(nameMetric.c_str(), metric_types[i].chartType, value_types[j]));
+		}
+	}
+}
+
+void cCdrSummary::clear() {
+	for(map<u_int32_t, cChartInterval*>::iterator iter = intervals.begin(); iter != intervals.end(); iter++) {
+		delete iter->second;
+	}
+	intervals.clear();
+	for(vector<cChartSeries*>::iterator iter = series.begin(); iter != series.end(); iter++) {
+		delete *iter;
+	}
+	series.clear();
+}
+
+void cCdrSummary::add(sChartsCallData *call) {
+	u_int64_t callbegin_us;
+	u_int64_t callend_us;
+	int sensor_id;
+	vmIP src_ip;
+	vmIP dst_ip;
+	string src_number;
+	string dst_number;
+	int codec;
+	bool codec_null;
+	int lsr_num;
+	bool lsr_num_null;
+	string lsr_str;
+	if(call->type == sChartsCallData::_call) {
+		Call *_call = call->call();
+		CallBranch *_branch = _call->branch_main();
+		sensor_id = _call->useSensorId;
+		callbegin_us = _call->calltime_us();
+		callend_us = _call->callend_us();
+		src_ip = _call->getSipcallerip(_branch);
+		dst_ip = _call->getSipcalledip(_branch);
+		src_number = _branch->caller;
+		dst_number = _call->get_called(_branch);
+		codec = _call->get_payload_rslt();
+		lsr_num = _branch->lastSIPresponseNum;
+		lsr_str = _branch->lastSIPresponse;
+	} else {
+		sensor_id = call->tables_content()->getValue_int(_t_cdr, "id_sensor");
+		callbegin_us = call->tables_content()->getValue_int(_t_cdr, "calldate");
+		callend_us = call->tables_content()->getValue_int(_t_cdr, "callend");
+		src_ip = call->tables_content()->getValue_ip(_t_cdr, "sipcallerip");
+		dst_ip = call->tables_content()->getValue_ip(_t_cdr, "sipcalledip");
+		src_number = call->tables_content()->getValue_string(_t_cdr, "caller");
+		dst_number = call->tables_content()->getValue_string(_t_cdr, "called");
+		codec = call->tables_content()->getValue_int(_t_cdr, "payload", false, &codec_null);
+		if(codec_null) codec = -1;
+		lsr_num = call->tables_content()->getValue_int(_t_cdr, "lastSIPresponseNum", false, &lsr_num_null);
+		if(lsr_num_null) lsr_num = -1;
+		lsr_str = call->tables_content()->getValue_string(_t_cdr, "lastSIPresponse_id");
+	}
+	if(sensor_id < 0) {
+		 sensor_id = 0;
+	}
+	if(lsr_str.empty() && lsr_num == 0) {
+		lsr_str = "000 not response";
+	}
+	adjustSipResponse(lsr_str);
+	sSummaryId sum_id;
+	sum_id.set(sensor_id,
+		   src_ip, dst_ip, src_number, dst_number,
+		   codec, lsr_num, lsr_str,
+		   opt_cdr_summary_number_length);
+	sSummaryId sum_nc_id;
+	if(opt_cdr_summary_number_complete) {
+		sum_nc_id.set(sensor_id,
+			      src_ip, dst_ip, src_number, dst_number,
+			      codec, lsr_num, lsr_str,
+			      -1);
+	}
+	u_int32_t callbegin_s = callbegin_us / 1000000;
+	u_int32_t callend_s = callend_us / 1000000;
+	u_int32_t callbegin_interval_s = callbegin_s / mainInterval * mainInterval;
+	u_int32_t callend_interval_s = callend_s / mainInterval * mainInterval;
+	unsigned interval_counter = 0;
+	for(u_int32_t interval_iter_s = callbegin_interval_s; interval_iter_s <= callend_interval_s; interval_iter_s += mainInterval) {
+		cChartInterval* interval = NULL;
+		lock_intervals();
+		interval = intervals[interval_iter_s];
+		if(!interval) {
+			if(interval_iter_s > first_interval) {
+				first_interval = interval_iter_s;
+			}
+			interval = new FILE_LINE(0) cChartInterval(_chartTypeUse_cdrSummary);
+			interval->setInterval_summary(interval_iter_s, interval_iter_s + mainInterval, sum_id, sum_nc_id);
+			intervals[interval_iter_s] = interval;
+		} else {
+			interval->init_summary(sum_id, sum_nc_id);
+		}
+		unlock_intervals();
+		interval->add_summary(call, interval_counter, interval_counter == 0, interval_iter_s == callend_interval_s, interval_counter == 0,
+				      callbegin_s, callend_s,
+				      sum_id, sum_nc_id);
+		++interval_counter;
+	}
+}
+
+void cCdrSummary::store(bool forceAll) {
+	if(!first_interval) {
+		return;
+	}
+	u_int32_t real_time = getTimeS();
+	if(!forceAll) {
+		if(!last_store_at || !last_store_at_real) {
+			last_store_at = first_interval;
+			last_store_at_real = real_time;
+			return;
+		}
+		if(!((first_interval > last_store_at && first_interval - last_store_at >= intervalStore) ||
+		     (real_time > last_store_at_real && real_time - last_store_at_real >= intervalStore))) {
+			return;
+		}
+	}
+	if(!sqlDbStore) {
+		sqlDbStore = createSqlObject();
+	}
+	for(map<u_int32_t, cChartInterval*>::iterator iter = intervals.begin(); iter != intervals.end(); iter++) {
+		if(forceAll ||
+		   (!iter->second->last_store_at && first_interval > iter->first &&
+		    first_interval - iter->first >= intervalStore) ||
+		   (iter->second->last_store_at && first_interval > iter->second->last_store_at &&
+		    first_interval - iter->second->last_store_at >= intervalStore) ||
+		   (iter->second->last_store_at_real && real_time > iter->second->last_store_at_real &&
+		    real_time - iter->second->last_store_at_real >= intervalStore)) {
+			iter->second->store(first_interval, real_time, sqlDbStore);
+		}
+	}
+	last_store_at = first_interval;
+	last_store_at_real = real_time;
+}
+
+void cCdrSummary::cleanup(bool forceAll) {
+	if(!first_interval) {
+		return;
+	}
+	u_int32_t real_time = getTimeS();
+	if(!forceAll) {
+		if(!last_cleanup_at || !last_cleanup_at_real) {
+			last_cleanup_at = first_interval;
+			last_cleanup_at_real = real_time;
+			return;
+		}
+		if(!((first_interval > last_cleanup_at && first_interval - last_cleanup_at >= intervalCleanup / 2) ||
+		     (real_time > last_cleanup_at_real && real_time - last_cleanup_at_real >= intervalCleanup / 2))) {
+			return;
+		}
+	}
+	lock_intervals();
+	for(map<u_int32_t, cChartInterval*>::iterator iter = intervals.begin(); iter != intervals.end(); ) {
+		if(forceAll ||
+		   ((first_interval > iter->first && first_interval - iter->first > intervalExpiration) &&
+		    (real_time > max(iter->second->created_at_real, iter->second->last_use_at_real) && real_time - max(iter->second->created_at_real, iter->second->last_use_at_real) > intervalExpiration))) {
+			delete iter->second;
+			intervals.erase(iter++);
+		} else {
+			iter++;
+		}
+	}
+	unlock_intervals();
+	last_cleanup_at = first_interval;
+	last_cleanup_at_real = real_time;
+}
+
+string cCdrSummary::db_fields(vector<dstring> *fields) {
+	vector<dstring> _fields;
+	if(!fields) {
+		fields = &_fields;
+	}
+	vector<sMetrics> metrics;
+	init_metrics(&metrics);
+	vector<cChartSeries*> series;
+	init_series(&series);
+	fields->push_back(dstring("count_all", "int unsigned"));
+	fields->push_back(dstring("count_connected", "int unsigned"));
+	for(unsigned i = 0; i < metrics.size(); i++) {
+		fields->push_back(dstring(metrics[i].field, chartDbFieldTypeFromType((eChartType)metrics[i].type_series)));
+	}
+	for(unsigned i = 0; i < series.size(); i++) {
+		if(!series[i]->sourceDataName.empty()) {
+			fields->push_back(dstring(series[i]->sourceDataName + "_source_data",
+						  "mediumtext"));
+		}
+		delete series[i];
+	}
+	string fields_str;
+	for(unsigned i = 0; i < fields->size(); i++) {
+		fields_str += "`" + (*fields)[i].str[0] + "` " +
+			      (*fields)[i].str[1] + ",\n";
+	}
+	return(fields_str);
+}
+
+bool cCdrSummary::exists_columns_check(const char *column, bool nc) {
+	bool exists = false;
+	__SYNC_LOCK(exists_column_sync);
+	map<string, bool>::iterator iter = exists_columns[nc ? 1 : 0].find(column);
+	if(iter != exists_columns[nc ? 1 : 0].end()) {
+		exists = iter->second;
+	}
+	__SYNC_UNLOCK(exists_column_sync);
+	return(exists);
+}
+
+void cCdrSummary::exists_columns_clear(bool nc) {
+	__SYNC_LOCK(exists_column_sync);
+	exists_columns[nc ? 1 : 0].clear();
+	__SYNC_UNLOCK(exists_column_sync);
+}
+
+void cCdrSummary::exists_columns_add(const char *column, bool nc) {
+	__SYNC_LOCK(exists_column_sync);
+	exists_columns[nc ? 1 : 0][column] = true;
+	__SYNC_UNLOCK(exists_column_sync);
+}
+
+map<string, bool> cCdrSummary::exists_columns[2];
+volatile int cCdrSummary::exists_column_sync;
+
+
 void sFilterCache_call_ipv4_comb::set(sChartsCallData *call) {
 	u.a[1] = 0;
 	if(call->type == sChartsCallData::_call) {
@@ -3133,81 +3722,112 @@ void cFiltersCache::add(cChartFilter *filter, sFilterCache_call_ipv6_comb *ip_co
 }
 #endif
 
-eChartType chartTypeFromString(string chartType) {
-	return(chartType == "TCH_total" ? _chartType_total :
-	       chartType == "TCH_count" ? _chartType_count :
-	       chartType == "TCH_cps" ? _chartType_cps :
-	       chartType == "TCH_minutes" ? _chartType_minutes :
-	       chartType == "TCH_count_perc_short" ? _chartType_count_perc_short :
-	       chartType == "TCH_response_time_100" ? _chartType_response_time_100 :
-	       chartType == "TCH_mos" ? _chartType_mos :
-	       chartType == "TCH_mos_caller" ? _chartType_mos_caller :
-	       chartType == "TCH_mos_called" ? _chartType_mos_called :
-	       chartType == "TCH_mos_xr_avg" ? _chartType_mos_xr_avg :
-	       chartType == "TCH_mos_xr_avg_caller" ? _chartType_mos_xr_avg_caller :
-	       chartType == "TCH_mos_xr_avg_called" ? _chartType_mos_xr_avg_called:
-	       chartType == "TCH_mos_xr_min" ? _chartType_mos_xr_min :
-	       chartType == "TCH_mos_xr_min_caller" ? _chartType_mos_xr_min_caller :
-	       chartType == "TCH_mos_xr_min_called" ? _chartType_mos_xr_min_called :
-	       chartType == "TCH_mos_silence_avg" ? _chartType_mos_silence_avg :
-	       chartType == "TCH_mos_silence_avg_caller" ? _chartType_mos_silence_avg_caller :
-	       chartType == "TCH_mos_silence_avg_called" ? _chartType_mos_silence_avg_called:
-	       chartType == "TCH_mos_silence_min" ? _chartType_mos_silence_min :
-	       chartType == "TCH_mos_silence_min_caller" ? _chartType_mos_silence_min_caller :
-	       chartType == "TCH_mos_silence_min_called" ? _chartType_mos_silence_min_called :
-	       chartType == "TCH_mos_lqo_caller" ? _chartType_mos_lqo_caller :
-	       chartType == "TCH_mos_lqo_called" ? _chartType_mos_lqo_called :
-	       chartType == "TCH_packet_lost" ? _chartType_packet_lost :
-	       chartType == "TCH_packet_lost_caller" ? _chartType_packet_lost_caller :
-	       chartType == "TCH_packet_lost_called" ? _chartType_packet_lost_called :
-	       chartType == "TCH_jitter" ? _chartType_jitter :
-	       chartType == "TCH_jitter_caller" ? _chartType_jitter_caller :
-	       chartType == "TCH_jitter_called" ? _chartType_jitter_called :
-	       chartType == "TCH_delay" ? _chartType_delay :
-	       chartType == "TCH_delay_caller" ? _chartType_delay_caller :
-	       chartType == "TCH_delay_called" ? _chartType_delay_called :
-	       chartType == "TCH_rtcp_avgjitter" ? _chartType_rtcp_avgjitter :
-	       chartType == "TCH_rtcp_maxjitter" ? _chartType_rtcp_maxjitter :
-	       chartType == "TCH_rtcp_avgfr" ? _chartType_rtcp_avgfr :
-	       chartType == "TCH_rtcp_maxfr" ? _chartType_rtcp_maxfr :
-	       chartType == "TCH_rtcp_avgrtd" ? _chartType_rtcp_avgrtd :
-	       chartType == "TCH_rtcp_maxrtd" ? _chartType_rtcp_maxrtd :
-	       chartType == "TCH_rtcp_avgrtd_w" ? _chartType_rtcp_avgrtd_w :
-	       chartType == "TCH_rtcp_maxrtd_w" ? _chartType_rtcp_maxrtd_w :
-	       chartType == "TCH_silence" ? _chartType_silence :
-	       chartType == "TCH_silence_caller" ? _chartType_silence_caller :
-	       chartType == "TCH_silence_called" ? _chartType_silence_called :
-	       chartType == "TCH_silence_end" ? _chartType_silence_end :
-	       chartType == "TCH_silence_end_caller" ? _chartType_silence_end_caller :
-	       chartType == "TCH_silence_end_called" ? _chartType_silence_end_called :
-	       chartType == "TCH_clipping" ? _chartType_clipping :
-	       chartType == "TCH_clipping_caller" ? _chartType_clipping_caller :
-	       chartType == "TCH_clipping_called" ? _chartType_clipping_called :
-	       chartType == "TCH_pdd" ? _chartType_pdd :
-	       chartType == "TCH_pbd" ? _chartType_pbd :
-	       chartType == "TCH_acd_avg" ? _chartType_acd_avg :
-	       chartType == "TCH_acd" ? _chartType_acd :
-	       chartType == "TCH_asr_avg" ? _chartType_asr_avg :
-	       chartType == "TCH_asr" ? _chartType_asr :
-	       chartType == "TCH_ner_avg" ? _chartType_ner_avg :
-	       chartType == "TCH_ner" ? _chartType_ner :
-	       chartType == "TCH_seer_avg" ? _chartType_seer_avg :
-	       chartType == "TCH_seer" ? _chartType_seer :
-	       chartType == "TCH_sipResp" ? _chartType_sipResp :
-	       chartType == "TCH_sipResponse" ? _chartType_sipResponse :
-	       chartType == "TCH_sipResponse_base" ? _chartType_sipResponse_base :
-	       chartType == "TCH_codecs" ? _chartType_codecs :
-	       chartType == "TCH_IP_src" ? _chartType_IP_src :
-	       chartType == "TCH_IP_dst" ? _chartType_IP_dst :
-	       chartType == "TCH_domain_src" ? _chartType_domain_src :
-	       chartType == "TCH_domain_dst" ? _chartType_domain_dst :
-	       chartType == "TCH_caller_countries" ? _chartType_caller_countries :
-	       chartType == "TCH_called_countries" ? _chartType_called_countries :
-	       chartType == "TCH_SIP_src_IP_countries" ? _chartType_SIP_src_IP_countries :
-	       chartType == "TCH_SIP_dst_IP_countries" ? _chartType_SIP_dst_IP_countries :
-	       chartType == "TCH_price_customer" ? _chartType_price_customer :
-	       chartType == "TCH_price_operator" ? _chartType_price_operator :
-	       _chartType_na);
+sChartType *getChartTypes() {
+	static sChartType types[] = {
+		{ "TCH_total", _chartType_total },
+		{ "TCH_count", _chartType_count },
+		{ "TCH_cps", _chartType_cps },
+		{ "TCH_minutes", _chartType_minutes },
+		{ "TCH_count_perc_short", _chartType_count_perc_short },
+		{ "TCH_response_time_100", _chartType_response_time_100 },
+		{ "TCH_mos", _chartType_mos },
+		{ "TCH_mos_caller", _chartType_mos_caller },
+		{ "TCH_mos_called", _chartType_mos_called },
+		{ "TCH_mos_xr_avg", _chartType_mos_xr_avg },
+		{ "TCH_mos_xr_avg_caller", _chartType_mos_xr_avg_caller },
+		{ "TCH_mos_xr_avg_called", _chartType_mos_xr_avg_called},
+		{ "TCH_mos_xr_min", _chartType_mos_xr_min },
+		{ "TCH_mos_xr_min_caller", _chartType_mos_xr_min_caller },
+		{ "TCH_mos_xr_min_called", _chartType_mos_xr_min_called },
+		{ "TCH_mos_silence_avg", _chartType_mos_silence_avg },
+		{ "TCH_mos_silence_avg_caller", _chartType_mos_silence_avg_caller },
+		{ "TCH_mos_silence_avg_called", _chartType_mos_silence_avg_called},
+		{ "TCH_mos_silence_min", _chartType_mos_silence_min },
+		{ "TCH_mos_silence_min_caller", _chartType_mos_silence_min_caller },
+		{ "TCH_mos_silence_min_called", _chartType_mos_silence_min_called },
+		{ "TCH_mos_lqo_caller", _chartType_mos_lqo_caller },
+		{ "TCH_mos_lqo_called", _chartType_mos_lqo_called },
+		{ "TCH_packet_lost", _chartType_packet_lost },
+		{ "TCH_packet_lost_caller", _chartType_packet_lost_caller },
+		{ "TCH_packet_lost_called", _chartType_packet_lost_called },
+		{ "TCH_jitter", _chartType_jitter },
+		{ "TCH_jitter_caller", _chartType_jitter_caller },
+		{ "TCH_jitter_called", _chartType_jitter_called },
+		{ "TCH_delay", _chartType_delay },
+		{ "TCH_delay_caller", _chartType_delay_caller },
+		{ "TCH_delay_called", _chartType_delay_called },
+		{ "TCH_rtcp_avgjitter", _chartType_rtcp_avgjitter },
+		{ "TCH_rtcp_maxjitter", _chartType_rtcp_maxjitter },
+		{ "TCH_rtcp_avgfr", _chartType_rtcp_avgfr },
+		{ "TCH_rtcp_maxfr", _chartType_rtcp_maxfr },
+		{ "TCH_rtcp_avgrtd", _chartType_rtcp_avgrtd },
+		{ "TCH_rtcp_maxrtd", _chartType_rtcp_maxrtd },
+		{ "TCH_rtcp_avgrtd_w", _chartType_rtcp_avgrtd_w },
+		{ "TCH_rtcp_maxrtd_w", _chartType_rtcp_maxrtd_w },
+		{ "TCH_silence", _chartType_silence },
+		{ "TCH_silence_caller", _chartType_silence_caller },
+		{ "TCH_silence_called", _chartType_silence_called },
+		{ "TCH_silence_end", _chartType_silence_end },
+		{ "TCH_silence_end_caller", _chartType_silence_end_caller },
+		{ "TCH_silence_end_called", _chartType_silence_end_called },
+		{ "TCH_clipping", _chartType_clipping },
+		{ "TCH_clipping_caller", _chartType_clipping_caller },
+		{ "TCH_clipping_called", _chartType_clipping_called },
+		{ "TCH_pdd", _chartType_pdd },
+		{ "TCH_pbd", _chartType_pbd },
+		{ "TCH_acd_avg", _chartType_acd_avg },
+		{ "TCH_acd", _chartType_acd },
+		{ "TCH_asr_avg", _chartType_asr_avg },
+		{ "TCH_asr", _chartType_asr },
+		{ "TCH_ner_avg", _chartType_ner_avg },
+		{ "TCH_ner", _chartType_ner },
+		{ "TCH_seer_avg", _chartType_seer_avg },
+		{ "TCH_seer", _chartType_seer },
+		{ "TCH_sipResp", _chartType_sipResp },
+		{ "TCH_sipResponse", _chartType_sipResponse },
+		{ "TCH_sipResponse_base", _chartType_sipResponse_base },
+		{ "TCH_codecs", _chartType_codecs },
+		{ "TCH_IP_src", _chartType_IP_src },
+		{ "TCH_IP_dst", _chartType_IP_dst },
+		{ "TCH_domain_src", _chartType_domain_src },
+		{ "TCH_domain_dst", _chartType_domain_dst },
+		{ "TCH_caller_countries", _chartType_caller_countries },
+		{ "TCH_called_countries", _chartType_called_countries },
+		{ "TCH_SIP_src_IP_countries", _chartType_SIP_src_IP_countries },
+		{ "TCH_SIP_dst_IP_countries", _chartType_SIP_dst_IP_countries },
+		{ "TCH_price_customer", _chartType_price_customer },
+		{ "TCH_price_operator", _chartType_price_operator },
+		{ NULL, (eChartType)0 }
+	};
+	return(types);
+}
+
+eChartType chartTypeFromString(string chartString) {
+	sChartType* types = getChartTypes();
+	for(unsigned i = 0; types[i].type; i++) {
+		if(types[i].str == chartString) {
+			return(types[i].type);
+		}
+	}
+	return(_chartType_na);
+}
+
+const char *chartStringFromType(eChartType chartType) {
+	sChartType* types = getChartTypes();
+	for(unsigned i = 0; types[i].type; i++) {
+		if(types[i].type == chartType) {
+			return(types[i].str);
+		}
+	}
+	return(NULL);
+}
+
+const char *chartDbFieldTypeFromType(eChartType chartType) {
+	return(chartType == _chartType_total ||
+	       chartType == _chartType_count ||
+	       chartType == _chartType_cps ?
+		"int unsigned" :
+		"double");
 }
 
 sChartTypeDef getChartTypeDef(eChartType chartType) {
@@ -3219,6 +3839,40 @@ sChartTypeDef getChartTypeDef(eChartType chartType) {
 	sChartTypeDef def;
 	memset(&def, 0, sizeof(def));
 	return(def);
+}
+
+sValueType *getChartValueTypes() {
+	static sValueType value_types[] = {
+		{ "cnt",  _chartValueType_cnt },
+		{ "sum",  _chartValueType_sum },
+		{ "min",  _chartValueType_min },
+		{ "max",  _chartValueType_max },
+		{ "avg",  _chartValueType_avg },
+		{ "perc95",  _chartValueType_perc95 },
+		{ "perc99",  _chartValueType_perc99 },
+		{ NULL,  (eChartValueType)0 }
+	};
+	return(value_types);
+}
+
+eChartValueType getChartValueTypeFromString(string valueTypeStr) {
+	sValueType *value_types = getChartValueTypes();
+	for(unsigned i = 0; value_types[i].type; i++) {
+		if(value_types[i].str == valueTypeStr) {
+			return(value_types[i].type);
+		}
+	}
+	return(_chartValueType_na);
+}
+
+const char *getChartValueStringFromType(eChartValueType valueType) {
+	sValueType *value_types = getChartValueTypes();
+	for(unsigned i = 0; value_types[i].type; i++) {
+		if(value_types[i].type == valueType) {
+			return(value_types[i].str);
+		}
+	}
+	return(NULL);
 }
 
 bool cmpValCondEqLeft(const char *val1, const char *val2) {
@@ -3390,5 +4044,39 @@ void cdrProblemsStore(bool forceAll) {
 void cdrProblemsCleanup(bool forceAll) {
 	if(cdrProblems) {
 		cdrProblems->cleanup(forceAll);
+	}
+}
+
+
+void cdrSummaryInit(SqlDb *sqlDb) {
+	cdrSummary = new FILE_LINE(0) cCdrSummary();
+}
+
+void cdrSummaryTerm() {
+	if(cdrSummary) {
+		delete cdrSummary;
+		cdrSummary = NULL;
+	}
+}
+
+bool cdrSummaryIsSet() {
+	return(cdrSummary != NULL);
+}
+
+void cdrSummaryAddCall(sChartsCallData *call) {
+	if(cdrSummary) {
+		cdrSummary->add(call);
+	}
+}
+
+void cdrSummaryStore(bool forceAll) {
+	if(cdrSummary) {
+		cdrSummary->store(forceAll);
+	}
+}
+
+void cdrSummaryCleanup(bool forceAll) {
+	if(cdrSummary) {
+		cdrSummary->cleanup(forceAll);
 	}
 }

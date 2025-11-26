@@ -43,6 +43,7 @@ extern int opt_cleandatabase_register_time_info;
 extern int opt_cleandatabase_sip_msg;
 extern int opt_cleandatabase_cdr_stat;
 extern int opt_cleandatabase_cdr_problems;
+extern int opt_cleandatabase_cdr_summary;
 extern int opt_cleandatabase_rtp_stat;
 extern int opt_cleandatabase_log_sensor;
 extern unsigned int opt_maxpoolsize;
@@ -1769,6 +1770,14 @@ void test() {
 			return;
 		}
 		dropMysqlPartitionsCdrProblems();
+		break;
+	case _param_run_droppartitions_cdr_summary_maxdays:
+		if(atoi(opt_test_arg) > 0) {
+			opt_cleandatabase_cdr_summary = atoi(opt_test_arg);
+		} else {
+			return;
+		}
+		dropMysqlPartitionsCdrSummary();
 		break;
 	case _param_conv_raw_info:
 		{

@@ -7914,7 +7914,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	if((useChartsCacheInProcessCall() && sverb.charts_cache_only) ||
 	   (useCdrStatInProcessCall() && sverb.cdr_stat_only) ||
-	   (useCdrProblemsInProcessCall() && sverb.cdr_problems_only)) {
+	   (useCdrProblemsInProcessCall() && sverb.cdr_problems_only) ||
+	   (useCdrSummaryInProcessCall() && sverb.cdr_summary_only)) {
 		return(0);
 	}
 	

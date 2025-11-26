@@ -124,7 +124,8 @@ enum eChartTypeUse {
 	_chartTypeUse_NA,
 	_chartTypeUse_chartCache,
 	_chartTypeUse_cdrStat,
-	_chartTypeUse_cdrProblems
+	_chartTypeUse_cdrProblems,
+	_chartTypeUse_cdrSummary
 };
 
 enum eCdrStatType {
@@ -261,7 +262,7 @@ public:
 		 u_int32_t calldate_from, u_int32_t calldate_to);
 	double getValue(eChartValueType typeValue = _chartValueType_na, bool *null = NULL);
 	string getChartData(class cChartInterval *interval);
-	void store(class cChartInterval *interval, vmIP *ip, SqlDb *sqlDb, int src_dst);
+	void store(class cChartInterval *interval, const int *sensor_id, const vmIP *ip, SqlDb *sqlDb, int src_dst);
 	void lock_data() { __SYNC_LOCK(sync_data); }
 	void unlock_data() { __SYNC_UNLOCK(sync_data); }
 private:
@@ -285,7 +286,7 @@ friend class cChartInterval;
 
 class cChartSeriesId {
 public:
-	cChartSeriesId(unsigned int id, const char *config_id) {
+	cChartSeriesId(int id, const char *config_id) {
 		this->id = id;
 		this->config_id = config_id;
 	};
@@ -298,12 +299,29 @@ public:
 		       id1.config_id < id2.config_id);
 	}
 private:
-	unsigned int id;
+	int id;
 	string config_id;
 friend class cChartInterval;
 friend class cChartIntervalSeriesData;
 };
 
+
+struct sStatId {
+	inline void set(int sensor_id, vmIP ip) {
+		this->sensor_id = sensor_id;
+		this->ip = ip;
+	}
+	inline bool operator == (const sStatId& other) const {
+		return(this->sensor_id == other.sensor_id &&
+		       this->ip == other.ip);
+	}
+	inline bool operator < (const sStatId& other) const {
+		return(this->sensor_id < other.sensor_id ? 1 : this->sensor_id > other.sensor_id ? 0 :
+		       this->ip < other.ip);
+	}
+	int sensor_id;
+	vmIP ip;
+};
 
 enum eProblemType {
 	_pt_all = 0,
@@ -313,26 +331,74 @@ enum eProblemType {
 };
 
 struct sProblemId {
-	inline sProblemId() {
-	}
-	inline sProblemId(vmIP ip, string str, eProblemType pt) {
+	inline void set(int sensor_id, vmIP ip, string str, eProblemType pt) {
+		this->sensor_id = sensor_id;
 		this->ip = ip;
 		this->str = str;
 		this->pt = pt;
 	}
 	inline bool operator == (const sProblemId& other) const {
-		return(this->ip == other.ip &&
+		return(this->sensor_id == other.sensor_id &&
+		       this->ip == other.ip &&
 		       this->str == other.str && 
 		       this->pt == other.pt);
 	}
 	inline bool operator < (const sProblemId& other) const { 
-		return(this->ip < other.ip ? 1 : this->ip > other.ip ? 0 :
+		return(this->sensor_id < other.sensor_id ? 1 : this->sensor_id > other.sensor_id ? 0 :
+		       this->ip < other.ip ? 1 : this->ip > other.ip ? 0 :
 		       this->str < other.str ? 1 : this->str > other.str ? 0 :
 		       this->pt < other.pt);
 	}
+	int sensor_id;
 	vmIP ip;
 	string str;
 	eProblemType pt;
+};
+
+struct sSummaryId {
+	inline void set(int sensor_id,
+			vmIP src_ip, vmIP dst_ip, string src_number, string dst_number,
+			int codec, int lsr_num, string lsr_str,
+			int number_length) {
+		this->sensor_id = sensor_id;
+		this->src_ip = src_ip;
+		this->dst_ip = dst_ip;
+		this->src_number = number_length == -1 ? src_number :
+				   number_length > 0 ? string(src_number, 0, number_length) : "";
+		this->dst_number = number_length == -1 ? dst_number :
+				   number_length > 0 ? string(dst_number, 0, number_length) : "";
+		this->codec = codec;
+		this->lsr_num = lsr_num;
+		this->lsr_str = lsr_str;
+	}
+	inline bool operator == (const sSummaryId& other) const {
+		return(this->sensor_id == other.sensor_id &&
+		       this->src_ip == other.src_ip &&
+		       this->dst_ip == other.dst_ip &&
+		       this->src_number == other.src_number &&
+		       this->dst_number == other.dst_number &&
+		       this->codec == other.codec &&
+		       this->lsr_num == other.lsr_num &&
+		       this->lsr_str == other.lsr_str);
+	}
+	inline bool operator < (const sSummaryId& other) const {
+		return(this->sensor_id < other.sensor_id ? 1 : this->sensor_id > other.sensor_id ? 0 :
+		       this->src_ip < other.src_ip ? 1 : this->src_ip > other.src_ip ? 0 :
+		       this->dst_ip < other.dst_ip ? 1 : this->dst_ip > other.dst_ip ? 0 :
+		       this->src_number < other.src_number ? 1 : this->src_number > other.src_number ? 0 :
+		       this->dst_number < other.dst_number ? 1 : this->dst_number > other.dst_number ? 0 :
+		       this->codec < other.codec ? 1 : this->codec > other.codec ? 0 :
+		       this->lsr_num < other.lsr_num ? 1 : this->lsr_num > other.lsr_num ? 0 :
+		       this->lsr_str < other.lsr_str);
+	}
+	int sensor_id;
+	vmIP src_ip;
+	vmIP dst_ip;
+	string src_number;
+	string dst_number;
+	int codec;
+	int lsr_num;
+	string lsr_str;
 };
 
 
@@ -360,7 +426,7 @@ public:
 			memset(this, 0, sizeof(*this));
 		}
 		void add(sChartsCallData *call_data, int src_dst);
-		void store(vmIP *ip, string *number, eProblemType pt, int src_dst, int by_type, 
+		void store(int sensor_id, const vmIP *ip, const string *number, eProblemType pt, int src_dst, int by_type,
 			   u_int32_t timeFrom, u_int32_t created_at_real, SqlDb *sqlDb);
 		void store(SqlDb_row *row);
 		unsigned count_all;
@@ -390,6 +456,19 @@ public:
 		u_int32_t store_counter;
 		volatile u_int32_t counter_add;
 	};
+	struct sSeriesDataCdrSummary {
+		sSeriesDataCdrSummary() {
+			count = 0;
+			count_connected = 0;
+			store_counter = 0;
+			counter_add = 0;
+		}
+		unsigned count;
+		unsigned count_connected;
+		map<u_int16_t, cChartIntervalSeriesData*> data;
+		u_int32_t store_counter;
+		volatile u_int32_t counter_add;
+	};
 	struct sFieldValue {
 		string field;
 		double value;
@@ -399,19 +478,25 @@ public:
 	cChartInterval(eChartTypeUse typeUse);
 	~cChartInterval();
 	void setInterval_chart(u_int32_t timeFrom, u_int32_t timeTo);
-	void setInterval_stat(u_int32_t timeFrom, u_int32_t timeTo, vmIP &ip_src, vmIP &ip_dst);
+	void setInterval_stat(u_int32_t timeFrom, u_int32_t timeTo, sStatId &src, sStatId &dst);
 	void setInterval_problems(u_int32_t timeFrom, u_int32_t timeTo, sProblemId &src, sProblemId &dst);
+	void setInterval_summary(u_int32_t timeFrom, u_int32_t timeTo, sSummaryId &sum_id, sSummaryId &sum_nc_id);
 	void add_chart(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 		       u_int32_t calldate_from, u_int32_t calldate_to,
 		       map<class cChartFilter*, bool> *filters_map);
 	void add_stat(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 		      u_int32_t calldate_from, u_int32_t calldate_to,
-		      vmIP &ip_src, vmIP &ip_dst);
+		      sStatId &src, sStatId &dst);
 	void add_problems(sChartsCallData *call, sProblemId &src, sProblemId &dst);
+	void add_summary(sChartsCallData *call,
+			 unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
+			 u_int32_t calldate_from, u_int32_t calldate_to,
+			 sSummaryId &sum_id, sSummaryId &sum_nc_id);
 	void store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb);
 	void init_chart();
-	void init_stat(vmIP &ip_src, vmIP &ip_dst);
+	void init_stat(sStatId &src, sStatId &dst);
 	void init_problems(sProblemId &src, sProblemId &dst);
+	void init_summary(sSummaryId &sum_id, sSummaryId &sum_nc_id);
 	void clear();
 private:
 	eChartTypeUse typeUse;
@@ -422,8 +507,8 @@ private:
 			map<cChartSeriesId, cChartIntervalSeriesData*> *data;
 		} chart;
 		struct {
-			map<vmIP, sSeriesDataCdrStat*> *src;
-			map<vmIP, sSeriesDataCdrStat*> *dst;
+			map<sStatId, sSeriesDataCdrStat*> *src;
+			map<sStatId, sSeriesDataCdrStat*> *dst;
 		} stat;
 		struct {
 			map<sProblemId, sCdrProblems*> *ip_src;
@@ -433,6 +518,10 @@ private:
 			map<sProblemId, sCdrProblems*> *comb_src;
 			map<sProblemId, sCdrProblems*> *comb_dst;
 		} problems;
+		struct {
+			map<sSummaryId, sSeriesDataCdrStat*> *sum;
+			map<sSummaryId, sSeriesDataCdrStat*> *sum_nc;
+		} summary;
 	};
 	u_int32_t created_at_real;
 	u_int32_t last_use_at_real;
@@ -444,6 +533,7 @@ friend class cChartIntervalSeriesData;
 friend class cCharts;
 friend class cCdrStat;
 friend class cCdrProblems;
+friend class cCdrSummary;
 };
 
 class cChartFilter {
@@ -507,7 +597,7 @@ private:
 class cChartSeries {
 public:
 	cChartSeries(unsigned int id, const char *config_id, const char *config, class cCharts *charts);
-	cChartSeries(eCdrStatType cdrStatType, const char *chart_type, const char *source_data_name = NULL);
+	cChartSeries(eChartTypeUse typeUse, unsigned int id, const char *chart_type, const char *source_data_name = NULL);
 	~cChartSeries();
 	void clear();
 	bool isIntervals() { 
@@ -538,6 +628,7 @@ friend class cChartIntervalSeriesData;
 friend class cChartInterval;
 friend class cCharts;
 friend class cCdrStat;
+friend class cCdrSummary;
 };
 
 class cCharts {
@@ -745,6 +836,61 @@ private:
 	volatile int list_ip_load_processed;
 };
 
+class cCdrSummary {
+public:
+	struct sMetricType {
+		eChartType chartType;
+		const char *valueType;
+	};
+	struct sMetrics {
+		sMetrics(const char *field, int type_series, eChartValueType type_value) {
+			this->field = field;
+			this->type_series = type_series;
+			this->type_value = type_value;
+		}
+		string field;
+		int type_series;
+		eChartValueType type_value;
+	};
+public:
+	cCdrSummary();
+	~cCdrSummary();
+	void init();
+	static sMetricType *get_metric_types();
+	static void init_series(vector<cChartSeries*> *series);
+	static void init_metrics(vector<sMetrics> *metrics);
+	void clear();
+	void add(sChartsCallData *call);
+	void store(bool forceAll = false);
+	void cleanup(bool forceAll = false);
+	void lock_intervals() { __SYNC_LOCK(sync_intervals); }
+	void unlock_intervals() { __SYNC_UNLOCK(sync_intervals); }
+	static string db_fields(vector<dstring> *fields = NULL);
+	static bool exists_columns_check(const char *column, bool nc);
+	static void exists_columns_clear(bool nc);
+	static void exists_columns_add(const char *column, bool nc);
+private:
+	vector<cChartSeries*> series;
+	vector<sMetrics> metrics;
+	map<u_int32_t, cChartInterval*> intervals;
+	volatile u_int32_t first_interval;
+	unsigned maxValuesPartsForPercentile;
+	unsigned mainInterval;
+	unsigned intervalStore;
+	unsigned intervalCleanup;
+	unsigned intervalExpiration;
+	SqlDb *sqlDbStore;
+	u_int32_t last_store_at;
+	u_int32_t last_store_at_real;
+	u_int32_t last_cleanup_at;
+	u_int32_t last_cleanup_at_real;
+	volatile int sync_intervals;
+	static map<string, bool> exists_columns[2];
+	static volatile int exists_column_sync;
+friend class cChartDataItem;
+friend class cChartInterval;
+};
+
 struct sFilterCache_call_ipv4_comb {
 	union {
 		struct {
@@ -844,22 +990,32 @@ void cdrProblemsAddCall(sChartsCallData *call);
 void cdrProblemsStore(bool forceAll = false);
 void cdrProblemsCleanup(bool forceAll = false);
 
+void cdrSummaryInit(SqlDb *sqlDb);
+void cdrSummaryTerm();
+bool cdrSummaryIsSet();
+void cdrSummaryAddCall(sChartsCallData *call);
+void cdrSummaryStore(bool forceAll = false);
+void cdrSummaryCleanup(bool forceAll = false);
+
 inline void chartsCacheAndCdrStatAddCall(sChartsCallData *call, void *callData, cFiltersCache *filtersCache, int threadIndex) {
 	chartsCacheAddCall(call, callData, filtersCache, threadIndex);
 	cdrStatAddCall(call);
 	cdrProblemsAddCall(call);
+	cdrSummaryAddCall(call);
 }
 
 inline void chartsCacheAndCdrStatStore(bool forceAll = false) {
 	chartsCacheStore(forceAll);
 	cdrStatStore(forceAll);
 	cdrProblemsStore(forceAll);
+	cdrSummaryStore(forceAll);
 }
 
 inline void chartsCacheAndCdrStatCleanup(bool forceAll = false) {
 	chartsCacheCleanup(forceAll);
 	cdrStatCleanup(forceAll);
 	cdrProblemsCleanup(forceAll);
+	cdrSummaryCleanup(forceAll);
 }
 
 

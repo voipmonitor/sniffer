@@ -1027,7 +1027,7 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, cDbCalls
 							extern MySqlStore *sqlStore;
 							sqlStore->query_lock(iter->c_str(), STORE_PROC_ID_CHARTS_CACHE_REMOTE, 0);
 							delete tablesContent;
-						} else if(opt_charts_cache) {
+						} else if(useChartsCacheOrCdrStatProcessThreads()) {
 							extern Calltable *calltable;
 							calltable->lock_calls_charts_cache_queue();
 							#if DEBUG_STORE_COUNT
