@@ -5850,6 +5850,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`hide_message` tinyint DEFAULT NULL,\
 			`note` text,\
 			`remove_at` date default NULL,\
+			`disable_at` date default NULL,\
+			`enabled` tinyint default 1,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	
@@ -5872,6 +5874,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`hide_message` tinyint DEFAULT NULL,\
 			`note` text,\
 			`remove_at` date default NULL,\
+			`disable_at` date default NULL,\
+			`enabled` tinyint default 1,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 
@@ -5893,6 +5897,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`hide_message` tinyint DEFAULT NULL,\
 			`note` text,\
 			`remove_at` date default NULL,\
+			`disable_at` date default NULL,\
+			`enabled` tinyint default 1,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 
@@ -5916,6 +5922,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`hide_message` tinyint DEFAULT NULL,\
 			`note` text,\
 			`remove_at` date default NULL,\
+			`disable_at` date default NULL,\
+			`enabled` tinyint default 1,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 
@@ -10303,6 +10311,26 @@ void SqlDb_mysql::checkColumns_other(bool log) {
 		this->query(
 			"ALTER TABLE `files`\
 			 ADD COLUMN `audiographsize` bigint unsigned DEFAULT 0");
+	}
+	if(!this->existsColumn("filter_ip", "enabled")) {
+		this->query(
+			"ALTER TABLE `filter_ip`\
+			ADD COLUMN `enabled` tinyint DEFAULT 1");
+	}
+	if(!this->existsColumn("filter_telnum", "enabled")) {
+		this->query(
+			"ALTER TABLE `filter_telnum`\
+			ADD COLUMN `enabled` tinyint DEFAULT 1");
+	}
+	if(!this->existsColumn("filter_domain", "enabled")) {
+		this->query(
+			"ALTER TABLE `filter_domain`\
+			ADD COLUMN `enabled` tinyint DEFAULT 1");
+	}
+	if(!this->existsColumn("filter_sip_header", "enabled")) {
+		this->query(
+			"ALTER TABLE `filter_sip_header`\
+			ADD COLUMN `enabled` tinyint DEFAULT 1");
 	}
 	if(opt_ssl_store_sessions) {
 		string ssl_sessions_table = opt_ssl_store_sessions == 1 ? "ssl_sessions_mem" : "ssl_sessions";
