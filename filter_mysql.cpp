@@ -298,7 +298,7 @@ void IPfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
   			  from filter_ip_sensors \
 			  where filter_ip_id = filter_ip.id) as sensors_id" :
 		       "") +
-		     " FROM filter_ip ORDER BY ip desc, mask desc");
+		     " FROM filter_ip where enabled = 1 ORDER BY ip desc, mask desc");
 	SqlDb_rows rows;
 	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
@@ -530,7 +530,7 @@ void TELNUMfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
   			  from filter_telnum_sensors \
 			  where filter_telnum_id = filter_telnum.id) as sensors_id" :
 		       "") +
-		     " FROM filter_telnum");
+		     " FROM filter_telnum where enabled = 1");
 	SqlDb_rows rows;
 	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
@@ -742,7 +742,7 @@ void DOMAINfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
   			  from filter_domain_sensors \
 			  where filter_domain_id = filter_domain.id) as sensors_id" :
 		       "") +
-		     " FROM filter_domain");
+		     " FROM filter_domain where enabled = 1");
 	SqlDb_rows rows;
 	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
@@ -900,7 +900,7 @@ void SIP_HEADERfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
   			  from filter_sip_header_sensors \
 			  where filter_sip_header_id = filter_sip_header.id) as sensors_id" :
 		       "") +
-		     " FROM filter_sip_header");
+		     " FROM filter_sip_header where enabled = 1");
 	SqlDb_rows rows;
 	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
