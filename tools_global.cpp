@@ -45,6 +45,34 @@ void *vm_pthread_create_start_routine(void *arg) {
 	delete (vm_pthread_struct*)arg;
 	int tid = get_unix_tid();
 	#ifdef CLOUD_ROUTER_CLIENT
+	pthread_t thread = pthread_self();
+	#ifndef __i686__
+	extern bool opt_use_thread_setname;
+	if(opt_use_thread_setname && !thread_data.description.empty()) {
+		char thread_name[16];
+		strncpy(thread_name, thread_data.description.c_str(), sizeof(thread_name) - 1);
+		thread_name[sizeof(thread_name) - 1] = 0;
+		pthread_setname_np(thread, thread_name);
+	}
+	#endif
+	extern string opt_cpu_cores;
+	extern bool opt_use_dpdk;
+	if(!opt_cpu_cores.empty()) {
+		vector<int> cpu_cores;
+		get_list_cores(opt_cpu_cores, cpu_cores);
+		pthread_set_affinity(thread, &cpu_cores, NULL);
+	} else if(opt_use_dpdk) {
+		extern string get_dpdk_cpu_cores(bool without_main, bool detect_ht);
+		extern bool opt_thread_affinity_ht;
+		string dpdk_cpu_cores_str = get_dpdk_cpu_cores(true, opt_thread_affinity_ht);
+		if(!dpdk_cpu_cores_str.empty()) {
+			vector<int> cpu_cores;
+			get_list_cores("all", cpu_cores);
+			vector<int> dpdk_cpu_cores;
+			get_list_cores(dpdk_cpu_cores_str, dpdk_cpu_cores);
+			pthread_set_affinity(thread, &cpu_cores, &dpdk_cpu_cores);
+		}
+	}
 	if(sverb.thread_create) {
 		syslog(LOG_NOTICE, "start thread '%s' %i", 
 		       thread_data.description.c_str(), tid);
@@ -96,35 +124,6 @@ int vm_pthread_create(const char *thread_description,
 		delete thread_data;
 		return(rslt);
 	}
-	#ifdef CLOUD_ROUTER_CLIENT
-	#ifndef __i686__
-	extern bool opt_use_thread_setname;
-	if(opt_use_thread_setname && thread_description) {
-		char thread_name[16];
-		strncpy(thread_name, thread_description, sizeof(thread_name) - 1);
-		thread_name[sizeof(thread_name) - 1] = 0;
-		pthread_setname_np(*thread, thread_name);
-	}
-	#endif
-	extern string opt_cpu_cores;
-	extern bool opt_use_dpdk;
-	if(!opt_cpu_cores.empty()) {
-		vector<int> cpu_cores;
-		get_list_cores(opt_cpu_cores, cpu_cores);
-		pthread_set_affinity(*thread, &cpu_cores, NULL);
-	} else if(opt_use_dpdk) {
-		extern string get_dpdk_cpu_cores(bool without_main, bool detect_ht);
-		extern bool opt_thread_affinity_ht;
-		string dpdk_cpu_cores_str = get_dpdk_cpu_cores(true, opt_thread_affinity_ht);
-		if(!dpdk_cpu_cores_str.empty()) {
-			vector<int> cpu_cores;
-			get_list_cores("all", cpu_cores);
-			vector<int> dpdk_cpu_cores;
-			get_list_cores(dpdk_cpu_cores_str, dpdk_cpu_cores);
-			pthread_set_affinity(*thread, &cpu_cores, &dpdk_cpu_cores);
-		}
-	}
-	#endif
 	return(rslt);
 }
 

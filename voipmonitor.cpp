@@ -5803,27 +5803,6 @@ void main_term_read() {
 		sqlDbSaveWebrtc = NULL;
 	}
 	
-	if(sqlStore) {
-		if(!isCloud() && is_server() && !is_read_from_file_simple()) {
-			snifferServerSetSqlStore(NULL);
-		}
-		sqlStore->setEnableTerminatingIfEmpty(0, 0, true);
-		sqlStore->setEnableTerminatingIfSqlError(0, 0, true);
-		regfailedcache->prune(0);
-		delete sqlStore;
-		sqlStore = NULL;
-	}
-	if(sqlStore_2) {
-		sqlStore_2->setEnableTerminatingIfEmpty(0, 0, true);
-		sqlStore_2->setEnableTerminatingIfSqlError(0, 0, true);
-		delete sqlStore_2;
-		sqlStore_2 = NULL;
-	}
-	if(loadFromQFiles) {
-		delete loadFromQFiles;
-		loadFromQFiles = NULL;
-	}
-	
 	if(custom_headers_cdr) {
 		delete custom_headers_cdr;
 		custom_headers_cdr = NULL;
@@ -5858,6 +5837,27 @@ void main_term_read() {
 		chartsCacheTerm();
 	}
 	dbDataTerm();
+	
+	if(sqlStore) {
+		if(!isCloud() && is_server() && !is_read_from_file_simple()) {
+			snifferServerSetSqlStore(NULL);
+		}
+		sqlStore->setEnableTerminatingIfEmpty(0, 0, true);
+		sqlStore->setEnableTerminatingIfSqlError(0, 0, true);
+		regfailedcache->prune(0);
+		delete sqlStore;
+		sqlStore = NULL;
+	}
+	if(sqlStore_2) {
+		sqlStore_2->setEnableTerminatingIfEmpty(0, 0, true);
+		sqlStore_2->setEnableTerminatingIfSqlError(0, 0, true);
+		delete sqlStore_2;
+		sqlStore_2 = NULL;
+	}
+	if(loadFromQFiles) {
+		delete loadFromQFiles;
+		loadFromQFiles = NULL;
+	}
 	
 	if(opt_enable_billing) {
 		termBilling();
