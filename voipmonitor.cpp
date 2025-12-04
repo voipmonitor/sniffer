@@ -423,6 +423,7 @@ bool opt_cdr_summary = false;
 int opt_cdr_summary_number_length = 0;
 bool opt_cdr_summary_number_complete = false;
 int opt_cdr_summary_interval = 5;
+bool opt_cdr_summary_only_first_interval = true;
 bool opt_charts_cache = false;
 int opt_charts_cache_max_threads = 3;
 bool opt_charts_cache_store = false;
@@ -5842,7 +5843,8 @@ void main_term_read() {
 	
 	CountryDetectTerm();
 	
-	dbDataTerm();
+	chartsCacheAndCdrStatStore(true);
+	chartsCacheAndCdrStatCleanup(true);
 	if(useCdrStatProcessThreads()) {
 		cdrStatTerm();
 	}
@@ -5855,6 +5857,7 @@ void main_term_read() {
 	if(useChartsCacheProcessThreads()) {
 		chartsCacheTerm();
 	}
+	dbDataTerm();
 	
 	if(opt_enable_billing) {
 		termBilling();
@@ -7600,6 +7603,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_summary_number_length", &opt_cdr_summary_number_length));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_summary_number_complete", &opt_cdr_summary_number_complete));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_summary_interval", &opt_cdr_summary_interval));
+					expert();
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_summary_only_first_interval", &opt_cdr_summary_only_first_interval));
 			normal();
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache", &opt_charts_cache));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("charts_cache_max_threads", &opt_charts_cache_max_threads));

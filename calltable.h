@@ -2063,6 +2063,7 @@ public:
 	u_int32_t duration_s() { return(TIME_US_TO_S(duration_us())); };
 	u_int64_t connect_duration_us() { return(connect_time_us ? duration_us() - (connect_time_us - first_packet_time_us) : 0); };
 	u_int32_t connect_duration_s() { return(TIME_US_TO_S(connect_duration_us())); };
+	double connect_duration_sf() { return(TIME_US_TO_SF(connect_duration_us())); };
 	u_int64_t callend_us() { return calltime_us() + duration_us(); };
 	u_int32_t callend_s() { return TIME_US_TO_S(callend_us()); };
 	

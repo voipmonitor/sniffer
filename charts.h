@@ -21,6 +21,7 @@ enum eChartType {
 	_chartType_count,
 	_chartType_cps,
 	_chartType_minutes,
+	_chartType_minutes_all,
 	_chartType_count_perc_short,
 	_chartType_response_time_100,
 	_chartType_mos,
@@ -159,8 +160,7 @@ class cChartDataItem {
 public:
 	cChartDataItem();
 	void add(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
-		 class cChartSeries *series, class cChartIntervalSeriesData *intervalSeries,
-		 u_int32_t calldate_from, u_int32_t calldate_to);
+		 class cChartSeries *series, class cChartIntervalSeriesData *intervalSeries);
 	string json(class cChartSeries *series);
 	double getValue(class cChartSeries *series, eChartValueType typeValue = _chartValueType_na, bool *null = NULL);
 private:
@@ -240,13 +240,14 @@ public:
 	~cChartDataPool();
 	void createPool(u_int32_t timeFrom, u_int32_t timeTo);
 	void initPoolRslt();
-	void add(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
-		 class cChartSeries *series, class cChartInterval *interval,
-		 u_int32_t calldate_from, u_int32_t calldate_to);
+	void add_us(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
+		    class cChartSeries *series, class cChartInterval *interval,
+		    u_int64_t calldate_from_us, u_int64_t calldate_to_us);
 	string json(class cChartSeries *series, class cChartInterval *interval);
 	double getValue(class cChartSeries *series, class cChartInterval *interval, eChartValueType typeValue = _chartValueType_na, bool *null = NULL);
 private:
 	volatile unsigned int all;
+	volatile double all_float;
 	map<unsigned int, unsigned int> all_intervals;
 	volatile unsigned int all_fi;
 	volatile unsigned int all_li;
@@ -258,8 +259,8 @@ public:
 	cChartIntervalSeriesData(eChartTypeUse typeUse, class cChartSeries *series = NULL, class cChartInterval *interval = NULL);
 	~cChartIntervalSeriesData();
 	void prepareData();
-	void add(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
-		 u_int32_t calldate_from, u_int32_t calldate_to);
+	void add_us(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
+		    u_int64_t calldate_from_us, u_int64_t calldate_to_us);
 	double getValue(eChartValueType typeValue = _chartValueType_na, bool *null = NULL);
 	string getChartData(class cChartInterval *interval);
 	void store(class cChartInterval *interval, const int *sensor_id, const vmIP *ip, SqlDb *sqlDb, int src_dst);
@@ -460,11 +461,13 @@ public:
 		sSeriesDataCdrSummary() {
 			count = 0;
 			count_connected = 0;
+			count_exists_rtp = 0;
 			store_counter = 0;
 			counter_add = 0;
 		}
 		unsigned count;
 		unsigned count_connected;
+		unsigned count_exists_rtp;
 		map<u_int16_t, cChartIntervalSeriesData*> data;
 		u_int32_t store_counter;
 		volatile u_int32_t counter_add;
@@ -482,15 +485,15 @@ public:
 	void setInterval_problems(u_int32_t timeFrom, u_int32_t timeTo, sProblemId &src, sProblemId &dst);
 	void setInterval_summary(u_int32_t timeFrom, u_int32_t timeTo, sSummaryId &sum_id, sSummaryId &sum_nc_id);
 	void add_chart(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
-		       u_int32_t calldate_from, u_int32_t calldate_to,
+		       u_int64_t calldate_from_us, u_int64_t calldate_to_us,
 		       map<class cChartFilter*, bool> *filters_map);
 	void add_stat(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
-		      u_int32_t calldate_from, u_int32_t calldate_to,
+		      u_int64_t calldate_from_us, u_int64_t calldate_to_us,
 		      sStatId &src, sStatId &dst);
 	void add_problems(sChartsCallData *call, sProblemId &src, sProblemId &dst);
 	void add_summary(sChartsCallData *call,
 			 unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
-			 u_int32_t calldate_from, u_int32_t calldate_to,
+			 u_int64_t calldate_from_us, u_int64_t calldate_to_us,
 			 sSummaryId &sum_id, sSummaryId &sum_nc_id);
 	void store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb);
 	void init_chart();
@@ -519,8 +522,8 @@ private:
 			map<sProblemId, sCdrProblems*> *comb_dst;
 		} problems;
 		struct {
-			map<sSummaryId, sSeriesDataCdrStat*> *sum;
-			map<sSummaryId, sSeriesDataCdrStat*> *sum_nc;
+			map<sSummaryId, sSeriesDataCdrSummary*> *sum;
+			map<sSummaryId, sSeriesDataCdrSummary*> *sum_nc;
 		} summary;
 	};
 	u_int32_t created_at_real;
@@ -839,8 +842,12 @@ private:
 class cCdrSummary {
 public:
 	struct sMetricType {
+		sMetricType(eChartType chartType = _chartType_na, const char *valueType = NULL) {
+			this->chartType = chartType;
+			this->valueType = valueType ? valueType : "";
+		}
 		eChartType chartType;
-		const char *valueType;
+		string valueType;
 	};
 	struct sMetrics {
 		sMetrics(const char *field, int type_series, eChartValueType type_value) {
@@ -856,7 +863,7 @@ public:
 	cCdrSummary();
 	~cCdrSummary();
 	void init();
-	static sMetricType *get_metric_types();
+	static vector<sMetricType> get_metric_types();
 	static void init_series(vector<cChartSeries*> *series);
 	static void init_metrics(vector<sMetrics> *metrics);
 	void clear();
@@ -870,6 +877,7 @@ public:
 	static void exists_columns_clear(bool nc);
 	static void exists_columns_add(const char *column, bool nc);
 private:
+	bool only_first_interval;
 	vector<cChartSeries*> series;
 	vector<sMetrics> metrics;
 	map<u_int32_t, cChartInterval*> intervals;

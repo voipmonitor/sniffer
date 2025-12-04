@@ -7043,31 +7043,27 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `") + (si == 0 ? "cdr_summary" : "cdr_summary_nc") + "` (\
 			`from_time` datetime,\
-			`src_addr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
-			`dst_addr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
-			`src_number` varchar(64) NOT NULL,\
-			`dst_number` varchar(64) NOT NULL,\
-			`codec` int NOT NULL,\
+			`sipcallerip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
+			`sipcalledip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
+			`caller` varchar(64) NOT NULL,\
+			`called` varchar(64) NOT NULL,\
+			`payload` int NOT NULL,\
 			`lastSIPresponse_id` mediumint unsigned NOT NULL,\
 			`sensor_id` int,\
 			`created_at` datetime,\
 			`updated_at` datetime,\
 			`updated_counter` smallint unsigned,\
 			" + cdr_summary_fields_str + "\
-			" + (opt_cdr_force_primary_index_in_all_tables ? "PRIMARY KEY" : "UNIQUE KEY `comb_1`") + "(`from_time`,`src_addr`,`dst_addr`,`src_number`,`dst_number`,`codec`,`lastSIPresponse_id`,`sensor_id`,`created_at`),\
-			KEY `comb_2` (`from_time`,`src_addr`,`sensor_id`),\
-			KEY `comb_3` (`from_time`,`dst_addr`,`sensor_id`),\
-			KEY `comb_4` (`from_time`,`src_number`,`sensor_id`),\
-			KEY `comb_5` (`from_time`,`dst_number`,`sensor_id`),\
-			KEY `comb_6` (`from_time`,`codec`,`sensor_id`),\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "PRIMARY KEY" : "UNIQUE KEY `comb_1`") + "(`from_time`,`sipcallerip`,`sipcalledip`,`caller`,`called`,`payload`,`lastSIPresponse_id`,`sensor_id`,`created_at`),\
+			KEY `comb_2` (`from_time`,`sipcallerip`,`sensor_id`),\
+			KEY `comb_3` (`from_time`,`sipcalledip`,`sensor_id`),\
+			KEY `comb_4` (`from_time`,`caller`,`sensor_id`),\
+			KEY `comb_5` (`from_time`,`called`,`sensor_id`),\
+			KEY `comb_6` (`from_time`,`payload`,`sensor_id`),\
 			KEY `comb_7` (`from_time`,`lastSIPresponse_id`,`sensor_id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(opt_cdr_partition ?
-		(opt_cdr_partition_by_hours ?
-			string(" PARTITION BY RANGE COLUMNS(from_time)(\
-				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
-				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
-		 opt_cdr_partition_oldver ?
+		(opt_cdr_partition_oldver ?
 			string(" PARTITION BY RANGE (to_days(from_time))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(from_time)(\
@@ -11200,9 +11196,10 @@ void createMysqlPartitionsCdrProblems() {
 void createMysqlPartitionsCdrSummary() {
 	partitionsServiceIsInProgress = 1;
 	if(opt_cdr_summary) {
-		createMysqlPartitionsTable("cdr_summary", opt_cdr_summary_partition_oldver[0]);
-		if(opt_cdr_summary_number_complete) {
-			createMysqlPartitionsTable("cdr_summary_nc", opt_cdr_summary_partition_oldver[0]);
+		for(int si = 0; si < 2; si++) {
+			if(si == 0 || opt_cdr_summary_number_complete) {
+				createMysqlPartitionsTable(si == 0 ? "cdr_summary" : "cdr_summary_nc", opt_cdr_summary_partition_oldver[si], 'd');
+			}
 		}
 	}
 	partitionsServiceIsInProgress = 0;

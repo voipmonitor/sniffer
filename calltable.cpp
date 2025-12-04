@@ -5146,6 +5146,7 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 	case _chartType_count:
 	case _chartType_cps:
 	case _chartType_minutes:
+	case _chartType_minutes_all:
 	case _chartType_count_perc_short:
 		v = 1;
 		break;
@@ -5336,6 +5337,9 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 						break;
 					case _chartType_jitter:
 						_v = rtpab[i]->jitter_avg(&_null);
+						if(!_null) {
+							_v = ceil(_v * 10) / 10;
+						}
 						break;
 					}
 					if(!_null) {
@@ -5355,9 +5359,15 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 			break;
 		case _chartType_jitter_caller:	
 			v = rtpab[0]->jitter_avg(&setNull);
+			if(!setNull) {
+				v = ceil(v * 10) / 10;
+			}
 			break;
 		case _chartType_jitter_called:	
 			v = rtpab[1]->jitter_avg(&setNull);
+			if(!setNull) {
+				v = ceil(v * 10) / 10;
+			}
 			break;
 		case _chartType_delay:
 			setNull = true;
@@ -5370,6 +5380,7 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 					if(!_null_s && !_null_c) {
 						setNull = false;
 						double _v = _v_c != 0 ? _v_s / _v_c : 0;
+						_v = round(_v * 100) / 100;
 						if(_v > v) {
 							v = _v;
 						}
@@ -5407,6 +5418,7 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 			if(!_null_s && !_null_c) {
 				setNull = false;
 				v = _v_c != 0 ? _v_s / _v_c : 0;
+				v = round(v * 100) / 100;
 			}
 			}
 			break;
@@ -5420,6 +5432,7 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 			if(!_null_s && !_null_c) {
 				setNull = false;
 				v = _v_c != 0 ? _v_s / _v_c : 0;
+				v = round(v * 100) / 100;
 			}
 			}
 			break;
@@ -5704,6 +5717,7 @@ void Call::getChartCacheValue(cDbTablesContent *tablesContent,
 	case _chartType_count:
 	case _chartType_cps:
 	case _chartType_minutes:
+	case _chartType_minutes_all:
 	case _chartType_count_perc_short:
 		v = 1;
 		break;
