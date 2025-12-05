@@ -945,6 +945,10 @@ bool opt_message_check_duplicity_callid_in_next_pass_insert = 0;
 int opt_create_old_partitions = 0;
 char opt_create_old_partitions_from[20];
 bool opt_disable_partition_operations = 0;
+bool opt_disable_partition_operations_create = false;
+bool opt_disable_partition_operations_drop = false;
+int opt_create_new_partitions = 2;
+char opt_create_new_partitions_until[20];
 int opt_partition_operations_enable_run_hour_from = 1;
 int opt_partition_operations_enable_run_hour_to = 5;
 bool opt_partition_operations_in_thread = 1;
@@ -6324,6 +6328,13 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_active_calls_cache_timeout_max", &opt_processing_limitations_active_calls_cache_timeout_max));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(42091) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
+				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_partition_operations_create", &opt_disable_partition_operations_create));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_partition_operations_drop", &opt_disable_partition_operations_drop));
+					expert();
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("create_new_partitions"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("create_new_partitions_until", opt_create_new_partitions_until, sizeof(opt_create_new_partitions_until)));
+			normal();
 			addConfigItem(new FILE_LINE(0) cConfigItem_hour_interval("partition_operations_enable_fromto", &opt_partition_operations_enable_run_hour_from, &opt_partition_operations_enable_run_hour_to));
 				advanced();
 				addConfigItem(new FILE_LINE(42092) cConfigItem_yesno("partition_operations_in_thread", &opt_partition_operations_in_thread));
@@ -7779,6 +7790,12 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 	}
 	if(configItem->config_name == "check_duplicity_callid_in_next_pass_insert") {
 		opt_message_check_duplicity_callid_in_next_pass_insert = opt_cdr_check_duplicity_callid_in_next_pass_insert;
+	}
+	if(configItem->config_name == "create_new_partitions") {
+		opt_create_new_partitions = max(opt_create_new_partitions, (int)configItem->getValueInt());
+	}
+	if(configItem->config_name == "create_new_partitions_until" && opt_create_new_partitions_until[0]) {
+		opt_create_new_partitions = max(opt_create_new_partitions, getNumberOfDayFromNow(opt_create_new_partitions_until) + 1);
 	}
 	if(configItem->config_name == "create_old_partitions") {
 		opt_create_old_partitions = max(opt_create_old_partitions, (int)configItem->getValueInt());

@@ -535,6 +535,7 @@ struct tm getDateTime(u_int64_t us);
 struct tm getDateTime(time_t time);
 struct tm getDateTime(const char *timeStr);
 int getNumberOfDayToNow(const char *date);
+int getNumberOfDayFromNow(const char *date);
 int getNumberOfHourToNow(const char *date, int hour);
 string getActDateTimeF(bool useT_symbol = false);
 tm getEasterMondayDate(unsigned year, int decDays = 0, const char *timezone = NULL);

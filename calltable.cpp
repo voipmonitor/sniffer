@@ -15858,7 +15858,8 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 	if(enableCreatePartitions) {
 		this->createTablesIfNotExists(sqlDb, true);
 		extern bool opt_disable_partition_operations;
-		if(!opt_disable_partition_operations && !is_client()) {
+		extern bool opt_disable_partition_operations_create;
+		if(!opt_disable_partition_operations && !opt_disable_partition_operations_create && !is_client()) {
 			sqlDb->setIgnoreErrorCode(ER_SAME_NAME_PARTITION);
 			sqlDb->setIgnoreErrorCode(ER_RANGE_NOT_INCREASING_ERROR);
 			sqlDb->setIgnoreErrorCode(ER_NO_SUCH_TABLE);

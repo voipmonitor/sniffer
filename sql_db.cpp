@@ -55,6 +55,8 @@ extern bool opt_cdr_summary;
 extern bool opt_cdr_summary_number_complete;
 extern int opt_create_old_partitions;
 extern bool opt_disable_partition_operations;
+extern bool opt_disable_partition_operations_create;
+extern bool opt_disable_partition_operations_drop;
 extern vector<dstring> opt_custom_headers_cdr;
 extern vector<dstring> opt_custom_headers_message;
 extern char get_customers_pn_query[1024];
@@ -3709,6 +3711,9 @@ void MySqlStore_process::store() {
 		list<string> queryqueue;
 		unsigned queryqueue_length = 0;
 		while(1) {
+			while((partitionsServiceIsInProgress || sCreatePartitions::in_progress) && !is_terminating()) {
+				usleep(100000);
+			}
 			++this->threadRunningCounter;
 			if(id_main == STORE_PROC_ID_CHARTS_CACHE_REMOTE ||
 			   snifferClientOptions.isEnableRemoteStore()) {
@@ -3758,9 +3763,6 @@ void MySqlStore_process::store() {
 					}
 				}
 			} else if(id_main == STORE_PROC_ID_CDR_REDIRECT) {
-				while((partitionsServiceIsInProgress || sCreatePartitions::in_progress) && !is_terminating()) {
-					usleep(100000);
-				}
 				unsigned queries_max = 10;
 				string queries[queries_max];
 				unsigned queries_count = 0;
@@ -8402,7 +8404,7 @@ bool SqlDb_mysql::createSchema_procedures_other(int connectId) {
 		return(true);
 	}
 	
-	if(opt_ipaccount && !opt_disable_partition_operations) {
+	if(opt_ipaccount && !opt_disable_partition_operations && !opt_disable_partition_operations_create) {
 		if(isCloud()) {
 			this->createProcedure(
 			"begin\
@@ -8704,7 +8706,8 @@ bool SqlDb_mysql::createSchema_procedure_partition(int connectId, bool abortIfFa
 	this->clearLastError();
 	if(!(connectId == 0 ||
 	     (connectId == 1 && use_mysql_2_http())) ||
-	   opt_disable_partition_operations) {
+	   opt_disable_partition_operations ||
+	   opt_disable_partition_operations_create) {
 		return(true);
 	}
 	
@@ -8828,7 +8831,7 @@ bool SqlDb_mysql::createSchema_procedure_partition(int connectId, bool abortIfFa
 
 bool SqlDb_mysql::createSchema_init_cdr_partitions(int connectId) {
 	this->clearLastError();
-	if(opt_cdr_partition && !opt_disable_partition_operations) {
+	if(opt_cdr_partition && !opt_disable_partition_operations && !opt_disable_partition_operations_create) {
 		if(opt_create_old_partitions > 0) {
 			for(int i = opt_create_old_partitions - 1; i > 0; i--) {
 				_createMysqlPartitionsCdr('d', -i, connectId, this);
@@ -12328,93 +12331,93 @@ void cCreatePartitions::run(bool firstIter) {
 	actTime = time(NULL);
 	create_partitions.init();
 	if(opt_cdr_partition) {
-		if(check_time_partition_operation(createPartitionCdrAt)) {
+		if(!opt_disable_partition_operations_create && check_time_partition_operation(createPartitionCdrAt)) {
 			create_partitions.createCdr = true;
 			createPartitionCdrAt = actTime;
 		}
-		if(check_time_partition_operation(dropPartitionCdrAt)) {
+		if(!opt_disable_partition_operations_drop && check_time_partition_operation(dropPartitionCdrAt)) {
 			create_partitions.dropCdr = true;
 			dropPartitionCdrAt = actTime;
 		}
 	}
 	if(opt_enable_ss7) {
-		if(check_time_partition_operation(createPartitionSs7At)) {
+		if(!opt_disable_partition_operations_create && check_time_partition_operation(createPartitionSs7At)) {
 			create_partitions.createSs7 = true;
 			createPartitionSs7At = actTime;
 		}
-		if(check_time_partition_operation(dropPartitionSs7At)) {
+		if(!opt_disable_partition_operations_drop && check_time_partition_operation(dropPartitionSs7At)) {
 			create_partitions.dropSs7 = true;
 			dropPartitionSs7At = actTime;
 		}
 	}
 	if(true /* cdr_stat */) {
-		if(check_time_partition_operation(createPartitionCdrStatAt)) {
+		if(!opt_disable_partition_operations_create && check_time_partition_operation(createPartitionCdrStatAt)) {
 			create_partitions.createCdrStat = true;
 			createPartitionCdrStatAt = actTime;
 		}
-		if(check_time_partition_operation(dropPartitionCdrStatAt)) {
+		if(!opt_disable_partition_operations_drop && check_time_partition_operation(dropPartitionCdrStatAt)) {
 			create_partitions.dropCdrStat = true;
 			dropPartitionCdrStatAt = actTime;
 		}
 	}
 	if(true /* cdr_problems */) {
-		if(check_time_partition_operation(createPartitionCdrProblemsAt)) {
+		if(!opt_disable_partition_operations_create && check_time_partition_operation(createPartitionCdrProblemsAt)) {
 			create_partitions.createCdrProblems = true;
 			createPartitionCdrProblemsAt = actTime;
 		}
-		if(check_time_partition_operation(dropPartitionCdrProblemsAt)) {
+		if(!opt_disable_partition_operations_drop && check_time_partition_operation(dropPartitionCdrProblemsAt)) {
 			create_partitions.dropCdrProblems = true;
 			dropPartitionCdrProblemsAt = actTime;
 		}
 	}
 	if(true /* cdr_summary */) {
-		if(check_time_partition_operation(createPartitionCdrSummaryAt)) {
+		if(!opt_disable_partition_operations_create && check_time_partition_operation(createPartitionCdrSummaryAt)) {
 			create_partitions.createCdrSummary = true;
 			createPartitionCdrSummaryAt = actTime;
 		}
-		if(check_time_partition_operation(dropPartitionCdrSummaryAt)) {
+		if(!opt_disable_partition_operations_drop && check_time_partition_operation(dropPartitionCdrSummaryAt)) {
 			create_partitions.dropCdrSummary = true;
 			dropPartitionCdrSummaryAt = actTime;
 		}
 	}
 	if(true /* rtp_stat */) {
-		if(check_time_partition_operation(createPartitionRtpStatAt)) {
+		if(!opt_disable_partition_operations_create && check_time_partition_operation(createPartitionRtpStatAt)) {
 			create_partitions.createRtpStat = true;
 			createPartitionRtpStatAt = actTime;
 		}
-		if(check_time_partition_operation(dropPartitionRtpStatAt)) {
+		if(!opt_disable_partition_operations_drop && check_time_partition_operation(dropPartitionRtpStatAt)) {
 			create_partitions.dropRtpStat = true;
 			dropPartitionRtpStatAt = actTime;
 		}
 	}
 	if(true /* log_sensor */) {
-		if(check_time_partition_operation(createPartitionLogSensorAt)) {
+		if(!opt_disable_partition_operations_create && check_time_partition_operation(createPartitionLogSensorAt)) {
 			create_partitions.createLogSensor = true;
 			createPartitionLogSensorAt = actTime;
 		}
-		if(check_time_partition_operation(dropPartitionLogSensorAt)) {
+		if(!opt_disable_partition_operations_drop && check_time_partition_operation(dropPartitionLogSensorAt)) {
 			create_partitions.dropLogSensor = true;
 			dropPartitionLogSensorAt = actTime;
 		}
 	}
 	if(opt_ipaccount) {
-		if(check_time_partition_operation(createPartitionIpaccAt)) {
+		if(!opt_disable_partition_operations_create && check_time_partition_operation(createPartitionIpaccAt)) {
 			create_partitions.createIpacc = true;
 			createPartitionIpaccAt = actTime;
 		}
 	}
 	if(true /* billing agregation */) {
-		if(check_time_partition_operation(createPartitionBillingAgregationAt)) {
+		if(!opt_disable_partition_operations_create && check_time_partition_operation(createPartitionBillingAgregationAt)) {
 			create_partitions.createBilling = true;
 			createPartitionBillingAgregationAt = actTime;
 		}
-		if(check_time_partition_operation(dropPartitionBillingAgregationAt)) {
+		if(!opt_disable_partition_operations_drop && check_time_partition_operation(dropPartitionBillingAgregationAt)) {
 			create_partitions.dropBilling = true;
 			dropPartitionBillingAgregationAt = actTime;
 		}
 	}
 	if(opt_cdr_partition && is_set_cleandatabase_by_size()) {
-		if(check_time_partition_by_size_operation(dropPartitionBySizeAt)) {
+		if(!opt_disable_partition_operations_drop && check_time_partition_by_size_operation(dropPartitionBySizeAt)) {
 			create_partitions.dropBySize = true;
 			dropPartitionBySizeAt = actTime;
 		}

@@ -25,8 +25,9 @@
 
 #define NULL_CHAR_PTR (const char*)NULL
 
-#define LIMIT_DAY_PARTITIONS 3
-#define LIMIT_DAY_PARTITIONS_INIT 2
+extern int opt_create_new_partitions;
+#define LIMIT_DAY_PARTITIONS (opt_create_new_partitions + 1)
+#define LIMIT_DAY_PARTITIONS_INIT (opt_create_new_partitions)
 
 #define LIMIT_TINYINT_UNSIGNED(value) 	(min(0xFFu, (unsigned)(value)))
 #define LIMIT_SMALLINT_UNSIGNED(value) 	(min(0xFFFFu, (unsigned)(value)))
