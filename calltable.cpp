@@ -6989,7 +6989,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	if(this->pcap_dump_error) {
 		if(this->pcap_dump_error & PcapDumper::error_dlt) {
-			cdr_flags |= CDR_PCAP_DUMP_ERROR_DTL;
+			cdr_flags |= CDR_PCAP_DUMP_ERROR_DLT;
 		}
 		if(this->pcap_dump_error & PcapDumper::error_maxcapsize) {
 			cdr_flags |= CDR_PCAP_DUMP_ERROR_MAXPCAPSIZE;
