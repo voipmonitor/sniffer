@@ -567,6 +567,7 @@ void cIPFixConnection::process_ipfix_QosStats(sIPFixHeader *header) {
 		     << " jitter=" << qos_ext.OutRtpAvgJitter << endl;
 		cout << "MOS Inc=" << qos_ext.IncMos << " Out=" << qos_ext.OutMos << endl;
 		cout << "R-val Inc=" << qos_ext.IncrVal << " Out=" << qos_ext.OutrVal << endl;
+		cout << "Type: " << (int)qos_ext.Type << endl;
 		if(!qos_ext.IncRealm.empty()) {
 			cout << "IncRealm: " << qos_ext.IncRealm << endl;
 		}
