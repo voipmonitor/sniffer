@@ -380,7 +380,7 @@ struct sSummaryId {
 		       this->dst_number == other.dst_number &&
 		       this->codec == other.codec &&
 		       this->lsr_num == other.lsr_num &&
-		       this->lsr_str == other.lsr_str);
+		       !strcasecmp(this->lsr_str.c_str(), other.lsr_str.c_str()));
 	}
 	inline bool operator < (const sSummaryId& other) const {
 		return(this->sensor_id < other.sensor_id ? 1 : this->sensor_id > other.sensor_id ? 0 :
@@ -390,7 +390,7 @@ struct sSummaryId {
 		       this->dst_number < other.dst_number ? 1 : this->dst_number > other.dst_number ? 0 :
 		       this->codec < other.codec ? 1 : this->codec > other.codec ? 0 :
 		       this->lsr_num < other.lsr_num ? 1 : this->lsr_num > other.lsr_num ? 0 :
-		       this->lsr_str < other.lsr_str);
+		       strcasecmp(this->lsr_str.c_str(), other.lsr_str.c_str()) < 0);
 	}
 	int sensor_id;
 	vmIP src_ip;

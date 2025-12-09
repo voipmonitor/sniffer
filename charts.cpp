@@ -16,6 +16,7 @@ extern int opt_cdr_summary_number_length;
 extern bool opt_cdr_summary_number_complete;
 extern bool opt_cdr_summary_only_first_interval;
 extern bool opt_time_precision_in_ms;
+extern int absolute_timeout;
 
 
 static sChartTypeDef ChartTypeDef[] = { 
@@ -2544,7 +2545,7 @@ cCdrStat::cCdrStat() {
 	intervalCleanup = sverb.cdr_stat_interval_cleanup ?
 			   sverb.cdr_stat_interval_cleanup :
 			   mainInterval * 2;
-	intervalExpiration = 5 * 60 * 60;
+	intervalExpiration = absolute_timeout + mainInterval * 2;
 	sqlDbStore = NULL;
 	last_store_at = 0;
 	last_store_at_real = 0;
@@ -2922,7 +2923,7 @@ cCdrProblems::cCdrProblems() {
 	intervalCleanup = sverb.cdr_problems_interval_cleanup ?
 			   sverb.cdr_problems_interval_cleanup :
 			   mainInterval * 2;
-	intervalExpiration = 5 * 60 * 60;
+	intervalExpiration = absolute_timeout + mainInterval * 2;
 	sqlDbStore = NULL;
 	last_store_at = 0;
 	last_store_at_real = 0;
@@ -3215,7 +3216,7 @@ cCdrSummary::cCdrSummary() {
 	intervalCleanup = sverb.cdr_summary_interval_cleanup ?
 			   sverb.cdr_summary_interval_cleanup :
 			   mainInterval * 2;
-	intervalExpiration = 5 * 60 * 60;
+	intervalExpiration = absolute_timeout + mainInterval * 2;
 	sqlDbStore = NULL;
 	last_store_at = 0;
 	last_store_at_real = 0;
