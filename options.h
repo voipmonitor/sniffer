@@ -208,7 +208,7 @@ public:
 	list<u_int64_t> next_requests_time_us;
 	sCallDataPcap cdp;
 	volatile bool saved_to_db;
-	CustomHeaders::tCH_Content custom_headers_content;
+	CustomHeaders::sCH_Content custom_headers_content;
 };
 
 

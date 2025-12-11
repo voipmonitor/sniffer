@@ -15679,7 +15679,8 @@ string CustomHeaders::sCustomHeaderData::dump(const char *prefix) {
 	       << prefix << "regularExpression: " << regularExpression << endl
 	       << prefix << "screenPopupField: " << screenPopupField << endl
 	       << prefix << "reqRespDirection: " << reqRespDirection << endl
-	       << prefix << "useLastValue: " << useLastValue << endl
+	       << prefix << "selectOccurrence: " << selectOccurrence << endl
+	       << prefix << "nthOccurrence: " << nthOccurrence << endl
 	       << prefix << "cseqMethod: " << implode(cseqMethod, "q ") << endl;
 	string sipResponseCodeInfoImpl;
 	for(std::vector<pair<int, int> >::iterator iter = sipResponseCodeInfo.begin(); iter != sipResponseCodeInfo.end(); iter++) {
@@ -15690,6 +15691,93 @@ string CustomHeaders::sCustomHeaderData::dump(const char *prefix) {
 	}
 	outStr << prefix << "sipResponseCodeInfoImpl: " << sipResponseCodeInfoImpl << endl;
 	return(outStr.str());
+}
+
+void CustomHeaders::sCH_ContentData::addContent(sCH_ContentDataItem *content, u_int64_t time_us) {
+	if(selectOccurrence == so_nth_value) {
+		timecontent[time_us] = *content;
+	} else if(selectOccurrence == so_last_value) {
+		if(!content_time || time_us > content_time) {
+			this->content = *content;
+			content_time = time_us;
+		}
+	} else {
+		if(!content_time || time_us < content_time) {
+			this->content = *content;
+			content_time = time_us;
+		}
+	}
+}
+
+CustomHeaders::sCH_ContentDataItem CustomHeaders::sCH_ContentData::getContent() {
+	sCH_ContentDataItem rslt;
+	if(selectOccurrence == so_nth_value) {
+		if(nthOccurrence > 0) {
+			unsigned i = 0;
+			for(map<u_int64_t, sCH_ContentDataItem>::iterator iter =  timecontent.begin(); iter != timecontent.end(); iter++) {
+				++i;
+				if(i == (unsigned)nthOccurrence) {
+					rslt = iter->second;
+					break;
+				}
+			}
+		}
+	} else {
+		rslt = content;
+	}
+	return(rslt);
+}
+
+bool CustomHeaders::sCH_ContentData::isSet() {
+	return(selectOccurrence == so_nth_value ?
+		timecontent.size() > 0 :
+		content_time > 0);
+}
+
+CustomHeaders::sCH_Content::~sCH_Content() {
+	for(map<sCH_index, sCH_ContentData*>::iterator iter = data.begin(); iter != data.end(); iter++) {
+		delete iter->second;
+	}
+}
+
+void CustomHeaders::sCH_Content::addContent(int i1, int i2, sCH_ContentDataItem *content, u_int64_t time_us, eSelectOccurrence selectOccurrence, int nthOccurrence) {
+	sCH_index index(i1, i2);
+	map<sCH_index, sCH_ContentData*>::iterator iter = data.find(index);
+	sCH_ContentData *contentData;
+	if(iter != data.end()) {
+		contentData = iter->second;
+	} else {
+		contentData = new FILE_LINE(0) sCH_ContentData;
+		contentData->content_time = 0;
+		contentData->selectOccurrence = selectOccurrence;
+		contentData->nthOccurrence = nthOccurrence;
+		data[index] = contentData;
+	}
+	contentData->addContent(content, time_us);
+}
+
+CustomHeaders::sCH_ContentDataItem CustomHeaders::sCH_Content::getContent(int i1, int i2) {
+	sCH_ContentDataItem rslt;
+	sCH_index index(i1, i2);
+	map<sCH_index, sCH_ContentData*>::iterator iter = data.find(index);
+	if(iter != data.end()) {
+		rslt = iter->second->getContent();
+	}
+	return(rslt);
+}
+
+void CustomHeaders::sCH_Content::incParseCounter(int i1, int i2) {
+	sCH_index index(i1, i2);
+	++parse_counter[index];
+}
+
+unsigned CustomHeaders::sCH_Content::getParseCounter(int i1, int i2) {
+	sCH_index index(i1, i2);
+	map<sCH_index, unsigned>::iterator iter = parse_counter.find(index);
+	if(iter != parse_counter.end()) {
+		return(iter->second);
+	}
+	return(0);
 }
 
 CustomHeaders::CustomHeaders(eType type, SqlDb *sqlDb) {
@@ -15784,12 +15872,13 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 				ch_data.reqRespDirection = row["direction"] == "request" ? dir_request :
 							   row["direction"] == "response" ? dir_response :
 							   row["direction"] == "both" ? dir_both : dir_na;
-				eSelectOccurence selectOccurence = (eSelectOccurence)atoi(row["select_occurrence"].c_str());
-				if(selectOccurence != so_sensor_setting) {
-					ch_data.useLastValue = selectOccurence == so_last_value;
-				} else {
-					ch_data.useLastValue = (bool)opt_custom_headers_last_value;
+				ch_data.selectOccurrence = (eSelectOccurrence)atoi(row["select_occurrence"].c_str());
+				if(ch_data.selectOccurrence == so_sensor_setting) {
+					ch_data.selectOccurrence = opt_custom_headers_last_value ?
+								   so_last_value :
+								   so_first_value;
 				}
+				ch_data.nthOccurrence = atoi(row["nth_occurrence"].c_str());
 				ch_data.allowMissingHeader = atoi(row["allow_missing_header"].c_str());
 				ch_data.cseqMethod = split2int(row["cseq_method"], ',');
 				std::vector<int> tmpvect = split2int(row["sip_response_code"], split(",|;| |", "|"), true);
@@ -15800,25 +15889,26 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 				ch_data.dynamic_column = atoi(row["dynamic_column"].c_str());
 				customHeaderData.push_back(ch_data);
 			}
+			int fixed_column_index = 0;
 			for(list<sCustomHeaderDataPlus>::iterator iter = customHeaderData.begin(); iter != customHeaderData.end(); iter++) {
 				if(iter->type == "fixed") {
 					if(!this->fixedTable.empty()) {
 						if(sqlDb->existsColumn(this->fixedTable, "custom_header__" + iter->first_header())) {
-							custom_headers[0][custom_headers[0].size()] = *iter;
+							custom_headers[sCH_index(0, fixed_column_index++)] = *iter;
 						}
 					}
 				} else {
-					custom_headers[iter->dynamic_table][iter->dynamic_column] = *iter;
+					custom_headers[sCH_index(iter->dynamic_table, iter->dynamic_column)] = *iter;
 				}
 			}
-			map<int, map<int, sCustomHeaderData> >::iterator iter;
-			for(iter = custom_headers.begin(); iter != custom_headers.end();) {
-				if(iter->first) {
+			set<int> addedTables;
+			for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
+				if(iter->first.i1 && addedTables.find(iter->first.i1) == addedTables.end()) {
 					char nextTable[100];
-					snprintf(nextTable, sizeof(nextTable), "%s%i", this->nextTablePrefix.c_str(), iter->first);
+					snprintf(nextTable, sizeof(nextTable), "%s%i", this->nextTablePrefix.c_str(), iter->first.i1);
 					allNextTables.push_back(nextTable);
+					addedTables.insert(iter->first.i1);
 				}
-				iter++;
 			}
 		}
 	}
@@ -15841,17 +15931,23 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 			ch_data.header.push_back((*iter)[0]);
 			ch_data.header_find = ch_data.header;
 			ch_data.setHeaderFindSuffix();
-			bool exists =  false;
-			for(unsigned i = 0; i < custom_headers[0].size() && !exists; i++) {
-				for(unsigned j = 0; j < custom_headers[0][i].header.size() && !exists; i++) {
-					if(!strcasecmp(custom_headers[0][i].header[j].c_str(), ch_data.first_header().c_str())) {
-						exists = true;
-						break;
+			bool exists = false;
+			int max_fixed_index = -1;
+			for(map<sCH_index, sCustomHeaderData>::iterator it = custom_headers.begin(); it != custom_headers.end() && !exists; it++) {
+				if(it->first.i1 == 0) {
+					if(it->first.i2 > max_fixed_index) {
+						max_fixed_index = it->first.i2;
+					}
+					for(unsigned j = 0; j < it->second.header.size() && !exists; j++) {
+						if(!strcasecmp(it->second.header[j].c_str(), ch_data.first_header().c_str())) {
+							exists = true;
+							break;
+						}
 					}
 				}
 			}
 			if(!exists) {
-				custom_headers[0][custom_headers[0].size()] = ch_data;
+				custom_headers[sCH_index(0, max_fixed_index + 1)] = ch_data;
 			}
 		}
 	}
@@ -15893,14 +15989,10 @@ void CustomHeaders::refresh(SqlDb *sqlDb, bool enableCreatePartitions) {
 
 void CustomHeaders::prepareCustomNodes(ParsePacket *parsePacket) {
 	lock_custom_headers();
-	map<int, map<int, sCustomHeaderData> >::iterator iter;
-	for(iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
-		map<int, sCustomHeaderData>::iterator iter2;
-		for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
-			for(unsigned i = 0; i < iter2->second.header_find.size(); i++) {
-				if(iter2->second.header_find[i].length()) {
-					parsePacket->prepareCustomNode(iter2->second.header_find[i].c_str());
-				}
+	for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
+		for(unsigned i = 0; i < iter->second.header_find.size(); i++) {
+			if(iter->second.header_find[i].length()) {
+				parsePacket->prepareCustomNode(iter->second.header_find[i].c_str());
 			}
 		}
 	}
@@ -15909,153 +16001,152 @@ void CustomHeaders::prepareCustomNodes(ParsePacket *parsePacket) {
 
 extern char * gettag_ext(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents, 
 			 const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
-void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_s_process *packetS, eReqRespDirection reqRespDirection) {
+void CustomHeaders::parse(Call *call, int type, sCH_Content *ch_content, packet_s_process *packetS, eReqRespDirection reqRespDirection) {
+	if(!ch_content) {
+		if(call) {
+			ch_content = getCustomHeadersCallContent(call, type);
+		}
+		if(!ch_content) {
+			return;
+		}
+	}
 	char *data = packetS->data_() + packetS->sipDataOffset;
 	int datalen = packetS->sipDataLen;
 	ParsePacket::ppContentsX *parseContents = &packetS->parseContents;
-
 	lock_custom_headers();
 	if(call) {
 		call->custom_headers_content_lock();
 	}
 	unsigned long gettagLimitLen = 0;
-	map<int, map<int, sCustomHeaderData> >::iterator iter;
-	for(iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
-		map<int, sCustomHeaderData>::iterator iter2;
-		for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
-			if(iter2->second.specialType) {
-				string content;
-				switch(iter2->second.specialType) {
-				case max_length_sip_data:
-					if(call && call->max_length_sip_data) {
-						content = intToString(call->max_length_sip_data);
-					}
-					break;
-				case max_length_sip_packet:
-					if(call && call->max_length_sip_packet) {
-						content = intToString(call->max_length_sip_packet);
-					}
-					break;
-				case gsm_dcs:
-					if(call && call->dcs) {
-						content = intToString(call->dcs);
-					}
-					break;
-				case gsm_voicemail:
-					if(call) {
-						switch(call->voicemail) {
-						case Call::voicemail_active:
-							content = "active";
-							break;
-						case Call::voicemail_inactive:
-							content = "inactive";
-							break;
-						case Call::voicemail_na:
-							break;
-						}
-					}
-					break;
-				case max_retransmission_invite:
-					if(call) {
-						unsigned max_retrans = call->getMaxRetransmissionInvite(call->branch_main());
-						if(max_retrans > 0) {
-							content = intToString(max_retrans);
-						}
-					}
-					break;
-				case digest_username:
-					if(!call->branch_main()->digest_username.empty()) {
-						content = call->branch_main()->digest_username;
-					}
-					break;
-				case st_na:
-					break;
+	for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
+		if(iter->second.specialType) {
+			string content;
+			switch(iter->second.specialType) {
+			case max_length_sip_data:
+				if(call && call->max_length_sip_data) {
+					content = intToString(call->max_length_sip_data);
 				}
-				dstring ds_content(iter2->second.first_header(), content);
-				this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &ds_content, true);
-			} else {
-				if(reqRespDirection != dir_na && iter2->second.reqRespDirection != dir_na &&
-				   !(reqRespDirection & iter2->second.reqRespDirection)) {
-					continue;
+				break;
+			case max_length_sip_packet:
+				if(call && call->max_length_sip_packet) {
+					content = intToString(call->max_length_sip_packet);
 				}
-				if (!iter2->second.sipResponseCodeInfo.empty() &&
-				    !matchResponseCodes(iter2->second.sipResponseCodeInfo, packetS->lastSIPresponseNum)) {
-					continue;
+				break;
+			case gsm_dcs:
+				if(call && call->dcs) {
+					content = intToString(call->dcs);
 				}
-				if (!iter2->second.cseqMethod.empty() &&
-				    std::find(iter2->second.cseqMethod.begin(), iter2->second.cseqMethod.end(), packetS->cseq.method) == iter2->second.cseqMethod.end()) {
-					continue;
-				}
+				break;
+			case gsm_voicemail:
 				if(call) {
-					if (iter2->second.allowMissingHeader && call->first_custom_header_search[iter->first][iter2->first]) {
-						continue;
+					switch(call->voicemail) {
+					case Call::voicemail_active:
+						content = "active";
+						break;
+					case Call::voicemail_inactive:
+						content = "inactive";
+						break;
+					case Call::voicemail_na:
+						break;
 					}
 				}
-				for(unsigned i = 0; i < iter2->second.header_find.size(); i++) {
-					if(iter2->second.header_find[i].length()) {
-						unsigned long l;
-						char *s = gettag_ext(data, datalen, parseContents,
-								     iter2->second.header_find[i].c_str(), &l, &gettagLimitLen);
-						if(l) {
-							int customHeaderContent_length = min(getCustomHeaderMaxSize(), (int)l);
-							char *customHeaderContent = new FILE_LINE(0) char[customHeaderContent_length + 1];
-							memcpy(customHeaderContent, s, customHeaderContent_length);
-							customHeaderContent[customHeaderContent_length] = '\0';
-							char *customHeaderBegin = customHeaderContent;
-							if(!iter2->second.leftBorder.empty()) {
-								customHeaderBegin = strcasestr(customHeaderBegin, iter2->second.leftBorder.c_str());
-								if(customHeaderBegin) {
-									customHeaderBegin += iter2->second.leftBorder.length();
-								} else {
+				break;
+			case max_retransmission_invite:
+				if(call) {
+					unsigned max_retrans = call->getMaxRetransmissionInvite(call->branch_main());
+					if(max_retrans > 0) {
+						content = intToString(max_retrans);
+					}
+				}
+				break;
+			case digest_username:
+				if(call && !call->branch_main()->digest_username.empty()) {
+					content = call->branch_main()->digest_username;
+				}
+				break;
+			case st_na:
+				break;
+			}
+			sCH_ContentDataItem ds_content(iter->second.first_header().c_str(), content.c_str());
+			this->setCustomHeaderContent(call, type, ch_content, iter->first.i1, iter->first.i2, &ds_content, packetS->getTimeUS(), so_last_value, 0);
+		} else {
+			if(reqRespDirection != dir_na && iter->second.reqRespDirection != dir_na &&
+			   !(reqRespDirection & iter->second.reqRespDirection)) {
+				continue;
+			}
+			if (!iter->second.sipResponseCodeInfo.empty() &&
+			    !matchResponseCodes(iter->second.sipResponseCodeInfo, packetS->lastSIPresponseNum)) {
+				continue;
+			}
+			if (!iter->second.cseqMethod.empty() &&
+			    std::find(iter->second.cseqMethod.begin(), iter->second.cseqMethod.end(), packetS->cseq.method) == iter->second.cseqMethod.end()) {
+				continue;
+			}
+			if(iter->second.allowMissingHeader && ch_content->getParseCounter(iter->first.i1, iter->first.i2) > 0) {
+				continue;
+			}
+			for(unsigned i = 0; i < iter->second.header_find.size(); i++) {
+				if(iter->second.header_find[i].length()) {
+					unsigned long l;
+					char *s = gettag_ext(data, datalen, parseContents,
+							     iter->second.header_find[i].c_str(), &l, &gettagLimitLen);
+					if(l) {
+						int customHeaderContent_length = min(getCustomHeaderMaxSize(), (int)l);
+						char *customHeaderContent = new FILE_LINE(0) char[customHeaderContent_length + 1];
+						memcpy(customHeaderContent, s, customHeaderContent_length);
+						customHeaderContent[customHeaderContent_length] = '\0';
+						char *customHeaderBegin = customHeaderContent;
+						if(!iter->second.leftBorder.empty()) {
+							customHeaderBegin = strcasestr(customHeaderBegin, iter->second.leftBorder.c_str());
+							if(customHeaderBegin) {
+								customHeaderBegin += iter->second.leftBorder.length();
+							} else {
+								delete [] customHeaderContent;
+								continue;
+							}
+						}
+						if(!iter->second.rightBorder.empty()) {
+							char *customHeaderEnd = strcasestr(customHeaderBegin, iter->second.rightBorder.c_str());
+							if(customHeaderEnd) {
+								*customHeaderEnd = 0;
+							} else {
+								delete [] customHeaderContent;
+								continue;
+							}
+						}
+						if(!iter->second.regularExpression.empty()) {
+							if(!iter->second.regularExpressionReplacePattern.empty() ||
+							   reg_pattern_contain_subresult(iter->second.regularExpression.c_str())) {
+								string customHeader = reg_replace(customHeaderBegin, iter->second.regularExpression.c_str(),
+												  !iter->second.regularExpressionReplacePattern.empty() ? iter->second.regularExpressionReplacePattern.c_str() : "$1",
+												  __FILE__, __LINE__);
+								if(customHeader.empty()) {
 									delete [] customHeaderContent;
 									continue;
-								}
-							}
-							if(!iter2->second.rightBorder.empty()) {
-								char *customHeaderEnd = strcasestr(customHeaderBegin, iter2->second.rightBorder.c_str());
-								if(customHeaderEnd) {
-									*customHeaderEnd = 0;
 								} else {
-									delete [] customHeaderContent;
-									continue;
-								}
-							}
-							if(!iter2->second.regularExpression.empty()) {
-								if(!iter2->second.regularExpressionReplacePattern.empty() ||
-								   reg_pattern_contain_subresult(iter2->second.regularExpression.c_str())) {
-									string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), 
-													  !iter2->second.regularExpressionReplacePattern.empty() ? iter2->second.regularExpressionReplacePattern.c_str() : "$1",
-													  __FILE__, __LINE__);
-									if(customHeader.empty()) {
-										delete [] customHeaderContent;
-										continue;
-									} else {
-										dstring content(iter2->second.header[i], customHeader);
-										this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, iter2->second.useLastValue);
-									}
-								} else {
-									vector<string> matches;
-									int rslt_match = reg_match(customHeaderBegin, iter2->second.regularExpression.c_str(), &matches, false);
-									if(rslt_match > 0 && matches.size() > 0) {
-										dstring content(iter2->second.header[i], matches[0]);
-										this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, iter2->second.useLastValue);
-									} else {
-										delete [] customHeaderContent;
-										continue;
-									}
+									sCH_ContentDataItem content(iter->second.header[i].c_str(), customHeader.c_str());
+									this->setCustomHeaderContent(call, type, ch_content, iter->first.i1, iter->first.i2, &content, packetS->getTimeUS(), iter->second.selectOccurrence, iter->second.nthOccurrence);
 								}
 							} else {
-								dstring content(iter2->second.header[i], customHeaderBegin);
-								this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, iter2->second.useLastValue);
+								vector<string> matches;
+								int rslt_match = reg_match(customHeaderBegin, iter->second.regularExpression.c_str(), &matches, false);
+								if(rslt_match > 0 && matches.size() > 0) {
+									sCH_ContentDataItem content(iter->second.header[i].c_str(), matches[0].c_str());
+									this->setCustomHeaderContent(call, type, ch_content, iter->first.i1, iter->first.i2, &content, packetS->getTimeUS(), iter->second.selectOccurrence, iter->second.nthOccurrence);
+								} else {
+									delete [] customHeaderContent;
+									continue;
+								}
 							}
-							delete [] customHeaderContent;
+						} else {
+							sCH_ContentDataItem content(iter->second.header[i].c_str(), customHeaderBegin);
+							this->setCustomHeaderContent(call, type, ch_content, iter->first.i1, iter->first.i2, &content, packetS->getTimeUS(), iter->second.selectOccurrence, iter->second.nthOccurrence);
 						}
+						delete [] customHeaderContent;
 					}
 				}
-				if(call) {
-					call->first_custom_header_search[iter->first][iter2->first] = 1;
-				}
 			}
+			ch_content->incParseCounter(iter->first.i1, iter->first.i2);
 		}
 	}
 	if(call) {
@@ -16064,7 +16155,8 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 	unlock_custom_headers();
 }
 
-void CustomHeaders::setCustomHeaderContent(Call *call, int type, tCH_Content *ch_content, int pos1, int pos2, dstring *content, bool useLastValue) {
+void CustomHeaders::setCustomHeaderContent(Call *call, int type, sCH_Content *ch_content, int i1, int i2, sCH_ContentDataItem *content, u_int64_t time_us,
+					   eSelectOccurrence selectOccurrence, int nthOccurrence) {
 	if(!ch_content) {
 		if(call) {
 			ch_content = getCustomHeadersCallContent(call, type);
@@ -16073,22 +16165,10 @@ void CustomHeaders::setCustomHeaderContent(Call *call, int type, tCH_Content *ch
 			return;
 		}
 	}
-	bool exists = false;
-	if(!useLastValue) {
-		tCH_Content::iterator iter = ch_content->find(pos1);
-		if(iter != ch_content->end()) {
-			map<int, dstring>::iterator iter2 = iter->second.find(pos2);
-			if(iter2 != iter->second.end()) {
-				exists = true;
-			}
-		}
-	}
-	if(!exists || useLastValue) {
-		(*ch_content)[pos1][pos2] = *content;
-	}
+	ch_content->addContent(i1, i2, content, time_us, selectOccurrence, nthOccurrence);
 }
 
-void CustomHeaders::prepareSaveRows(Call *call, int type, tCH_Content *ch_content, u_int64_t time_us, SqlDb_row *cdr_next, SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]) {
+void CustomHeaders::prepareSaveRows(Call *call, int type, sCH_Content *ch_content, u_int64_t time_us, SqlDb_row *cdr_next, SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]) {
 	if(!ch_content) {
 		if(call) {
 			ch_content = getCustomHeadersCallContent(call, type);
@@ -16100,33 +16180,28 @@ void CustomHeaders::prepareSaveRows(Call *call, int type, tCH_Content *ch_conten
 	if(call) {
 		call->custom_headers_content_lock();
 	}
-	tCH_Content::iterator iter;
-	for(iter = ch_content->begin(); iter != ch_content->end(); iter++) {
-		if(iter->first > CDR_NEXT_MAX) {
-			break;
-		}
-		map<int, dstring>::iterator iter2;
-		for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
-			if(iter2->second[1].empty()) {
-				continue;
-			}
-			if(!iter->first) {
-				cdr_next->add(sqlEscapeString(iter2->second[1]), "custom_header__" + iter2->second[0]);
-			} else {
-				if(!cdr_next_ch_name[iter->first - 1][0]) {
-					sprintf(cdr_next_ch_name[iter->first - 1], "%s%i", this->nextTablePrefix.c_str(), iter->first);
-					if(opt_cdr_partition) {
-						bool use_ms = false;
-						map<int, bool>::iterator calldate_ms_iter = calldate_ms.find(iter->first - 1);
-						if(calldate_ms_iter != calldate_ms.end() && calldate_ms_iter->second) {
-							use_ms = true;
+	for(map<sCH_index, sCH_ContentData*>::iterator iter = ch_content->data.begin(); iter != ch_content->data.end(); iter++) {
+		if(iter->first.i1 <= CDR_NEXT_MAX) {
+			sCH_ContentDataItem content = iter->second->getContent();
+			if(!content.content.empty()) {
+				if(!iter->first.i1) {
+					cdr_next->add(sqlEscapeString(content.content), "custom_header__" + content.header);
+				} else {
+					if(!cdr_next_ch_name[iter->first.i1 - 1][0]) {
+						sprintf(cdr_next_ch_name[iter->first.i1 - 1], "%s%i", this->nextTablePrefix.c_str(), iter->first.i1);
+						if(opt_cdr_partition) {
+							bool use_ms = false;
+							map<int, bool>::iterator calldate_ms_iter = calldate_ms.find(iter->first.i1 - 1);
+							if(calldate_ms_iter != calldate_ms.end() && calldate_ms_iter->second) {
+								use_ms = true;
+							}
+							cdr_next_ch[iter->first.i1 - 1].add_calldate(call ? call->calltime_us() : time_us, this->relTimeColumn, use_ms);
 						}
-						cdr_next_ch[iter->first - 1].add_calldate(call ? call->calltime_us() : time_us, this->relTimeColumn, use_ms);
 					}
+					char fieldName[20];
+					snprintf(fieldName, sizeof(fieldName), "custom_header_%i", iter->first.i2);
+					cdr_next_ch[iter->first.i1 - 1].add(sqlEscapeString(content.content), fieldName);
 				}
-				char fieldName[20];
-				snprintf(fieldName, sizeof(fieldName), "custom_header_%i", iter2->first);
-				cdr_next_ch[iter->first - 1].add(sqlEscapeString(iter2->second[1]), fieldName);
 			}
 		}
 	}
@@ -16136,24 +16211,22 @@ void CustomHeaders::prepareSaveRows(Call *call, int type, tCH_Content *ch_conten
 }
 
 string CustomHeaders::getScreenPopupFieldsString(Call *call, int type) {
-	tCH_Content *ch_content = getCustomHeadersCallContent(call, type);
 	string fields;
-	tCH_Content::iterator iter;
-	for(iter = ch_content->begin(); iter != ch_content->end(); iter++) {
-		map<int, dstring>::iterator iter2;
-		for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
-			if(!this->custom_headers[iter->first][iter2->first].screenPopupField ||
-			   iter2->second[1].empty()) {
-				continue;
+	sCH_Content *ch_content = getCustomHeadersCallContent(call, type);
+	for(map<sCH_index, sCH_ContentData*>::iterator iter = ch_content->data.begin(); iter != ch_content->data.end(); iter++) {
+		map<sCH_index, sCustomHeaderData>::iterator ch_iter = custom_headers.find(iter->first);
+		if(ch_iter != custom_headers.end() && ch_iter->second.screenPopupField) {
+			sCH_ContentDataItem content = iter->second->getContent();
+			if(!content.content.empty()) {
+				if(!fields.empty()) {
+					fields += "||";
+				}
+				string name = content.header;
+				std::transform(name.begin(), name.end(), name.begin(), ::toupper);
+				fields += name;
+				fields += "::";
+				fields += content.content;
 			}
-			if(!fields.empty()) {
-				fields += "||";
-			}
-			string name = iter2->second[0];
-			std::transform(name.begin(), name.end(), name.begin(), ::toupper);
-			fields += name;
-			fields += "::";
-			fields += iter2->second[1];
 		}
 	}
 	return(fields);
@@ -16198,7 +16271,7 @@ void CustomHeaders::createMysqlPartitions(class SqlDb *sqlDb, const char *tableN
 	_createMysqlPartition(tableName, type, next_day, opt_cdr_partition_oldver, NULL, sqlDb);
 }
 
-string CustomHeaders::getQueryForSaveUseInfo(Call* call, int type, tCH_Content *ch_content) {
+string CustomHeaders::getQueryForSaveUseInfo(Call* call, int type, sCH_Content *ch_content) {
 	if(!ch_content) {
 		if(call) {
 			ch_content = getCustomHeadersCallContent(call, type);
@@ -16210,30 +16283,24 @@ string CustomHeaders::getQueryForSaveUseInfo(Call* call, int type, tCH_Content *
 	return(getQueryForSaveUseInfo(call->calltime_us(), ch_content));
 }
 
-string CustomHeaders::getQueryForSaveUseInfo(u_int64_t time_us, tCH_Content *ch_content) {
+string CustomHeaders::getQueryForSaveUseInfo(u_int64_t time_us, sCH_Content *ch_content) {
 	string query = "";
 	if(TIME_US_TO_S(time_us) > this->lastTimeSaveUseInfo + 60) {
-		tCH_Content::iterator iter;
-		for(iter = ch_content->begin(); iter != ch_content->end(); iter++) {
-			if(iter->first > CDR_NEXT_MAX) {
-				break;
-			}
-			if(iter->first) {
-				map<int, dstring>::iterator iter2;
-				for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
-					if(!iter2->second[1].empty()) {
-						if(!query.empty()) {
-							query += ";";
-						}
-						char queryBuff[200];
-						snprintf(queryBuff, sizeof(queryBuff),
-							 "update %s set use_at = '%s' where dynamic_table=%i and dynamic_column=%i",
-							 this->configTable.c_str(),
-							 sqlDateTimeString(TIME_US_TO_S(time_us)).c_str(),
-							 iter->first,
-							 iter2->first);
-						query += queryBuff;
+		for(map<sCH_index, sCH_ContentData*>::iterator iter = ch_content->data.begin(); iter != ch_content->data.end(); iter++) {
+			if(iter->first.i1 > 0 && iter->first.i1 <= CDR_NEXT_MAX) {
+				sCH_ContentDataItem content = iter->second->getContent();
+				if(!content.content.empty()) {
+					if(!query.empty()) {
+						query += ";";
 					}
+					char queryBuff[200];
+					snprintf(queryBuff, sizeof(queryBuff),
+						 "update %s set use_at = '%s' where dynamic_table=%i and dynamic_column=%i",
+						 this->configTable.c_str(),
+						 sqlDateTimeString(TIME_US_TO_S(time_us)).c_str(),
+						 iter->first.i1,
+						 iter->first.i2);
+					query += queryBuff;
 				}
 			}
 		}
@@ -16402,9 +16469,11 @@ void CustomHeaders::createColumnsForFixedHeaders(SqlDb *sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
-	for(unsigned i = 0; i < custom_headers[0].size(); i++) {
-		if(!sqlDb->existsColumn(this->fixedTable, "custom_header__" + custom_headers[0][i].first_header())) {
-			sqlDb->query(string("ALTER TABLE `") + this->fixedTable + "` ADD COLUMN `custom_header__" + custom_headers[0][i].first_header() + "` VARCHAR(255);");
+	for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
+		if(iter->first.i1 == 0) {
+			if(!sqlDb->existsColumn(this->fixedTable, "custom_header__" + iter->second.first_header())) {
+				sqlDb->query(string("ALTER TABLE `") + this->fixedTable + "` ADD COLUMN `custom_header__" + iter->second.first_header() + "` VARCHAR(255);");
+			}
 		}
 	}
 	if(_createSqlObject) {
@@ -16415,15 +16484,11 @@ void CustomHeaders::createColumnsForFixedHeaders(SqlDb *sqlDb) {
 bool CustomHeaders::getPosForDbId(unsigned db_id, d_u_int32_t *pos) {
 	lock_custom_headers();
 	bool find = false;
-	map<int, map<int, sCustomHeaderData> >::iterator iter;
-	for(iter = custom_headers.begin(); iter != custom_headers.end() && !find; iter++) {
-		map<int, sCustomHeaderData>::iterator iter2;
-		for(iter2 = iter->second.begin(); iter2 != iter->second.end() && !find; iter2++) {
-			if(iter2->second.db_id == db_id) {
-				pos->val[0] = iter->first;
-				pos->val[1] = iter2->first;
-				find = true;
-			}
+	for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end() && !find; iter++) {
+		if(iter->second.db_id == db_id) {
+			pos->val[0] = iter->first.i1;
+			pos->val[1] = iter->first.i2;
+			find = true;
 		}
 	}
 	unlock_custom_headers();
@@ -16434,7 +16499,7 @@ bool CustomHeaders::getPosForDbId(unsigned db_id, d_u_int32_t *pos) {
 	return(find);
 }
 
-CustomHeaders::tCH_Content *CustomHeaders::getCustomHeadersCallContent(Call *call, int type) {
+CustomHeaders::sCH_Content *CustomHeaders::getCustomHeadersCallContent(Call *call, int type) {
 	return(type == INVITE ?
 		&call->custom_headers_content_cdr :
 	       type == MESSAGE ? 
@@ -16444,13 +16509,11 @@ CustomHeaders::tCH_Content *CustomHeaders::getCustomHeadersCallContent(Call *cal
 
 void CustomHeaders::getHeaders(list<string> *rslt) {
 	lock_custom_headers();
-	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
-		for(map<int, sCustomHeaderData>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
-			if(!iter->first) {
-				rslt->push_back("custom_header__" + iter2->second.first_header());
-			} else {
-				rslt->push_back("custom_header_" + intToString(iter->first) + "_" + intToString(iter2->first));
-			}
+	for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
+		if(!iter->first.i1) {
+			rslt->push_back("custom_header__" + iter->second.first_header());
+		} else {
+			rslt->push_back("custom_header_" + intToString(iter->first.i1) + "_" + intToString(iter->first.i2));
 		}
 	}
 	unlock_custom_headers();
@@ -16459,11 +16522,9 @@ void CustomHeaders::getHeaders(list<string> *rslt) {
 void CustomHeaders::getValues(Call *call, int type, list<string> *rslt) {
 	lock_custom_headers();
 	call->custom_headers_content_lock();
-	tCH_Content *ch_content = getCustomHeadersCallContent(call, type);
-	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
-		for(map<int, sCustomHeaderData>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
-			rslt->push_back(tCH_Content_value(ch_content, iter->first, iter2->first));
-		}
+	sCH_Content *ch_content = getCustomHeadersCallContent(call, type);
+	for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
+		rslt->push_back(getCH_Content_value(ch_content, iter->first.i1, iter->first.i2));
 	}
 	call->custom_headers_content_unlock();
 	unlock_custom_headers();
@@ -16472,14 +16533,12 @@ void CustomHeaders::getValues(Call *call, int type, list<string> *rslt) {
 void CustomHeaders::getHeaderValues(Call *call, int type, map<string, string> *rslt) {
 	lock_custom_headers();
 	call->custom_headers_content_lock();
-	tCH_Content *ch_content = getCustomHeadersCallContent(call, type);
-	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
-		for(map<int, sCustomHeaderData>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
-			if(!iter->first) {
-				(*rslt)["custom_header__" + iter2->second.first_header()] = tCH_Content_value(ch_content, iter->first, iter2->first);
-			} else {
-				(*rslt)["custom_header_" + intToString(iter->first) + "_" + intToString(iter2->first)] = tCH_Content_value(ch_content, iter->first, iter2->first);
-			}
+	sCH_Content *ch_content = getCustomHeadersCallContent(call, type);
+	for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
+		if(!iter->first.i1) {
+			(*rslt)["custom_header__" + iter->second.first_header()] = getCH_Content_value(ch_content, iter->first.i1, iter->first.i2);
+		} else {
+			(*rslt)["custom_header_" + intToString(iter->first.i1) + "_" + intToString(iter->first.i2)] = getCH_Content_value(ch_content, iter->first.i1, iter->first.i2);
 		}
 	}
 	call->custom_headers_content_unlock();
@@ -16489,15 +16548,9 @@ void CustomHeaders::getHeaderValues(Call *call, int type, map<string, string> *r
 void CustomHeaders::getNameValues(Call *call, int type, map<string, string> *rslt) {
 	lock_custom_headers();
 	call->custom_headers_content_lock();
-	tCH_Content *ch_content = getCustomHeadersCallContent(call, type);
-	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
-		for(map<int, sCustomHeaderData>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
-			if(!iter->first) {
-				(*rslt)[iter2->second.name] = tCH_Content_value(ch_content, iter->first, iter2->first);
-			} else {
-				(*rslt)[iter2->second.name] = tCH_Content_value(ch_content, iter->first, iter2->first);
-			}
-		}
+	sCH_Content *ch_content = getCustomHeadersCallContent(call, type);
+	for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
+		(*rslt)[iter->second.name] = getCH_Content_value(ch_content, iter->first.i1, iter->first.i2);
 	}
 	call->custom_headers_content_unlock();
 	unlock_custom_headers();
@@ -16507,15 +16560,13 @@ string CustomHeaders::getValue(Call *call, int type, const char *header) {
 	string rslt;
 	lock_custom_headers();
 	call->custom_headers_content_lock();
-	tCH_Content *ch_content = getCustomHeadersCallContent(call, type);
-	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end() && rslt.empty(); iter++) {
-		for(map<int, sCustomHeaderData>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end() && rslt.empty(); iter2++) {
-			string cmpHeaderName = !iter->first ?
-						"custom_header__" + iter2->second.first_header() :
-						"custom_header_" + intToString(iter->first) + "_" + intToString(iter2->first);
-			if(header == cmpHeaderName) {
-				rslt = tCH_Content_value(ch_content, iter->first, iter2->first);
-			}
+	sCH_Content *ch_content = getCustomHeadersCallContent(call, type);
+	for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end() && rslt.empty(); iter++) {
+		string cmpHeaderName = !iter->first.i1 ?
+					"custom_header__" + iter->second.first_header() :
+					"custom_header_" + intToString(iter->first.i1) + "_" + intToString(iter->first.i2);
+		if(header == cmpHeaderName) {
+			rslt = getCH_Content_value(ch_content, iter->first.i1, iter->first.i2);
 		}
 	}
 	call->custom_headers_content_unlock();
@@ -16523,23 +16574,13 @@ string CustomHeaders::getValue(Call *call, int type, const char *header) {
 	return(rslt);
 }
 
-string CustomHeaders::tCH_Content_value(tCH_Content *ch_content, int i1, int i2) {
-	tCH_Content::iterator iter = ch_content->find(i1);
-	if(iter != ch_content->end()) {
-		map<int, dstring>::iterator iter2 = iter->second.find(i2);
-		if(iter2 != iter->second.end()) {
-			return(iter2->second[1]);
-		}
-	}
-	return("");
+string CustomHeaders::getCH_Content_value(sCH_Content *ch_content, int i1, int i2) {
+	return(ch_content->getContent(i1, i2).content);
 }
 
 unsigned CustomHeaders::getSize() {
-	unsigned size = 0;
 	lock_custom_headers();
-	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
-		size += iter->second.size();
-	}
+	unsigned size = custom_headers.size();
 	unlock_custom_headers();
 	return(size);
 }
@@ -16558,11 +16599,9 @@ string CustomHeaders::dump() {
 	       << "relIdColumn: " << relIdColumn << endl
 	       << "relTimeColumn: " << relTimeColumn << endl;
 	outStr << "custom_headers: " << endl;
-	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
-		for(map<int, sCustomHeaderData>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
-			outStr << "   " << iter->first << " / " << iter2->first << endl;
-			outStr << iter2->second.dump("      ");
-		}
+	for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
+		outStr << "   " << iter->first.i1 << " / " << iter->first.i2 << endl;
+		outStr << iter->second.dump("      ");
 	}
 	outStr << "allNextTables: " << implode(allNextTables, "; ") << endl;
 	string calldate_ms_mpl;
@@ -16596,7 +16635,7 @@ bool NoHashMessageRule::checkNoHash(Call *call) {
 	}
 	bool noHashByHeader = false;
 	if(this->customHeader_ok) {
-		string header = call->custom_headers_content_message[this->customHeader_pos[0]][this->customHeader_pos[1]][1];
+		string header = call->custom_headers_content_message.getContent(this->customHeader_pos[0], this->customHeader_pos[1]).content;
 		if(header.length()) {
 			if(this->header_regexp.size()) {
 				list<cRegExp*>::iterator iter_header_regexp;

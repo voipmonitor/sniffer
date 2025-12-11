@@ -1166,6 +1166,59 @@ struct sChartsCacheCallData {
 	map<u_int32_t, cEvalFormula::sValue> value_map;
 };
 
+class CustomHeadersContentData {
+public:
+	enum eSelectOccurrence {
+		so_sensor_setting = 0,
+		so_first_value = 1,
+		so_last_value = 2,
+		so_nth_value = 3
+	};
+	struct sCH_index {
+		int i1;
+		int i2;
+		sCH_index(int i1, int i2) : i1(i1), i2(i2) {}
+		inline bool operator == (const sCH_index& other) const {
+			return(this->i1 == other.i1 &&
+			       this->i2 == other.i2);
+		}
+		inline bool operator < (const sCH_index& other) const {
+			return(this->i1 < other.i1 ? 1 : this->i1 > other.i1 ? 0 :
+			       this->i2 < other.i2);
+		}
+	};
+	struct sCH_ContentDataItem {
+		sCH_ContentDataItem() {}
+		sCH_ContentDataItem(const char *header, const char *content) : header(header), content(content) {}
+		string header;
+		string content;
+	};
+	struct sCH_ContentData {
+		sCH_ContentData() {
+			content_time = 0;
+			selectOccurrence = so_first_value;
+			nthOccurrence = 0;
+		}
+		void addContent(sCH_ContentDataItem *content, u_int64_t time_us);
+		sCH_ContentDataItem getContent();
+		bool isSet();
+		map<u_int64_t, sCH_ContentDataItem> timecontent;
+		sCH_ContentDataItem content;
+		u_int64_t content_time;
+		eSelectOccurrence selectOccurrence;
+		int nthOccurrence;
+	};
+	struct sCH_Content {
+		~sCH_Content();
+		void addContent(int i1, int i2, sCH_ContentDataItem *content, u_int64_t time_us, eSelectOccurrence selectOccurrence, int nthOccurrence);
+		sCH_ContentDataItem getContent(int i1, int i2);
+		void incParseCounter(int i1, int i2);
+		unsigned getParseCounter(int i1, int i2);
+		map<sCH_index, sCH_ContentData*> data;
+		map<sCH_index, unsigned> parse_counter;
+	};
+};
+
 /**
   * This class implements operations on call
 */
@@ -1772,13 +1825,9 @@ public:
 
 	string geoposition;
 
-	/* obsolete
-	map<string, string> custom_headers;
-	*/
-	map<int, map<int, dstring> > custom_headers_content_cdr;
-	map<int, map<int, dstring> > custom_headers_content_message;
+	CustomHeadersContentData::sCH_Content custom_headers_content_cdr;
+	CustomHeadersContentData::sCH_Content custom_headers_content_message;
 	volatile int _custom_headers_content_sync;
-	map<int, map<int, int> > first_custom_header_search;
 
 	u_int16_t onInvite_counter;
 	u_int16_t onCall_2XX_counter;
@@ -4203,7 +4252,7 @@ private:
 };
 
 
-class CustomHeaders {
+class CustomHeaders : public CustomHeadersContentData {
 public:
 	enum eType {
 		cdr,
@@ -4225,11 +4274,6 @@ public:
 		dir_response = 2,
 		dir_both     = 3
 	};
-	enum eSelectOccurence {
-		so_sensor_setting = 0,
-		so_first_value = 1,
-		so_last_value = 2
-	};
 	struct sCustomHeaderData {
 		sCustomHeaderData() {
 			specialType = st_na;
@@ -4237,7 +4281,8 @@ public:
 			db_id = 0;
 			screenPopupField = false;
 			reqRespDirection = dir_na;
-			useLastValue = false;
+			selectOccurrence = so_first_value;
+			nthOccurrence = 1;
 			allowMissingHeader = false;
 		}
 		inline string first_header() {
@@ -4268,7 +4313,8 @@ public:
 		string regularExpressionReplacePattern;
 		bool screenPopupField;
 		eReqRespDirection reqRespDirection;
-		bool useLastValue;
+		eSelectOccurrence selectOccurrence;
+		int nthOccurrence;
 		bool allowMissingHeader;
 		std::vector<int> cseqMethod;
 		std::vector<pair<int, int> > sipResponseCodeInfo;
@@ -4278,16 +4324,16 @@ public:
 		int dynamic_table;
 		int dynamic_column;
 	};
-	typedef map<int, map<int, dstring> > tCH_Content;
 public:
 	CustomHeaders(eType type, SqlDb *sqlDb = NULL);
 	void load(SqlDb *sqlDb = NULL, bool enableCreatePartitions = true, bool lock = true);
 	void clear(bool lock = true);
 	void refresh(SqlDb *sqlDb = NULL, bool enableCreatePartitions = true);
 	void prepareCustomNodes(ParsePacket *parsePacket);
-	void parse(Call *call, int type, tCH_Content *ch_content, packet_s_process *packetS, eReqRespDirection reqRespDirection = dir_na);
-	void setCustomHeaderContent(Call *call, int type, tCH_Content *ch_content, int pos1, int pos2, dstring *content, bool useLastValue);
-	void prepareSaveRows(Call *call, int type, tCH_Content *ch_content, u_int64_t time_us, class SqlDb_row *cdr_next, class SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]);
+	void parse(Call *call, int type, sCH_Content *ch_content, packet_s_process *packetS, eReqRespDirection reqRespDirection = dir_na);
+	void setCustomHeaderContent(Call *call, int type, sCH_Content *ch_content, int i1, int i2, sCH_ContentDataItem *content, u_int64_t time_us,
+				    eSelectOccurrence selectOccurrence, int nthOccurrence);
+	void prepareSaveRows(Call *call, int type, sCH_Content *ch_content, u_int64_t time_us, class SqlDb_row *cdr_next, class SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]);
 	string getScreenPopupFieldsString(Call *call, int type);
 	string getDeleteQuery(const char *id, const char *prefix, const char *suffix);
 	list<string> getAllNextTables() {
@@ -4302,21 +4348,21 @@ public:
 	inline unsigned long getLoadTime() {
 		return(loadTime);
 	}
-	string getQueryForSaveUseInfo(Call *call, int type, tCH_Content *ch_content);
-	string getQueryForSaveUseInfo(u_int64_t time_us, tCH_Content *ch_content);
+	string getQueryForSaveUseInfo(Call *call, int type, sCH_Content *ch_content);
+	string getQueryForSaveUseInfo(u_int64_t time_us, sCH_Content *ch_content);
 	void createTablesIfNotExists(SqlDb *sqlDb = NULL, bool enableOldPartition = false);
 	void createTableIfNotExists(const char *tableName, SqlDb *sqlDb = NULL, bool enableOldPartition = false);
 	void checkTablesColumns(SqlDb *sqlDb = NULL, bool checkColumnsSilentLog = false);
 	void checkTableColumns(const char *tableName, int tableIndex, SqlDb *sqlDb = NULL, bool checkColumnsSilentLog = false);
 	void createColumnsForFixedHeaders(SqlDb *sqlDb = NULL);
 	bool getPosForDbId(unsigned db_id, d_u_int32_t *pos);
-	static tCH_Content *getCustomHeadersCallContent(Call *call, int type);
+	static sCH_Content *getCustomHeadersCallContent(Call *call, int type);
 	void getHeaders(list<string> *rslt);
 	void getValues(Call *call, int type, list<string> *rslt);
 	void getHeaderValues(Call *call, int type, map<string, string> *rslt);
 	void getNameValues(Call *call, int type, map<string, string> *rslt);
 	string getValue(Call *call, int type, const char *header);
-	static string tCH_Content_value(tCH_Content *ch_content, int i1, int i2);
+	static string getCH_Content_value(sCH_Content *ch_content, int i1, int i2);
 	unsigned getSize();
 	int getCustomHeaderMaxSize();
 	string dump();
@@ -4335,7 +4381,7 @@ private:
 	string fixedTable;
 	string relIdColumn;
 	string relTimeColumn;
-	map<int, map<int, sCustomHeaderData> > custom_headers;
+	map<sCH_index, sCustomHeaderData> custom_headers;
 	list<string> allNextTables;
 	map<int, bool> calldate_ms;
 	unsigned long loadTime;
