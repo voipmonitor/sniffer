@@ -27,6 +27,7 @@
 #include <netdb.h>
 #include <net/ethernet.h>
 #include <map>
+#include <set>
 #include <time.h>
 #include <regex.h>
 #include <dirent.h>
@@ -2787,7 +2788,28 @@ public:
 	TrafficDumper(const char *path, eBy by, bool force_flush);
 	~TrafficDumper();
 	void dump(pcap_pkthdr* header, u_char* packet, int dlt, const char *interfaceName);
+	void addFilterIP(vmIP ip);
+	void addFilterNet(vmIPmask net);
+	void addFilterPort(vmPort port);
+	void setFilterIPs(const list<vmIP> &ips);
+	void setFilterNets(const list<vmIPmask> &nets);
+	void setFilterPorts(const list<vmPort> &ports);
+	void clearFilterIPs();
+	void clearFilterNets();
+	void clearFilterPorts();
+	void clearFilter();
+	void enable() { enabled = true; }
+	void disable() { enabled = false; }
+	bool isEnabled() { return enabled; }
+	void setByDlt() { by = _byDlt; }
+	void setByInterface() { by = _byInterface; }
+	eBy getBy() { return by; }
+	void setForceFlush(bool ff) { force_flush = ff; }
+	bool getForceFlush() { return force_flush; }
+	string getStatus();
 private:
+	bool passFilter(u_char* packet, int dlt, unsigned caplen);
+	bool matchIP(vmIP ip);
 	void lock() {
 		__SYNC_LOCK(this->_sync);
 	}
@@ -2801,6 +2823,10 @@ private:
 	bool force_flush;
 	string path;
 	string time;
+	set<vmIP> filter_ips;
+	vector<vmIPmask> filter_nets;
+	set<vmPort> filter_ports;
+	bool enabled;
 	volatile int _sync;
 };
 
