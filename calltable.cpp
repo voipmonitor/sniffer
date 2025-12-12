@@ -5179,8 +5179,11 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 	case _chartType_mos_lqo_caller:
 	case _chartType_mos_lqo_called:
 	case _chartType_packet_lost:
+	case _chartType_packet_lost_connected:
 	case _chartType_packet_lost_caller:
+	case _chartType_packet_lost_caller_connected:
 	case _chartType_packet_lost_called:
+	case _chartType_packet_lost_called_connected:
 	case _chartType_jitter:
 	case _chartType_jitter_caller:
 	case _chartType_jitter_called:
@@ -5218,6 +5221,7 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		    type == _chartType_mos_silence_min_caller ||
 		    type == _chartType_mos_lqo_caller ||
 		    type == _chartType_packet_lost_caller ||
+		    type == _chartType_packet_lost_caller_connected ||
 		    type == _chartType_silence_caller ||
 		    type == _chartType_silence_end_caller ||
 		    type == _chartType_clipping_caller ||
@@ -5235,6 +5239,7 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		    type == _chartType_mos_silence_min_called ||
 		    type == _chartType_mos_lqo_called ||
 		    type == _chartType_packet_lost_called ||
+		    type == _chartType_packet_lost_called_connected ||
 		    type == _chartType_silence_called ||
 		    type == _chartType_silence_end_called ||
 		    type == _chartType_clipping_called ||
@@ -5326,6 +5331,7 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 			}
 			break;
 		case _chartType_packet_lost:
+		case _chartType_packet_lost_connected:
 		case _chartType_jitter:
 			setNull = true;
 			for(unsigned i = 0; i < 2; i++) {
@@ -5334,6 +5340,13 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 					switch(type) {
 					case _chartType_packet_lost:
 						_v = rtpab[i]->packet_loss(&_null);
+						break;
+					case _chartType_packet_lost_connected:
+						if(connect_time_us) {
+							_v = rtpab[i]->packet_loss(&_null);
+						} else {
+							_null = true;
+						}
 						break;
 					case _chartType_jitter:
 						_v = rtpab[i]->jitter_avg(&_null);
@@ -5354,8 +5367,22 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		case _chartType_packet_lost_caller:
 			v = rtpab[0]->packet_loss(&setNull);
 			break;
+		case _chartType_packet_lost_caller_connected:
+			if(connect_time_us) {
+				v = rtpab[0]->packet_loss(&setNull);
+			} else {
+				setNull = true;
+			}
+			break;
 		case _chartType_packet_lost_called:
 			v = rtpab[1]->packet_loss(&setNull);
+			break;
+		case _chartType_packet_lost_called_connected:
+			if(connect_time_us) {
+				v = rtpab[1]->packet_loss(&setNull);
+			} else {
+				setNull = true;
+			}
 			break;
 		case _chartType_jitter_caller:	
 			v = rtpab[0]->jitter_avg(&setNull);
@@ -5822,13 +5849,43 @@ void Call::getChartCacheValue(cDbTablesContent *tablesContent,
 		v = tablesContent->getValue_float(_t_cdr, "packet_loss_perc_mult1000", false, &setNull);
 		if(!setNull && v) v /= 1000;
 		break;
+	case _chartType_packet_lost_connected: {
+		bool connect_duration_null;
+		tablesContent->getValue_float(_t_cdr, "connect_duration", false, &connect_duration_null);
+		if(!connect_duration_null) {
+			v = tablesContent->getValue_float(_t_cdr, "packet_loss_perc_mult1000", false, &setNull);
+			if(!setNull && v) v /= 1000;
+		} else {
+			setNull = true;
+		}}
+		break;
 	case _chartType_packet_lost_caller:
 		v = tablesContent->getValue_float(_t_cdr, "a_packet_loss_perc_mult1000", false, &setNull);
 		if(!setNull && v) v /= 1000;
 		break;
+	case _chartType_packet_lost_caller_connected: {
+		bool connect_duration_null;
+		tablesContent->getValue_float(_t_cdr, "connect_duration", false, &connect_duration_null);
+		if(!connect_duration_null) {
+			v = tablesContent->getValue_float(_t_cdr, "a_packet_loss_perc_mult1000", false, &setNull);
+			if(!setNull && v) v /= 1000;
+		} else {
+			setNull = true;
+		}}
+		break;
 	case _chartType_packet_lost_called:
 		v = tablesContent->getValue_float(_t_cdr, "b_packet_loss_perc_mult1000", false, &setNull);
 		if(!setNull && v) v /= 1000;
+		break;
+	case _chartType_packet_lost_called_connected: {
+		bool connect_duration_null;
+		tablesContent->getValue_float(_t_cdr, "connect_duration", false, &connect_duration_null);
+		if(!connect_duration_null) {
+			v = tablesContent->getValue_float(_t_cdr, "b_packet_loss_perc_mult1000", false, &setNull);
+			if(!setNull && v) v /= 1000;
+		} else {
+			setNull = true;
+		}}
 		break;
 	case _chartType_jitter:
 		v = tablesContent->getValue_float(_t_cdr, "jitter_mult10", false, &setNull);

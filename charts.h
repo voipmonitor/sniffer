@@ -42,8 +42,11 @@ enum eChartType {
 	_chartType_mos_lqo_caller,
 	_chartType_mos_lqo_called,
 	_chartType_packet_lost,
+	_chartType_packet_lost_connected,
 	_chartType_packet_lost_caller,
+	_chartType_packet_lost_caller_connected,
 	_chartType_packet_lost_called,
+	_chartType_packet_lost_called_connected,
 	_chartType_jitter,
 	_chartType_jitter_caller,
 	_chartType_jitter_called,
@@ -600,7 +603,7 @@ private:
 class cChartSeries {
 public:
 	cChartSeries(unsigned int id, const char *config_id, const char *config, class cCharts *charts);
-	cChartSeries(eChartTypeUse typeUse, unsigned int id, const char *chart_type, const char *source_data_name = NULL);
+	cChartSeries(eChartTypeUse typeUse, unsigned int id, const char *chart_type, const char *source_data_name, bool id_is_chart_type);
 	~cChartSeries();
 	void clear();
 	bool isIntervals() { 

@@ -45,8 +45,13 @@ static sChartTypeDef ChartTypeDef[] = {
 	{ _chartType_mos_lqo_caller,		0,	0,	_chartPercType_Desc,	0,	_chartSubType_value },
 	{ _chartType_mos_lqo_called,		0,	0,	_chartPercType_Desc,	0,	_chartSubType_value },
 	{ _chartType_packet_lost,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
+	{ _chartType_packet_lost_connected,	0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_packet_lost_caller,	0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
+	{ _chartType_packet_lost_caller_connected,	
+						0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_packet_lost_called,	0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
+	{ _chartType_packet_lost_called_connected,	
+						0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_jitter,			0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_jitter_caller,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_jitter_called,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
@@ -2155,13 +2160,13 @@ cChartSeries::cChartSeries(unsigned int id, const char *config_id, const char *c
 	terminating = 0;
 }
 
-cChartSeries::cChartSeries(eChartTypeUse typeUse, unsigned int id, const char *chart_type, const char *source_data_name) :
+cChartSeries::cChartSeries(eChartTypeUse typeUse, unsigned int id, const char *chart_type, const char *source_data_name, bool id_is_chart_type) :
  series_id(id, "") {
 	this->typeUse = typeUse;
 	if(source_data_name) {
 		sourceDataName = source_data_name;
 	}
-	def = getChartTypeDef(chartTypeFromString(chart_type));
+	def = getChartTypeDef(id_is_chart_type ? (eChartType)id : chartTypeFromString(chart_type));
 	ner_lsr_filter = NULL;
 	seer_lsr_filter[0] = NULL;
 	seer_lsr_filter[1] = NULL;
@@ -2569,19 +2574,19 @@ void cCdrStat::init() {
 }
 
 void cCdrStat::init_series(vector<cChartSeries*> *series, int src_dst) {
-	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_count, "TCH_count", "cc"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_cps, "TCH_cps", "cps"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_minutes, "TCH_minutes"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_asr, "TCH_asr_avg", "asr"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_acd, "TCH_acd_avg", "acd"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_ner, "TCH_ner_avg", "ner"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_seer, "TCH_seer_avg", "seer"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_mos, src_dst == 0 ? "TCH_mos_caller" : "TCH_mos_called", "mos"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_packet_loss, src_dst == 0 ? "TCH_packet_lost_caller" : "TCH_packet_lost_called", "packet_loss"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_jitter, src_dst == 0 ? "TCH_jitter_caller" : "TCH_jitter_called", "jitter"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_delay, src_dst == 0 ? "TCH_delay_caller" : "TCH_delay_called", "delay"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_price_customer, "TCH_price_customer"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_price_operator, "TCH_price_operator"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_count, "TCH_count", "cc", false));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_cps, "TCH_cps", "cps", false));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_minutes, "TCH_minutes", NULL, false));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_asr, "TCH_asr_avg", "asr", false));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_acd, "TCH_acd_avg", "acd", false));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_ner, "TCH_ner_avg", "ner", false));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_seer, "TCH_seer_avg", "seer", false));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_mos, src_dst == 0 ? "TCH_mos_caller" : "TCH_mos_called", "mos", false));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_packet_loss, src_dst == 0 ? "TCH_packet_lost_caller" : "TCH_packet_lost_called", "packet_loss", false));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_jitter, src_dst == 0 ? "TCH_jitter_caller" : "TCH_jitter_called", "jitter", false));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_delay, src_dst == 0 ? "TCH_delay_caller" : "TCH_delay_called", "delay", false));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_price_customer, "TCH_price_customer", NULL, false));
+	series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrStat, _cdrStatType_price_operator, "TCH_price_operator", NULL, false));
 }
 
 void cCdrStat::init_metrics(vector<sMetrics> *metrics) {
@@ -3255,9 +3260,9 @@ vector<cCdrSummary::sMetricType> cCdrSummary::get_metric_types() {
 	rslt.push_back(sMetricType(_chartType_mos, "avg,perc95,perc99"));
 	rslt.push_back(sMetricType(_chartType_mos_caller, "avg,perc95,perc99"));
 	rslt.push_back(sMetricType(_chartType_mos_called, "avg,perc95,perc99"));
-	rslt.push_back(sMetricType(_chartType_packet_lost, "avg,perc95,perc99"));
-	rslt.push_back(sMetricType(_chartType_packet_lost_caller, "avg,perc95,perc99"));
-	rslt.push_back(sMetricType(_chartType_packet_lost_called, "avg,perc95,perc99"));
+	rslt.push_back(sMetricType(_chartType_packet_lost_connected, "avg,perc95,perc99"));
+	rslt.push_back(sMetricType(_chartType_packet_lost_caller_connected, "avg,perc95,perc99"));
+	rslt.push_back(sMetricType(_chartType_packet_lost_called_connected, "avg,perc95,perc99"));
 	rslt.push_back(sMetricType(_chartType_jitter, "avg,perc95,perc99"));
 	rslt.push_back(sMetricType(_chartType_jitter_caller, "avg,perc95,perc99"));
 	rslt.push_back(sMetricType(_chartType_jitter_called, "avg,perc95,perc99"));
@@ -3273,7 +3278,7 @@ void cCdrSummary::init_series(vector<cChartSeries*> *series) {
 	vector<sMetricType> metric_types = get_metric_types();
 	for(unsigned i = 0; i < metric_types.size(); i++) {
 		string chartStr = chartStringFromType(metric_types[i].chartType);
-		series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrSummary, metric_types[i].chartType, chartStr.c_str(), chartStr.substr(4).c_str()));
+		series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrSummary, metric_types[i].chartType, chartStr.c_str(), chartStr.substr(4).c_str(), true));
 	}
 }
 
@@ -3723,8 +3728,11 @@ sChartType *getChartTypes() {
 		{ "TCH_mos_lqo_caller", _chartType_mos_lqo_caller },
 		{ "TCH_mos_lqo_called", _chartType_mos_lqo_called },
 		{ "TCH_packet_lost", _chartType_packet_lost },
+		{ "TCH_packet_lost", _chartType_packet_lost_connected },
 		{ "TCH_packet_lost_caller", _chartType_packet_lost_caller },
+		{ "TCH_packet_lost_caller", _chartType_packet_lost_caller_connected },
 		{ "TCH_packet_lost_called", _chartType_packet_lost_called },
+		{ "TCH_packet_lost_called", _chartType_packet_lost_called_connected },
 		{ "TCH_jitter", _chartType_jitter },
 		{ "TCH_jitter_caller", _chartType_jitter_caller },
 		{ "TCH_jitter_called", _chartType_jitter_called },
