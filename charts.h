@@ -166,6 +166,7 @@ public:
 		 class cChartSeries *series, class cChartIntervalSeriesData *intervalSeries);
 	string json(class cChartSeries *series);
 	double getValue(class cChartSeries *series, eChartValueType typeValue = _chartValueType_na, bool *null = NULL);
+	unsigned int getCount() { return(count); }
 private:
 	double getPerc(unsigned perc, eChartPercType type, unsigned values_size = 0);
 private:
@@ -178,7 +179,7 @@ private:
 	map<unsigned int, unsigned int> count_intervals;
 	volatile unsigned int countAll;
 	volatile unsigned int countConected;
-	volatile unsigned int sumDuration;
+	volatile double sumDuration;
 	volatile unsigned int countShort;
 };
 
@@ -266,6 +267,7 @@ public:
 		    u_int64_t calldate_from_us, u_int64_t calldate_to_us);
 	double getValue(eChartValueType typeValue = _chartValueType_na, bool *null = NULL);
 	string getChartData(class cChartInterval *interval);
+	unsigned int getCountValues();
 	void store(class cChartInterval *interval, const int *sensor_id, const vmIP *ip, SqlDb *sqlDb, int src_dst);
 	void lock_data() { __SYNC_LOCK(sync_data); }
 	void unlock_data() { __SYNC_UNLOCK(sync_data); }
@@ -605,6 +607,7 @@ public:
 	cChartSeries(unsigned int id, const char *config_id, const char *config, class cCharts *charts);
 	cChartSeries(eChartTypeUse typeUse, unsigned int id, const char *chart_type, const char *source_data_name, bool id_is_chart_type);
 	~cChartSeries();
+	void setCountValues(bool countValues);
 	void clear();
 	bool isIntervals() { 
 		return(intervals.size() > 0);
@@ -626,6 +629,7 @@ private:
 	cChartLsrFilter *ner_lsr_filter;
 	cChartLsrFilter *seer_lsr_filter[2];
 	sChartTypeDef def;
+	bool countValues;
 	volatile int used_counter;
 	volatile int terminating;
 friend class cChartDataItem;
@@ -845,12 +849,14 @@ private:
 class cCdrSummary {
 public:
 	struct sMetricType {
-		sMetricType(eChartType chartType = _chartType_na, const char *valueType = NULL) {
+		sMetricType(eChartType chartType = _chartType_na, const char *valueType = NULL, bool countValues = false) {
 			this->chartType = chartType;
 			this->valueType = valueType ? valueType : "";
+			this->countValues = countValues;
 		}
 		eChartType chartType;
 		string valueType;
+		bool countValues;
 	};
 	struct sMetrics {
 		sMetrics(const char *field, int type_series, eChartValueType type_value) {

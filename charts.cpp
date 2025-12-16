@@ -189,11 +189,13 @@ void cChartDataItem::add(sChartsCallData *call,
 				if(call->type == sChartsCallData::_call) {
 					if(call->call()->connect_time_us) {
 						++this->countConected;
-						this->sumDuration += call->call()->connect_duration_s();
+						this->sumDuration += opt_time_precision_in_ms ?
+								      call->call()->connect_duration_sf() :
+								      call->call()->connect_duration_s();
 					}
 				} else {
 					bool connect_duration_null;
-					unsigned int connect_duration = call->tables_content()->getValue_int(_t_cdr, "connect_duration", false, &connect_duration_null);
+					double connect_duration = call->tables_content()->getValue_float(_t_cdr, "connect_duration", false, &connect_duration_null);
 					if(!connect_duration_null) {
 						++this->countConected;
 						this->sumDuration += connect_duration;
@@ -257,20 +259,22 @@ void cChartDataItem::add(sChartsCallData *call,
 		case _chartType_count_perc_short:
 			if(call->type == sChartsCallData::_call) {
 				if(call->call()->connect_time_us) {
-					unsigned int connect_duration = call->call()->connect_duration_s();
+					double connect_duration = opt_time_precision_in_ms ?
+								   call->call()->connect_duration_sf() :
+								   call->call()->connect_duration_s();
 					++this->countConected;
 					if(intervalSeries->param.size() && 
-					   connect_duration < (unsigned)atoi(intervalSeries->param[0].c_str())) {
+					   connect_duration < atoi(intervalSeries->param[0].c_str())) {
 						++this->countShort;
 					}
 				}
 			} else {
 				bool connect_duration_null;
-				unsigned int connect_duration = call->tables_content()->getValue_int(_t_cdr, "connect_duration", false, &connect_duration_null);
+				double connect_duration = call->tables_content()->getValue_float(_t_cdr, "connect_duration", false, &connect_duration_null);
 				if(!connect_duration_null) {
 					++this->countConected;
 					if(intervalSeries->param.size() && 
-					   connect_duration < (unsigned)atoi(intervalSeries->param[0].c_str())) {
+					   connect_duration < atoi(intervalSeries->param[0].c_str())) {
 						++this->countShort;
 					}
 				}
@@ -1041,6 +1045,13 @@ string cChartIntervalSeriesData::getChartData(cChartInterval *interval) {
 	return(chart_data);
 }
 
+unsigned int cChartIntervalSeriesData::getCountValues() {
+	if(this->dataItem) {
+		return(this->dataItem->getCount());
+	}
+	return(0);
+}
+
 void cChartIntervalSeriesData::store(cChartInterval *interval, const int *sensor_id, const vmIP *ip, SqlDb *sqlDb, int src_dst) {
 	if(!counter_add) {
 		return;
@@ -1629,6 +1640,11 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 									}
 								}
 								for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_sum->second->data.begin(); iter_series != iter_sum->second->data.end(); iter_series++) {
+									if(iter_series->second->series->countValues && 
+									   cCdrSummary::exists_columns_check((iter_series->second->series->sourceDataName + "_count").c_str(), si)) {
+										cdr_sum_row.add(iter_series->second->getCountValues(), iter_series->second->series->sourceDataName + "_count");
+										cdr_sum_row_update.add(iter_series->second->getCountValues(), iter_series->second->series->sourceDataName + "_count");
+									}
 									if(!iter_series->second->series->sourceDataName.empty() &&
 									   cCdrSummary::exists_columns_check((iter_series->second->series->sourceDataName + "_source_data").c_str(), si)) {
 										string chart_data = iter_series->second->getChartData(this);
@@ -2156,6 +2172,7 @@ cChartSeries::cChartSeries(unsigned int id, const char *config_id, const char *c
 		}
 	}
 	def = getChartTypeDef(chartTypeFromString(chartType));
+	countValues = false;
 	used_counter = 0;
 	terminating = 0;
 }
@@ -2167,6 +2184,7 @@ cChartSeries::cChartSeries(eChartTypeUse typeUse, unsigned int id, const char *c
 		sourceDataName = source_data_name;
 	}
 	def = getChartTypeDef(id_is_chart_type ? (eChartType)id : chartTypeFromString(chart_type));
+	countValues = false;
 	ner_lsr_filter = NULL;
 	seer_lsr_filter[0] = NULL;
 	seer_lsr_filter[1] = NULL;
@@ -2194,6 +2212,10 @@ cChartSeries::cChartSeries(eChartTypeUse typeUse, unsigned int id, const char *c
 
 cChartSeries::~cChartSeries() {
 	clear();
+}
+
+void cChartSeries::setCountValues(bool countValues) {
+	this->countValues = countValues;
 }
 
 void cChartSeries::clear() {
@@ -3257,18 +3279,14 @@ vector<cCdrSummary::sMetricType> cCdrSummary::get_metric_types() {
 	rslt.push_back(sMetricType(_chartType_seer_avg, NULL));
 	rslt.push_back(sMetricType(_chartType_pdd, "avg,perc95,perc99"));
 	rslt.push_back(sMetricType(_chartType_pbd, "avg,perc95,perc99"));
-	rslt.push_back(sMetricType(_chartType_mos, "avg,perc95,perc99"));
-	rslt.push_back(sMetricType(_chartType_mos_caller, "avg,perc95,perc99"));
-	rslt.push_back(sMetricType(_chartType_mos_called, "avg,perc95,perc99"));
-	rslt.push_back(sMetricType(_chartType_packet_lost_connected, "avg,perc95,perc99"));
-	rslt.push_back(sMetricType(_chartType_packet_lost_caller_connected, "avg,perc95,perc99"));
-	rslt.push_back(sMetricType(_chartType_packet_lost_called_connected, "avg,perc95,perc99"));
-	rslt.push_back(sMetricType(_chartType_jitter, "avg,perc95,perc99"));
-	rslt.push_back(sMetricType(_chartType_jitter_caller, "avg,perc95,perc99"));
-	rslt.push_back(sMetricType(_chartType_jitter_called, "avg,perc95,perc99"));
-	rslt.push_back(sMetricType(_chartType_delay, "avg,perc95,perc99"));
-	rslt.push_back(sMetricType(_chartType_delay_caller, "avg,perc95,perc99"));
-	rslt.push_back(sMetricType(_chartType_delay_called, "avg,perc95,perc99"));
+	rslt.push_back(sMetricType(_chartType_mos, "avg,perc95,perc99", true));
+	rslt.push_back(sMetricType(_chartType_mos_xr_min, "avg,perc95,perc99", true));
+	rslt.push_back(sMetricType(_chartType_mos_xr_avg, "avg,perc95,perc99", true));
+	rslt.push_back(sMetricType(_chartType_mos_silence_min, "avg,perc95,perc99", true));
+	rslt.push_back(sMetricType(_chartType_mos_silence_avg, "avg,perc95,perc99", true));
+	rslt.push_back(sMetricType(_chartType_packet_lost_connected, "avg,perc95,perc99", true));
+	rslt.push_back(sMetricType(_chartType_jitter, "avg,perc95,perc99", true));
+	rslt.push_back(sMetricType(_chartType_delay, "avg,perc95,perc99", true));
 	rslt.push_back(sMetricType(_chartType_price_customer, "sum"));
 	rslt.push_back(sMetricType(_chartType_price_operator, "sum"));
 	return(rslt);
@@ -3278,7 +3296,11 @@ void cCdrSummary::init_series(vector<cChartSeries*> *series) {
 	vector<sMetricType> metric_types = get_metric_types();
 	for(unsigned i = 0; i < metric_types.size(); i++) {
 		string chartStr = chartStringFromType(metric_types[i].chartType);
-		series->push_back(new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrSummary, metric_types[i].chartType, chartStr.c_str(), chartStr.substr(4).c_str(), true));
+		cChartSeries *_series = new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrSummary, metric_types[i].chartType, chartStr.c_str(), chartStr.substr(4).c_str(), true);
+		if(metric_types[i].countValues) {
+			_series->setCountValues(true);
+		}
+		series->push_back(_series);
 	}
 }
 
@@ -3496,6 +3518,10 @@ string cCdrSummary::db_fields(vector<dstring> *fields) {
 		fields->push_back(dstring(metrics[i].field, chartDbFieldTypeFromType((eChartType)metrics[i].type_series)));
 	}
 	for(unsigned i = 0; i < series.size(); i++) {
+		if(series[i]->countValues) {
+			fields->push_back(dstring(series[i]->sourceDataName + "_count",
+						  "int unsigned"));
+		}
 		if(!series[i]->sourceDataName.empty()) {
 			fields->push_back(dstring(series[i]->sourceDataName + "_source_data",
 						  "mediumtext"));

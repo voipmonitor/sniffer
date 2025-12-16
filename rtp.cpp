@@ -3002,58 +3002,47 @@ void sStreamAnalysisData::clear() {
 }
 
 double RTP::mos_min_from_avg(bool *null, bool prefer_f2) {
-	if(this->stats.received + this->stats.lost > 0) {
-		double mos_min = 0;
-		if(this->mosf1_avg > 0 && this->mosf1_avg != (uint8_t)-1) {
-			mos_min = this->mosf1_avg; 
-		}
-		if(this->mosf2_avg > 0 && this->mosf2_avg != (uint8_t)-1 &&
-		   (mos_min == 0 || this->mosf2_avg < mos_min)) {
-			mos_min = this->mosf2_avg;
-		}
-		if(this->mosAD_avg > 0 && this->mosAD_avg != (uint8_t)-1 &&
-		   (mos_min == 0 || this->mosAD_avg < mos_min)) {
-			mos_min = this->mosAD_avg;
-		}
-		if(prefer_f2 && this->mosf2_avg > 0 && this->mosf2_avg != (uint8_t)-1) {
-			mos_min = this->mosf2_avg;
-		}
-		if(null) *null = mos_min == 0;
-		return(round(mos_min) / 10);
-	} else {
-		if(null) *null = true;
-		return(0);
+	double mos_min = 0;
+	if(this->mosf1_avg > 0 && this->mosf1_avg != (uint8_t)-1) {
+		mos_min = this->mosf1_avg; 
 	}
+	if(this->mosf2_avg > 0 && this->mosf2_avg != (uint8_t)-1 &&
+	   (mos_min == 0 || this->mosf2_avg < mos_min)) {
+		mos_min = this->mosf2_avg;
+	}
+	if(this->mosAD_avg > 0 && this->mosAD_avg != (uint8_t)-1 &&
+	   (mos_min == 0 || this->mosAD_avg < mos_min)) {
+		mos_min = this->mosAD_avg;
+	}
+	if(prefer_f2 && this->mosf2_avg > 0 && this->mosf2_avg != (uint8_t)-1) {
+		mos_min = this->mosf2_avg;
+	}
+	if(null) *null = mos_min == 0;
+	return(round(mos_min) / 10);
 }
 
 double RTP::mos_min_from_min(bool *null, bool prefer_f2) {
-	if(this->stats.received + this->stats.lost > 0) {
-		double mos_min = 0;
-		if(this->mosf1_min > 0 && this->mosf1_min != (uint8_t)-1) {
-			mos_min = this->mosf1_min; 
-		}
-		if(this->mosf2_min > 0 && this->mosf2_min != (uint8_t)-1 &&
-		   (mos_min == 0 || this->mosf2_min < mos_min)) {
-			mos_min = this->mosf2_min;
-		}
-		if(this->mosAD_min > 0 && this->mosAD_min != (uint8_t)-1 &&
-		   (mos_min == 0 || this->mosAD_min < mos_min)) {
-			mos_min = this->mosAD_min;
-		}
-		if(prefer_f2 && this->mosf2_min > 0 && this->mosf2_min != (uint8_t)-1) {
-			mos_min = this->mosf2_min;
-		}
-		if(null) *null = mos_min == 0;
-		return(round(mos_min) / 10);
-	} else {
-		if(null) *null = true;
-		return(0);
+	double mos_min = 0;
+	if(this->mosf1_min > 0 && this->mosf1_min != (uint8_t)-1) {
+		mos_min = this->mosf1_min; 
 	}
+	if(this->mosf2_min > 0 && this->mosf2_min != (uint8_t)-1 &&
+	   (mos_min == 0 || this->mosf2_min < mos_min)) {
+		mos_min = this->mosf2_min;
+	}
+	if(this->mosAD_min > 0 && this->mosAD_min != (uint8_t)-1 &&
+	   (mos_min == 0 || this->mosAD_min < mos_min)) {
+		mos_min = this->mosAD_min;
+	}
+	if(prefer_f2 && this->mosf2_min > 0 && this->mosf2_min != (uint8_t)-1) {
+		mos_min = this->mosf2_min;
+	}
+	if(null) *null = mos_min == 0;
+	return(round(mos_min) / 10);
 }
 
 double RTP::mos_xr_min(bool *null) {
-	if(this->stats.received + this->stats.lost > 0 &&
-	   this->rtcp_xr.counter_mos > 0 && this->rtcp_xr.minmos > 0) {
+	if(this->rtcp_xr.counter_mos > 0 && this->rtcp_xr.minmos > 0) {
 		if(null) *null = false;
 		return(this->rtcp_xr.minmos / 10.);
 	} else {
@@ -3063,8 +3052,7 @@ double RTP::mos_xr_min(bool *null) {
 }
 
 double RTP::mos_xr_avg(bool *null) {
-	if(this->stats.received + this->stats.lost > 0 &&
-	   this->rtcp_xr.counter_mos > 0 && this->rtcp_xr.avgmos > 0) {
+	if(this->rtcp_xr.counter_mos > 0 && this->rtcp_xr.avgmos > 0) {
 		if(null) *null = false;
 		return(round(this->rtcp_xr.avgmos) / 10.);
 	} else {
@@ -3074,8 +3062,7 @@ double RTP::mos_xr_avg(bool *null) {
 }
 
 double RTP::mos_silence_min(bool *null) {
-	if(this->stats.received + this->stats.lost > 0 &&
-	   this->mosSilence_min != (uint8_t)-1 && this->mosSilence_min > 0) {
+	if(this->mosSilence_min != (uint8_t)-1 && this->mosSilence_min > 0) {
 		if(null) *null = false;
 		return(this->mosSilence_min / 10.);
 	} else {
@@ -3085,8 +3072,7 @@ double RTP::mos_silence_min(bool *null) {
 }
 
 double RTP::mos_silence_avg(bool *null) {
-	if(this->stats.received + this->stats.lost > 0 &&
-	   this->mosSilence_min != (uint8_t)-1 && this->mosSilence_avg > 0) {
+	if(this->mosSilence_min != (uint8_t)-1 && this->mosSilence_avg > 0) {
 		if(null) *null = false;
 		return(round(this->mosSilence_avg) / 10.);
 	} else {
@@ -3106,55 +3092,35 @@ double RTP::packet_loss(bool *null) {
 }
 
 double RTP::jitter_avg(bool *null) {
-	if(this->stats.received + this->stats.lost > 0) {
-		if(null) *null = false;
-		return(this->stats.avgjitter);
-	} else {
-		if(null) *null = true;
-		return(0);
-	}
+	if(null) *null = false;
+	return(this->stats.avgjitter);
 }
 
 double RTP::jitter_max(bool *null) {
-	if(this->stats.received + this->stats.lost > 0) {
-		if(null) *null = false;
-		return(this->stats.maxjitter);
-	} else {
-		if(null) *null = true;
-		return(0);
-	}
+	if(null) *null = false;
+	return(this->stats.maxjitter);
 }
 
 double RTP::delay_sum(bool *null) {
-	if(this->stats.received + this->stats.lost > 0) {
-		if(null) *null = false;
-		return(this->stats.d50 * 60 + 
-		       this->stats.d70 * 80 + 
-		       this->stats.d90 * 105 + 
-		       this->stats.d120 * 135 +
-		       this->stats.d150 * 175 + 
-		       this->stats.d200 * 250 + 
-		       this->stats.d300 * 300);
-	} else {
-		if(null) *null = true;
-		return(0);
-	}
+	if(null) *null = false;
+	return(this->stats.d50 * 60 + 
+	       this->stats.d70 * 80 + 
+	       this->stats.d90 * 105 + 
+	       this->stats.d120 * 135 +
+	       this->stats.d150 * 175 + 
+	       this->stats.d200 * 250 + 
+	       this->stats.d300 * 300);
 }
 
 double RTP::delay_cnt(bool *null) {
-	if(this->stats.received + this->stats.lost > 0) {
-		if(null) *null = false;
-		return(this->stats.d50 + 
-		       this->stats.d70 + 
-		       this->stats.d90 + 
-		       this->stats.d120 +
-		       this->stats.d150 + 
-		       this->stats.d200 + 
-		       this->stats.d300);
-	} else {
-		if(null) *null = true;
-		return(0);
-	}
+	if(null) *null = false;
+	return(this->stats.d50 + 
+	       this->stats.d70 + 
+	       this->stats.d90 + 
+	       this->stats.d120 +
+	       this->stats.d150 + 
+	       this->stats.d200 + 
+	       this->stats.d300);
 }
 
 double RTP::jitter_rtcp_avg(bool *null) {

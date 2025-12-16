@@ -7661,11 +7661,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 				// XR MOS 
 				if(existsColumns.cdr_mos_xr and rtpab[i]->rtcp_xr.counter_mos > 0) {
+					int mos_xr_mult10 = (int)round(rtpab[i]->rtcp_xr.avgmos);
+					if(mos_xr_mult10 > 0) {
+						cdr.add(LIMIT_TINYINT_UNSIGNED(mos_xr_mult10), c+"_mos_xr_mult10");
+					}
 					if(rtpab[i]->rtcp_xr.minmos > 0) {
 						cdr.add(LIMIT_TINYINT_UNSIGNED(rtpab[i]->rtcp_xr.minmos), c+"_mos_xr_min_mult10");
-					}
-					if(rtpab[i]->rtcp_xr.avgmos > 0) {
-						cdr.add(LIMIT_TINYINT_UNSIGNED(rtpab[i]->rtcp_xr.avgmos), c+"_mos_xr_mult10");
 					}
 				}
 
@@ -7724,7 +7725,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			payload_rslt = payload[0] >= 0 ? payload[0] : payload[1];
 		}
 		cdr.add(payload_rslt, "payload");
-
 		if(!opt_disable_cdr_fields_rtp) {
 			if(jitter_mult10[0] >= 0 || jitter_mult10[1] >= 0) {
 				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(max(jitter_mult10[0], jitter_mult10[1])), 
@@ -8952,6 +8952,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 		
 		//cout << endl << endl << query_str << endl << endl << endl;
+		
+		/*
+		sChartsCacheCallData chartsCacheCallData;
+		sChartsCallData _call(sChartsCallData::_call, this);
+		chartsCacheAndCdrStatAddCall(&_call, &chartsCacheCallData, NULL, 0);
+		*/
+		
 		return(0);
 	}
 	
