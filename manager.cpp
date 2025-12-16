@@ -508,6 +508,7 @@ int Mgmt_aes(Mgmt_params *params);
 int Mgmt_manager_file(Mgmt_params *params);
 int Mgmt_ssl_ipport(Mgmt_params *params);
 int Mgmt_sql_errors_skip(Mgmt_params *params);
+int Mgmt_traffic_dumper(Mgmt_params *params);
 
 int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_help,
@@ -620,7 +621,8 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_aes,
 	Mgmt_manager_file,
 	Mgmt_ssl_ipport,
-	Mgmt_sql_errors_skip
+	Mgmt_sql_errors_skip,
+	Mgmt_traffic_dumper
 };
 
 struct listening_worker_arg {
@@ -5767,6 +5769,90 @@ int Mgmt_sql_errors_skip(Mgmt_params *params) {
 	}
 	params->sendString(string("sql_errors_skip: ") + opt_sql_errors_skip + "\n");
 	return(0);
+}
+
+int Mgmt_traffic_dumper(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("traffic_dumper", "traffic dumper management: status, enable, disable, by_dlt, by_interface, force_flush, add_ip, add_net, add_port, clear_ips, clear_nets, clear_ports, clear_filter");
+		return(0);
+	}
+	extern TrafficDumper *trafficDumper;
+	if(!trafficDumper) {
+		return(params->sendString("traffic_dumper is not configured\n"));
+	}
+	char subcmd[100] = "";
+	char arg[256] = "";
+	sscanf(params->buf, "traffic_dumper %99s %255s", subcmd, arg);
+	if(!subcmd[0] || !strcasecmp(subcmd, "status")) {
+		return(params->sendString(trafficDumper->getStatus()));
+	} else if(!strcasecmp(subcmd, "enable")) {
+		trafficDumper->enable();
+		return(params->sendString("traffic_dumper enabled\n"));
+	} else if(!strcasecmp(subcmd, "disable")) {
+		trafficDumper->disable();
+		return(params->sendString("traffic_dumper disabled\n"));
+	} else if(!strcasecmp(subcmd, "add_ip")) {
+		if(!arg[0]) {
+			return(params->sendString("missing IP address\n"));
+		}
+		vmIP ip;
+		if(ip.setFromString(arg)) {
+			trafficDumper->addFilterIP(ip);
+			return(params->sendString(string("added IP: ") + ip.getString() + "\n"));
+		} else {
+			return(params->sendString("invalid IP address\n"));
+		}
+	} else if(!strcasecmp(subcmd, "add_net")) {
+		if(!arg[0]) {
+			return(params->sendString("missing network\n"));
+		}
+		vmIPmask net;
+		if(net.setFromString(arg)) {
+			trafficDumper->addFilterNet(net);
+			return(params->sendString(string("added network: ") + net.getString() + "\n"));
+		} else {
+			return(params->sendString("invalid network\n"));
+		}
+	} else if(!strcasecmp(subcmd, "add_port")) {
+		if(!arg[0]) {
+			return(params->sendString("missing port\n"));
+		}
+		int port = atoi(arg);
+		if(port > 0 && port <= 65535) {
+			trafficDumper->addFilterPort(vmPort(port));
+			return(params->sendString(string("added port: ") + intToString(port) + "\n"));
+		} else {
+			return(params->sendString("invalid port number\n"));
+		}
+	} else if(!strcasecmp(subcmd, "clear_ips")) {
+		trafficDumper->clearFilterIPs();
+		return(params->sendString("filter IPs cleared\n"));
+	} else if(!strcasecmp(subcmd, "clear_nets")) {
+		trafficDumper->clearFilterNets();
+		return(params->sendString("filter networks cleared\n"));
+	} else if(!strcasecmp(subcmd, "clear_ports")) {
+		trafficDumper->clearFilterPorts();
+		return(params->sendString("filter ports cleared\n"));
+	} else if(!strcasecmp(subcmd, "clear_filter")) {
+		trafficDumper->clearFilter();
+		return(params->sendString("all filters cleared\n"));
+	} else if(!strcasecmp(subcmd, "by_dlt")) {
+		trafficDumper->setByDlt();
+		return(params->sendString("set to separate files by DLT\n"));
+	} else if(!strcasecmp(subcmd, "by_interface")) {
+		trafficDumper->setByInterface();
+		return(params->sendString("set to separate files by interface\n"));
+	} else if(!strcasecmp(subcmd, "force_flush")) {
+		if(!arg[0] || !strcasecmp(arg, "on") || !strcasecmp(arg, "yes") || !strcasecmp(arg, "1")) {
+			trafficDumper->setForceFlush(true);
+			return(params->sendString("force_flush enabled\n"));
+		} else {
+			trafficDumper->setForceFlush(false);
+			return(params->sendString("force_flush disabled\n"));
+		}
+	} else {
+		return(params->sendString("unknown subcommand. Use: status, enable, disable, by_dlt, by_interface, force_flush [on|off], add_ip <ip>, add_net <net/mask>, add_port <port>, clear_ips, clear_nets, clear_ports, clear_filter\n"));
+	}
 }
 
 void init_management_functions(void) {
