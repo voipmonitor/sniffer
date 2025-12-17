@@ -419,6 +419,11 @@ bool opt_cdr_problems_by_number = false;
 bool opt_cdr_problems_by_comb = false;
 int opt_cdr_problems_interval = 15;
 int opt_cdr_problems_list_ip_refresh_interval = 900;
+bool opt_cdr_summary = false;
+int opt_cdr_summary_number_length = 0;
+bool opt_cdr_summary_number_complete = false;
+int opt_cdr_summary_interval = 5;
+bool opt_cdr_summary_only_first_interval = true;
 bool opt_charts_cache = false;
 int opt_charts_cache_max_threads = 3;
 bool opt_charts_cache_store = false;
@@ -893,6 +898,7 @@ int opt_cleandatabase_register_time_info = 0;
 int opt_cleandatabase_sip_msg = 0;
 int opt_cleandatabase_cdr_stat = 71;
 int opt_cleandatabase_cdr_problems = 71;
+int opt_cleandatabase_cdr_summary = 0;
 int opt_cleandatabase_rtp_stat = 2;
 int opt_cleandatabase_log_sensor = 30;
 int opt_cleandatabase_size = 0;
@@ -908,6 +914,7 @@ int opt_cleandatabase_register_time_info_size = 0;
 int opt_cleandatabase_sip_msg_size = 0;
 int opt_cleandatabase_cdr_stat_size = 0;
 int opt_cleandatabase_cdr_problems_size = 0;
+int opt_cleandatabase_cdr_summary_size = 0;
 int opt_cleandatabase_rtp_stat_size = 0;
 int opt_cleandatabase_log_sensor_size = 0;
 int opt_cleandatabase_size_period = 10 * 60;
@@ -938,6 +945,10 @@ bool opt_message_check_duplicity_callid_in_next_pass_insert = 0;
 int opt_create_old_partitions = 0;
 char opt_create_old_partitions_from[20];
 bool opt_disable_partition_operations = 0;
+bool opt_disable_partition_operations_create = false;
+bool opt_disable_partition_operations_drop = false;
+int opt_create_new_partitions = 2;
+char opt_create_new_partitions_until[20];
 int opt_partition_operations_enable_run_hour_from = 1;
 int opt_partition_operations_enable_run_hour_to = 5;
 bool opt_partition_operations_in_thread = 1;
@@ -1424,12 +1435,13 @@ vector<string> opt_message_body_url_reg;
 
 char opt_bogus_dumper_path[1204];
 BogusDumper *bogusDumper;
-#if TRAFFIC_DUMPER
 char opt_traffic_dumper_path[1204];
 bool opt_traffic_dumper_by_interface = false;
 bool opt_traffic_dumper_force_flush = false;
+vector<vmIP> opt_traffic_dumper_filter_ips;
+vector<vmIPmask> opt_traffic_dumper_filter_nets;
+map<u_int16_t, bool> opt_traffic_dumper_filter_ports;
 TrafficDumper *trafficDumper;
-#endif
 
 char opt_syslog_string[256];
 int opt_cpu_limit_warning_t0 = 80;
@@ -4668,6 +4680,9 @@ int main_init_read() {
 	if(useCdrProblemsProcessThreads()) {
 		cdrProblemsInit(sqlDbInit);
 	}
+	if(useCdrSummaryProcessThreads()) {
+		cdrSummaryInit(sqlDbInit);
+	}
 	if(useChartsCacheProcessThreads()) {
 		chartsCacheInit(sqlDbInit);
 	}
@@ -5162,13 +5177,20 @@ int main_init_read() {
 		bogusDumper = new FILE_LINE(42034) BogusDumper(opt_bogus_dumper_path);
 	}
 	
-	#if TRAFFIC_DUMPER
 	if(opt_traffic_dumper_path[0]) {
-		trafficDumper = new FILE_LINE(0) TrafficDumper(opt_traffic_dumper_path, 
+		trafficDumper = new FILE_LINE(0) TrafficDumper(opt_traffic_dumper_path,
 							       opt_traffic_dumper_by_interface ? TrafficDumper::_byInterface : TrafficDumper::_byDlt,
 							       opt_traffic_dumper_force_flush);
+		for(size_t i = 0; i < opt_traffic_dumper_filter_ips.size(); i++) {
+			trafficDumper->addFilterIP(opt_traffic_dumper_filter_ips[i]);
+		}
+		for(size_t i = 0; i < opt_traffic_dumper_filter_nets.size(); i++) {
+			trafficDumper->addFilterNet(opt_traffic_dumper_filter_nets[i]);
+		}
+		for(map<u_int16_t, bool>::iterator iter = opt_traffic_dumper_filter_ports.begin(); iter != opt_traffic_dumper_filter_ports.end(); ++iter) {
+			trafficDumper->addFilterPort(vmPort(iter->first));
+		}
 	}
-	#endif
 	
 	clear_readend();
 	
@@ -5604,6 +5626,9 @@ void main_term_read() {
 	if(useCdrProblemsProcessThreads()) {
 		cdrProblemsStore(true);
 	}
+	if(useCdrSummaryProcessThreads()) {
+		cdrSummaryStore(true);
+	}
 	if(useChartsCacheProcessThreads()) {
 		chartsCacheStore(true);
 	}
@@ -5790,6 +5815,41 @@ void main_term_read() {
 		sqlDbSaveWebrtc = NULL;
 	}
 	
+	if(custom_headers_cdr) {
+		delete custom_headers_cdr;
+		custom_headers_cdr = NULL;
+	}
+	if(custom_headers_message) {
+		delete custom_headers_message;
+		custom_headers_message = NULL;
+	}
+	if(custom_headers_sip_msg) {
+		delete custom_headers_sip_msg;
+		custom_headers_sip_msg = NULL;
+	}
+	if(no_hash_message_rules) {
+		delete no_hash_message_rules;
+		no_hash_message_rules = NULL;
+	}
+	
+	CountryDetectTerm();
+	
+	chartsCacheAndCdrStatStore(true);
+	chartsCacheAndCdrStatCleanup(true);
+	if(useCdrStatProcessThreads()) {
+		cdrStatTerm();
+	}
+	if(useCdrProblemsProcessThreads()) {
+		cdrProblemsTerm();
+	}
+	if(useCdrSummaryProcessThreads()) {
+		cdrSummaryTerm();
+	}
+	if(useChartsCacheProcessThreads()) {
+		chartsCacheTerm();
+	}
+	dbDataTerm();
+	
 	if(sqlStore) {
 		if(!isCloud() && is_server() && !is_read_from_file_simple()) {
 			snifferServerSetSqlStore(NULL);
@@ -5811,36 +5871,6 @@ void main_term_read() {
 		loadFromQFiles = NULL;
 	}
 	
-	if(custom_headers_cdr) {
-		delete custom_headers_cdr;
-		custom_headers_cdr = NULL;
-	}
-	if(custom_headers_message) {
-		delete custom_headers_message;
-		custom_headers_message = NULL;
-	}
-	if(custom_headers_sip_msg) {
-		delete custom_headers_sip_msg;
-		custom_headers_sip_msg = NULL;
-	}
-	if(no_hash_message_rules) {
-		delete no_hash_message_rules;
-		no_hash_message_rules = NULL;
-	}
-	
-	CountryDetectTerm();
-	
-	dbDataTerm();
-	if(useCdrStatProcessThreads()) {
-		cdrStatTerm();
-	}
-	if(useCdrProblemsProcessThreads()) {
-		cdrProblemsTerm();
-	}
-	if(useChartsCacheProcessThreads()) {
-		chartsCacheTerm();
-	}
-	
 	if(opt_enable_billing) {
 		termBilling();
 	}
@@ -5859,12 +5889,10 @@ void main_term_read() {
 		bogusDumper = NULL;
 	}
 	
-	#if TRAFFIC_DUMPER
 	if(opt_traffic_dumper_path[0]) {
 		delete trafficDumper;
 		trafficDumper = NULL;
 	}
-	#endif
 	
 	if(opt_use_dpdk) {
 		term_dpdk();
@@ -6306,6 +6334,13 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_active_calls_cache_timeout_max", &opt_processing_limitations_active_calls_cache_timeout_max));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(42091) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
+				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_partition_operations_create", &opt_disable_partition_operations_create));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_partition_operations_drop", &opt_disable_partition_operations_drop));
+					expert();
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("create_new_partitions"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("create_new_partitions_until", opt_create_new_partitions_until, sizeof(opt_create_new_partitions_until)));
+			normal();
 			addConfigItem(new FILE_LINE(0) cConfigItem_hour_interval("partition_operations_enable_fromto", &opt_partition_operations_enable_run_hour_from, &opt_partition_operations_enable_run_hour_to));
 				advanced();
 				addConfigItem(new FILE_LINE(42092) cConfigItem_yesno("partition_operations_in_thread", &opt_partition_operations_in_thread));
@@ -6371,6 +6406,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42121) cConfigItem_integer("cleandatabase_sip_msg", &opt_cleandatabase_sip_msg));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_cdr_stat", &opt_cleandatabase_cdr_stat));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_cdr_problems", &opt_cleandatabase_cdr_problems));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_cdr_summary", &opt_cleandatabase_cdr_summary));
 			addConfigItem(new FILE_LINE(42122) cConfigItem_integer("cleandatabase_rtp_stat", &opt_cleandatabase_rtp_stat));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_log_sensor", &opt_cleandatabase_log_sensor));
 				advanced();
@@ -6387,6 +6423,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_sip_msg_size", &opt_cleandatabase_sip_msg_size));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_cdr_stat_size", &opt_cleandatabase_cdr_stat_size));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_cdr_problems_size", &opt_cleandatabase_cdr_problems_size));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_cdr_summary_size", &opt_cleandatabase_cdr_summary_size));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_rtp_stat_size", &opt_cleandatabase_rtp_stat_size));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_log_sensor_size", &opt_cleandatabase_log_sensor_size));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_size_period", &opt_cleandatabase_size_period));
@@ -6716,11 +6753,11 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42191) cConfigItem_yesno("convert_dlt_sll2en10", &opt_convert_dlt_sll_to_en10));
 					addConfigItem(new FILE_LINE(42192) cConfigItem_yesno("dumpallpackets", &opt_pcapdump));
 					addConfigItem(new FILE_LINE(42195) cConfigItem_string("bogus_dumper_path", opt_bogus_dumper_path, sizeof(opt_bogus_dumper_path)));
-					#if TRAFFIC_DUMPER
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("traffic_dumper_path", opt_traffic_dumper_path, sizeof(opt_traffic_dumper_path)));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("traffic_dumper_by_interface", &opt_traffic_dumper_by_interface));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("traffic_dumper_force_flush", &opt_traffic_dumper_force_flush));
-					#endif
+					addConfigItem(new FILE_LINE(0) cConfigItem_hosts("traffic_dumper_filter_ip", &opt_traffic_dumper_filter_ips, &opt_traffic_dumper_filter_nets));
+					addConfigItem(new FILE_LINE(0) cConfigItem_ports("traffic_dumper_filter_port", &opt_traffic_dumper_filter_ports));
 		subgroup("scaling");
 			addConfigItem(new FILE_LINE(42196) cConfigItem_integer("tar_maxthreads", &opt_pcap_dump_tar_threads));
 				advanced();
@@ -7578,6 +7615,14 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_problems_by_comb", &opt_cdr_problems_by_comb));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_problems_interval", &opt_cdr_problems_interval));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_problems_list_ip_refresh_interval", &opt_cdr_problems_list_ip_refresh_interval));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_summary", &opt_cdr_summary));
+				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_summary_number_length", &opt_cdr_summary_number_length));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_summary_number_complete", &opt_cdr_summary_number_complete));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_summary_interval", &opt_cdr_summary_interval));
+					expert();
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_summary_only_first_interval", &opt_cdr_summary_only_first_interval));
+			normal();
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache", &opt_charts_cache));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("charts_cache_max_threads", &opt_charts_cache_max_threads));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_store", &opt_charts_cache_store));
@@ -7751,6 +7796,12 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 	}
 	if(configItem->config_name == "check_duplicity_callid_in_next_pass_insert") {
 		opt_message_check_duplicity_callid_in_next_pass_insert = opt_cdr_check_duplicity_callid_in_next_pass_insert;
+	}
+	if(configItem->config_name == "create_new_partitions") {
+		opt_create_new_partitions = max(opt_create_new_partitions, (int)configItem->getValueInt());
+	}
+	if(configItem->config_name == "create_new_partitions_until" && opt_create_new_partitions_until[0]) {
+		opt_create_new_partitions = max(opt_create_new_partitions, getNumberOfDayFromNow(opt_create_new_partitions_until) + 1);
 	}
 	if(configItem->config_name == "create_old_partitions") {
 		opt_create_old_partitions = max(opt_create_old_partitions, (int)configItem->getValueInt());
@@ -8121,6 +8172,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"run-droppartitions-rtp_stat-maxdays", 1, 0, _param_run_droppartitions_rtp_stat_maxdays},
 	    {"run-droppartitions-cdr_stat-maxdays", 1, 0, _param_run_droppartitions_cdr_stat_maxdays},
 	    {"run-droppartitions-cdr_problems-maxdays", 1, 0, _param_run_droppartitions_cdr_problems_maxdays},
+	    {"run-droppartitions-cdr_summary-maxdays", 1, 0, _param_run_droppartitions_cdr_summary_maxdays},
 	    {"clean-obsolete", 0, 0, _param_clean_obsolete},
 	    {"check-db", 0, 0, _param_check_db},
 	    {"fax-deduplicate", 0, 0, _param_fax_deduplicate},
@@ -8360,9 +8412,18 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "cdr_stat_only")			sverb.cdr_stat_only = 1;
 	else if(verbParam.substr(0, 24) == "cdr_stat_interval_store=")
 								sverb.cdr_stat_interval_store = atoi(verbParam.c_str() + 24);
+	else if(verbParam.substr(0, 26) == "cdr_stat_interval_cleanup=")
+								sverb.cdr_stat_interval_cleanup = atoi(verbParam.c_str() + 26);
 	else if(verbParam == "cdr_problems_only")		sverb.cdr_problems_only = 1;
 	else if(verbParam.substr(0, 28) == "cdr_problems_interval_store=")
 								sverb.cdr_problems_interval_store = atoi(verbParam.c_str() + 28);
+	else if(verbParam.substr(0, 30) == "cdr_problems_interval_cleanup=")
+								sverb.cdr_problems_interval_cleanup = atoi(verbParam.c_str() + 30);
+	else if(verbParam == "cdr_summary_only")		sverb.cdr_summary_only = 1;
+	else if(verbParam.substr(0, 27) == "cdr_summary_interval_store=")
+								sverb.cdr_summary_interval_store = atoi(verbParam.c_str() + 27);
+	else if(verbParam.substr(0, 29) == "cdr_summary_interval_cleanup=")
+								sverb.cdr_summary_interval_cleanup = atoi(verbParam.c_str() + 29);
 	else if(verbParam == "disable_unlink_qfile")		sverb.disable_unlink_qfile = 1;
 	else if(verbParam == "registers_save")			sverb.registers_save = 1;
 	else if(verbParam == "check_config")			sverb.check_config = 1;
@@ -8716,6 +8777,7 @@ void get_command_line_arguments() {
 			case _param_run_droppartitions_rtp_stat_maxdays:
 			case _param_run_droppartitions_cdr_stat_maxdays:
 			case _param_run_droppartitions_cdr_problems_maxdays:
+			case _param_run_droppartitions_cdr_summary_maxdays:
 				opt_test = c;
 				strcpy_null_term(opt_test_arg, optarg);
 				is_gui_param = true;
@@ -10245,6 +10307,7 @@ bool is_set_cleandatabase_by_size() {
 	       opt_cleandatabase_sip_msg_size ||
 	       opt_cleandatabase_cdr_stat_size ||
 	       opt_cleandatabase_cdr_problems_size ||
+	       opt_cleandatabase_cdr_summary_size ||
 	       opt_cleandatabase_rtp_stat_size ||
 	       opt_cleandatabase_log_sensor_size);
 }
@@ -10263,6 +10326,7 @@ void clean_params_cleandatabase_by_size() {
 	opt_cleandatabase_sip_msg_size = 0;
 	opt_cleandatabase_cdr_stat_size = 0;
 	opt_cleandatabase_cdr_problems_size = 0;
+	opt_cleandatabase_cdr_summary_size = 0;
 	opt_cleandatabase_rtp_stat_size = 0;
 	opt_cleandatabase_log_sensor_size = 0;
 }
@@ -10432,6 +10496,18 @@ bool useCdrProblemsInStore() {
 
 bool useCdrProblemsProcessThreads() {
 	return(opt_cdr_problems);
+}
+
+bool useCdrSummaryInProcessCall() {
+	return(opt_cdr_summary && !useChartsCacheInStore());
+}
+
+bool useCdrSummaryInStore() {
+	return(opt_cdr_summary && useChartsCacheInStore());
+}
+
+bool useCdrSummaryProcessThreads() {
+	return(opt_cdr_summary);
 }
 
 int cleanup_calls_period() {

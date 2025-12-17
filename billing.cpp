@@ -1246,7 +1246,8 @@ void cBilling::load(SqlDb *sqlDb) {
 	set = rules->rules.size() > 0;
 	unlock();
 	extern bool opt_disable_partition_operations;
-	if(!opt_disable_partition_operations && !is_client()) {
+	extern bool opt_disable_partition_operations_create;
+	if(!opt_disable_partition_operations && !opt_disable_partition_operations_create && !is_client()) {
 		createMysqlPartitionsBillingAgregation(sqlDb);
 	}
 }

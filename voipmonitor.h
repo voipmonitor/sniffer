@@ -178,6 +178,7 @@ enum eCmdLineParams {
 	_param_run_droppartitions_rtp_stat_maxdays,
 	_param_run_droppartitions_cdr_stat_maxdays,
 	_param_run_droppartitions_cdr_problems_maxdays,
+	_param_run_droppartitions_cdr_summary_maxdays,
 	_param_clean_obsolete,
 	_param_check_db,
 	_param_fax_deduplicate,
@@ -449,6 +450,10 @@ bool useCdrProblemsInProcessCall();
 bool useCdrProblemsInStore();
 bool useCdrProblemsProcessThreads();
 
+bool useCdrSummaryInProcessCall();
+bool useCdrSummaryInStore();
+bool useCdrSummaryProcessThreads();
+
 int cleanup_calls_period();
 
 unsigned getCountInterfaces();
@@ -456,13 +461,22 @@ unsigned getCountInterfaces();
 void set_all_ports_for_tcp();
 
 inline bool useChartsCacheOrCdrStatInProcessCall() {
-	return(useChartsCacheInProcessCall() || useCdrStatInProcessCall() || useCdrProblemsInProcessCall());
+	return(useChartsCacheInProcessCall() ||
+	       useCdrStatInProcessCall() ||
+	       useCdrProblemsInProcessCall() ||
+	       useCdrSummaryInProcessCall());
 }
 inline bool useChartsCacheOrCdrStatInStore() {
-	return(useChartsCacheInStore() || useCdrStatInStore() || useCdrProblemsInStore());
+	return(useChartsCacheInStore() ||
+	       useCdrStatInStore() ||
+	       useCdrProblemsInStore() ||
+	       useCdrSummaryInStore());
 }
 inline bool useChartsCacheOrCdrStatProcessThreads() {
-	return(useChartsCacheProcessThreads() || useCdrStatProcessThreads() || useCdrProblemsProcessThreads());
+	return(useChartsCacheProcessThreads() ||
+	       useCdrStatProcessThreads() ||
+	       useCdrProblemsProcessThreads() ||
+	       useCdrSummaryProcessThreads());
 }
 
 
