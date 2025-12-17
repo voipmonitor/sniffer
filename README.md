@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://www.voipmonitor.org/img/voipmonitor-logo.svg" alt="VoIPmonitor Logo" width="400">
+  <img src="https://www.voipmonitor.org/images/logo.png" alt="VoIPmonitor Logo" width="400">
 </p>
 
 <h3 align="center">Open Source Network Packet Sniffer for VoIP/RTC Traffic Analysis</h3>
