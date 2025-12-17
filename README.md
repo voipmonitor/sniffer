@@ -16,7 +16,6 @@
   <a href="https://www.voipmonitor.org/doc/">Documentation</a> •
   <a href="https://www.voipmonitor.org/demo">Live Demo</a> •
   <a href="https://www.voipmonitor.org/download">Download</a> •
-  <a href="https://www.voipmonitor.org/pricing">Pricing</a>
 </p>
 
 ---
