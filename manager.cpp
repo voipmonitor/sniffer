@@ -4555,7 +4555,7 @@ int Mgmt_gitUpgrade(Mgmt_params *params) {
 
 int Mgmt_sniffer_stat(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("sniffer_stat", "return sniffer's statistics", true);
+		params->registerCommand("sniffer_stat", "return sniffer's statistics (use 'plain' for key=value format)", true);
 		return(0);
 	}
 
@@ -4571,21 +4571,81 @@ int Mgmt_sniffer_stat(Mgmt_params *params) {
 	__SYNC_LOCK(usersniffer_sync);
 	size_t countLiveSniffers = usersniffer.size();
 	__SYNC_UNLOCK(usersniffer_sync);
-	outStrStat << "{";
-	outStrStat << "\"version\": \"" << RTPSENSOR_VERSION << "\",";
-	outStrStat << "\"build\": \"" << RTPSENSOR_BUILD_NUMBER << "\",";
-	outStrStat << "\"rrd_version\": \"" << vm_rrd_version << "\",";
-	outStrStat << "\"storingCdrLastWriteAt\": \"" << storingCdrLastWriteAt << "\",";
-	outStrStat << "\"pbStatString\": \"" << pbStatString << "\",";
-	outStrStat << "\"pbCountPacketDrop\": \"" << pbCountPacketDrop << "\",";
-	outStrStat << "\"uptime\": \"" << getUptime() << "\",";
-	outStrStat << "\"memory_is_full\": \"" << packetbuffer_memory_is_full << "\",";
-	outStrStat << "\"count_live_sniffers\": \"" << countLiveSniffers << "\",";
-	outStrStat << "\"upgrade_by_git\": \"" << opt_upgrade_by_git << "\",";
-	outStrStat << "\"use_new_config\": \"" << true << "\",";
-	outStrStat << "\"terminating_error\": \"" << terminating_error << "\"";
-	outStrStat << "}";
-	outStrStat << endl;
+	bool plainOutput = strstr(params->buf, "plain") != NULL;
+	if(plainOutput) {
+		outStrStat << "version=" << RTPSENSOR_VERSION << "\n";
+		outStrStat << "build=" << RTPSENSOR_BUILD_NUMBER << "\n";
+		outStrStat << "rrd_version=" << vm_rrd_version << "\n";
+		outStrStat << "storingCdrLastWriteAt=" << storingCdrLastWriteAt << "\n";
+		string statStr = pbStatString;
+		size_t pos = 0;
+		while(pos < statStr.length()) {
+			size_t bracketOpen = statStr.find('[', pos);
+			size_t bracketClose = statStr.find(']', pos);
+			if(bracketOpen != string::npos && bracketClose != string::npos && bracketOpen < bracketClose) {
+				string key = statStr.substr(pos, bracketOpen - pos);
+				string value = statStr.substr(bracketOpen + 1, bracketClose - bracketOpen - 1);
+				size_t keyStart = key.find_first_not_of(' ');
+				if(keyStart != string::npos) {
+					key = key.substr(keyStart);
+				}
+				if(key.empty()) {
+					key = "total_traffic";
+				}
+				pos = bracketClose + 1;
+				size_t suffixEnd = pos;
+				while(suffixEnd < statStr.length() && statStr[suffixEnd] != ' ' && statStr[suffixEnd] != '[') {
+					suffixEnd++;
+				}
+				if(suffixEnd > pos) {
+					value += statStr.substr(pos, suffixEnd - pos);
+					pos = suffixEnd;
+				}
+				if(key == "calls") {
+					outStrStat << "calls_active=" << value << "\n";
+					if(pos < statStr.length() && statStr[pos] == '[') {
+						size_t bracketClose2 = statStr.find(']', pos);
+						if(bracketClose2 != string::npos) {
+							string value2 = statStr.substr(pos + 1, bracketClose2 - pos - 1);
+							outStrStat << "calls_final=" << value2 << "\n";
+							pos = bracketClose2 + 1;
+						}
+					}
+				}
+				else {
+					outStrStat << key << "=" << value << "\n";
+				}
+				if(pos < statStr.length() && statStr[pos] == ' ') {
+					pos++;
+				}
+			} else {
+				break;
+			}
+		}
+		outStrStat << "pbCountPacketDrop=" << pbCountPacketDrop << "\n";
+		outStrStat << "uptime=" << getUptime() << "\n";
+		outStrStat << "memory_is_full=" << packetbuffer_memory_is_full << "\n";
+		outStrStat << "count_live_sniffers=" << countLiveSniffers << "\n";
+		outStrStat << "upgrade_by_git=" << opt_upgrade_by_git << "\n";
+		outStrStat << "use_new_config=" << true << "\n";
+		outStrStat << "terminating_error=" << terminating_error << "\n";
+	} else {
+		outStrStat << "{";
+		outStrStat << "\"version\": \"" << RTPSENSOR_VERSION << "\",";
+		outStrStat << "\"build\": \"" << RTPSENSOR_BUILD_NUMBER << "\",";
+		outStrStat << "\"rrd_version\": \"" << vm_rrd_version << "\",";
+		outStrStat << "\"storingCdrLastWriteAt\": \"" << storingCdrLastWriteAt << "\",";
+		outStrStat << "\"pbStatString\": \"" << pbStatString << "\",";
+		outStrStat << "\"pbCountPacketDrop\": \"" << pbCountPacketDrop << "\",";
+		outStrStat << "\"uptime\": \"" << getUptime() << "\",";
+		outStrStat << "\"memory_is_full\": \"" << packetbuffer_memory_is_full << "\",";
+		outStrStat << "\"count_live_sniffers\": \"" << countLiveSniffers << "\",";
+		outStrStat << "\"upgrade_by_git\": \"" << opt_upgrade_by_git << "\",";
+		outStrStat << "\"use_new_config\": \"" << true << "\",";
+		outStrStat << "\"terminating_error\": \"" << terminating_error << "\"";
+		outStrStat << "}";
+		outStrStat << endl;
+	}
 	string outStrStatStr = outStrStat.str();
 	return(params->sendString(&outStrStatStr));
 }
