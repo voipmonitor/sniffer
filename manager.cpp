@@ -2049,38 +2049,30 @@ void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *ca
 			return;
 		}
 	}
-	char rsltString[4096];
 	string callerNumStr = callerNum;
 	for(size_t i = 0; i < this->regex_replace_calling_number.size(); i++) {
-		string temp = reg_replace(callerNumStr.c_str(), 
-					  this->regex_replace_calling_number[i].pattern.c_str(), 
+		string temp = reg_replace(callerNumStr.c_str(),
+					  this->regex_replace_calling_number[i].pattern.c_str(),
 					  this->regex_replace_calling_number[i].replace.c_str(),
 					  __FILE__, __LINE__);
 		if(!temp.empty()) {
 			callerNumStr = temp;
 		}
 	}
-	snprintf(rsltString, sizeof(rsltString),
+	string rsltString =
 		"call_data: "
-		"sipresponse:[[%i]] "
-		"callername:[[%s]] "
-		"caller:[[%s]] "
-		"called:[[%s]] "
-		"sipcallerip:[[%s]] "
-		"sipcalledip:[[%s]] "
-		"fields:[[%s]]\n",
-		sipResponseNum,
-		callerName,
-		callerNumStr.c_str(),
-		calledNum,
-		sipSaddr.getString().c_str(),
-		sipDaddr.getString().c_str(),
-		screenPopupFieldsString);
+		"sipresponse:[[" + intToString(sipResponseNum) + "]] "
+		"callername:[[" + string(callerName) + "]] "
+		"caller:[[" + callerNumStr + "]] "
+		"called:[[" + string(calledNum) + "]] "
+		"sipcallerip:[[" + sipSaddr.getString() + "]] "
+		"sipcalledip:[[" + sipDaddr.getString() + "]] "
+		"fields:[[" + string(screenPopupFieldsString) + "]]\n";
 	if(sverb.screen_popup_syslog) {
-		syslog(LOG_INFO, "SCREEN_POPUP - send string: username: %s dest: %s data: %s", 
+		syslog(LOG_INFO, "SCREEN_POPUP - send string: username: %s dest: %s data: %s",
 		       username.c_str(),
 		       client.ip.getString().c_str(),
-		       rsltString);
+		       rsltString.c_str());
 	}
 	this->lock_responses();
 	this->responses.push(rsltString);
@@ -2119,7 +2111,7 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 		" and password=" + 
 		sqlEscapeStringBorder(password_md5));
 	SqlDb_row row = sqlDb->fetchRow();
-	char rsltString[4096];
+	string rsltString;
 	bool rslt;
 	if(row) {
 		rslt = true;
@@ -2151,55 +2143,45 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 		popup_title = row["popup_title"];
 		if(!opt_php_path[0]) {
 			rslt = false;
-			strcpy(rsltString, "login_failed error:[[Please set php_path parameter in voipmonitor.conf.]]\n");
+			rsltString = "login_failed error:[[Please set php_path parameter in voipmonitor.conf.]]\n";
 		} else {
-			string cmd = string("php ") + opt_php_path + "/php/run.php checkScreenPopupLicense -k " + key;
+			string cmd = string("php ") + escapeShellArgument(string(opt_php_path) + "/php/run.php") + " checkScreenPopupLicense -k " + escapeShellArgument(key);
 			FILE *fp = popen(cmd.c_str(), "r"); // TODO: create an alternative using vm_pexec
 			if(fp == NULL) {
 				rslt = false;
-				strcpy(rsltString, "login_failed error:[[Failed to run php checkScreenPopupLicense.]]\n");
+				rsltString = "login_failed error:[[Failed to run php checkScreenPopupLicense.]]\n";
 			} else {
 				char rsltFromPhp[1024];
 				if(!fgets(rsltFromPhp, sizeof(rsltFromPhp) - 1, fp)) {
 					rslt = false;
-					strcpy(rsltString, "login_failed error:[[License check failed please contact support.]]\n");
+					rsltString = "login_failed error:[[License check failed please contact support.]]\n";
 				} else if(!strncmp(rsltFromPhp, "error: ", 7)) {
 					rslt = false;
-					strcpy(rsltString, (string("login_failed error:[[") + (rsltFromPhp + 7) + "]]\n").c_str());
+					rsltString = string("login_failed error:[[") + (rsltFromPhp + 7) + "]]\n";
 				} else {
 					char key[1024];
 					int maxClients;
 					if(sscanf(rsltFromPhp, "key: %s max_clients: %i", key, &maxClients) == 2) {
 						if(maxClients && ClientThreads.getCount() >= maxClients) {
 							rslt = false;
-							strcpy(rsltString, "login_failed error:[[Maximum connection limit reached.]]\n");
+							rsltString = "login_failed error:[[Maximum connection limit reached.]]\n";
 						} else {
-							snprintf(rsltString, sizeof(rsltString),
+							rsltString =
 								"login_ok "
-								"auto_popup:[[%i]] "
-								"popup_on_200:[[%i]] "
-								"popup_on_18:[[%i]] "
-								"show_ip:[[%i]] "
-								"app_launch:[[%s]] "
-								"args_or_url:[[%s]] "
-								"status_line:[[%s]] "
-								"key:[[%s]] "
-								"allow_change_settings:[[%i]] "
-								"popup_title:[[%s]]\n", 
-								auto_popup, 
-								popup_on == "200" || popup_on == "183/180_200",
-								popup_on == "183/180" || popup_on == "183/180_200",
-								show_ip, 
-								app_launch.c_str(), 
-								app_launch_args_or_url.c_str(), 
-								status_line.c_str(),
-								key, 
-								allow_change_settings,
-								popup_title.c_str());
+								"auto_popup:[[" + intToString(auto_popup) + "]] "
+								"popup_on_200:[[" + intToString(popup_on == "200" || popup_on == "183/180_200") + "]] "
+								"popup_on_18:[[" + intToString(popup_on == "183/180" || popup_on == "183/180_200") + "]] "
+								"show_ip:[[" + intToString(show_ip) + "]] "
+								"app_launch:[[" + app_launch + "]] "
+								"args_or_url:[[" + app_launch_args_or_url + "]] "
+								"status_line:[[" + status_line + "]] "
+								"key:[[" + key + "]] "
+								"allow_change_settings:[[" + intToString(allow_change_settings) + "]] "
+								"popup_title:[[" + popup_title + "]]\n";
 						}
 					} else {
 						rslt = false;
-							strcpy(rsltString, "login_failed error:[[License is invalid.]]\n");
+						rsltString = "login_failed error:[[License is invalid.]]\n";
 					}
 				}
 				pclose(fp);
@@ -2207,10 +2189,10 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 		}
 	} else {
 		rslt = false;
-		strcpy(rsltString, "login_failed error:[[Invalid user or password.]]\n");
+		rsltString = "login_failed error:[[Invalid user or password.]]\n";
 	}
 	delete sqlDb;
-	send(client.handler, rsltString, strlen(rsltString), 0);
+	send(client.handler, rsltString.c_str(), rsltString.length(), 0);
 	return(rslt);
 }
 
@@ -4097,6 +4079,7 @@ int Mgmt_getfile_in_tar(Mgmt_params *params) {
 		type_spool_file = findTypeSpoolFile(spool_index, tar_filename);
 	}
 	if(strstr(tar_filename, "../")) {
+		delete [] tarPosI;
 		return(params->sendString("access denied"));
 	}
 	

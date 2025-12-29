@@ -2477,6 +2477,7 @@ vmIP cResolver::resolve_std(const char *host, vector<vmIP> *ips) {
     status = ares_library_init(ARES_LIB_INIT_ALL);
     if (status != ARES_SUCCESS) {
         syslog(LOG_ERR, "ares_library_init failed: %s", ares_strerror(status));
+        pthread_mutex_unlock(&resolve_mutex);
         return ip;
     }
 
@@ -2485,6 +2486,7 @@ vmIP cResolver::resolve_std(const char *host, vector<vmIP> *ips) {
     if(status != ARES_SUCCESS) {
         syslog(LOG_ERR, "ares_init_options failed: %s", ares_strerror(status));
         ares_library_cleanup();
+        pthread_mutex_unlock(&resolve_mutex);
         return ip;
     }
 
@@ -2657,7 +2659,7 @@ vmIP cResolver::resolve_by_system_host(const char *host, vector<vmIP> *ips) {
 	vmIP ip;
 	#if PREFER_VM_PEXEC
 	SimpleBuffer out;
-	if(vm_pexec((string("host ") + (ips ? "-t A " : "") + host).c_str(), &out) && out.size()) {
+	if(vm_pexec((string("host ") + (ips ? "-t A " : "") + escapeShellArgument(host)).c_str(), &out) && out.size()) {
 		vector<string> try_ip = split((char*)out, split(",|;|\t| |\n", '|'), true);
 		bool okIP = false;
 		for(unsigned i = 0; !okIP && i < try_ip.size(); i++) {
@@ -2678,9 +2680,9 @@ vmIP cResolver::resolve_by_system_host(const char *host, vector<vmIP> *ips) {
 	#else
 	FILE *cmd_pipe;
 	if (ips) {
-		cmd_pipe = popen((string("host ") + host + " 2>/dev/null").c_str(), "r");
+		cmd_pipe = popen((string("host ") + escapeShellArgument(host) + " 2>/dev/null").c_str(), "r");
 	} else {
-		cmd_pipe = popen((string("host -t A ") + host + " 2>/dev/null").c_str(), "r");
+		cmd_pipe = popen((string("host -t A ") + escapeShellArgument(host) + " 2>/dev/null").c_str(), "r");
 	}
 	if(cmd_pipe) {
 		char bufRslt[512];

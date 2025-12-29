@@ -3154,6 +3154,7 @@ void *cCdrProblems::load_list_ip(void *arg) {
 	cCdrProblems *me = (cCdrProblems*)arg;
 	usleep(100000);
 	if(me->list_ip_load_processed) {
+		__SYNC_UNLOCK(me->list_ip_load_sync);
 		return(NULL);
 	}
 	__SYNC_SET(me->list_ip_load_processed);

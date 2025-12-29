@@ -2988,6 +2988,7 @@ Call::mos_lqo(char *deg, int samplerate) {
 	if(a) {
 		if(sscanf(a, "P.862 Prediction (Raw MOS, MOS-LQO):  = %f   %f", &mos, &mos_lqo) != EOF) {
 			if(mos_lqo > 0 and mos_lqo < 5) {
+				delete [] tmp;
 				return mos_lqo;
 			}
 			//printf("mos[%f] [%f]\n", mos, mos_lqo);
@@ -4172,7 +4173,7 @@ Call::convertRawToWav(void **transcribe_call, int thread_index) {
 					} else {
 						cmd = string("voipmonitor-") + codec_decoder_name + " ";
 					}
-					cmd += "-s \"" + rawf->filename + "\" -d \"" + wav + "\"";
+					cmd += "-s " + escapeShellArgument(rawf->filename) + " -d " + escapeShellArgument(wav);
 					if(codec_decoder_samplerate > 0) {
 						cmd += " -r " + intToString(codec_decoder_samplerate);
 					}

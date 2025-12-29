@@ -8118,6 +8118,7 @@ static struct ast_channel *skinny_request(const char *type, struct ast_format_ca
 		skinnysock = socket(AF_INET, SOCK_STREAM, 0);
 		if(setsockopt(skinnysock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) == -1) {
 			ast_log(LOG_ERROR, "Set Socket Options failed: errno %d, %s\n", errno, strerror(errno));
+			close(skinnysock);
 			ast_config_destroy(cfg);
 			ast_mutex_unlock(&netlock);
 			return 0;

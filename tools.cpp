@@ -3235,10 +3235,10 @@ int findPIDinPSline (char *line) {
 bool binaryFileExists(const char *cmd) {
 	#if PREFER_VM_PEXEC
 	SimpleBuffer out, err;
-	vm_pexec((string("which ") + cmd).c_str(), &out, &err);
+	vm_pexec((string("which ") + escapeShellArgument(cmd)).c_str(), &out, &err);
 	return(strstr((char*)out, "which:") || strstr((char*)err, "which:") ? false : true);
 	#else
-	FILE *cmd_pipe = popen((string("which ") + cmd + " 2>&1").c_str(), "r");
+	FILE *cmd_pipe = popen((string("which ") + escapeShellArgument(cmd) + " 2>&1").c_str(), "r");
 	char buffRslt[512];
 	fgets(buffRslt, 512, cmd_pipe);
 	pclose(cmd_pipe);

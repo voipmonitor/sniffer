@@ -170,6 +170,10 @@ cAudioConvert::eResult cAudioConvert::resampleRaw(sAudioInfo *audioInfo, const c
 	if(!src_state) {
 		fclose(infile);
 		fclose(outfile);
+		delete [] input_buffer_float;
+		delete [] output_buffer_float;
+		delete [] input_buffer;
+		delete [] output_buffer;
 		return(_rslt_failed_libsamplerate_init);
 	}
 	SRC_DATA src_data;

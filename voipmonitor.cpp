@@ -1803,17 +1803,15 @@ int thread_cleanup(void)
 #endif
 }
 
-char *semaphoreLockName(int index) {
-	static char semLockName[2][1024] = { "", "" };
-	if(!semLockName[index][0]) {
-		strcpy(semLockName[index], appname.c_str());
-		strcat(semLockName[index], ("_" + intToString(index)).c_str());
+const char *semaphoreLockName(int index) {
+	static string semLockName[2];
+	if(semLockName[index].empty()) {
+		semLockName[index] = appname + "_" + intToString(index);
 		if(configfilename.length()) {
-			strcat(semLockName[index], "_");
-			strcat(semLockName[index], configfilename.c_str());
+			semLockName[index] += "_" + configfilename;
 		}
 	}
-	return(semLockName[index]);
+	return(semLockName[index].c_str());
 }
 
 void semaphoreUnlink(int index = -1, bool force = false) {
@@ -3235,7 +3233,7 @@ void store_crash_bt_to_db() {
 			bool version_ok = false;
 			string tmpOut = tmpnam();
 			if(!tmpOut.empty()) {
-				system((binaryNameWithPath + " | grep version > " + tmpOut + " 2>/dev/null").c_str());
+				system((escapeShellArgument(binaryNameWithPath) + " | grep version > " + escapeShellArgument(tmpOut) + " 2>/dev/null").c_str());
 				vector<string> version_check_rows;
 				char version_check[20];
 				if(file_get_rows(tmpOut, &version_check_rows) &&
@@ -3244,7 +3242,7 @@ void store_crash_bt_to_db() {
 					version_ok = true;
 				}
 				if(version_ok) {
-					system((string("which addr2line > ") + tmpOut + " 2>/dev/null").c_str());
+					system((string("which addr2line > ") + escapeShellArgument(tmpOut) + " 2>/dev/null").c_str());
 					vector<string> addr2line_check_rows;
 					if(file_get_rows(tmpOut, &addr2line_check_rows)) {
 						for(unsigned i = 0; i < bt.size(); i++) {
@@ -3258,7 +3256,7 @@ void store_crash_bt_to_db() {
 									size_t posAddrEnd = bt[i].find(pass == 0 ? ")" : "]", posAddr);
 									if(posAddrEnd != string::npos) {
 										string addr = bt[i].substr(posAddr + (pass == 0 ? 2 : 1), posAddrEnd - posAddr - (pass == 0 ? 2 : 1));
-										system(("addr2line -e " + binaryNameWithPath + " " + addr + " > " + tmpOut + " 2>/dev/null").c_str());
+										system(("addr2line -e " + escapeShellArgument(binaryNameWithPath) + " " + escapeShellArgument(addr) + " > " + escapeShellArgument(tmpOut) + " 2>/dev/null").c_str());
 										vector<string> addr2line_rows;
 										if(file_get_rows(tmpOut, &addr2line_rows) &&
 										   addr2line_rows[0].find("??") == string::npos) {
@@ -3272,7 +3270,7 @@ void store_crash_bt_to_db() {
 					} else {
 						flags.push_back("missing_addr2line");
 					}
-					system((string("which gdb > ") + tmpOut + " 2>/dev/null").c_str());
+					system((string("which gdb > ") + escapeShellArgument(tmpOut) + " 2>/dev/null").c_str());
 					vector<string> gdb_check_rows;
 					if(file_get_rows(tmpOut, &gdb_check_rows)) {
 						vector<string> coredumps = findCoredumps(pid);
@@ -3298,7 +3296,7 @@ void store_crash_bt_to_db() {
 							       "p \"*sess\"\np *sess\n"
 							       "p \"*** ALL THREADS BT ***\"\nthread apply all bt full\n"
 							       "quit\n"
-							       "' | gdb " + binaryNameWithPath + " " + coredump + " 2>&1 >/dev/null"
+							       "' | gdb " + escapeShellArgument(binaryNameWithPath) + " " + escapeShellArgument(coredump) + " 2>&1 >/dev/null"
 							       ).c_str());
 							FILE *gdbOutput = fopen(tmpOut.c_str(), "r");
 							if(gdbOutput) {

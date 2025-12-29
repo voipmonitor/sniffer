@@ -576,6 +576,7 @@ void HttpDataCache::addResponse(u_int64_t timestamp,
 	HttpDataCache_id id(ip_dst, ip_src, port_dst, port_src);
 	map<HttpDataCache_id, HttpDataCache_link>::iterator iter = data.find(id);
 	if(iter == data.end()) {
+		unlock();
 		return;
 	}
 	iter->second.addResponse(timestamp,
