@@ -473,10 +473,12 @@ public:
 	}
 	sTimeouts getTimeouts() {
 		sTimeouts timeouts_rslt = timeouts;
+		#ifndef CLOUD_ROUTER_SSLKEYLOGGER
 		extern int opt_client_server_receiver_timeout_s;
 		if(opt_client_server_receiver_timeout_s > 0) {
 			timeouts_rslt.readblock_receiver = opt_client_server_receiver_timeout_s;
 		}
+		#endif
 		return(timeouts_rslt);
 	}
 protected:
