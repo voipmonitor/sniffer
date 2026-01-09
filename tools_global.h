@@ -620,6 +620,7 @@ string floatToString(double d);
 string floatToString(double d, unsigned precision, bool adjustDec = false);
 string pointerToString(void *p);
 string boolToString(bool b);
+string escapeShellArgument(string str);
 
 inline char *intToString(long long int i, char *str) {
 	if(i) {

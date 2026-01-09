@@ -1066,6 +1066,21 @@ string boolToString(bool b) {
 	}
 }
 
+string escapeShellArgument(string str) {
+	string rslt = "'";
+	for(unsigned i = 0; i < str.length(); i++) {
+		switch(str[i]) {
+		case '\'':
+			rslt += "\\'";
+			break;
+		default:
+			rslt += str[i];
+		}
+	}
+	rslt += "'";
+	return(rslt);
+}
+
 
 void xorData(u_char *data, size_t dataLen, const char *key, size_t keyLength, size_t initPos) {
 	for(size_t i = 0; i < dataLen; i++) {
