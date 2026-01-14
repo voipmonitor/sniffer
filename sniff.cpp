@@ -8184,7 +8184,7 @@ bool checkEqNumbers(Call::sInviteSD_Addr *item1, Call::sInviteSD_Addr *item2) {
 #ifdef HAS_NIDS
 void
 libnids_tcp_callback(struct tcp_stream *a_tcp, void **this_time_not_needed) {
-	char buf[1024];
+	char buf[1024] = "";
 //	return;
 //	strcpy (buf, adres (a_tcp->addr)); // we put conn params into buf
 	if (a_tcp->nids_state == NIDS_JUST_EST) {

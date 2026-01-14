@@ -217,6 +217,7 @@ queue<string> listFilesDir (char * dir) {
 			close(fd);
 			tmpVec.push_back(elem);
 		}
+		closedir(dirP);
 	}
 	sort( tmpVec.begin(), tmpVec.begin() + tmpVec.size(), &privListDir::files_sorter_asc);
 	for (unsigned n=0; n<tmpVec.size(); ++n) {
@@ -1394,17 +1395,34 @@ u_int32_t checksum32buf(char *buf, size_t len) {
 
 string escapeShellArgument(string str) {
 	string rslt = "'";
-        for(unsigned i = 0; i < str.length(); i++) {
+	for(unsigned i = 0; i < str.length(); i++) {
 		switch(str[i]) {
 		case '\'':
-			rslt += "\\'";
+			rslt += "'\\''";
 			break;
 		default:
 			rslt += str[i];
 		}
-        }
-        rslt += "'";
+	}
+	rslt += "'";
 	return(rslt);
+}
+
+bool needShellEscape(const string &str) {
+	for(unsigned i = 0; i < str.length(); i++) {
+		unsigned char c = str[i];
+		if(!(isalnum(c) || c == '/' || c == '.' || c == '_' || c == '-')) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
+string escapeShellPath(const string &str) {
+	if(str.empty() || !needShellEscape(str)) {
+		return(str);
+	}
+	return(escapeShellArgument(str));
 }
 
 tm stringToTm(const char *timeStr) {

@@ -706,7 +706,7 @@ u_char* pcap_block_store::getSaveBuffer(uint32_t block_counter) {
 	header.dlink = this->dlink;
 	header.sensor_id = this->sensor_id;
 	header.counter = block_counter;
-	strcpy(header.ifname, this->ifname);
+	strcpy_null_term(header.ifname, this->ifname);
 	header.time_s = getTimeS();
 	memcpy_heapsafe(saveBuffer, saveBuffer,
 			&header, NULL,

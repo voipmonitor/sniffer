@@ -2533,7 +2533,7 @@ read:
 			char graph_extension[100];
 			snprintf(graph_extension, sizeof(graph_extension), "%d.graph%s", rtp_new->ssrc_index, opt_gzipGRAPH == FileZipHandler::gzip ? ".gz" : "");
 			string graph_pathfilename = get_pathfilename(tsf_graph, graph_extension);
-			strcpy(rtp_new->gfilename, graph_pathfilename.c_str());
+			strcpy_null_term(rtp_new->gfilename, graph_pathfilename.c_str());
 			rtp_new->graph.auto_open(tsf_graph, graph_pathfilename.c_str());
 		}
 		
@@ -17396,7 +17396,7 @@ bool php_keycheck(string keycheck, string input, string *output, string *error) 
 	if(pos_endl != string::npos) {
 		input.resize(pos_endl);
 	}
-	string cmd = "php " + keycheck + " \"" + input + "\"";
+	string cmd = "php " + escapeShellPath(keycheck) + " " + escapeShellArgument(input);
 	FILE *fp = popen(cmd.c_str(), "r"); // TODO: create an alternative using vm_pexec
 	if(fp == NULL) {
 		*error = "failed to run command [" +  ("php " + keycheck) + "]";

@@ -1469,7 +1469,7 @@ bool RTP::read(CallBranch *c_branch,
 		}
 		this->_last_sensor_id = sensor_id;
 		if(ifname) {
-			strcpy(this->_last_ifname, ifname);
+			strcpy_null_term(this->_last_ifname, ifname);
 		} else {
 			this->_last_ifname[0] = 0;
 		}
