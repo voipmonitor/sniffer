@@ -529,9 +529,6 @@ u_int32_t checksum32buf(char *buf, size_t len);
 inline u_int32_t checksum32buf(u_char *buf, size_t len) {
 	return(checksum32buf((char*)buf, len));
 }
-string escapeShellArgument(string str);
-bool needShellEscape(const string &str);
-string escapeShellPath(const string &str);
 tm stringToTm(const char *timeStr);
 time_t stringToTime(const char *timeStr, bool useGlobalTimeCache = false);
 struct tm getDateTime(u_int64_t us);

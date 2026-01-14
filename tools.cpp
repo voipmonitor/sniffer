@@ -1393,38 +1393,6 @@ u_int32_t checksum32buf(char *buf, size_t len) {
 }
 #pragma GCC pop_options
 
-string escapeShellArgument(string str) {
-	string rslt = "'";
-	for(unsigned i = 0; i < str.length(); i++) {
-		switch(str[i]) {
-		case '\'':
-			rslt += "'\\''";
-			break;
-		default:
-			rslt += str[i];
-		}
-	}
-	rslt += "'";
-	return(rslt);
-}
-
-bool needShellEscape(const string &str) {
-	for(unsigned i = 0; i < str.length(); i++) {
-		unsigned char c = str[i];
-		if(!(isalnum(c) || c == '/' || c == '.' || c == '_' || c == '-')) {
-			return(true);
-		}
-	}
-	return(false);
-}
-
-string escapeShellPath(const string &str) {
-	if(str.empty() || !needShellEscape(str)) {
-		return(str);
-	}
-	return(escapeShellArgument(str));
-}
-
 tm stringToTm(const char *timeStr) {
 	int year, month, day, hour, min, sec;
 	hour = min = sec = 0;

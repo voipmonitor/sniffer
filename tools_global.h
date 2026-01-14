@@ -13,6 +13,7 @@
 #include <zlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdint.h>
 #include <sys/syscall.h>
 #include <unicode/ucnv.h> 
 #include <json.h>
@@ -605,6 +606,9 @@ private:
 
 string json_string_escape(const char *str);
 
+string escapeShellArgument(string str);
+bool needShellEscape(const string &str);
+string escapeShellPath(const string &str);
 
 string intToString(short int i);
 string intToString(int i);

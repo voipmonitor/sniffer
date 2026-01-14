@@ -1526,6 +1526,7 @@ public:
 			return(((BoundedMoodycamel<void*>*)packetS->p_stack)->push((void*)packetS));
 		#endif
 		}
+		return(false);
 	}
 	inline eTypePreProcessThread getTypePreProcessThread() {
 		return(typePreProcessThread);

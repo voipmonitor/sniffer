@@ -638,7 +638,7 @@ void RrdCharts::updateAll() {
 	unlock_values();
 }
 
-#if RRD_VERSION_MAJOR * 100 + RRD_VERSION_MINOR >= 109
+#if RRD_VERSION_MAJOR * 100 + RRD_VERSION_MINOR >= 108
 #define RRD_CREATE_ARGV_TYPE (const char **)
 #else
 #define RRD_CREATE_ARGV_TYPE (char **)
