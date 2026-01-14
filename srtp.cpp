@@ -858,6 +858,7 @@ bool RTPsecure::init_libsrtp() {
 
 bool RTPsecure::rtpDecrypt(u_char *payload, unsigned payload_len, uint16_t seq, uint32_t ssrc) {
 	uint32_t roc = compute_rtp_roc(seq);
+	#if ENABLE_SRTP_WINDOW_CHECK
 	// Updates ROC and sequence (it's safe now)
 	int16_t diff = seq - this->rtp_seq;
 	if(diff > 0) {
@@ -874,10 +875,15 @@ bool RTPsecure::rtpDecrypt(u_char *payload, unsigned payload_len, uint16_t seq, 
 		}
 		rtp->window |= 1 << diff;
 	}
+	#endif
 	#if HAVE_LIBGNUTLS
 	if(rtp_decrypt(payload, payload_len, ssrc, roc, seq)) {
 		return(false);
 	}
+	#if not ENABLE_SRTP_WINDOW_CHECK
+	rtp_seq = seq;
+	rtp_roc = roc;
+	#endif
 	#endif
 	return(true);
 }
@@ -887,6 +893,7 @@ bool RTPsecure::rtcpDecrypt(u_char *data, unsigned data_len) {
 	memcpy(&index, data + data_len - rtcp_unencrypt_footer_len, 4);
 	index = ntohl (index);
 	index &= ~(1 << 31); // clear E-bit for counter
+	#if ENABLE_SRTP_WINDOW_CHECK
 	// Updates SRTCP index (safe here)
 	int32_t diff = index - this->rtcp_index;
 	if (diff > 0) {
@@ -902,10 +909,14 @@ bool RTPsecure::rtcpDecrypt(u_char *data, unsigned data_len) {
 		}
 		rtcp->window |= 1 << diff;
 	}
+	#endif
 	#if HAVE_LIBGNUTLS
 	if(rtcp_decrypt(data + rtcp_unencrypt_header_len, data_len - rtcp_unencrypt_header_len - rtcp_unencrypt_footer_len, get_ssrc_rtcp(data), index)) {
 		return(false);
 	}
+	#if not ENABLE_SRTP_WINDOW_CHECK
+	rtcp_index = index;
+	#endif
 	#endif
 	return(true);
 }

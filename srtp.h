@@ -90,7 +90,9 @@ public:
 			cipher = NULL;
 			md = NULL;
 			#endif
+			#if ENABLE_SRTP_WINDOW_CHECK
 			window = 0;
+			#endif
 			for(unsigned i = 0; i < sizeof(salt) / sizeof(salt[0]); i++) {
 				salt[i] = 0;
 			}
@@ -127,7 +129,9 @@ public:
 		gcry_cipher_hd_t cipher;
 		gcry_md_hd_t md;
 		#endif
+		#if ENABLE_SRTP_WINDOW_CHECK
 		uint64_t window;
+		#endif
 		uint32_t salt[4];
 		uint64_t counter_packets;
 		#if HAVE_OPENSSL
