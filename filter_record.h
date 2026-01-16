@@ -83,6 +83,9 @@ public:
 	void addWhite(const char *ip) {
 		ipData.addWhite(ip);
 	}
+	void addBlack(const char *ip) {
+		ipData.addBlack(ip);
+	}
 	void addWhite(const char *table, const char *column, const char * idstr) {
 		vector<string> ids = split(idstr, ',');
 		for(unsigned i = 0; i < ids.size(); i++) {
