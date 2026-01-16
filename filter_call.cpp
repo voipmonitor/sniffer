@@ -66,9 +66,13 @@ void cCallFilter::setFilter(const char *filter) {
 		filter1->addWhite(filterData["sipcallerip"].c_str());
 		cRecordFilterItem_IP *filter2 = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_calledip);
 		filter2->addWhite(filterData["sipcallerip"].c_str());
-		cRecordFilterItem_CallProxy *filter3 = new FILE_LINE(0) cRecordFilterItem_CallProxy(this);
-		filter3->addWhite(filterData["sipcallerip"].c_str());
-		addFilter(filter1, filter2, filter3);
+		if(!filterData["fsipcallerdip_with_proxy"].empty() && is_true(filterData["fsipcallerdip_with_proxy"].c_str())) {
+			cRecordFilterItem_CallProxy *filter3 = new FILE_LINE(0) cRecordFilterItem_CallProxy(this);
+			filter3->addWhite(filterData["sipcallerip"].c_str());
+			addFilter(filter1, filter2, filter3);
+		} else {
+			addFilter(filter1, filter2);
+		}
 	} else {
 		cRecordFilterItems gItems(cRecordFilterItems::_and);
 		if(!filterData["sipcallerip"].empty()) {
