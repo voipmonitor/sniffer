@@ -9679,7 +9679,7 @@ void set_context_config() {
 		opt_ipfix = !opt_ipfix_bind_ip.empty() && opt_ipfix_bind_port;
 	}
 	
-	if(opt_ipfix && (is_sender() || is_client_packetbuffer_sender())) {
+	if(opt_ipfix && ((is_client_packetbuffer_sender() && !opt_ipfix_via_pb) || is_sender())) {
 		opt_ipfix = false;
 		syslog(LOG_ERR, "the ipfix option is not supported on a client with packet buffer sending or in mirror sender mode");
 	}
@@ -9687,7 +9687,7 @@ void set_context_config() {
 	if(!CONFIG.isSet("hep")) {
 		opt_hep = !opt_hep_bind_ip.empty() && opt_hep_bind_port;
 	}
-	if(opt_hep && (is_sender() || is_client_packetbuffer_sender())) {
+	if(opt_hep && ((is_client_packetbuffer_sender() && !opt_hep_via_pb) || is_sender())) {
 		opt_hep = false;
 		syslog(LOG_ERR, "the hep option is not supported on a client with packet buffer sending or in mirror sender mode");
 	}
@@ -9695,7 +9695,7 @@ void set_context_config() {
 	if(!CONFIG.isSet("ribbonsbc_listen")) {
 		opt_ribbonsbc_listen = !opt_ribbonsbc_bind_ip.empty() && opt_ribbonsbc_bind_port;
 	}
-	if(opt_ribbonsbc_listen && (is_sender() || is_client_packetbuffer_sender())) {
+	if(opt_ribbonsbc_listen && ((is_client_packetbuffer_sender() && !opt_ribbonsbc_via_pb) || is_sender())) {
 		opt_ribbonsbc_listen = false;
 		syslog(LOG_ERR, "the ribbonsbc option is not supported on a client with packet buffer sending or in mirror sender mode");
 	}
