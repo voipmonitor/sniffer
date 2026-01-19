@@ -56,55 +56,33 @@ void cCallFilter::setFilter(const char *filter) {
 		}
 		filterData[filterTypeName] = filterValue;
 	}
-	auto isNegFilter = [](const string &value) {
-		return !value.empty() && value[0] == '!';
-	};
-	auto getFilterValue = [](const string &value) {
-		return (!value.empty() && value[0] == '!') ? value.c_str() + 1 : value.c_str();
-	};
 	if(!filterData["calldate"].empty()) {
 		cRecordFilterItem_calldate *filter = new FILE_LINE(0) cRecordFilterItem_calldate(this, cf_calldate, atol(filterData["calldate"].c_str()), cRecordFilterItem_base::_ge);
 		addFilter(filter);
 	}
 	if(!filterData["sipcallerip"].empty() &&
 	   filterData["sipcallerdip_type"] == "0") {
-		cRecordFilterItem_IP *filter1 = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_callerip);
+		cRecordFilterItem_IP *filter1 =  new FILE_LINE(0) cRecordFilterItem_IP(this, cf_callerip);
+		filter1->addWhite(filterData["sipcallerip"].c_str());
 		cRecordFilterItem_IP *filter2 = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_calledip);
-		if(isNegFilter(filterData["sipcallerip"])) {
-			filter1->addBlack(getFilterValue(filterData["sipcallerip"]));
-			filter2->addBlack(getFilterValue(filterData["sipcallerip"]));
-		} else {
-			filter1->addWhite(filterData["sipcallerip"].c_str());
-			filter2->addWhite(filterData["sipcallerip"].c_str());
-		}
-		addFilter(filter1, filter2);
+		filter2->addWhite(filterData["sipcallerip"].c_str());
 		if(!filterData["fsipcallerdip_with_proxy"].empty() && is_true(filterData["fsipcallerdip_with_proxy"].c_str())) {
 			cRecordFilterItem_CallProxy *filter3 = new FILE_LINE(0) cRecordFilterItem_CallProxy(this);
-			if(isNegFilter(filterData["sipcallerip"])) {
-				filter3->addBlack(getFilterValue(filterData["sipcallerip"]));
-			} else {
-				filter3->addWhite(filterData["sipcallerip"].c_str());
-			}
-			addFilter(filter3);
+			filter3->addWhite(filterData["sipcallerip"].c_str());
+			addFilter(filter1, filter2, filter3);
+		} else {
+			addFilter(filter1, filter2);
 		}
 	} else {
 		cRecordFilterItems gItems(cRecordFilterItems::_and);
 		if(!filterData["sipcallerip"].empty()) {
 			cRecordFilterItem_IP *filter = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_callerip);
-			if(isNegFilter(filterData["sipcallerip"])) {
-				filter->addBlack(getFilterValue(filterData["sipcallerip"]));
-			} else {
-				filter->addWhite(filterData["sipcallerip"].c_str());
-			}
+			filter->addWhite(filterData["sipcallerip"].c_str());
 			gItems.addFilter(filter);
 		}
 		if(!filterData["sipcalledip"].empty()) {
 			cRecordFilterItem_IP *filter = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_calledip);
-			if(isNegFilter(filterData["sipcalledip"])) {
-				filter->addBlack(getFilterValue(filterData["sipcalledip"]));
-			} else {
-				filter->addWhite(filterData["sipcalledip"].c_str());
-			}
+			filter->addWhite(filterData["sipcalledip"].c_str());
 			gItems.addFilter(filter);
 		}
 		if(gItems.isSet()) {
@@ -113,34 +91,21 @@ void cCallFilter::setFilter(const char *filter) {
 	}
 	if(!filterData["sipcallerip_encaps"].empty() &&
 	   filterData["sipcallerdip_encaps_type"] == "0") {
-		cRecordFilterItem_IP *filter1 = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_callerip_encaps);
+		cRecordFilterItem_IP *filter1 =  new FILE_LINE(0) cRecordFilterItem_IP(this, cf_callerip_encaps);
+		filter1->addWhite(filterData["sipcallerip_encaps"].c_str());
 		cRecordFilterItem_IP *filter2 = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_calledip_encaps);
-		if(isNegFilter(filterData["sipcallerip_encaps"])) {
-			filter1->addBlack(getFilterValue(filterData["sipcallerip_encaps"]));
-			filter2->addBlack(getFilterValue(filterData["sipcallerip_encaps"]));
-		} else {
-			filter1->addWhite(filterData["sipcallerip_encaps"].c_str());
-			filter2->addWhite(filterData["sipcallerip_encaps"].c_str());
-		}
+		filter2->addWhite(filterData["sipcallerip_encaps"].c_str());
 		addFilter(filter1, filter2);
 	} else {
 		cRecordFilterItems gItems(cRecordFilterItems::_and);
 		if(!filterData["sipcallerip_encaps"].empty()) {
 			cRecordFilterItem_IP *filter = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_callerip_encaps);
-			if(isNegFilter(filterData["sipcallerip_encaps"])) {
-				filter->addBlack(getFilterValue(filterData["sipcallerip_encaps"]));
-			} else {
-				filter->addWhite(filterData["sipcallerip_encaps"].c_str());
-			}
+			filter->addWhite(filterData["sipcallerip_encaps"].c_str());
 			gItems.addFilter(filter);
 		}
 		if(!filterData["sipcalledip_encaps"].empty()) {
 			cRecordFilterItem_IP *filter = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_calledip_encaps);
-			if(isNegFilter(filterData["sipcalledip_encaps"])) {
-				filter->addBlack(getFilterValue(filterData["sipcalledip_encaps"]));
-			} else {
-				filter->addWhite(filterData["sipcalledip_encaps"].c_str());
-			}
+			filter->addWhite(filterData["sipcalledip_encaps"].c_str());
 			gItems.addFilter(filter);
 		}
 		if(gItems.isSet()) {
@@ -149,34 +114,21 @@ void cCallFilter::setFilter(const char *filter) {
 	}
 	if(!filterData["caller"].empty() &&
 	   filterData["callerd_type"] == "0") {
-		cRecordFilterItem_CheckString *filter1 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_caller);
+		cRecordFilterItem_CheckString *filter1 =  new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_caller);
+		filter1->addWhite(filterData["caller"].c_str());
 		cRecordFilterItem_CheckString *filter2 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_called);
-		if(isNegFilter(filterData["caller"])) {
-			filter1->addBlack(getFilterValue(filterData["caller"]));
-			filter2->addBlack(getFilterValue(filterData["caller"]));
-		} else {
-			filter1->addWhite(filterData["caller"].c_str());
-			filter2->addWhite(filterData["caller"].c_str());
-		}
+		filter2->addWhite(filterData["caller"].c_str());
 		addFilter(filter1, filter2);
 	} else {
 		cRecordFilterItems gItems(cRecordFilterItems::_and);
 		if(!filterData["caller"].empty()) {
 			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_caller);
-			if(isNegFilter(filterData["caller"])) {
-				filter->addBlack(getFilterValue(filterData["caller"]));
-			} else {
-				filter->addWhite(filterData["caller"].c_str());
-			}
+			filter->addWhite(filterData["caller"].c_str());
 			gItems.addFilter(filter);
 		}
 		if(!filterData["called"].empty()) {
 			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_called);
-			if(isNegFilter(filterData["called"])) {
-				filter->addBlack(getFilterValue(filterData["called"]));
-			} else {
-				filter->addWhite(filterData["called"].c_str());
-			}
+			filter->addWhite(filterData["called"].c_str());
 			gItems.addFilter(filter);
 		}
 		if(gItems.isSet()) {
@@ -185,34 +137,21 @@ void cCallFilter::setFilter(const char *filter) {
 	}
 	if(!filterData["caller_domain"].empty() &&
 	   filterData["callerd_domain_type"] == "0") {
-		cRecordFilterItem_CheckString *filter1 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_callerdomain);
+		cRecordFilterItem_CheckString *filter1 =  new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_callerdomain);
+		filter1->addWhite(filterData["caller_domain"].c_str());
 		cRecordFilterItem_CheckString *filter2 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calleddomain);
-		if(isNegFilter(filterData["caller_domain"])) {
-			filter1->addBlack(getFilterValue(filterData["caller_domain"]));
-			filter2->addBlack(getFilterValue(filterData["caller_domain"]));
-		} else {
-			filter1->addWhite(filterData["caller_domain"].c_str());
-			filter2->addWhite(filterData["caller_domain"].c_str());
-		}
+		filter2->addWhite(filterData["caller_domain"].c_str());
 		addFilter(filter1, filter2);
 	} else {
 		cRecordFilterItems gItems(cRecordFilterItems::_and);
 		if(!filterData["caller_domain"].empty()) {
 			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_callerdomain);
-			if(isNegFilter(filterData["caller_domain"])) {
-				filter->addBlack(getFilterValue(filterData["caller_domain"]));
-			} else {
-				filter->addWhite(filterData["caller_domain"].c_str());
-			}
+			filter->addWhite(filterData["caller_domain"].c_str());
 			gItems.addFilter(filter);
 		}
 		if(!filterData["called_domain"].empty()) {
 			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calleddomain);
-			if(isNegFilter(filterData["called_domain"])) {
-				filter->addBlack(getFilterValue(filterData["called_domain"]));
-			} else {
-				filter->addWhite(filterData["called_domain"].c_str());
-			}
+			filter->addWhite(filterData["called_domain"].c_str());
 			gItems.addFilter(filter);
 		}
 		if(gItems.isSet()) {
@@ -221,34 +160,21 @@ void cCallFilter::setFilter(const char *filter) {
 	}
 	if(!filterData["caller_agent"].empty() &&
 	   filterData["callerd_agent_type"] == "0") {
-		cRecordFilterItem_CheckString *filter1 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calleragent, false);
+		cRecordFilterItem_CheckString *filter1 =  new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calleragent, false);
+		filter1->addWhite(filterData["caller_agent"].c_str());
 		cRecordFilterItem_CheckString *filter2 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calledagent, false);
-		if(isNegFilter(filterData["caller_agent"])) {
-			filter1->addBlack(getFilterValue(filterData["caller_agent"]));
-			filter2->addBlack(getFilterValue(filterData["caller_agent"]));
-		} else {
-			filter1->addWhite(filterData["caller_agent"].c_str());
-			filter2->addWhite(filterData["caller_agent"].c_str());
-		}
+		filter2->addWhite(filterData["caller_agent"].c_str());
 		addFilter(filter1, filter2);
 	} else {
 		cRecordFilterItems gItems(cRecordFilterItems::_and);
 		if(!filterData["caller_agent"].empty()) {
 			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calleragent, false);
-			if(isNegFilter(filterData["caller_agent"])) {
-				filter->addBlack(getFilterValue(filterData["caller_agent"]));
-			} else {
-				filter->addWhite(filterData["caller_agent"].c_str());
-			}
+			filter->addWhite(filterData["caller_agent"].c_str());
 			gItems.addFilter(filter);
 		}
 		if(!filterData["called_agent"].empty()) {
 			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calledagent, false);
-			if(isNegFilter(filterData["called_agent"])) {
-				filter->addBlack(getFilterValue(filterData["called_agent"]));
-			} else {
-				filter->addWhite(filterData["called_agent"].c_str());
-			}
+			filter->addWhite(filterData["called_agent"].c_str());
 			gItems.addFilter(filter);
 		}
 		if(gItems.isSet()) {
@@ -257,21 +183,17 @@ void cCallFilter::setFilter(const char *filter) {
 	}
 	if(!filterData["callid"].empty()) {
 		cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_callid);
-		if(isNegFilter(filterData["callid"])) {
-			filter->addBlack(getFilterValue(filterData["callid"]));
-		} else {
-			filter->addWhite(filterData["callid"].c_str());
-		}
+		filter->addWhite(filterData["callid"].c_str());
 		addFilter(filter);
 	}
 	if(!filterData["sensor_id"].empty()) {
 		cRecordFilterItem_numList *filter = new FILE_LINE(0) cRecordFilterItem_numList(this, cf_id_sensor);
-		filter->addNum(atol(getFilterValue(filterData["sensor_id"])), isNegFilter(filterData["sensor_id"]));
+		filter->addNum(atol(filterData["sensor_id"].c_str()));
 		addFilter(filter);
 	}
 	if(!filterData["vlan"].empty()) {
 		cRecordFilterItem_numList *filter = new FILE_LINE(0) cRecordFilterItem_numList(this, cf_vlan);
-		filter->addNum(atoi(getFilterValue(filterData["vlan"])), isNegFilter(filterData["vlan"]));
+		filter->addNum(atoi(filterData["vlan"].c_str()));
 		addFilter(filter);
 	}
 	if(!filterData["connected"].empty() && atoi(filterData["connected"].c_str())) {
@@ -289,11 +211,7 @@ void cCallFilter::setFilter(const char *filter) {
 		for(list<string>::iterator iter = customHeaders.begin(); iter != customHeaders.end(); iter++) {
 			if(!filterData[*iter].empty()) {
 				cRecordFilterItem_CustomHeader *filter = new FILE_LINE(0) cRecordFilterItem_CustomHeader(this, iter->c_str());
-				if(isNegFilter(filterData[*iter])) {
-					filter->addBlack(getFilterValue(filterData[*iter]));
-				} else {
-					filter->addWhite(filterData[*iter].c_str());
-				}
+				filter->addWhite(filterData[*iter].c_str());
 				addFilter(filter);
 			}
 		}
