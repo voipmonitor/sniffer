@@ -1,3 +1,17 @@
+2026.01.0 19.01.2026
+====================
+- fix Register Request Delay (RRDavg) alerts [VS-1785]
+- load only enabled capture rules from DB [VG-3000]
+- fix crash when attempting to change affinity for threads that are terminated very quickly (in combination with dpdk and client/server) [VS-1787]
+- Add partition control options for Aurora DB compatibility  create_new_partitions: number of partitions to create ahead (default 2), create_new_partitions_until: limit partition creation to specific date, disable_partition_operations_create: disable only partition creation, disable_partition_operations_drop: disable only partition dropping [VS-1763]
+- Extended custom header functions: Packet time tracking for accurate first/last header resolution, New option to extract Nth occurrence of a header (nth_occurrence column) [VS-1789]
+- Add IP/port filtering for traffic_dumper_path, New options: traffic_dumper_filter_ip, traffic_dumper_filter_port, Allows selective SIP packet capture for debugging in high-traffic environments [VS-1791]
+- fix compilation on Almalinux 10.1 
+- fix keylogger build make with_tcp [VS-1797]
+- Fix SRTP decryption breaking mid-call due to duplicate packets [VS-1794]
+- Add support for filtering by IP address in cdr_proxy for user restrictions, Enables user permission rules to filter CDRs based on proxy IP addresses, Allows restricting user access to calls that passed through specific proxy IPs [VG-3068]
+
+
 2025.11.0 11.11.2025
 ====================
 - Implement SIPREC server — tested with the Kamailio SIPREC client [VS-1768] -  voipmonitor.org/doc/siprec
