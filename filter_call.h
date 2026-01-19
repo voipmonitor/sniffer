@@ -112,9 +112,6 @@ public:
 		}
 		return("");
 	}
-private:
-	static bool isNegFilter(const string &value);
-	static const char* getFilterValue(const string &value);
 };
 
 

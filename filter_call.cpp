@@ -43,14 +43,6 @@ cCallFilter::cCallFilter(const char *filter) {
 	setFilter(filter);
 }
 
-bool cCallFilter::isNegFilter(const string &value) {
-	return !value.empty() && value[0] == '!';
-}
-
-const char* cCallFilter::getFilterValue(const string &value) {
-	return (!value.empty() && value[0] == '!') ? value.c_str() + 1 : value.c_str();
-}
-
 void cCallFilter::setFilter(const char *filter) {
 	JsonItem jsonData;
 	jsonData.parse(filter);
@@ -64,6 +56,12 @@ void cCallFilter::setFilter(const char *filter) {
 		}
 		filterData[filterTypeName] = filterValue;
 	}
+	auto isNegFilter = [](const string &value) {
+		return !value.empty() && value[0] == '!';
+	};
+	auto getFilterValue = [](const string &value) {
+		return (!value.empty() && value[0] == '!') ? value.c_str() + 1 : value.c_str();
+	};
 	if(!filterData["calldate"].empty()) {
 		cRecordFilterItem_calldate *filter = new FILE_LINE(0) cRecordFilterItem_calldate(this, cf_calldate, atol(filterData["calldate"].c_str()), cRecordFilterItem_base::_ge);
 		addFilter(filter);
