@@ -83,6 +83,7 @@ inline unsigned int get_unix_tid(void) {
 #define TIME_US_TO_S_signed(us) ((int32_t)((us) / 1000000ll))
 #define TIME_US_TO_MS(us) ((u_int64_t)((us) / 1000ull))
 #define TIME_US_TO_SF(us) ((double)((us) / 1000000.))
+#define TIME_US_TO_US(us) ((u_int32_t)((us) % 1000000ull))
 #define TIME_US_TO_DEC_MS(us) ((u_int32_t)((us) % 1000000ull / 1000ull))
 #define TIME_US_TO_DEC_US(us) ((u_int32_t)((us) % 1000000ull))
 

@@ -15,6 +15,7 @@
 
 extern bool opt_ipfix_counter_log;
 extern bool opt_ipfix_via_pb;
+extern bool opt_ipfix_use_system_time;
 extern int opt_t2_boost;
 
 cIpFixCounter ipfix_counter;
@@ -650,17 +651,17 @@ void cIPFixConnection::process_packet(sIPFixHeader *header, string &data, bool t
 		cout << data;
 		cout << endl << endl;
 	}
-	/*
-	u_int64_t time_us = getTimeUS();
-	time.tv_sec = time_us / 1000000ull;
-	time.tv_usec = time_us % 1000000ull;
-	*/
-	//
 	int dlink = PcapDumper::get_global_pcap_dlink_en10();
 	int pcap_handle_index = PcapDumper::get_global_handle_index_en10();
 	ether_header header_eth;
 	memset(&header_eth, 0, sizeof(header_eth));
 	header_eth.ether_type = htons(ETHERTYPE_IP);
+	if(opt_ipfix_use_system_time) {
+		timespec system_time;
+		clock_gettime(CLOCK_REALTIME, &system_time);
+		time.tv_sec = system_time.tv_sec;
+		time.tv_usec = system_time.tv_nsec / 1000;
+	}
 	if(tcp) {
 		pcap_pkthdr *tcpHeader;
 		u_char *tcpPacket;

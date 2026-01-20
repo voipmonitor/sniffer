@@ -606,11 +606,13 @@ void cSnifferServerConnection::cp_service() {
 		ok_parameters.add("result", "OK");
 		extern int opt_pcap_queue_use_blocks;
 		extern int opt_dup_check_type;
+		extern int opt_dup_check_ipheader;
 		if(opt_pcap_queue_use_blocks) {
 			ok_parameters.add("use_blocks_pb", true);
 		}
 		if(opt_dup_check_type != _dedup_na) {
 			ok_parameters.add("deduplicate", opt_dup_check_type);
+			ok_parameters.add("deduplicate_ipheader", opt_dup_check_ipheader);
 		}
 		if(useNewStore()) {
 			ok_parameters.add("mysql_new_store", useNewStore());
@@ -1459,6 +1461,7 @@ int cSnifferClientService::receive_process_loop_begin() {
 					if(is_client_packetbuffer_sender()) {
 						extern int opt_pcap_queue_use_blocks;
 						extern int opt_dup_check_type;
+						extern int opt_dup_check_ipheader;
 						bool change_config = false;
 						if(!rsltConnectData_json.getValue("use_blocks_pb").empty() &&
 						   !opt_pcap_queue_use_blocks) {
@@ -1480,6 +1483,9 @@ int cSnifferClientService::receive_process_loop_begin() {
 									opt_dup_check_type = server_dup_check_type;
 									change_config = true;
 								}
+							}
+							if(!rsltConnectData_json.getValue("deduplicate_ipheader").empty()) {
+								opt_dup_check_ipheader = atoi(rsltConnectData_json.getValue("deduplicate_ipheader").c_str());
 							}
 						}
 						if(change_config) {

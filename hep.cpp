@@ -12,6 +12,7 @@
 extern bool opt_hep_kamailio_protocol_id_fix;
 extern bool opt_hep_counter_log;
 extern bool opt_hep_via_pb;
+extern bool opt_hep_use_system_time;
 extern int opt_t2_boost;
 
 cHepCounter hep_counter;
@@ -133,6 +134,12 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen, vmIP ip) {
 				payload_data = payload_buf.data();
 				payload_len = payload_buf.size();
 			}
+		}
+		if(opt_hep_use_system_time) {
+			timespec system_time;
+			clock_gettime(CLOCK_REALTIME, &system_time);
+			hepData.timestamp_seconds = system_time.tv_sec;
+			hepData.timestamp_microseconds = system_time.tv_nsec / 1000;
 		}
 		if(hepData.ip_protocol_id == IPPROTO_TCP || hepData.ip_protocol_id == IPPROTO_ESP) {
 			pcap_pkthdr *tcpHeader;

@@ -1550,6 +1550,7 @@ unsigned opt_ipfix_bind_port;
 vector<int> opt_ipfix_version;
 bool opt_ipfix_counter_log;
 bool opt_ipfix_via_pb = true;
+bool opt_ipfix_use_system_time = false;
 bool opt_ipfix_qos_fill_codec = false;
 bool opt_ipfix_qos_fill_jitter = false;
 bool opt_ipfix_qos_fill_rtp_streams = false;
@@ -1561,6 +1562,7 @@ bool opt_hep_bind_udp;
 bool opt_hep_counter_log;
 bool opt_hep_kamailio_protocol_id_fix = true;
 bool opt_hep_via_pb = true;
+bool opt_hep_use_system_time = false;
 
 bool opt_ribbonsbc_listen;
 string opt_ribbonsbc_bind_ip;
@@ -5270,7 +5272,7 @@ int main_init_read() {
 				if(opt_dup_check_type != _dedup_na && 
 				   (is_receiver() || is_server() ?
 				     !opt_receiver_check_id_sensor :
-				     (getCountInterfaces() > 1 || (opt_hep && opt_hep_via_pb)))) {
+				     (getCountInterfaces() > 1 || (opt_hep && opt_hep_via_pb) || (opt_ipfix && opt_ipfix_via_pb) || (opt_ribbonsbc_listen && opt_ribbonsbc_via_pb)))) {
 					if(pass == 0) {
 						pcapQueueQ_outThread_dedup = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::dedup, pcapQueueQ);
 					} else {
@@ -7659,6 +7661,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("ipfix_version",  &opt_ipfix_version));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix_counter_log",  &opt_ipfix_counter_log));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix_via_pb",  &opt_ipfix_via_pb));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix_use_system_time",  &opt_ipfix_use_system_time));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix_qos_fill_codec", &opt_ipfix_qos_fill_codec));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix_qos_fill_jitter", &opt_ipfix_qos_fill_jitter));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix_qos_fill_rtp_streams", &opt_ipfix_qos_fill_rtp_streams));
@@ -7669,6 +7672,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_counter_log",  &opt_hep_counter_log));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_kamailio_protocol_id_fix", &opt_hep_kamailio_protocol_id_fix));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_via_pb",  &opt_hep_via_pb));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_use_system_time",  &opt_hep_use_system_time));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ribbonsbc_listen",  &opt_ribbonsbc_listen));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("ribbonsbc_bind_ip",  &opt_ribbonsbc_bind_ip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("ribbonsbc_bind_port",  &opt_ribbonsbc_bind_port));
