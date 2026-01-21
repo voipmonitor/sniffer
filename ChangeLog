@@ -1,3 +1,8 @@
+2026.01.2 21.01.2026
+====================
+- New configuration option siprec_external_ip to specify an external IP address for SIPREC SDP responses. Useful when VoIPmonitor SIPREC server is behind NAT and needs to advertise a public IP for RTP media to reach it. Similar to Asterisk's externip functionality [VS-1798]
+
+
 2026.01.1 20.01.2026
 ====================
 - Fix deduplication when using HEP and packetbuffer_sender together [VS-1795]
