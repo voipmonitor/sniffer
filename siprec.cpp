@@ -671,7 +671,7 @@ string cSipRecCall::createInviteResponse(bool use_real_caller_called, bool use_d
 	if((it = last_invite.tags.find("cseq")) != last_invite.tags.end()) {
 		response << "CSeq: " << it->second << "\r\n";
 	}
-	response << ("Contact: <sip:" + local_ip.getString() + ":" + local_port.getString() + ">") << "\r\n";
+	response << ("Contact: <sip:" + getExternalIP().getString() + ":" + local_port.getString() + ">") << "\r\n";
 	response << "Content-Type: application/sdp\r\n";
 	response << "Content-Disposition: session\r\n";
 	ostringstream sdp_body;
@@ -686,9 +686,9 @@ string cSipRecCall::createInviteResponse(bool use_real_caller_called, bool use_d
 			sdp_body << "s=SIPREC Session\r\n";
 			sdp_body << "c=IN IP" << sdp.c_in.vi() << " " << sdp.c_in.getString() << "\r\n";
 		} else {
-			sdp_body << "o=callee " << (start_time_us+1) << " 0 IN IP" << local_ip.vi() << " " << local_ip.getString() << "\r\n";
+			sdp_body << "o=callee " << (start_time_us+1) << " 0 IN IP" << getExternalIP().vi() << " " << getExternalIP().getString() << "\r\n";
 			sdp_body << "s=SIPREC Session\r\n";
-			sdp_body << "c=IN IP" << local_ip.vi() << " " << local_ip.getString() << "\r\n";
+			sdp_body << "c=IN IP" << getExternalIP().vi() << " " << getExternalIP().getString() << "\r\n";
 		}
 	}
 	sdp_body << "t=0 0\r\n";
@@ -997,6 +997,10 @@ bool cSipRecCall::parseParticipantNode(void *participantNode, bool is_caller) {
 		}
 	}
 	return(true);
+}
+
+vmIP cSipRecCall::getExternalIP() {
+	return(sip_rec->getExternalIP().isSet() ? sip_rec->getExternalIP() : local_ip);
 }
 
 
@@ -1613,6 +1617,10 @@ void cSipRec::setBindParams(vmIP ip, vmPort port, bool udp) {
 	bind_udp = udp;
 }
 
+void cSipRec::setExternalIP(vmIP ip) {
+	external_ip = ip;
+}
+
 void cSipRec::setRtpStreamTimeout(unsigned rtp_stream_timeout_s) {
 	this->rtp_stream_timeout_s = rtp_stream_timeout_s;
 }
@@ -1955,6 +1963,7 @@ void sipRecStart() {
 	extern string opt_siprec_bind_ip;
 	extern int opt_siprec_bind_port;
 	extern bool opt_siprec_bind_udp;
+	extern string opt_siprec_external_ip;
 	extern int opt_siprec_rtp_min;
 	extern int opt_siprec_rtp_max;
 	extern int opt_siprec_rtp_stream_timeout_s;
@@ -1963,6 +1972,9 @@ void sipRecStart() {
 	sip_rec = new cSipRec();
 	sip_rec->setRtpPortsLimit(opt_siprec_rtp_min, opt_siprec_rtp_max);
 	sip_rec->setBindParams(str_2_vmIP(opt_siprec_bind_ip.c_str()), opt_siprec_bind_port, opt_siprec_bind_udp);
+	if(!opt_siprec_external_ip.empty()) {
+		sip_rec->setExternalIP(str_2_vmIP(opt_siprec_external_ip.c_str()));
+	}
 	if(opt_siprec_rtp_stream_timeout_s > 0) {
 		sip_rec->setRtpStreamTimeout(opt_siprec_rtp_stream_timeout_s);
 	}

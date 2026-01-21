@@ -1227,6 +1227,7 @@ int opt_upgrade_try_http_if_https_fail = 0;
 
 string opt_siprec_bind_ip;
 int opt_siprec_bind_port;
+string opt_siprec_external_ip;
 bool opt_siprec_bind_udp = true;
 int opt_siprec_rtp_min = 10000;
 int opt_siprec_rtp_max = 20000;
@@ -7594,6 +7595,7 @@ void cConfig::addConfigItems() {
 		subgroup("siprec");
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("siprec_bind", &opt_siprec_bind_ip));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_bind_port", &opt_siprec_bind_port));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("siprec_external_ip", &opt_siprec_external_ip));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("siprec_udp", &opt_siprec_bind_udp));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_rtp_min", &opt_siprec_rtp_min));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_rtp_max", &opt_siprec_rtp_max));

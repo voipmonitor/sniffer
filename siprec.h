@@ -240,6 +240,7 @@ private:
 		return((*ptr == '\r' && *(ptr + 1) == '\n') ||
 		       *ptr == '\n');
 	}
+	vmIP getExternalIP();
 public:
 	volatile int ref_count;
 	sId id;
@@ -356,6 +357,8 @@ public:
 	~cSipRec();
 	void setRtpPortsLimit(unsigned rtp_port_min, unsigned rtp_port_max);
 	void setBindParams(vmIP ip, vmPort port, bool udp);
+	void setExternalIP(vmIP ip);
+	vmIP getExternalIP() { return(external_ip); }
 	void setRtpStreamTimeout(unsigned rtp_stream_timeout_s);
 	void setRtpStreamsMaxThreads(unsigned rtp_streams_max_threads);
 	void setRtpStreamsMaxPerThread(unsigned rtp_streams_max_per_thread);
@@ -390,6 +393,7 @@ private:
 	vmIP bind_ip;
 	vmPort bind_port;
 	bool bind_udp;
+	vmIP external_ip;
 	set<u_int16_t> free_rtp_ports;
 	map<cSipRecCall::sId, cSipRecCall*> calls_by_call_id;
 	cSipRecStreams *streams;
