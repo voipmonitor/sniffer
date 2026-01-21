@@ -1,3 +1,15 @@
+2026.01.1 20.01.2026
+====================
+- Fix deduplication when using HEP and packetbuffer_sender together [VS-1795]
+- Fix deduplicate_ipheader=ip_only not working with mixed HEP and packetbuffer_sender sources
+- Server now sends deduplicate_ipheader parameter to client in packetbuffer_sender mode, Previously, hash calculation mismatch between server and client caused deduplication to fail
+- Workaround for older versions: set deduplicate_ipheader=ip_only on client side as well
+- New debugging parameters for HEP/IPFIX timestamp handling:
+- hep_use_system_time = yes/NO - use system arrival time instead of HEP packet timestamp
+- ipfix_use_system_time = yes/NO - use system arrival time instead of IPFIX packet timestamp
+- Useful for debugging packet timing issues when combining HEP with PCAP replay
+
+
 2026.01.0 19.01.2026
 ====================
 - fix Register Request Delay (RRDavg) alerts [VS-1785]
@@ -10,6 +22,7 @@
 - fix keylogger build make with_tcp [VS-1797]
 - Fix SRTP decryption breaking mid-call due to duplicate packets [VS-1794]
 - Add support for filtering by IP address in cdr_proxy for user restrictions, Enables user permission rules to filter CDRs based on proxy IP addresses, Allows restricting user access to calls that passed through specific proxy IPs [VG-3068]
+- modification of configuration control so that packetbuffer blocks can be forwarded from client to server during active reception of hep, ipfix, and ribbonsbc
 
 
 2025.11.0 11.11.2025
