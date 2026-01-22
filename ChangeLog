@@ -1,3 +1,14 @@
+2026.01.3 22.01.2026
+====================
+- Add disk I/O saturation monitoring for spool directory writes
+- Automatic calibration measures disk performance (baseline latency, knee throughput, IOPS)
+- Calibration profile stored in .disk_io_calibration.conf with UUID tracking for disk changes
+- Syslog output format: IO[B<baseline>|L<latency>|U<util>|C<capacity>|W<write_mbs>|R<read_mbs>|WI<write_iops>|RI<read_iops>]
+- Status indicators: WARN at 80% capacity, DISK_SAT at 95% or 3x baseline latency
+- RRD integration with 9 data sources: io-latency, io-qdepth, io-util, io-capacity, io-write-throughput, io-read-throughput, io-write-iops, io-read-iops, io-reserve
+- New files: disk_io_monitor.cpp, disk_io_monitor.h, README_disk_io_monitor.md
+
+
 2026.01.2 21.01.2026
 ====================
 - New configuration option siprec_external_ip to specify an external IP address for SIPREC SDP responses. Useful when VoIPmonitor SIPREC server is behind NAT and needs to advertise a public IP for RTP media to reach it. Similar to Asterisk's externip functionality [VS-1798]

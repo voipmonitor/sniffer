@@ -9929,6 +9929,7 @@ void create_spool_dirs() {
 	if(opt_spooldir_2_audiograph[0]) {
 		spooldir_mkdir(opt_spooldir_2_audiograph);
 	}
+	// Note: Disk I/O monitor is initialized in pcap_queue.cpp when live capture starts
 }
 
 
