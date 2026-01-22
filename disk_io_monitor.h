@@ -33,21 +33,22 @@
 #include <pthread.h>
 
 // C++11 atomic support - fallback to volatile for older compilers
+// Use DIOM_ prefix to avoid conflict with sync.h macros
 #if __cplusplus >= 201103L
     #include <atomic>
-    #define ATOMIC_BOOL std::atomic<bool>
-    #define ATOMIC_INT std::atomic<int>
-    #define ATOMIC_UINT64 std::atomic<uint64_t>
-    #define ATOMIC_LOAD(x) (x).load()
-    #define ATOMIC_LOAD_PTR(x) (x)->load()
-    #define ATOMIC_CAS(x, expected, desired) (x).compare_exchange_strong(expected, desired)
+    #define DIOM_ATOMIC_BOOL std::atomic<bool>
+    #define DIOM_ATOMIC_INT std::atomic<int>
+    #define DIOM_ATOMIC_UINT64 std::atomic<uint64_t>
+    #define DIOM_ATOMIC_LOAD(x) (x).load()
+    #define DIOM_ATOMIC_LOAD_PTR(x) (x)->load()
+    #define DIOM_ATOMIC_CAS(x, expected, desired) (x).compare_exchange_strong(expected, desired)
 #else
-    #define ATOMIC_BOOL volatile bool
-    #define ATOMIC_INT volatile int
-    #define ATOMIC_UINT64 volatile uint64_t
-    #define ATOMIC_LOAD(x) (x)
-    #define ATOMIC_LOAD_PTR(x) (*(x))
-    #define ATOMIC_CAS(x, expected, desired) __sync_bool_compare_and_swap(&(x), expected, desired)
+    #define DIOM_ATOMIC_BOOL volatile bool
+    #define DIOM_ATOMIC_INT volatile int
+    #define DIOM_ATOMIC_UINT64 volatile uint64_t
+    #define DIOM_ATOMIC_LOAD(x) (x)
+    #define DIOM_ATOMIC_LOAD_PTR(x) (*(x))
+    #define DIOM_ATOMIC_CAS(x, expected, desired) __sync_bool_compare_and_swap(&(x), expected, desired)
 #endif
 
 // String helpers for pre-C++11 compatibility
@@ -291,9 +292,9 @@ private:
 
     // State
     bool active_;
-    ATOMIC_BOOL init_started_;  // Guard against concurrent init() calls
-    ATOMIC_BOOL calibrating_;
-    ATOMIC_INT calibration_progress_;
+    DIOM_ATOMIC_BOOL init_started_;  // Guard against concurrent init() calls
+    DIOM_ATOMIC_BOOL calibrating_;
+    DIOM_ATOMIC_INT calibration_progress_;
 
     // Calibration profile
     sCalibrationProfile profile_;

@@ -301,7 +301,7 @@ bool cDiskIOMonitor::init(const char *spool_path, bool allow_calibration) {
     // Prevent double initialization (thread-safe)
     // Atomic compare-and-swap: only proceed if init_started_ was false
     bool expected = false;
-    if (!ATOMIC_CAS(init_started_, expected, true)) {
+    if (!DIOM_ATOMIC_CAS(init_started_, expected, true)) {
         return active_;  // Already initialized or initialization in progress
     }
 
@@ -368,11 +368,11 @@ struct sWriterThreadData {
     int thread_id;
     std::string test_dir;
     char *buffer;
-    ATOMIC_BOOL *stop_flag;
-    ATOMIC_UINT64 bytes_written;
-    ATOMIC_UINT64 writes_completed;
-    ATOMIC_UINT64 total_latency_us;
-    ATOMIC_BOOL running;
+    DIOM_ATOMIC_BOOL *stop_flag;
+    DIOM_ATOMIC_UINT64 bytes_written;
+    DIOM_ATOMIC_UINT64 writes_completed;
+    DIOM_ATOMIC_UINT64 total_latency_us;
+    DIOM_ATOMIC_BOOL running;
 
     sWriterThreadData() : bytes_written(0), writes_completed(0), total_latency_us(0), running(false) {}
 };
@@ -399,7 +399,7 @@ static void* calibrationWriterThread(void *arg) {
 
     data->running = true;
 
-    while (!ATOMIC_LOAD_PTR(data->stop_flag)) {
+    while (!DIOM_ATOMIC_LOAD_PTR(data->stop_flag)) {
         uint64_t start = getTimestampUs();
 
         ssize_t written = write(fd, data->buffer, CALIBRATION_BLOCK_SIZE);
@@ -621,7 +621,7 @@ static sCalibrationPoint measureWithWriters(const std::string &spool_path, char 
 
     std::vector<pthread_t> threads(num_writers);
     std::vector<sWriterThreadData*> thread_data(num_writers);
-    ATOMIC_BOOL stop_flag(false);
+    DIOM_ATOMIC_BOOL stop_flag(false);
 
     // Allocate per-thread buffers
     std::vector<char*> buffers(num_writers);
@@ -669,7 +669,7 @@ static sCalibrationPoint measureWithWriters(const std::string &spool_path, char 
 
         uint64_t total_written = 0;
         for (int i = 0; i < num_writers; i++) {
-            total_written += ATOMIC_LOAD(thread_data[i]->bytes_written);
+            total_written += DIOM_ATOMIC_LOAD(thread_data[i]->bytes_written);
         }
 
         if (total_written >= target_bytes) {
@@ -694,9 +694,9 @@ static sCalibrationPoint measureWithWriters(const std::string &spool_path, char 
     uint64_t total_latency = 0;
 
     for (int i = 0; i < num_writers; i++) {
-        total_written += ATOMIC_LOAD(thread_data[i]->bytes_written);
-        total_writes += ATOMIC_LOAD(thread_data[i]->writes_completed);
-        total_latency += ATOMIC_LOAD(thread_data[i]->total_latency_us);
+        total_written += DIOM_ATOMIC_LOAD(thread_data[i]->bytes_written);
+        total_writes += DIOM_ATOMIC_LOAD(thread_data[i]->writes_completed);
+        total_latency += DIOM_ATOMIC_LOAD(thread_data[i]->total_latency_us);
 
         free(buffers[i]);
         delete thread_data[i];
@@ -919,7 +919,7 @@ std::string cDiskIOMonitor::formatStatusString() const {
     char buf[256];
 
     if (calibrating_) {
-        snprintf(buf, sizeof(buf), "IO[calibrating %d%%]", (int)ATOMIC_LOAD(calibration_progress_));
+        snprintf(buf, sizeof(buf), "IO[calibrating %d%%]", (int)DIOM_ATOMIC_LOAD(calibration_progress_));
         return buf;
     }
 
