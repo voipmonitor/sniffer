@@ -2204,7 +2204,6 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				rrd_set_value(RRD_VALUE_io_read_throughput, io.read_throughput_mbs);
 				rrd_set_value(RRD_VALUE_io_write_iops, io.write_iops);
 				rrd_set_value(RRD_VALUE_io_read_iops, io.read_iops);
-				rrd_set_value(RRD_VALUE_io_reserve, io.reserve_pct);
 			}
 		}
 

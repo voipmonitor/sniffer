@@ -918,9 +918,10 @@ std::string cDiskIOMonitor::formatStatusString() const {
         return "IO[no calib]";
     }
 
-    // Format: IO[B0.5|L1.2|U45|C75|W125|R10|WI1.2k|RI500]
+    // Format: IO[B0.5|L1.2|Q3.2|U45|C75|W125|R10|WI1.2k|RI500]
     // B = baseline latency (calibrated, ms)
     // L = current latency (ms)
+    // Q = queue depth
     // U = utilization %
     // C = capacity % (current throughput / knee throughput)
     // W = write MB/s
@@ -956,10 +957,19 @@ std::string cDiskIOMonitor::formatStatusString() const {
     char riops_str[16];
     snprintf(riops_str, sizeof(riops_str), "%.1fk", metrics_.read_iops / 1000.0);
 
+    // Queue depth formatting
+    char qdepth_str[16];
+    if (metrics_.queue_depth < 10.0) {
+        snprintf(qdepth_str, sizeof(qdepth_str), "%.1f", metrics_.queue_depth);
+    } else {
+        snprintf(qdepth_str, sizeof(qdepth_str), "%.0f", metrics_.queue_depth);
+    }
+
     // Format output
-    snprintf(buf, sizeof(buf), "IO[B%s|L%s|U%.0f|C%.0f|W%.0f|R%.0f|WI%s|RI%s]",
+    snprintf(buf, sizeof(buf), "IO[B%s|L%s|Q%s|U%.0f|C%.0f|W%.0f|R%.0f|WI%s|RI%s]",
              baseline_str,
              latency_str,
+             qdepth_str,
              metrics_.utilization_pct,
              metrics_.capacity_pct,
              metrics_.write_throughput_mbs,

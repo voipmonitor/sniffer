@@ -75,7 +75,6 @@
 #define RRD_VALUE_io_read_throughput "io-read-throughput"
 #define RRD_VALUE_io_write_iops "io-write-iops"
 #define RRD_VALUE_io_read_iops "io-read-iops"
-#define RRD_VALUE_io_reserve "io-reserve"
 
 #define RRD_VALUE_UNSET DBL_MAX
 

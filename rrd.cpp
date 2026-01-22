@@ -1011,8 +1011,6 @@ void rrd_charts_init() {
 			->setPrecision(0, 1);
 	ch->addValue(RRD_VALUE_io_read_iops, "Read IOPS", "9400D3", 0, 1000000)
 			->setPrecision(0, 1);
-	ch->addValue(RRD_VALUE_io_reserve, "Reserve %", "32CD32", 0, 100)
-			->setPrecision(0, 1);
 
 	rrd_charts->createMapValues();
 }
