@@ -39,12 +39,19 @@
     #define ATOMIC_INT std::atomic<int>
     #define ATOMIC_UINT64 std::atomic<uint64_t>
     #define ATOMIC_LOAD(x) (x).load()
+    #define ATOMIC_LOAD_PTR(x) (x)->load()
 #else
     #define ATOMIC_BOOL volatile bool
     #define ATOMIC_INT volatile int
     #define ATOMIC_UINT64 volatile uint64_t
     #define ATOMIC_LOAD(x) (x)
+    #define ATOMIC_LOAD_PTR(x) (*(x))
 #endif
+
+// String helpers for pre-C++11 compatibility
+inline char str_back(const std::string &s) { return s[s.length() - 1]; }
+inline void str_pop_back(std::string &s) { if (!s.empty()) s.erase(s.length() - 1); }
+inline char str_front(const std::string &s) { return s[0]; }
 
 
 #define CALIBRATION_FILENAME ".disk_io_calibration.conf"
@@ -305,11 +312,11 @@ private:
     sIOMetrics metrics_;
 
     // Thresholds for DISK_SAT detection
-    static constexpr double CAPACITY_WARNING_PCT = 80.0;     // Show WARN at 80%
-    static constexpr double CAPACITY_CRITICAL_PCT = 95.0;    // Show DISK_SAT at 95%
-    static constexpr double LATENCY_CRITICAL_RATIO = 3.0;    // Latency 3× baseline
-    static constexpr double BUFFER_GROW_THRESHOLD = 5.0;     // % buffer increase
-    static constexpr int BUFFER_GROW_SAMPLES = 3;            // Consecutive samples
+    static const double CAPACITY_WARNING_PCT;      // Show WARN at 80%
+    static const double CAPACITY_CRITICAL_PCT;     // Show DISK_SAT at 95%
+    static const double LATENCY_CRITICAL_RATIO;    // Latency 3× baseline
+    static const double BUFFER_GROW_THRESHOLD;     // % buffer increase
+    static const int BUFFER_GROW_SAMPLES = 3;      // Consecutive samples (int OK inline)
 };
 
 

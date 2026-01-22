@@ -24,11 +24,16 @@
 #include <iomanip>
 #include <algorithm>
 #include <vector>
-#include <atomic>
 
 
 // Global instance
 cDiskIOMonitor diskIOMonitor;
+
+// Static const definitions
+const double cDiskIOMonitor::CAPACITY_WARNING_PCT = 80.0;
+const double cDiskIOMonitor::CAPACITY_CRITICAL_PCT = 95.0;
+const double cDiskIOMonitor::LATENCY_CRITICAL_RATIO = 3.0;
+const double cDiskIOMonitor::BUFFER_GROW_THRESHOLD = 5.0;
 
 
 // ============================================================================
@@ -69,8 +74,8 @@ std::string cDiskIOMonitor::execCommand(const char *cmd) {
         }
         pclose(pipe);
     }
-    while (!result.empty() && (result.back() == '\n' || result.back() == '\r' || result.back() == ' ')) {
-        result.pop_back();
+    while (!result.empty() && (str_back(result) == '\n' || str_back(result) == '\r' || str_back(result) == ' ')) {
+        str_pop_back(result);
     }
     return result;
 }
@@ -138,8 +143,8 @@ std::string cDiskIOMonitor::detectBlockDevice(const char *path) {
         }
         // SATA/SAS: sda1 -> sda
         else {
-            while (!dev_name.empty() && isdigit(dev_name.back())) {
-                dev_name.pop_back();
+            while (!dev_name.empty() && isdigit(str_back(dev_name))) {
+                str_pop_back(dev_name);
             }
         }
     }
@@ -173,7 +178,7 @@ std::string cDiskIOMonitor::getFilesystemUUID(const char *path) {
 bool cDiskIOMonitor::loadCalibrationProfile() {
     std::string filepath = spool_path_ + "/" + CALIBRATION_FILENAME;
 
-    std::ifstream f(filepath);
+    std::ifstream f(filepath.c_str());
     if (!f.is_open()) {
         return false;
     }
@@ -199,10 +204,10 @@ bool cDiskIOMonitor::loadCalibrationProfile() {
         std::string key = line.substr(0, eq_pos);
         std::string value = line.substr(eq_pos + 1);
 
-        while (!key.empty() && isspace(key.back())) key.pop_back();
-        while (!key.empty() && isspace(key.front())) key.erase(0, 1);
-        while (!value.empty() && isspace(value.back())) value.pop_back();
-        while (!value.empty() && isspace(value.front())) value.erase(0, 1);
+        while (!key.empty() && isspace(str_back(key))) str_pop_back(key);
+        while (!key.empty() && isspace(str_front(key))) key.erase(0, 1);
+        while (!value.empty() && isspace(str_back(value))) str_pop_back(value);
+        while (!value.empty() && isspace(str_front(value))) value.erase(0, 1);
 
         if (section == "identity") {
             if (key == "uuid") profile_.uuid = value;
@@ -230,7 +235,7 @@ bool cDiskIOMonitor::loadCalibrationProfile() {
 bool cDiskIOMonitor::saveCalibrationProfile() {
     std::string filepath = spool_path_ + "/" + CALIBRATION_FILENAME;
 
-    std::ofstream f(filepath);
+    std::ofstream f(filepath.c_str());
     if (!f.is_open()) {
         syslog(LOG_ERR, "disk_io_monitor: Failed to save calibration to %s", filepath.c_str());
         return false;
@@ -385,7 +390,7 @@ static void* calibrationWriterThread(void *arg) {
 
     data->running = true;
 
-    while (!data->stop_flag->load()) {
+    while (!ATOMIC_LOAD_PTR(data->stop_flag)) {
         uint64_t start = getTimestampUs();
 
         ssize_t written = write(fd, data->buffer, CALIBRATION_BLOCK_SIZE);
@@ -607,7 +612,7 @@ static sCalibrationPoint measureWithWriters(const std::string &spool_path, char 
 
     std::vector<pthread_t> threads(num_writers);
     std::vector<sWriterThreadData*> thread_data(num_writers);
-    std::atomic<bool> stop_flag{false};
+    ATOMIC_BOOL stop_flag = false;
 
     // Allocate per-thread buffers
     std::vector<char*> buffers(num_writers);
