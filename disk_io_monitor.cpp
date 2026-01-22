@@ -612,7 +612,7 @@ static sCalibrationPoint measureWithWriters(const std::string &spool_path, char 
 
     std::vector<pthread_t> threads(num_writers);
     std::vector<sWriterThreadData*> thread_data(num_writers);
-    ATOMIC_BOOL stop_flag = false;
+    ATOMIC_BOOL stop_flag(false);
 
     // Allocate per-thread buffers
     std::vector<char*> buffers(num_writers);
