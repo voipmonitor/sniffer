@@ -297,6 +297,11 @@ bool cDiskIOMonitor::saveCalibrationProfile() {
 // ============================================================================
 
 bool cDiskIOMonitor::init(const char *spool_path, bool allow_calibration) {
+    // Prevent double initialization
+    if (active_) {
+        return true;
+    }
+
     spool_path_ = spool_path;
 
     device_name_ = detectBlockDevice(spool_path);
