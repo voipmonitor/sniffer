@@ -591,7 +591,7 @@ bool cSocket::connect(unsigned loopSleepS) {
 bool cSocket::listen() {
 	if(!ip.isSet() && !host.empty()) {
 		ip = resolver.resolve(host);
-		if(!ip.isSet() && 
+		if(!ip.isSet() &&
 		   !(ip.is_v6() ? host == "::" : host == "0.0.0.0")) {
 			setError("failed resolve host name %s", host.c_str());
 			return(false);
@@ -1564,10 +1564,11 @@ u_int32_t cSocketBlock::dataSum(u_char *data, size_t dataLen) {
 }
 
 
-cServer::cServer(bool udp, bool simple_read) {
-	this->udp = udp;
-	this->simple_read = simple_read || udp;
+cServer::cServer(eListenProtocol listen_protocol) {
+	this->listen_protocol = listen_protocol;
+	this->simple_read = false;
 	this->need_local_ip_port = false;
+	this->disable_verbose_connect_from = false;
 	for(unsigned i = 0; i < MAX_LISTEN_SOCKETS; i++) {
 		listen_socket[i] = NULL;
 		listen_thread[i] = 0;
@@ -1575,10 +1576,25 @@ cServer::cServer(bool udp, bool simple_read) {
 }
 
 cServer::~cServer() {
-	listen_stop();
+	for(unsigned i = 0; i < MAX_LISTEN_SOCKETS; i++) {
+		listen_stop(i);
+	}
 }
 
 bool cServer::listen_start(const char *name, string host, u_int16_t port, unsigned index) {
+	switch(listen_protocol) {
+	case _lp_tcp:
+		return(_listen_start(name, host, port, false, index));
+	case _lp_udp:
+		return(_listen_start(name, host, port, true, index));
+	case _lp_both:
+		return(_listen_start(name, host, port, false, index) &&
+		       _listen_start(name, host, port, true, index + 1, false));
+	}
+	return(false);
+}
+
+bool cServer::_listen_start(const char *name, string host, u_int16_t port, bool udp, unsigned index, bool verbose_start) {
 	listen_socket[index] = new FILE_LINE(0) cSocketBlock(name);
 	listen_socket[index]->setHostPort(host, port);
 	if(udp) {
@@ -1595,9 +1611,12 @@ bool cServer::listen_start(const char *name, string host, u_int16_t port, unsign
 	sListenParams *listenParams = new sListenParams;
 	listenParams->server = this;
 	listenParams->index = index;
-	vm_pthread_create("cServer::listen_start", &listen_thread[index], NULL, cServer::listen_process, listenParams, __FILE__, __LINE__);
+	listenParams->verbose_start = verbose_start;
+	vm_pthread_create((string("cServer::listen_start (") + (name ? string(name) + "/" : "") + (udp ? "udp" : "tcp") + ")").c_str(), 
+			  &listen_thread[index], NULL, cServer::listen_process, listenParams, __FILE__, __LINE__);
 	return(true);
 }
+
 
 void cServer::listen_stop(unsigned index) {
 	if(listen_socket[index]) {
@@ -1613,7 +1632,7 @@ void cServer::listen_stop(unsigned index) {
 }
 
 void *cServer::listen_process(void *arg) {
-	if(CR_VERBOSE().start_server) {
+	if(CR_VERBOSE().start_server && ((sListenParams*)arg)->verbose_start) {
 		ostringstream verbstr;
 		verbstr << (((sListenParams*)arg)->server->startVerbString.empty() ? 
 			     "START SERVER LISTEN" : 
@@ -1626,7 +1645,7 @@ void *cServer::listen_process(void *arg) {
 }
 
 void cServer::listen_process(int index) {
-	if(!udp) {
+	if(!listen_socket[index]->isUdp()) {
 		cSocket *clientSocket;
 		while(!((listen_socket[index] && listen_socket[index]->isTerminate()) || CR_TERMINATE())) {
 			if(listen_socket[index]->await(&clientSocket)) {
@@ -1638,7 +1657,7 @@ void cServer::listen_process(int index) {
 				} else 
 				#endif
 				if(!CR_TERMINATE()) {
-					if(CR_VERBOSE().connect_info) {
+					if(CR_VERBOSE().connect_info && !disable_verbose_connect_from) {
 						ostringstream verbstr;
 						verbstr << "NEW CONNECTION FROM: " 
 							<< clientSocket->getIP() << " : " << clientSocket->getPort()

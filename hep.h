@@ -151,7 +151,7 @@ private:
  
 class cHEP_Server : public cServer, public cHEP_ProcessData {
 public:
-	cHEP_Server(bool udp);
+	cHEP_Server();
 	virtual ~cHEP_Server();
 	void createConnection(cSocket *socket);
 	void evData(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket);
@@ -193,7 +193,7 @@ private:
 };
 
 
-void HEP_ServerStart(const char *host, int port, bool udp);
+void HEP_ServerStart(const char *host, int port);
 void HEP_ServerStop();
 
 void HEP_client_emulation(const char *pcap, vmIP client_ip, vmIP server_ip, vmIP destination_ip, vmPort destination_port, bool udp);

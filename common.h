@@ -107,6 +107,7 @@ struct sVerbose {
 	int dtls;
 	int hep3;
 	int ipfix;
+	int ribbonsbc;
 	int cleanspool;
 	int cleanspool_disable_rm;
 	int log_profiler;

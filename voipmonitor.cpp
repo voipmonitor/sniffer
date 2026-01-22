@@ -1228,7 +1228,6 @@ int opt_upgrade_try_http_if_https_fail = 0;
 string opt_siprec_bind_ip;
 int opt_siprec_bind_port;
 string opt_siprec_external_ip;
-bool opt_siprec_bind_udp = true;
 int opt_siprec_rtp_min = 10000;
 int opt_siprec_rtp_max = 20000;
 int opt_siprec_rtp_stream_timeout_s = 300;
@@ -1559,7 +1558,6 @@ bool opt_ipfix_qos_fill_rtp_streams = false;
 bool opt_hep;
 string opt_hep_bind_ip;
 unsigned opt_hep_bind_port;
-bool opt_hep_bind_udp;
 bool opt_hep_counter_log;
 bool opt_hep_kamailio_protocol_id_fix = true;
 bool opt_hep_via_pb = true;
@@ -1568,7 +1566,6 @@ bool opt_hep_use_system_time = false;
 bool opt_ribbonsbc_listen;
 string opt_ribbonsbc_bind_ip;
 unsigned opt_ribbonsbc_bind_port;
-bool opt_ribbonsbc_bind_udp;
 bool opt_ribbonsbc_counter_log;
 bool opt_ribbonsbc_via_pb = true;
 bool opt_ribbonsbc_size_header = true;
@@ -6076,11 +6073,11 @@ void start_servers() {
 	}
 	
 	if(opt_hep && !opt_hep_bind_ip.empty() && opt_hep_bind_port) {
-		HEP_ServerStart(opt_hep_bind_ip.c_str(), opt_hep_bind_port, opt_hep_bind_udp);
+		HEP_ServerStart(opt_hep_bind_ip.c_str(), opt_hep_bind_port);
 	}
 	
 	if(opt_ribbonsbc_listen && !opt_ribbonsbc_bind_ip.empty() && opt_ribbonsbc_bind_port) {
-		RibbonSbc_ServerStart(opt_ribbonsbc_bind_ip.c_str(), opt_ribbonsbc_bind_port, opt_ribbonsbc_bind_udp);
+		RibbonSbc_ServerStart(opt_ribbonsbc_bind_ip.c_str(), opt_ribbonsbc_bind_port);
 	}
 	
 	if(!opt_siprec_bind_ip.empty() && opt_siprec_bind_port) {
@@ -7596,7 +7593,6 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("siprec_bind", &opt_siprec_bind_ip));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_bind_port", &opt_siprec_bind_port));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("siprec_external_ip", &opt_siprec_external_ip));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("siprec_udp", &opt_siprec_bind_udp));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_rtp_min", &opt_siprec_rtp_min));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_rtp_max", &opt_siprec_rtp_max));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_rtp_stream_timeout_s", &opt_siprec_rtp_stream_timeout_s));
@@ -7670,7 +7666,6 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep",  &opt_hep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("hep_bind_ip",  &opt_hep_bind_ip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hep_bind_port",  &opt_hep_bind_port));
-					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_bind_udp",  &opt_hep_bind_udp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_counter_log",  &opt_hep_counter_log));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_kamailio_protocol_id_fix", &opt_hep_kamailio_protocol_id_fix));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_via_pb",  &opt_hep_via_pb));
@@ -7678,7 +7673,6 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ribbonsbc_listen",  &opt_ribbonsbc_listen));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("ribbonsbc_bind_ip",  &opt_ribbonsbc_bind_ip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("ribbonsbc_bind_port",  &opt_ribbonsbc_bind_port));
-					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ribbonsbc_bind_udp",  &opt_ribbonsbc_bind_udp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ribbonsbc_counter_log",  &opt_ribbonsbc_counter_log));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ribbonsbc_via_pb",  &opt_ribbonsbc_via_pb));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ribbonsbc_size_header",  &opt_ribbonsbc_size_header));
@@ -8374,6 +8368,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "dtls")				sverb.dtls = 1;
 	else if(verbParam == "hep3")				sverb.hep3 = 1;
 	else if(verbParam == "ipfix")				sverb.ipfix = 1;
+	else if(verbParam == "ribbonsbc")			sverb.ribbonsbc = 1;
 	else if(verbParam == "cleanspool")			sverb.cleanspool = 1;
 	else if(verbParam == "cleanspool_disable_rm")		sverb.cleanspool_disable_rm = 1;
 	else if(verbParam == "log_profiler")			sverb.log_profiler = 1;

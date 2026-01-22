@@ -1427,9 +1427,11 @@ int cSipRecStreams::findThreadWithMinStreams() {
 }
 
 
-cSipRecServer::cSipRecServer(bool udp) 
- : cServer(udp, true) {
+cSipRecServer::cSipRecServer() 
+ : cServer(_lp_both) {
+	setSimpleRead();
 	setNeedLocalIpPort();
+	disableVerboseConnectFrom();
 }
 
 cSipRecServer::~cSipRecServer() {
@@ -1611,10 +1613,9 @@ void cSipRec::setRtpPortsLimit(unsigned rtp_port_min, unsigned rtp_port_max) {
 	initRtpPortsHeap();
 }
 
-void cSipRec::setBindParams(vmIP ip, vmPort port, bool udp) {
+void cSipRec::setBindParams(vmIP ip, vmPort port) {
 	bind_ip = ip;
 	bind_port = port;
-	bind_udp = udp;
 }
 
 void cSipRec::setExternalIP(vmIP ip) {
@@ -1653,7 +1654,7 @@ void cSipRec::startServer() {
 	checkParams();
 	packet_sender = new FILE_LINE(0) cSipRecPacketSender();
 	streams = new FILE_LINE(0) cSipRecStreams(rtp_streams_max_threads, rtp_streams_max_per_thread);
-	server = new FILE_LINE(0) cSipRecServer(bind_udp);
+	server = new FILE_LINE(0) cSipRecServer();
 	server->setStartVerbString("START SIPREC LISTEN");
 	server->listen_start("siprec_server", bind_ip, bind_port);
 }
@@ -1932,7 +1933,7 @@ void cSipRec::stopStream(cSipRecCall *call, vmPort port, bool rtcp) {
 }
 
 bool cSipRec::sendResponse(string &response, vmIP ip, vmPort port, cSocket *socket) {
-	if(bind_udp) {
+	if(socket->isUdp()) {
 		if(ip.v() == 4) {
 			sockaddr_in dest_addr;
 			socket_set_saddr(&dest_addr, ip, port);
@@ -1962,7 +1963,6 @@ void cSipRec::checkParams() {
 void sipRecStart() {
 	extern string opt_siprec_bind_ip;
 	extern int opt_siprec_bind_port;
-	extern bool opt_siprec_bind_udp;
 	extern string opt_siprec_external_ip;
 	extern int opt_siprec_rtp_min;
 	extern int opt_siprec_rtp_max;
@@ -1971,7 +1971,7 @@ void sipRecStart() {
 	extern int opt_siprec_rtp_streams_max_per_thread;
 	sip_rec = new cSipRec();
 	sip_rec->setRtpPortsLimit(opt_siprec_rtp_min, opt_siprec_rtp_max);
-	sip_rec->setBindParams(str_2_vmIP(opt_siprec_bind_ip.c_str()), opt_siprec_bind_port, opt_siprec_bind_udp);
+	sip_rec->setBindParams(str_2_vmIP(opt_siprec_bind_ip.c_str()), opt_siprec_bind_port);
 	if(!opt_siprec_external_ip.empty()) {
 		sip_rec->setExternalIP(str_2_vmIP(opt_siprec_external_ip.c_str()));
 	}
@@ -2003,7 +2003,7 @@ void sipRecStop() {
 void siprec_test() {
 	sip_rec = new cSipRec();
 	sip_rec->setRtpPortsLimit(20000, 30000);
-	sip_rec->setBindParams(str_2_vmIP("192.168.1.12"), 12345, true);
+	sip_rec->setBindParams(str_2_vmIP("192.168.1.12"), 12345);
 	sip_rec->setVerbose(true);
 	sip_rec->startServer();
 }

@@ -361,6 +361,7 @@ void sIPFixQosStatsExt::ntoh() {
 }
 
 cIPFixServer::cIPFixServer() {
+	disableVerboseConnectFrom();
 }
 
 cIPFixServer::~cIPFixServer() {

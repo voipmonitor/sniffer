@@ -11,7 +11,6 @@
 
 extern string opt_ribbonsbc_bind_ip;
 extern unsigned opt_ribbonsbc_bind_port;
-extern bool opt_ribbonsbc_bind_udp;
 extern bool opt_ribbonsbc_counter_log;
 extern bool opt_ribbonsbc_via_pb;
 extern bool opt_ribbonsbc_size_header;
@@ -34,7 +33,7 @@ cRibbonSbc_ProcessData::cRibbonSbc_ProcessData()
 	}
 }
 
-void cRibbonSbc_ProcessData::processData(u_char *data, size_t dataLen, vmIP ip, vmPort port) {
+void cRibbonSbc_ProcessData::processData(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port) {
 	if(opt_ribbonsbc_counter_log && ip.isSet()) {
 		 ribbonsbc_counter.inc(ip);
 	}
@@ -49,7 +48,7 @@ void cRibbonSbc_ProcessData::processData(u_char *data, size_t dataLen, vmIP ip, 
 				      ntohs(*(u_int16_t*)_data) + 2u <= _dataLen) {
 					size_t _dataSegmentLen = ntohs(*(u_int16_t*)_data);
 					createPacket(_data + 2, _dataSegmentLen, 
-						     ip, port, RibbonSbc_Server->getListenSocketIP(), RibbonSbc_Server->getListenSocketPort());
+						     ip, port, local_ip, local_port);
 					_data += _dataSegmentLen + 2;
 					_dataLen -= _dataSegmentLen + 2;
 				}
@@ -65,7 +64,7 @@ void cRibbonSbc_ProcessData::processData(u_char *data, size_t dataLen, vmIP ip, 
 			      ntohs(*(u_int16_t*)data_buffer.data()) + 2u <= data_buffer.size()) {
 				size_t _dataSegmentLen = ntohs(*(u_int16_t*)data_buffer.data());
 				createPacket(data_buffer.data() + 2, _dataSegmentLen,
-					     ip, port, RibbonSbc_Server->getListenSocketIP(), RibbonSbc_Server->getListenSocketPort());
+					     ip, port, local_ip, local_port);
 				data_buffer.removeDataFromLeft(_dataSegmentLen + 2);
 			}
 			if(!data_buffer.size()) {
@@ -79,7 +78,7 @@ void cRibbonSbc_ProcessData::processData(u_char *data, size_t dataLen, vmIP ip, 
 		}
 	} else {
 		createPacket(data, dataLen,
-			     ip, port, RibbonSbc_Server->getListenSocketIP(), RibbonSbc_Server->getListenSocketPort());
+			     ip, port, local_ip, local_port);
 	}
 }
 
@@ -97,6 +96,11 @@ bool cRibbonSbc_ProcessData::checkCompleteData(u_char *data, size_t dataLen) {
 
 void cRibbonSbc_ProcessData::createPacket(u_char *data, size_t dataLen,
 					  vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port) {
+	if(sverb.ribbonsbc) {
+		cout << " * RIBBONSBC * " << endl
+		     << src_ip.getString() << " : " << src_port.getString() << " -> " << dst_ip.getString() << " : " << dst_port.getString() << endl
+		     << "datalen: " << dataLen << " data: " << string((char*)data, dataLen) << endl;
+	}
 	const char *src_ip_port_str = strncasestr((char*)data, "srcip:", dataLen);
 	if(src_ip_port_str) {
 		vmIPport src_ip_port;
@@ -205,8 +209,11 @@ void cRibbonSbc_ProcessData::evTimer(u_int32_t /*time_s*/, int /*typeTimer*/, vo
 }
 
 
-cRibbonSbc_Server::cRibbonSbc_Server(bool udp) 
- : cServer(udp, true) {
+cRibbonSbc_Server::cRibbonSbc_Server()
+ : cServer(_lp_both) {
+	setSimpleRead();
+	setNeedLocalIpPort();
+	disableVerboseConnectFrom();
 }
 
 cRibbonSbc_Server::~cRibbonSbc_Server() {
@@ -221,7 +228,7 @@ void cRibbonSbc_Server::createConnection(cSocket *socket) {
 }
 
 void cRibbonSbc_Server::evData(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket) {
-	processData(data, dataLen, ip);
+	processData(data, dataLen, ip, port, local_ip, local_port);
 }
 
 
@@ -233,7 +240,7 @@ cRibbonSbc_Connection::~cRibbonSbc_Connection() {
 }
 
 void cRibbonSbc_Connection::evData(u_char *data, size_t dataLen) {
-	processData(data, dataLen, socket->getIPL(), socket->getPort());
+	processData(data, dataLen, socket->getIPL(), socket->getPort(), socket->getLocalIPL(), socket->getLocalPort());
 }
 
 void cRibbonSbc_Connection::connection_process() {
@@ -266,11 +273,11 @@ u_int64_t cRibbonSbcCounter::get_sum_counter() {
 }
 
 
-void RibbonSbc_ServerStart(const char *host, int port, bool udp) {
+void RibbonSbc_ServerStart(const char *host, int port) {
 	if(RibbonSbc_Server) {
 		delete RibbonSbc_Server;
 	}
-	RibbonSbc_Server =  new FILE_LINE(0) cRibbonSbc_Server(udp);
+	RibbonSbc_Server =  new FILE_LINE(0) cRibbonSbc_Server();
 	RibbonSbc_Server->setStartVerbString("START RIBBONSBC LISTEN");
 	RibbonSbc_Server->listen_start("ribbonsbc_server", host, port);
 }

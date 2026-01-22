@@ -320,7 +320,7 @@ private:
 
 class cSipRecServer : public cServer {
 public:
-	cSipRecServer(bool udp);
+	cSipRecServer();
 	virtual ~cSipRecServer();
 	void createConnection(cSocket *socket);
 	void evData(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket);
@@ -356,7 +356,7 @@ public:
 	cSipRec();
 	~cSipRec();
 	void setRtpPortsLimit(unsigned rtp_port_min, unsigned rtp_port_max);
-	void setBindParams(vmIP ip, vmPort port, bool udp);
+	void setBindParams(vmIP ip, vmPort port);
 	void setExternalIP(vmIP ip);
 	vmIP getExternalIP() { return(external_ip); }
 	void setRtpStreamTimeout(unsigned rtp_stream_timeout_s);
@@ -392,7 +392,6 @@ private:
 	unsigned rtp_port_max;
 	vmIP bind_ip;
 	vmPort bind_port;
-	bool bind_udp;
 	vmIP external_ip;
 	set<u_int16_t> free_rtp_ports;
 	map<cSipRecCall::sId, cSipRecCall*> calls_by_call_id;

@@ -38,7 +38,7 @@ using namespace std;
 
 
 #define SYNC_LOCK_USLEEP 100
-#define MAX_LISTEN_SOCKETS 2
+#define MAX_LISTEN_SOCKETS 4
 
 #define SOCKET_END_STR "_END_"
 
@@ -374,6 +374,7 @@ public:
 	void setHostPort(string host, u_int16_t port);
 	void setHostsPort(sHosts hosts, u_int16_t port);
 	void setUdp(bool udp);
+	bool isUdp() { return(udp); }
 	void setNeedLocalIpPort(bool need_local_ip_port);
 	void setXorKey(string xor_key);
 	bool connect(unsigned loopSleepS = 0);
@@ -679,32 +680,37 @@ private:
 
 
 class cServer {
+public:
+	enum eListenProtocol {
+		_lp_tcp,
+		_lp_udp,
+		_lp_both
+	};
 private:
 	struct sListenParams {
 		cServer *server;
 		unsigned index;
+		bool verbose_start;
 	};
 public:
-	cServer(bool udp = false, bool simple_read = false);
+	cServer(eListenProtocol listen_protocol = _lp_tcp);
 	virtual ~cServer();
+	void setSimpleRead() { simple_read = true; }
 	void setNeedLocalIpPort() { need_local_ip_port = true; }
+	void disableVerboseConnectFrom() { disable_verbose_connect_from = true; }
 	bool listen_start(const char *name, string host, u_int16_t port, unsigned index = 0);
+	bool _listen_start(const char *name, string host, u_int16_t port, bool udp, unsigned index = 0, bool verbose_start = true);
 	void listen_stop(unsigned index = 0);
 	static void *listen_process(void *arg);
 	void listen_process(int index);
 	virtual void createConnection(cSocket *socket);
 	virtual void evData(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket);
 	void setStartVerbString(const char *startVerbString);
-	vmIP getListenSocketIP() {
-		return(listen_socket[0] ? listen_socket[0]->getIPL() : vmIP(0));
-	}
-	vmPort getListenSocketPort() {
-		return(listen_socket[0] ? vmPort(listen_socket[0]->getPort()) : vmPort(0));
-	}
 protected:
-	bool udp;
+	eListenProtocol listen_protocol;
 	bool simple_read;
 	bool need_local_ip_port;
+	bool disable_verbose_connect_from;
 	cSocketBlock *listen_socket[MAX_LISTEN_SOCKETS];
 	pthread_t listen_thread[MAX_LISTEN_SOCKETS];
 	string startVerbString;

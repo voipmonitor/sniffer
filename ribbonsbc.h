@@ -10,7 +10,7 @@
 class cRibbonSbc_ProcessData : public cTimer {
 public:
 	cRibbonSbc_ProcessData();
-	void processData(u_char *data, size_t dataLen, vmIP ip = 0, vmPort port = 0);
+	void processData(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port);
 private:
 	bool checkCompleteData(u_char *data, size_t dataLen);
 	void createPacket(u_char *data, size_t dataLen,
@@ -34,7 +34,7 @@ private:
  
 class cRibbonSbc_Server : public cServer, public cRibbonSbc_ProcessData {
 public:
-	cRibbonSbc_Server(bool udp);
+	cRibbonSbc_Server();
 	virtual ~cRibbonSbc_Server();
 	void createConnection(cSocket *socket);
 	void evData(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port, cSocket *socket);
@@ -76,7 +76,7 @@ private:
 };
 
 
-void RibbonSbc_ServerStart(const char *host, int port, bool udp);
+void RibbonSbc_ServerStart(const char *host, int port);
 void RibbonSbc_ServerStop();
 
 void RibbonSbc_client_emulation(const char *pcap, vmIP client_ip, vmIP server_ip, vmIP destination_ip, vmPort destination_port, bool udp);

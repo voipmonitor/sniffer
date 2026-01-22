@@ -556,8 +556,10 @@ string sHEP_Data::dump() {
 }
 
 
-cHEP_Server::cHEP_Server(bool udp) 
- : cServer(udp, true) {
+cHEP_Server::cHEP_Server()
+ : cServer(_lp_both) {
+	setSimpleRead();
+	disableVerboseConnectFrom();
 }
 
 cHEP_Server::~cHEP_Server() {
@@ -617,11 +619,11 @@ u_int64_t cHepCounter::get_sum_counter() {
 }
 
 
-void HEP_ServerStart(const char *host, int port, bool udp) {
+void HEP_ServerStart(const char *host, int port) {
 	if(HEP_Server) {
 		delete HEP_Server;
 	}
-	HEP_Server =  new FILE_LINE(0) cHEP_Server(udp);
+	HEP_Server =  new FILE_LINE(0) cHEP_Server();
 	HEP_Server->setStartVerbString("START HEP LISTEN");
 	HEP_Server->listen_start("hep_server", host, port);
 }
