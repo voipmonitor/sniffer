@@ -31,7 +31,20 @@
 #include <vector>
 #include <stdint.h>
 #include <pthread.h>
-#include <atomic>
+
+// C++11 atomic support - fallback to volatile for older compilers
+#if __cplusplus >= 201103L
+    #include <atomic>
+    #define ATOMIC_BOOL std::atomic<bool>
+    #define ATOMIC_INT std::atomic<int>
+    #define ATOMIC_UINT64 std::atomic<uint64_t>
+    #define ATOMIC_LOAD(x) (x).load()
+#else
+    #define ATOMIC_BOOL volatile bool
+    #define ATOMIC_INT volatile int
+    #define ATOMIC_UINT64 volatile uint64_t
+    #define ATOMIC_LOAD(x) (x)
+#endif
 
 
 #define CALIBRATION_FILENAME ".disk_io_calibration.conf"
@@ -269,8 +282,8 @@ private:
 
     // State
     bool active_;
-    std::atomic<bool> calibrating_;
-    std::atomic<int> calibration_progress_;
+    ATOMIC_BOOL calibrating_;
+    ATOMIC_INT calibration_progress_;
 
     // Calibration profile
     sCalibrationProfile profile_;
