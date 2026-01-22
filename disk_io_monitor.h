@@ -289,6 +289,7 @@ private:
 
     // State
     bool active_;
+    ATOMIC_BOOL init_started_;  // Guard against concurrent init() calls
     ATOMIC_BOOL calibrating_;
     ATOMIC_INT calibration_progress_;
 

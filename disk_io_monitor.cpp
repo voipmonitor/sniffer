@@ -87,6 +87,7 @@ std::string cDiskIOMonitor::execCommand(const char *cmd) {
 
 cDiskIOMonitor::cDiskIOMonitor()
     : active_(false)
+    , init_started_(false)
     , calibrating_(false)
     , calibration_progress_(0)
     , calibration_thread_started_(false)
@@ -297,8 +298,13 @@ bool cDiskIOMonitor::saveCalibrationProfile() {
 // ============================================================================
 
 bool cDiskIOMonitor::init(const char *spool_path, bool allow_calibration) {
-    // Prevent double initialization
-    if (active_) {
+    // Prevent double initialization (thread-safe)
+    // Atomic compare-and-swap: only proceed if init_started_ was false
+    if (!__sync_bool_compare_and_swap(&init_started_, false, true)) {
+        // Another thread is initializing or already initialized - wait for completion
+        while (!active_) {
+            usleep(10000);  // 10ms
+        }
         return true;
     }
 
@@ -309,6 +315,7 @@ bool cDiskIOMonitor::init(const char *spool_path, bool allow_calibration) {
 
     if (device_name_.empty()) {
         syslog(LOG_WARNING, "disk_io_monitor: Could not detect block device for %s", spool_path);
+        init_started_ = false;  // Allow retry
         return false;
     }
 
