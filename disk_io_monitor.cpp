@@ -300,7 +300,8 @@ bool cDiskIOMonitor::saveCalibrationProfile() {
 bool cDiskIOMonitor::init(const char *spool_path, bool allow_calibration) {
     // Prevent double initialization (thread-safe)
     // Atomic compare-and-swap: only proceed if init_started_ was false
-    if (!__sync_bool_compare_and_swap(&init_started_, false, true)) {
+    bool expected = false;
+    if (!ATOMIC_CAS(init_started_, expected, true)) {
         return active_;  // Already initialized or initialization in progress
     }
 

@@ -40,12 +40,14 @@
     #define ATOMIC_UINT64 std::atomic<uint64_t>
     #define ATOMIC_LOAD(x) (x).load()
     #define ATOMIC_LOAD_PTR(x) (x)->load()
+    #define ATOMIC_CAS(x, expected, desired) (x).compare_exchange_strong(expected, desired)
 #else
     #define ATOMIC_BOOL volatile bool
     #define ATOMIC_INT volatile int
     #define ATOMIC_UINT64 volatile uint64_t
     #define ATOMIC_LOAD(x) (x)
     #define ATOMIC_LOAD_PTR(x) (*(x))
+    #define ATOMIC_CAS(x, expected, desired) __sync_bool_compare_and_swap(&(x), expected, desired)
 #endif
 
 // String helpers for pre-C++11 compatibility
