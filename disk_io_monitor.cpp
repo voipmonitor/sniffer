@@ -301,11 +301,7 @@ bool cDiskIOMonitor::init(const char *spool_path, bool allow_calibration) {
     // Prevent double initialization (thread-safe)
     // Atomic compare-and-swap: only proceed if init_started_ was false
     if (!__sync_bool_compare_and_swap(&init_started_, false, true)) {
-        // Another thread is initializing or already initialized - wait for completion
-        while (!active_) {
-            usleep(10000);  // 10ms
-        }
-        return true;
+        return active_;  // Already initialized or initialization in progress
     }
 
     spool_path_ = spool_path;
