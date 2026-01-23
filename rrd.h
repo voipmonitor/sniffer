@@ -66,6 +66,16 @@
 #define RRD_VALUE_LA_m5 "LA-m5"
 #define RRD_VALUE_LA_m15 "LA-m15"
 
+#define RRD_CHART_diskio "2db-diskio"
+#define RRD_VALUE_io_latency "io-latency"
+#define RRD_VALUE_io_qdepth "io-qdepth"
+#define RRD_VALUE_io_util "io-util"
+#define RRD_VALUE_io_capacity "io-capacity"
+#define RRD_VALUE_io_write_throughput "io-write-throughput"
+#define RRD_VALUE_io_read_throughput "io-read-throughput"
+#define RRD_VALUE_io_write_iops "io-write-iops"
+#define RRD_VALUE_io_read_iops "io-read-iops"
+
 #define RRD_VALUE_UNSET DBL_MAX
 
 #define RRDTOOL_CMD "rrdtool"

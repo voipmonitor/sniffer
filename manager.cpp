@@ -51,6 +51,7 @@
 #include "diameter.h"
 #include "ssldata.h"
 #include "audio_convert.h"
+#include "disk_io_monitor.h"
 
 #ifndef FREEBSD
 #include <malloc.h>
@@ -471,6 +472,8 @@ int Mgmt_pcapstat(Mgmt_params *params);
 int Mgmt_sniffer_threads(Mgmt_params *params);
 int Mgmt_sniffer_stat(Mgmt_params *params);
 int Mgmt_datadir_stat(Mgmt_params *params);
+int Mgmt_disk_io_calibration(Mgmt_params *params);
+int Mgmt_disk_io_recalibrate(Mgmt_params *params);
 int Mgmt_gitUpgrade(Mgmt_params *params);
 int Mgmt_login_screen_popup(Mgmt_params *params);
 int Mgmt_processing_limitations(Mgmt_params *params);
@@ -585,6 +588,8 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_sniffer_threads,
 	Mgmt_sniffer_stat,
 	Mgmt_datadir_stat,
+	Mgmt_disk_io_calibration,
+	Mgmt_disk_io_recalibrate,
 	Mgmt_gitUpgrade,
 	Mgmt_login_screen_popup,
 	Mgmt_processing_limitations,
@@ -4612,6 +4617,23 @@ int Mgmt_sniffer_stat(Mgmt_params *params) {
 		outStrStat << "upgrade_by_git=" << opt_upgrade_by_git << "\n";
 		outStrStat << "use_new_config=" << true << "\n";
 		outStrStat << "terminating_error=" << terminating_error << "\n";
+		// Disk I/O metrics
+		if (diskIOMonitor.isActive()) {
+			sIOMetrics io = diskIOMonitor.getMetrics();
+			outStrStat << "disk_io_capacity_pct=" << fixed << setprecision(1) << io.capacity_pct << "\n";
+			outStrStat << "disk_io_reserve_pct=" << fixed << setprecision(1) << io.reserve_pct << "\n";
+			outStrStat << "disk_io_write_throughput_mbs=" << fixed << setprecision(1) << io.write_throughput_mbs << "\n";
+			outStrStat << "disk_io_read_throughput_mbs=" << fixed << setprecision(1) << io.read_throughput_mbs << "\n";
+			outStrStat << "disk_io_write_iops=" << fixed << setprecision(0) << io.write_iops << "\n";
+			outStrStat << "disk_io_read_iops=" << fixed << setprecision(0) << io.read_iops << "\n";
+			outStrStat << "disk_io_latency_ms=" << fixed << setprecision(2) << io.write_latency_ms << "\n";
+			outStrStat << "disk_io_baseline_latency_ms=" << fixed << setprecision(2) << io.baseline_latency_ms << "\n";
+			outStrStat << "disk_io_latency_ratio=" << fixed << setprecision(1) << io.latency_ratio << "\n";
+			outStrStat << "disk_io_utilization_pct=" << fixed << setprecision(0) << io.utilization_pct << "\n";
+			outStrStat << "disk_io_state=" << io.getStateString() << "\n";
+		} else if (diskIOMonitor.isCalibrating()) {
+			outStrStat << "disk_io_calibrating=" << diskIOMonitor.getCalibrationProgress() << "\n";
+		}
 	} else {
 		outStrStat << "{";
 		outStrStat << "\"version\": \"" << RTPSENSOR_VERSION << "\",";
@@ -4625,7 +4647,28 @@ int Mgmt_sniffer_stat(Mgmt_params *params) {
 		outStrStat << "\"count_live_sniffers\": \"" << countLiveSniffers << "\",";
 		outStrStat << "\"upgrade_by_git\": \"" << opt_upgrade_by_git << "\",";
 		outStrStat << "\"use_new_config\": \"" << true << "\",";
-		outStrStat << "\"terminating_error\": \"" << terminating_error << "\"";
+		outStrStat << "\"terminating_error\": \"" << terminating_error << "\",";
+		// Disk I/O metrics in JSON
+		if (diskIOMonitor.isActive()) {
+			sIOMetrics io = diskIOMonitor.getMetrics();
+			outStrStat << "\"disk_io\": {";
+			outStrStat << "\"capacity_pct\": " << fixed << setprecision(1) << io.capacity_pct << ",";
+			outStrStat << "\"reserve_pct\": " << fixed << setprecision(1) << io.reserve_pct << ",";
+			outStrStat << "\"write_throughput_mbs\": " << fixed << setprecision(1) << io.write_throughput_mbs << ",";
+			outStrStat << "\"read_throughput_mbs\": " << fixed << setprecision(1) << io.read_throughput_mbs << ",";
+			outStrStat << "\"write_iops\": " << fixed << setprecision(0) << io.write_iops << ",";
+			outStrStat << "\"read_iops\": " << fixed << setprecision(0) << io.read_iops << ",";
+			outStrStat << "\"latency_ms\": " << fixed << setprecision(2) << io.write_latency_ms << ",";
+			outStrStat << "\"baseline_latency_ms\": " << fixed << setprecision(2) << io.baseline_latency_ms << ",";
+			outStrStat << "\"latency_ratio\": " << fixed << setprecision(1) << io.latency_ratio << ",";
+			outStrStat << "\"utilization_pct\": " << fixed << setprecision(0) << io.utilization_pct << ",";
+			outStrStat << "\"state\": \"" << io.getStateString() << "\"";
+			outStrStat << "}";
+		} else if (diskIOMonitor.isCalibrating()) {
+			outStrStat << "\"disk_io\": {\"calibrating\": " << diskIOMonitor.getCalibrationProgress() << "}";
+		} else {
+			outStrStat << "\"disk_io\": null";
+		}
 		outStrStat << "}";
 		outStrStat << endl;
 	}
@@ -4641,6 +4684,81 @@ int Mgmt_datadir_stat(Mgmt_params *params) {
 	cPartitions p;
 	string rslt = p.dump(false);
 	return(params->sendString(rslt));
+}
+
+int Mgmt_disk_io_calibration(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("disk_io_calibration", "return disk I/O calibration profile (JSON)", true);
+		return(0);
+	}
+	ostringstream out;
+	bool plainOutput = strstr(params->buf, "plain") != NULL;
+
+	sCalibrationProfile profile = diskIOMonitor.getProfile();
+
+	if (plainOutput) {
+		if (profile.valid) {
+			out << "device=" << profile.device << "\n";
+			out << "uuid=" << profile.uuid << "\n";
+			out << "calibration_time=" << profile.calibration_time << "\n";
+			out << "baseline_latency_ms=" << fixed << setprecision(2) << profile.baseline_latency_ms << "\n";
+			out << "knee_throughput_mbs=" << fixed << setprecision(1) << profile.knee_throughput_mbs << "\n";
+			out << "knee_latency_ms=" << fixed << setprecision(2) << profile.knee_latency_ms << "\n";
+			out << "max_throughput_mbs=" << fixed << setprecision(1) << profile.max_throughput_mbs << "\n";
+			out << "saturation_latency_ms=" << fixed << setprecision(2) << profile.saturation_latency_ms << "\n";
+			out << "baseline_iops=" << fixed << setprecision(0) << profile.baseline_iops << "\n";
+			out << "knee_iops=" << fixed << setprecision(0) << profile.knee_iops << "\n";
+			out << "max_iops=" << fixed << setprecision(0) << profile.max_iops << "\n";
+		} else if (diskIOMonitor.isCalibrating()) {
+			out << "status=calibrating\n";
+			out << "progress=" << diskIOMonitor.getCalibrationProgress() << "\n";
+		} else {
+			out << "status=no_calibration\n";
+		}
+	} else {
+		out << "{";
+		if (profile.valid) {
+			out << "\"valid\": true,";
+			out << "\"device\": \"" << profile.device << "\",";
+			out << "\"uuid\": \"" << profile.uuid << "\",";
+			out << "\"calibration_time\": " << profile.calibration_time << ",";
+			out << "\"baseline_latency_ms\": " << fixed << setprecision(2) << profile.baseline_latency_ms << ",";
+			out << "\"knee_throughput_mbs\": " << fixed << setprecision(1) << profile.knee_throughput_mbs << ",";
+			out << "\"knee_latency_ms\": " << fixed << setprecision(2) << profile.knee_latency_ms << ",";
+			out << "\"max_throughput_mbs\": " << fixed << setprecision(1) << profile.max_throughput_mbs << ",";
+			out << "\"saturation_latency_ms\": " << fixed << setprecision(2) << profile.saturation_latency_ms << ",";
+			out << "\"baseline_iops\": " << fixed << setprecision(0) << profile.baseline_iops << ",";
+			out << "\"knee_iops\": " << fixed << setprecision(0) << profile.knee_iops << ",";
+			out << "\"max_iops\": " << fixed << setprecision(0) << profile.max_iops;
+		} else if (diskIOMonitor.isCalibrating()) {
+			out << "\"valid\": false,";
+			out << "\"calibrating\": true,";
+			out << "\"progress\": " << diskIOMonitor.getCalibrationProgress();
+		} else {
+			out << "\"valid\": false,";
+			out << "\"calibrating\": false";
+		}
+		out << "}" << endl;
+	}
+
+	string rslt = out.str();
+	return(params->sendString(&rslt));
+}
+
+int Mgmt_disk_io_recalibrate(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("disk_io_recalibrate", "start disk I/O recalibration", true);
+		return(0);
+	}
+
+	string rslt;
+	if (diskIOMonitor.isCalibrating()) {
+		rslt = "error: calibration already in progress\n";
+	} else {
+		diskIOMonitor.forceRecalibrate();
+		rslt = "ok: recalibration started\n";
+	}
+	return(params->sendString(&rslt));
 }
 
 int Mgmt_sniffer_threads(Mgmt_params *params) {

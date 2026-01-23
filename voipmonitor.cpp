@@ -82,6 +82,7 @@
 #include "regcache.h"
 #include "fraud.h"
 #include "rrd.h"
+#include "disk_io_monitor.h"
 #include "heap_safe.h"
 #include "tar.h"
 #include "codec_alaw.h"
@@ -4363,7 +4364,12 @@ int main(int argc, char *argv[]) {
 	} else if(is_server() && !is_read_from_file_simple()) {
 		snifferServerStart();
 	}
-	
+
+	// Initialize disk I/O monitor for server/receiver modes (capture mode initializes in pcap_queue.cpp)
+	if((is_server() || is_receiver()) && opt_spooldir_main[0]) {
+		diskIOMonitor.init(opt_spooldir_main, true);
+	}
+
 	if(opt_generator) {
 		opt_generator_channels = 2;
 		pthread_t *genthreads = new FILE_LINE(42009) pthread_t[opt_generator_channels];		// ID of worker storing CDR thread 
@@ -9929,6 +9935,7 @@ void create_spool_dirs() {
 	if(opt_spooldir_2_audiograph[0]) {
 		spooldir_mkdir(opt_spooldir_2_audiograph);
 	}
+	// Note: Disk I/O monitor is initialized in pcap_queue.cpp when live capture starts
 }
 
 

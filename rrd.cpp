@@ -990,7 +990,28 @@ void rrd_charts_init() {
 			->setPrecision(2, 2);
 	ch->addValue(RRD_VALUE_LA_m15, "15 minute avg", "FF0000", 0, 256)
 			->setPrecision(2, 2);
-			
+
+	// * diskio
+	ch = rrd_charts->addChart(RRD_CHART_diskio, "Disk I/O");
+	ch->setStdDb();
+	ch->setVerticalLabel("ms, %, MB/s");
+	ch->addValue(RRD_VALUE_io_latency, "Write latency (ms)", "FF0000", 0, 10000)
+			->setPrecision(1, 1);
+	ch->addValue(RRD_VALUE_io_qdepth, "Queue depth", "0000FF", 0, 1000)
+			->setPrecision(1, 1);
+	ch->addValue(RRD_VALUE_io_util, "Utilization %", "00FF00", 0, 100)
+			->setPrecision(0, 1);
+	ch->addValue(RRD_VALUE_io_capacity, "Capacity %", "FFA500", 0, 200)
+			->setPrecision(0, 1);
+	ch->addValue(RRD_VALUE_io_write_throughput, "Write MB/s", "800080", 0, 10000)
+			->setPrecision(1, 1);
+	ch->addValue(RRD_VALUE_io_read_throughput, "Read MB/s", "008080", 0, 10000)
+			->setPrecision(1, 1);
+	ch->addValue(RRD_VALUE_io_write_iops, "Write IOPS", "4B0082", 0, 1000000)
+			->setPrecision(0, 1);
+	ch->addValue(RRD_VALUE_io_read_iops, "Read IOPS", "9400D3", 0, 1000000)
+			->setPrecision(0, 1);
+
 	rrd_charts->createMapValues();
 }
 

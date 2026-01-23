@@ -44,6 +44,7 @@
 #include "ipfix.h"
 #include "hep.h"
 #include "ribbonsbc.h"
+#include "disk_io_monitor.h"
 
 #ifndef FREEBSD
 #include <malloc.h>
@@ -85,6 +86,8 @@ extern int opt_snaplen;
 extern bool opt_libpcap_immediate_mode;
 extern bool opt_libpcap_nonblock_mode;
 extern int opt_rrd;
+extern int opt_pcap_dump_asyncwrite;
+extern char opt_spooldir_main[1024];
 extern int opt_udpfrag;
 extern int opt_skinny;
 extern int opt_ipaccount;
@@ -2187,7 +2190,23 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			}
 			last_traffic = speed_mb_s;
 		}
-		
+		// Disk I/O monitoring (after throughput display)
+		if (diskIOMonitor.isActive() || diskIOMonitor.isCalibrating()) {
+			diskIOMonitor.update(useAsyncWriteBuffer);
+			outStr << diskIOMonitor.formatStatusString() << " ";
+			if (opt_rrd && diskIOMonitor.isActive()) {
+				sIOMetrics io = diskIOMonitor.getMetrics();
+				rrd_set_value(RRD_VALUE_io_latency, io.write_latency_ms);
+				rrd_set_value(RRD_VALUE_io_qdepth, io.queue_depth);
+				rrd_set_value(RRD_VALUE_io_util, io.utilization_pct);
+				rrd_set_value(RRD_VALUE_io_capacity, io.capacity_pct);
+				rrd_set_value(RRD_VALUE_io_write_throughput, io.write_throughput_mbs);
+				rrd_set_value(RRD_VALUE_io_read_throughput, io.read_throughput_mbs);
+				rrd_set_value(RRD_VALUE_io_write_iops, io.write_iops);
+				rrd_set_value(RRD_VALUE_io_read_iops, io.read_iops);
+			}
+		}
+
 		extern unsigned int opt_push_batch_limit_for_traffic_lt_mb_s;
 		if(opt_push_batch_limit_for_traffic_lt_mb_s) {
 			extern unsigned int opt_push_batch_limit_ms;
@@ -4067,10 +4086,18 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 //	syslog(LOG_NOTICE, "DLT - %s: %i", this->getInterfaceAlias().c_str(), this->pcapLinklayerHeaderType);
 	if(opt_pcapdump) {
 		char pname[2048];
-		snprintf(pname, sizeof(pname), "%s/dump-%s-%u.pcap", 
+		snprintf(pname, sizeof(pname), "%s/dump-%s-%u.pcap",
 			 getPcapdumpDir(),
 			 this->getInterfaceAlias().c_str(), (unsigned int)time(NULL));
 		this->pcapDumpHandle = pcap_dump_open(this->pcapHandle, pname);
+	}
+	// Initialize disk I/O monitor when live capture starts (only once)
+	{
+		static volatile int disk_io_init_done = 0;
+		if (!disk_io_init_done && opt_spooldir_main[0] && opt_pcap_dump_asyncwrite) {
+			disk_io_init_done = 1;
+			diskIOMonitor.init(opt_spooldir_main, true);
+		}
 	}
 	__SYNC_UNLOCK(_sync_start_capture);
 	return(true);
