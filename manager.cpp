@@ -4571,12 +4571,16 @@ int Mgmt_sniffer_stat(Mgmt_params *params) {
 	size_t countLiveSniffers = usersniffer.size();
 	__SYNC_UNLOCK(usersniffer_sync);
 	bool plainOutput = strstr(params->buf, "plain") != NULL;
+	string statStr = pbStatString;
+	bool initializing = statStr.empty();
 	if(plainOutput) {
 		outStrStat << "version=" << RTPSENSOR_VERSION << "\n";
+		if(initializing) {
+			outStrStat << "initializing=1\n";
+		}
 		outStrStat << "build=" << RTPSENSOR_BUILD_NUMBER << "\n";
 		outStrStat << "rrd_version=" << vm_rrd_version << "\n";
 		outStrStat << "storingCdrLastWriteAt=" << storingCdrLastWriteAt << "\n";
-		string statStr = pbStatString;
 		size_t pos = 0;
 		while(pos < statStr.length()) {
 			size_t bracketOpen = statStr.find('[', pos);
@@ -4650,8 +4654,11 @@ int Mgmt_sniffer_stat(Mgmt_params *params) {
 		outStrStat << "\"version\": \"" << RTPSENSOR_VERSION << "\",";
 		outStrStat << "\"build\": \"" << RTPSENSOR_BUILD_NUMBER << "\",";
 		outStrStat << "\"rrd_version\": \"" << vm_rrd_version << "\",";
+		if(initializing) {
+			outStrStat << "\"initializing\": true,";
+		}
 		outStrStat << "\"storingCdrLastWriteAt\": \"" << storingCdrLastWriteAt << "\",";
-		outStrStat << "\"pbStatString\": \"" << pbStatString << "\",";
+		outStrStat << "\"pbStatString\": \"" << statStr << "\",";
 		outStrStat << "\"pbCountPacketDrop\": \"" << pbCountPacketDrop << "\",";
 		outStrStat << "\"uptime\": \"" << getUptime() << "\",";
 		outStrStat << "\"memory_is_full\": \"" << packetbuffer_memory_is_full << "\",";
