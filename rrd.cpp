@@ -221,35 +221,39 @@ void RrdChartSeriesGroup::calculateDynamicScale(const char *dbFilename, const ch
 		return;
 	}
 	// Build rrdtool command to get max values using same time range as graph
-	string cmd = string(RRDTOOL_CMD) + " graph /dev/null --start \"" + fromTime + "\" --end \"" + toTime + "\" ";
+	// Using vm_pexec (execvp) - no shell involved, no injection risk
+	string cmd = string(RRDTOOL_CMD) + " graph /dev/null --start " + fromTime + " --end " + toTime + " ";
 	cmd += "DEF:l1=" + string(dbFilename) + ":" + dyn_left_value1 + ":MAX ";
 	cmd += "VDEF:l1_max=l1,MAXIMUM ";
-	cmd += "PRINT:l1_max:\"%lf\" ";
+	cmd += "PRINT:l1_max:%lf ";
 	if(!dyn_left_value2.empty()) {
 		cmd += "DEF:l2=" + string(dbFilename) + ":" + dyn_left_value2 + ":MAX ";
 		cmd += "VDEF:l2_max=l2,MAXIMUM ";
-		cmd += "PRINT:l2_max:\"%lf\" ";
+		cmd += "PRINT:l2_max:%lf ";
 	}
 	cmd += "DEF:r1=" + string(dbFilename) + ":" + dyn_right_value1 + ":MAX ";
 	cmd += "VDEF:r1_max=r1,MAXIMUM ";
-	cmd += "PRINT:r1_max:\"%lf\" ";
+	cmd += "PRINT:r1_max:%lf ";
 	if(!dyn_right_value2.empty()) {
 		cmd += "DEF:r2=" + string(dbFilename) + ":" + dyn_right_value2 + ":MAX ";
 		cmd += "VDEF:r2_max=r2,MAXIMUM ";
-		cmd += "PRINT:r2_max:\"%lf\" ";
+		cmd += "PRINT:r2_max:%lf ";
 	}
 
-	FILE *fp = popen(cmd.c_str(), "r");
-	if(!fp) {
+	SimpleBuffer out;
+	if(!vm_pexec(cmd.c_str(), &out) || !out.size()) {
 		right_axis_scale = 1;
 		return;
 	}
 
-	char buf[256];
+	// Parse output - each line contains a max value
 	double max_left = 0, max_right = 0;
 	int line = 0;
-	while(fgets(buf, sizeof(buf), fp)) {
-		double val = atof(buf);
+	char *data = (char*)out;
+	char *saveptr = NULL;
+	char *token = strtok_r(data, "\n", &saveptr);
+	while(token) {
+		double val = atof(token);
 		if(line == 0) {
 			max_left = val;
 		} else if(line == 1 && !dyn_left_value2.empty()) {
@@ -261,8 +265,8 @@ void RrdChartSeriesGroup::calculateDynamicScale(const char *dbFilename, const ch
 			if(val > max_right) max_right = val;
 		}
 		line++;
+		token = strtok_r(NULL, "\n", &saveptr);
 	}
-	pclose(fp);
 
 	// Calculate scale: right_axis_value = scale * left_axis_value
 	if(max_left > 0 && max_right > 0) {
@@ -595,12 +599,13 @@ string RrdChart::graphString(const char *seriesGroupName,
 	}
 	string _title = seriesGroup && !seriesGroup->name.empty() ? seriesGroup->name : name;
 	string _vert_label = seriesGroup && !seriesGroup->vert_label.empty() ? seriesGroup->vert_label : vert_label;
+	// No sanitization needed - command executed via vm_pexec (execvp), not shell
 	string rslt =
-		"graph " + 
+		"graph " +
 		(dstfile ? string("\"") + dstfile + "\"" : "-") + " " +
-		"-w " + intToString(resx) + " -h " + intToString(resy) + " " + 
+		"-w " + intToString(resx) + " -h " + intToString(resy) + " " +
 		"-a PNG " +
-		"--start \"" + fromTime + "\" --end \"" + toTime + "\" " +
+		"--start " + fromTime + " --end " + toTime + " " +
 		"--font DEFAULT:6:Courier " +
 		"--font LEGEND:6:Courier " +
 		"--font AXIS:6:Courier " +
