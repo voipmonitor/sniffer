@@ -151,7 +151,7 @@ public:
 	void setDynamicRightAxis(const char *left_value1, const char *left_value2,
 				 const char *right_value1, const char *right_value2,
 				 const char *label);
-	void calculateDynamicScale(const char *dbFilename);
+	void calculateDynamicScale(const char *dbFilename, const char *fromTime, const char *toTime);
 	string graphString(const char *dbFilename);
 	string rightAxisString();
 	bool hasRightAxis() const { return right_axis_scale != 0; }

@@ -216,12 +216,12 @@ void RrdChartSeriesGroup::setDynamicRightAxis(const char *left_value1, const cha
 	this->right_axis_shift = 0;
 }
 
-void RrdChartSeriesGroup::calculateDynamicScale(const char *dbFilename) {
+void RrdChartSeriesGroup::calculateDynamicScale(const char *dbFilename, const char *fromTime, const char *toTime) {
 	if(dyn_left_value1.empty()) {
 		return;
 	}
-	// Build rrdtool command to get max values
-	string cmd = string(RRDTOOL_CMD) + " graph /dev/null --start end-24h --end now ";
+	// Build rrdtool command to get max values using same time range as graph
+	string cmd = string(RRDTOOL_CMD) + " graph /dev/null --start \"" + fromTime + "\" --end \"" + toTime + "\" ";
 	cmd += "DEF:l1=" + string(dbFilename) + ":" + dyn_left_value1 + ":MAX ";
 	cmd += "VDEF:l1_max=l1,MAXIMUM ";
 	cmd += "PRINT:l1_max:\"%lf\" ";
@@ -601,7 +601,9 @@ string RrdChart::graphString(const char *seriesGroupName,
 		"-w " + intToString(resx) + " -h " + intToString(resy) + " " + 
 		"-a PNG " +
 		"--start \"" + fromTime + "\" --end \"" + toTime + "\" " +
-		"--font DEFAULT:0:Courier " +
+		"--font DEFAULT:6:Courier " +
+		"--font LEGEND:6:Courier " +
+		"--font AXIS:6:Courier " +
 		(!_title.empty() ? "--title \"" + _title + "\" " : "") +
 		"--watermark \"`date`\" " + 
 		(vm_rrd_version >= 10400 ? "--disable-rrdtool-tag " : "") +
@@ -615,7 +617,7 @@ string RrdChart::graphString(const char *seriesGroupName,
 	if(seriesGroup) {
 		// Calculate dynamic scale if configured
 		if(seriesGroup->hasDynamicRightAxis()) {
-			seriesGroup->calculateDynamicScale(getDbFilename().c_str());
+			seriesGroup->calculateDynamicScale(getDbFilename().c_str(), fromTime, toTime);
 		}
 		// Add right axis parameters if configured
 		rslt += seriesGroup->rightAxisString();
@@ -1195,9 +1197,9 @@ void rrd_charts_init() {
 	g->addSeries((new FILE_LINE(0) RrdChartSeries(RRD_VALUE_io_read_throughput, NULL, "228B22", "MAX", "LINE1", false))
 			->setPrecision(1, 1)->setNegate(true));
 	// Row 2: Write IOPS (no newline) + Read IOPS (with newline)
-	g->addSeries((new FILE_LINE(0) RrdChartSeries(RRD_VALUE_io_write_iops, "Write IOPS", "006400", "MAX", "LINE2", true))
+	g->addSeries((new FILE_LINE(0) RrdChartSeries(RRD_VALUE_io_write_iops, "Write IOPS", "006400", "MAX", "LINE1", true))
 			->setPrecision(0, 0)->setRightAxis(true)->setNoNewline(true));
-	g->addSeries((new FILE_LINE(0) RrdChartSeries(RRD_VALUE_io_read_iops, "Read IOPS", "00008B", "MAX", "LINE2", true))
+	g->addSeries((new FILE_LINE(0) RrdChartSeries(RRD_VALUE_io_read_iops, "Read IOPS", "00008B", "MAX", "LINE1", true))
 			->setPrecision(0, 0)->setRightAxis(true)->setNegate(true));
 	ch->addSeriesGroup("DIO-TP", g);
 	// ** DIO-LAT - Latency + Queue depth (dual axis with dynamic scale)

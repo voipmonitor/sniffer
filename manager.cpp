@@ -4791,7 +4791,18 @@ int Mgmt_sniffer_threads(Mgmt_params *params) {
 	if(strstr(params->buf, "line") != NULL) {
 		outputFlags |= cThreadMonitor::_of_line;
 	}
-	string threads = threadMonitor.output(1, outputFlags);
+	// Parse uid parameter for session-based monitoring
+	int uid = 0;
+	const char *uid_str = strstr(params->buf, "uid=");
+	if(uid_str) {
+		uid = atoi(uid_str + 4);
+	}
+	string threads;
+	if(uid > 0) {
+		threads = threadMonitor.output(uid, outputFlags, true);
+	} else {
+		threads = threadMonitor.output(1, outputFlags);
+	}
 	return(params->sendString(&threads));
 }
 
