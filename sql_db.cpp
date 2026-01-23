@@ -5993,11 +5993,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
 			`calldate` ") + column_type_datetime_ms() + " NOT NULL,\
 			`callend` " + column_type_datetime_ms() + " NOT NULL,\
-			`duration` " + column_type_duration_ms() + " unsigned DEFAULT NULL,\
-			`connect_duration` " + column_type_duration_ms() + " unsigned DEFAULT NULL,\
-			`progress_time` " + column_type_duration_ms() + " unsigned DEFAULT NULL,\
-			`first_rtp_time` " + column_type_duration_ms() + " unsigned DEFAULT NULL,\
-			`post_bye_delay` " + column_type_duration_ms(NULL, true) + " unsigned DEFAULT NULL,\
+			`duration` " + column_type_duration_ms_unsigned() + " DEFAULT NULL,\
+			`connect_duration` " + column_type_duration_ms_unsigned() + " DEFAULT NULL,\
+			`progress_time` " + column_type_duration_ms_unsigned() + " DEFAULT NULL,\
+			`first_rtp_time` " + column_type_duration_ms_unsigned() + " DEFAULT NULL,\
+			`post_bye_delay` " + column_type_duration_ms_unsigned(NULL, true) + " DEFAULT NULL,\
 			`caller` varchar(255) DEFAULT NULL,\
 			`caller_domain` varchar(255) DEFAULT NULL,\
 			`caller_reverse` varchar(255) DEFAULT NULL,\
@@ -6132,8 +6132,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`b_rtcp_avgrtd_w` smallint unsigned DEFAULT NULL,\
 			`b_rtcp_maxrtd_w` smallint unsigned DEFAULT NULL,\
 		       ") + 
-		       "`a_last_rtp_from_end` " + column_type_duration_ms("smallint") + " DEFAULT NULL,\
-			`b_last_rtp_from_end` " + column_type_duration_ms("smallint") + " DEFAULT NULL,\
+		       "`a_last_rtp_from_end` " + column_type_duration_ms_signed("smallint") + " DEFAULT NULL,\
+			`b_last_rtp_from_end` " + column_type_duration_ms_signed("smallint") + " DEFAULT NULL,\
 		       " + (opt_disable_cdr_fields_rtp ? "" :
 		       "`a_rtcp_fraclost_pktcount` int unsigned DEFAULT NULL,\
 			`b_rtcp_fraclost_pktcount` int unsigned DEFAULT NULL,\
@@ -6536,14 +6536,14 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`ssrc` int unsigned DEFAULT NULL,\
 			`received` mediumint unsigned DEFAULT NULL,\
 			`loss` mediumint unsigned DEFAULT NULL,\
-			`firsttime` " + column_type_duration_ms("float") + " DEFAULT NULL,\
+			`firsttime` " + column_type_duration_ms_unsigned("float") + " DEFAULT NULL,\
 			`payload` smallint unsigned DEFAULT NULL,\
 			`maxjitter_mult10` smallint unsigned DEFAULT NULL,\
 			`index` tinyint unsigned DEFAULT NULL,\
 			`sdp_ptime` tinyint unsigned DEFAULT NULL,\
 			`rtp_ptime` tinyint unsigned DEFAULT NULL,\
 			`flags` bigint unsigned DEFAULT NULL,\
-			`duration` " + column_type_duration_ms("float") + " DEFAULT NULL,\
+			`duration` " + column_type_duration_ms_unsigned("float") + " DEFAULT NULL,\
 		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
@@ -6606,7 +6606,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				"") + 
 			"`daddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`saddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
-			`firsttime` " + column_type_duration_ms("float") + " DEFAULT NULL,\
+			`firsttime` " + column_type_duration_ms_unsigned("float") + " DEFAULT NULL,\
 			`dtmf` char DEFAULT NULL,\
 			`type` tinyint unsigned DEFAULT NULL,\
 		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
@@ -7132,9 +7132,9 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				`time_anm` " + column_type_datetime_ms() + ",\
 				`time_rel` " + column_type_datetime_ms() + ",\
 				`time_rlc` " + column_type_datetime_ms() + ",\
-				`duration` " + column_type_duration_ms() + " unsigned,\
-				`connect_duration` " + column_type_duration_ms() + " unsigned,\
-				`progress_time` " + column_type_duration_ms() + " unsigned,\
+				`duration` " + column_type_duration_ms_unsigned() + ",\
+				`connect_duration` " + column_type_duration_ms_unsigned() + ",\
+				`progress_time` " + column_type_duration_ms_unsigned() + ",\
 				`cic` int unsigned,\
 				`satellite_indicator` int unsigned,\
 				`echo_control_device_indicator` int unsigned,\
@@ -9338,7 +9338,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	map<string, u_int64_t> tableSize;
 	this->checkNeedAlterAdd("cdr", "store post bye delay", true,
 				log, &tableSize, &existsColumns.cdr_post_bye_delay,
-				"post_bye_delay", string(column_type_duration_ms(NULL, true) + " unsigned default null").c_str(), NULL_CHAR_PTR,
+				"post_bye_delay", string(column_type_duration_ms_unsigned(NULL, true) + " default null").c_str(), NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 	for(int pass = 0; pass < 2; pass++) {
 		vector<string> alters_ms;
@@ -9349,28 +9349,28 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 			alters_ms.push_back("modify column callend " + column_type_datetime_ms() + " not null");
 		}
 		if(!(existsColumns.cdr_duration_ms = this->getTypeColumn("cdr", "duration").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column duration " + column_type_duration_ms() + " unsigned default null");
+			alters_ms.push_back("modify column duration " + column_type_duration_ms_unsigned() + " default null");
 		}
 		if(!(existsColumns.cdr_connect_duration_ms = this->getTypeColumn("cdr", "connect_duration").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column connect_duration " + column_type_duration_ms() + " unsigned default null");
+			alters_ms.push_back("modify column connect_duration " + column_type_duration_ms_unsigned() + " default null");
 		}
 		if(!(existsColumns.cdr_progress_time_ms = this->getTypeColumn("cdr", "progress_time").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column progress_time " + column_type_duration_ms() + " unsigned default null");
+			alters_ms.push_back("modify column progress_time " + column_type_duration_ms_unsigned() + " default null");
 		}
 		if(!(existsColumns.cdr_first_rtp_time_ms = this->getTypeColumn("cdr", "first_rtp_time").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column first_rtp_time " + column_type_duration_ms() + " unsigned default null");
+			alters_ms.push_back("modify column first_rtp_time " + column_type_duration_ms_unsigned() + " default null");
 		}
 		if(this->existsColumn("cdr", "post_bye_delay") &&
 		   !(existsColumns.cdr_post_bye_delay_ms = this->getTypeColumn("cdr", "post_bye_delay").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column post_bye_delay " + column_type_duration_ms() + " unsigned default null");
+			alters_ms.push_back("modify column post_bye_delay " + column_type_duration_ms_unsigned() + " default null");
 		}
 		if(this->existsColumn("cdr", "a_last_rtp_from_end") &&
 		   !(existsColumns.cdr_a_last_rtp_from_end_time_ms = this->getTypeColumn("cdr", "a_last_rtp_from_end").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column a_last_rtp_from_end " + column_type_duration_ms() + " signed default null");
+			alters_ms.push_back("modify column a_last_rtp_from_end " + column_type_duration_ms_signed() + " default null");
 		}
 		if(this->existsColumn("cdr", "a_last_rtp_from_end") &&
 		   !(existsColumns.cdr_b_last_rtp_from_end_time_ms = this->getTypeColumn("cdr", "b_last_rtp_from_end").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column b_last_rtp_from_end " + column_type_duration_ms() + " signed default null");
+			alters_ms.push_back("modify column b_last_rtp_from_end " + column_type_duration_ms_signed() + " default null");
 		}
 		if(pass == 0 && opt_time_precision_in_ms) {
 			if(alters_ms.size()) {
@@ -9392,8 +9392,8 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	}
 	if(this->checkNeedAlterAdd("cdr", "store last rtp from end", opt_last_rtp_from_end,
 				   log, &tableSize, &existsColumns.cdr_last_rtp_from_end,
-				   "a_last_rtp_from_end", existsColumns.cdr_calldate_ms ? "decimal(9,3) signed default null" : "SMALLINT SIGNED DEFAULT NULL", NULL_CHAR_PTR,
-				   "b_last_rtp_from_end", existsColumns.cdr_calldate_ms ? "decimal(9,3) signed default null" : "SMALLINT SIGNED DEFAULT NULL", NULL_CHAR_PTR,
+				   "a_last_rtp_from_end", existsColumns.cdr_calldate_ms ? "decimal(9,3) default null" : "SMALLINT SIGNED DEFAULT NULL", NULL_CHAR_PTR,
+				   "b_last_rtp_from_end", existsColumns.cdr_calldate_ms ? "decimal(9,3) default null" : "SMALLINT SIGNED DEFAULT NULL", NULL_CHAR_PTR,
 				   NULL_CHAR_PTR) > 0) {
 		existsColumns.cdr_a_last_rtp_from_end_time_ms = this->getTypeColumn("cdr", "a_last_rtp_from_end").find("decimal") != string::npos;
 		existsColumns.cdr_b_last_rtp_from_end_time_ms = this->getTypeColumn("cdr", "b_last_rtp_from_end").find("decimal") != string::npos;
@@ -9734,7 +9734,7 @@ void SqlDb_mysql::checkColumns_cdr_rtp(bool log) {
 				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("cdr_rtp", "rtp duration", true,
 				log, &tableSize, &existsColumns.cdr_rtp_duration,
-				"duration", string(column_type_duration_ms("float") + " DEFAULT NULL").c_str(), NULL_CHAR_PTR,
+				"duration", string(column_type_duration_ms_unsigned("float") + " DEFAULT NULL").c_str(), NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 }
 
@@ -9974,13 +9974,13 @@ void SqlDb_mysql::checkColumns_ss7(bool log) {
 			alters_ms.push_back("modify column time_rlc " + column_type_datetime_ms());
 		}
 		if(!(existsColumns.ss7_duration_ms = this->getTypeColumn("ss7", "duration").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column duration " + column_type_duration_ms() + " unsigned");
+			alters_ms.push_back("modify column duration " + column_type_duration_ms_unsigned());
 		}
 		if(!(existsColumns.ss7_connect_duration_ms = this->getTypeColumn("ss7", "connect_duration").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column connect_duration " + column_type_duration_ms() + " unsigned");
+			alters_ms.push_back("modify column connect_duration " + column_type_duration_ms_unsigned());
 		}
 		if(!(existsColumns.ss7_progress_time_ms = this->getTypeColumn("ss7", "progress_time").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column progress_time " + column_type_duration_ms() + " unsigned");
+			alters_ms.push_back("modify column progress_time " + column_type_duration_ms_unsigned());
 		}
 		if(pass == 0 && opt_time_precision_in_ms) {
 			if(alters_ms.size()) {
@@ -10384,10 +10384,26 @@ string SqlDb_mysql::column_type_datetime_child_ms() {
 		"datetime");
 }
 
-string SqlDb_mysql::column_type_duration_ms(const char *base_type, bool force) {
-	return((opt_time_precision_in_ms || force) && isSupportForDatetimeMs() ?
-		"decimal(9,3)" :
-		(base_type ? base_type : "mediumint"));
+string SqlDb_mysql::column_type_duration_ms_unsigned(const char *base_type, bool force) {
+	return(_column_type_duration_ms(base_type, force, false));
+}
+
+string SqlDb_mysql::column_type_duration_ms_signed(const char *base_type, bool force) {
+	return(_column_type_duration_ms(base_type, force, true));
+}
+
+string SqlDb_mysql::_column_type_duration_ms(const char *base_type, bool force, bool is_signed) {
+	if((opt_time_precision_in_ms || force) && isSupportForDatetimeMs()) {
+		return("decimal(9,3)");
+	} else {
+		string type = base_type ? base_type : "mediumint";
+		if(strcasestr(type.c_str(), "float") ||
+		   strcasestr(type.c_str(), "double") ||
+		   strcasestr(type.c_str(), "decimal")) {
+			return(type);
+		}
+		return(type + (is_signed ? " signed" : " unsigned"));
+	}
 }
 
 bool SqlDb_mysql::checkSourceTables() {

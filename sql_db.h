@@ -783,7 +783,9 @@ public:
 	bool existsExtPrecissionBilling();
 	string column_type_datetime_ms();
 	string column_type_datetime_child_ms();
-	string column_type_duration_ms(const char *base_type = NULL, bool force = false);
+	string column_type_duration_ms_unsigned(const char *base_type = NULL, bool force = false);
+	string column_type_duration_ms_signed(const char *base_type = NULL, bool force = false);
+	string _column_type_duration_ms(const char *base_type, bool force, bool is_signed);
 	bool checkSourceTables();
 	void copyFromSourceTablesReftabs(SqlDb_mysql *sqlDbSrc,
 					 cSqlDbCodebooks *cb_src = NULL, cSqlDbCodebooks *cb_dst = NULL);
