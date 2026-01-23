@@ -37,6 +37,10 @@ RrdChartSeries::RrdChartSeries(const char *name, const char *descr, const char *
 	this->legend = legend;
 	precision = 0;
 	precision_avg = 2;
+	useRightAxis = false;
+	negate = false;
+	legendOnly = false;
+	noNewline = false;
 }
 
 void RrdChartSeries::setFce(const char *fce) {
@@ -63,24 +67,79 @@ RrdChartSeries* RrdChartSeries::setAdjust(const char *adj_operator, const char *
 	return(this);
 }
 
-string RrdChartSeries::graphString(const char *dbFilename) {
+RrdChartSeries* RrdChartSeries::setRightAxis(bool useRight) {
+	this->useRightAxis = useRight;
+	return(this);
+}
+
+RrdChartSeries* RrdChartSeries::setNegate(bool neg) {
+	this->negate = neg;
+	return(this);
+}
+
+RrdChartSeries* RrdChartSeries::setLegendOnly(bool lo) {
+	this->legendOnly = lo;
+	return(this);
+}
+
+RrdChartSeries* RrdChartSeries::setNoNewline(bool noNl) {
+	this->noNewline = noNl;
+	return(this);
+}
+
+string RrdChartSeries::graphString(const char *dbFilename, double rightAxisScale) {
 	string rslt;
-	string var_name = "_" + find_and_replace(name.c_str(), "-", "_") + "_" + fce;
-	rslt = 
+	// Add suffix to avoid duplicate DEF names when same series used multiple times
+	// Include type and legend status in suffix for uniqueness
+	string suffix = "";
+	if(legendOnly) suffix += "_leg";
+	if(!legend) suffix += "_nol";
+	suffix += "_" + string(type);
+	string var_name = "_" + find_and_replace(name.c_str(), "-", "_") + "_" + fce + suffix;
+	string var_name_orig = var_name;  // Keep original for GPRINT (shows real values)
+	rslt =
 		"DEF:" + var_name + "=" + dbFilename + ":" + name + ":" + fce + " ";
 	if(!adj_operator.empty() && !adj_number.empty()) {
 		string _var_name = "_" + var_name;
 		rslt += "CDEF:" + _var_name + "=" + var_name + "," + adj_number + "," + adj_operator + " ";
 		var_name = _var_name;
+		var_name_orig = _var_name;
 	}
-	rslt += string(type) + ":" + var_name + "#" + color + ":\"" + descr + (vm_rrd_version < 10403 && legend ? "\\t" : "\\l") + "\" ";
+	// For right axis series, scale the value for plotting (divide by scale)
+	// This makes the line appear at the correct position relative to right axis
+	string var_name_plot = var_name;
+	if(useRightAxis && rightAxisScale > 0) {
+		string _var_name = var_name + "_scaled";
+		rslt += "CDEF:" + _var_name + "=" + var_name + "," + floatToString(rightAxisScale) + ",/ ";
+		var_name_plot = _var_name;
+	}
+	// Negate for mirrored graphs (e.g., read throughput shown below axis)
+	if(negate) {
+		string _var_name = var_name_plot + "_neg";
+		rslt += "CDEF:" + _var_name + "=" + var_name_plot + ",-1,* ";
+		var_name_plot = _var_name;
+	}
+	// legendOnly: only output legend without drawing (for control over legend order)
+	if(!legendOnly) {
+		if(legend) {
+			// Label WITHOUT newline - stats follow on same line
+			rslt += string(type) + ":" + var_name_plot + "#" + color + ":\"" + descr + "\" ";
+		} else {
+			// No legend: output without label to completely hide from legend
+			rslt += string(type) + ":" + var_name_plot + "#" + color + " ";
+		}
+	} else if(legend) {
+		// For legendOnly (LINE0 trick), output invisible line with label
+		rslt += "LINE0:" + var_name_plot + "#" + color + ":\"" + descr + "\" ";
+	}
 	if(legend) {
+		// GPRINT: Cur, Avg, Max on same line as label
+		// Use \l (newline) at end unless noNewline is set
+		string lineEnd = noNewline ? "" : "\\l";
 		rslt +=
-			(vm_rrd_version < 10403 ? "" : string("COMMENT:\\u ")) +
-			"GPRINT:" + var_name + ":LAST:\"Cur\\: %5." + intToString(precision) + "lf\" " +
-			"GPRINT:" + var_name + ":AVERAGE:\"Avg\\: %5." + intToString(precision_avg) + "lf\" " +
-			"GPRINT:" + var_name + ":MAX:\"Max\\: %5." + intToString(precision) + "lf\" " +
-			"GPRINT:" + var_name + ":MIN:\"Min\\: %5." + intToString(precision) + "lf" + (vm_rrd_version < 10403 ? "\\l" : "\\r") + "\" ";
+			"GPRINT:" + var_name_orig + ":LAST:\"Cur\\: %5." + intToString(precision) + "lf\" " +
+			"GPRINT:" + var_name_orig + ":AVERAGE:\"Avg\\: %5." + intToString(precision_avg) + "lf\" " +
+			"GPRINT:" + var_name_orig + ":MAX:\"Max\\: %5." + intToString(precision) + "lf" + lineEnd + "\" ";
 	}
 	return(rslt);
 }
@@ -116,6 +175,11 @@ string RrdChartValue::getValue() {
 	return(floatToString(value > max ? max : value));
 }
 
+RrdChartSeriesGroup::RrdChartSeriesGroup() {
+	right_axis_scale = 0;
+	right_axis_shift = 0;
+}
+
 RrdChartSeriesGroup::~RrdChartSeriesGroup() {
 	for(list<RrdChartSeries*>::iterator iter = series.begin(); iter != series.end(); iter++) {
 		delete (*iter);
@@ -135,10 +199,94 @@ void RrdChartSeriesGroup::setVerticalLabel(const char *vert_label) {
 	this->vert_label = vert_label;
 }
 
+void RrdChartSeriesGroup::setRightAxis(double scale, double shift, const char *label) {
+	this->right_axis_scale = scale;
+	this->right_axis_shift = shift;
+	this->right_axis_label = label ? label : "";
+}
+
+void RrdChartSeriesGroup::setDynamicRightAxis(const char *left_value1, const char *left_value2,
+					      const char *right_value1, const char *right_value2,
+					      const char *label) {
+	this->dyn_left_value1 = left_value1 ? left_value1 : "";
+	this->dyn_left_value2 = left_value2 ? left_value2 : "";
+	this->dyn_right_value1 = right_value1 ? right_value1 : "";
+	this->dyn_right_value2 = right_value2 ? right_value2 : "";
+	this->right_axis_label = label ? label : "";
+	this->right_axis_shift = 0;
+}
+
+void RrdChartSeriesGroup::calculateDynamicScale(const char *dbFilename) {
+	if(dyn_left_value1.empty()) {
+		return;
+	}
+	// Build rrdtool command to get max values
+	string cmd = string(RRDTOOL_CMD) + " graph /dev/null --start end-24h --end now ";
+	cmd += "DEF:l1=" + string(dbFilename) + ":" + dyn_left_value1 + ":MAX ";
+	cmd += "VDEF:l1_max=l1,MAXIMUM ";
+	cmd += "PRINT:l1_max:\"%lf\" ";
+	if(!dyn_left_value2.empty()) {
+		cmd += "DEF:l2=" + string(dbFilename) + ":" + dyn_left_value2 + ":MAX ";
+		cmd += "VDEF:l2_max=l2,MAXIMUM ";
+		cmd += "PRINT:l2_max:\"%lf\" ";
+	}
+	cmd += "DEF:r1=" + string(dbFilename) + ":" + dyn_right_value1 + ":MAX ";
+	cmd += "VDEF:r1_max=r1,MAXIMUM ";
+	cmd += "PRINT:r1_max:\"%lf\" ";
+	if(!dyn_right_value2.empty()) {
+		cmd += "DEF:r2=" + string(dbFilename) + ":" + dyn_right_value2 + ":MAX ";
+		cmd += "VDEF:r2_max=r2,MAXIMUM ";
+		cmd += "PRINT:r2_max:\"%lf\" ";
+	}
+
+	FILE *fp = popen(cmd.c_str(), "r");
+	if(!fp) {
+		right_axis_scale = 1;
+		return;
+	}
+
+	char buf[256];
+	double max_left = 0, max_right = 0;
+	int line = 0;
+	while(fgets(buf, sizeof(buf), fp)) {
+		double val = atof(buf);
+		if(line == 0) {
+			max_left = val;
+		} else if(line == 1 && !dyn_left_value2.empty()) {
+			if(val > max_left) max_left = val;
+		} else if((line == 1 && dyn_left_value2.empty()) ||
+			  (line == 2 && !dyn_left_value2.empty())) {
+			max_right = val;
+		} else {
+			if(val > max_right) max_right = val;
+		}
+		line++;
+	}
+	pclose(fp);
+
+	// Calculate scale: right_axis_value = scale * left_axis_value
+	if(max_left > 0 && max_right > 0) {
+		right_axis_scale = max_right / max_left;
+	} else {
+		right_axis_scale = 1;
+	}
+}
+
+string RrdChartSeriesGroup::rightAxisString() {
+	if(right_axis_scale == 0) {
+		return "";
+	}
+	string rslt = "--right-axis " + floatToString(right_axis_scale) + ":" + floatToString(right_axis_shift) + " ";
+	if(!right_axis_label.empty()) {
+		rslt += "--right-axis-label \"" + right_axis_label + "\" ";
+	}
+	return rslt;
+}
+
 string RrdChartSeriesGroup::graphString(const char *dbFilename) {
 	string rslt;
 	for(list<RrdChartSeries*>::iterator iter = series.begin(); iter != series.end(); iter++) {
-		rslt += (*iter)->graphString(dbFilename);
+		rslt += (*iter)->graphString(dbFilename, right_axis_scale);
 	}
 	return(rslt);
 }
@@ -465,10 +613,16 @@ string RrdChart::graphString(const char *seriesGroupName,
 		(icon ? "--only-graph " : "") +
 		(backgroundColor ? string("-c BACK#") + backgroundColor + " -c SHADEA#" + backgroundColor + " -c SHADEB#" + backgroundColor + " " : "");
 	if(seriesGroup) {
+		// Calculate dynamic scale if configured
+		if(seriesGroup->hasDynamicRightAxis()) {
+			seriesGroup->calculateDynamicScale(getDbFilename().c_str());
+		}
+		// Add right axis parameters if configured
+		rslt += seriesGroup->rightAxisString();
 		rslt += seriesGroup->graphString(getDbFilename().c_str());
 	} else {
 		for(list<RrdChartValue*>::iterator iter = values.begin(); iter != values.end(); iter++) {
-			rslt += (*iter)->graphString(getDbFilename().c_str());
+			rslt += (*iter)->graphString(getDbFilename().c_str(), 0);
 		}
 	}
 	return(rslt);
@@ -1011,6 +1165,57 @@ void rrd_charts_init() {
 			->setPrecision(0, 1);
 	ch->addValue(RRD_VALUE_io_read_iops, "Read IOPS", "9400D3", 0, 1000000)
 			->setPrecision(0, 1);
+	// ** DIO-SAT - Saturation (Capacity % and Utilization %)
+	g = new FILE_LINE(0) RrdChartSeriesGroup;
+	g->setName("Disk I/O Saturation");
+	g->setVerticalLabel("%");
+	// Both on one line: Utilization (no newline) + Capacity (with newline)
+	g->addSeries((new FILE_LINE(0) RrdChartSeries(RRD_VALUE_io_util, "Utilization %", "0066FF", "MAX", "LINE2", true))
+			->setPrecision(0, 1)->setNoNewline(true));
+	g->addSeries((new FILE_LINE(0) RrdChartSeries(RRD_VALUE_io_capacity, "Capacity %", "FF9900", "MAX", "LINE2", true))
+			->setPrecision(0, 1));
+	ch->addSeriesGroup("DIO-SAT", g);
+	// ** DIO-TP - Throughput + IOPS (mirrored, dual axis with dynamic scale)
+	g = new FILE_LINE(0) RrdChartSeriesGroup;
+	g->setName("Disk I/O Throughput");
+	g->setVerticalLabel("MB/s");
+	// Dynamic scale: calculate ratio between max throughput and max IOPS
+	g->setDynamicRightAxis(RRD_VALUE_io_write_throughput, RRD_VALUE_io_read_throughput,
+			       RRD_VALUE_io_write_iops, RRD_VALUE_io_read_iops, "IOPS");
+	// Write: up (positive), Read: down (negative, mirrored)
+	// Green #00FF00 for both areas, with dark green outline
+	// Row 1: Write MB/s (no newline) + Read MB/s (with newline)
+	g->addSeries((new FILE_LINE(0) RrdChartSeries(RRD_VALUE_io_write_throughput, "Write MB/s", "00FF0080", "MAX", "AREA", true))
+			->setPrecision(1, 1)->setNoNewline(true));
+	g->addSeries((new FILE_LINE(0) RrdChartSeries(RRD_VALUE_io_read_throughput, "Read MB/s", "00FF0080", "MAX", "AREA", true))
+			->setPrecision(1, 1)->setNegate(true));
+	// Dark green outline for throughput (no legend)
+	g->addSeries((new FILE_LINE(0) RrdChartSeries(RRD_VALUE_io_write_throughput, NULL, "228B22", "MAX", "LINE1", false))
+			->setPrecision(1, 1));
+	g->addSeries((new FILE_LINE(0) RrdChartSeries(RRD_VALUE_io_read_throughput, NULL, "228B22", "MAX", "LINE1", false))
+			->setPrecision(1, 1)->setNegate(true));
+	// Row 2: Write IOPS (no newline) + Read IOPS (with newline)
+	g->addSeries((new FILE_LINE(0) RrdChartSeries(RRD_VALUE_io_write_iops, "Write IOPS", "006400", "MAX", "LINE2", true))
+			->setPrecision(0, 0)->setRightAxis(true)->setNoNewline(true));
+	g->addSeries((new FILE_LINE(0) RrdChartSeries(RRD_VALUE_io_read_iops, "Read IOPS", "00008B", "MAX", "LINE2", true))
+			->setPrecision(0, 0)->setRightAxis(true)->setNegate(true));
+	ch->addSeriesGroup("DIO-TP", g);
+	// ** DIO-LAT - Latency + Queue depth (dual axis with dynamic scale)
+	g = new FILE_LINE(0) RrdChartSeriesGroup;
+	g->setName("Disk I/O Latency");
+	g->setVerticalLabel("ms");
+	// Dynamic scale: calculate ratio between max latency and max queue depth
+	g->setDynamicRightAxis(RRD_VALUE_io_latency, NULL,
+			       RRD_VALUE_io_qdepth, NULL, "Queue depth");
+	// One row: Queue depth (no newline) + Latency (with newline)
+	// LINE0 creates legend entry without drawing anything
+	g->addSeries((new FILE_LINE(0) RrdChartSeries(RRD_VALUE_io_qdepth, "Queue depth", "0000FF", "MAX", "LINE0", true))
+			->setPrecision(1, 1)->setRightAxis(true)->setLegendOnly(true)->setNoNewline(true));
+	g->addSeries((new FILE_LINE(0) RrdChartSeries(RRD_VALUE_io_latency, "Latency (ms)", "00FF0080", "MAX", "AREA", true))
+			->setPrecision(1, 1));   // Green area with legend (has newline)
+	g->addSeries((new FILE_LINE(0) RrdChartSeries(RRD_VALUE_io_qdepth, NULL, "0000FF", "MAX", "LINE1", false))
+			->setPrecision(1, 1)->setRightAxis(true));   // Blue line, no legend (already has one)
+	ch->addSeriesGroup("DIO-LAT", g);
 
 	rrd_charts->createMapValues();
 }

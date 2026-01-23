@@ -67,6 +67,9 @@
 #define RRD_VALUE_LA_m15 "LA-m15"
 
 #define RRD_CHART_diskio "2db-diskio"
+#define RRD_CHART_SERIES_DIO_SAT "DIO-SAT"
+#define RRD_CHART_SERIES_DIO_TP "DIO-TP"
+#define RRD_CHART_SERIES_DIO_LAT "DIO-LAT"
 #define RRD_VALUE_io_latency "io-latency"
 #define RRD_VALUE_io_qdepth "io-qdepth"
 #define RRD_VALUE_io_util "io-util"
@@ -89,15 +92,23 @@
 
 
 class RrdChartSeries {
-public: 
+public:
 	RrdChartSeries(const char *name, const char *descr, const char *color,
 		       const char *fce = NULL, const char *type = NULL, bool legend = true);
 	void setFce(const char *fce);
 	void setType(const char *type);
 	void setLegend(bool legend);
-	string graphString(const char *dbFilename);
+	string graphString(const char *dbFilename, double rightAxisScale = 0);
 	RrdChartSeries *setPrecision(unsigned base, unsigned avg);
 	RrdChartSeries *setAdjust(const char *adj_operator, const char *adj_number);
+	RrdChartSeries *setRightAxis(bool useRight);
+	RrdChartSeries *setNegate(bool neg);
+	RrdChartSeries *setLegendOnly(bool legendOnly);
+	RrdChartSeries *setNoNewline(bool noNl);
+	bool isRightAxis() const { return useRightAxis; }
+	bool isNegate() const { return negate; }
+	bool isLegendOnly() const { return legendOnly; }
+	bool isNoNewline() const { return noNewline; }
 protected:
 	string name;
 	string descr;
@@ -109,6 +120,10 @@ protected:
 	unsigned precision_avg;
 	string adj_operator;
 	string adj_number;
+	bool useRightAxis;
+	bool negate;
+	bool legendOnly;
+	bool noNewline;
 };
 
 class RrdChartValue : public RrdChartSeries {
@@ -127,15 +142,33 @@ friend class RrdCharts;
 
 class RrdChartSeriesGroup {
 public:
+	RrdChartSeriesGroup();
 	~RrdChartSeriesGroup();
 	RrdChartSeries *addSeries(RrdChartSeries *series);
 	void setName(const char *name);
 	void setVerticalLabel(const char *vert_label);
+	void setRightAxis(double scale, double shift, const char *label);
+	void setDynamicRightAxis(const char *left_value1, const char *left_value2,
+				 const char *right_value1, const char *right_value2,
+				 const char *label);
+	void calculateDynamicScale(const char *dbFilename);
 	string graphString(const char *dbFilename);
+	string rightAxisString();
+	bool hasRightAxis() const { return right_axis_scale != 0; }
+	bool hasDynamicRightAxis() const { return !dyn_left_value1.empty(); }
+	double getRightAxisScale() const { return right_axis_scale; }
 private:
 	list<RrdChartSeries*> series;
 	string name;
 	string vert_label;
+	double right_axis_scale;
+	double right_axis_shift;
+	string right_axis_label;
+	// Dynamic scale calculation
+	string dyn_left_value1;
+	string dyn_left_value2;
+	string dyn_right_value1;
+	string dyn_right_value2;
 friend class RrdChart;
 };
 

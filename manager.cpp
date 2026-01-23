@@ -2766,12 +2766,23 @@ int Mgmt_creategraph(Mgmt_params *params) {
 			chart_type = RRD_CHART_memusage;
 		} else if(args[1] == "loadavg") {
 			chart_type = RRD_CHART_LA;
+		} else if(args[1] == "diskio") {
+			chart_type = RRD_CHART_diskio;
+		} else if(args[1] == "DIO-SAT") {
+			chart_type = RRD_CHART_diskio;
+			series_type = RRD_CHART_SERIES_DIO_SAT;
+		} else if(args[1] == "DIO-TP") {
+			chart_type = RRD_CHART_diskio;
+			series_type = RRD_CHART_SERIES_DIO_TP;
+		} else if(args[1] == "DIO-LAT") {
+			chart_type = RRD_CHART_diskio;
+			series_type = RRD_CHART_SERIES_DIO_LAT;
 		} else {
 			error =  "Error: Graph type " + args[1] + " isn't known\n\t"
-				 "Graph types: PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU memusage\n";
+				 "Graph types: PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU memusage diskio DIO-SAT DIO-TP DIO-LAT\n";
 			if(verbosity > 0) {
 				syslog(LOG_NOTICE, "creategraph Error: Unrecognized graph type %s", args[1].c_str());
-				syslog(LOG_NOTICE, "    Graph types: PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU memusage loadavg");
+				syslog(LOG_NOTICE, "    Graph types: PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU memusage loadavg diskio DIO-SAT DIO-TP DIO-LAT");
 			}
 		}
 		if(!chart_type.empty()) {
