@@ -3935,27 +3935,56 @@ public:
 		_of_line = (1 << 3)
 	};
 public:
+	struct sThreadStatData {
+		sThreadStatData() {
+			memset(pstat, 0, sizeof(pstat));
+			memset(cs, 0, sizeof(cs));
+			last_time_us[0] = 0;
+			last_time_us[1] = 0;
+			#if SNIFFER_THREADS_EXT
+			u_int64_t time_us = ::getTimeUS();
+			usleep_sum_last = 0;
+			packets_cnt_in_last = 0;
+			packets_cnt_out_last = 0;
+			packets_size_in_last = 0;
+			packets_size_out_last = 0;
+			packets_last_time_us = time_us;
+			buffer_push_cnt_all_last = 0;
+			buffer_push_cnt_full_last = 0;
+			buffer_push_cnt_full_loop_last = 0;
+			buffer_push_sum_usleep_full_loop_last = 0;
+			buffer_push_last_time_us = time_us;
+			#endif
+		}
+		pstat_data pstat[2];
+		context_switches_data cs[2];
+		u_int64_t last_time_us[2];
+		#if SNIFFER_THREADS_EXT
+		u_int64_t usleep_sum_last;
+		u_int64_t packets_cnt_in_last;
+		u_int64_t packets_cnt_out_last;
+		u_int64_t packets_size_in_last;
+		u_int64_t packets_size_out_last;
+		u_int64_t packets_last_time_us;
+		u_int64_t buffer_push_cnt_all_last;
+		u_int64_t buffer_push_cnt_full_last;
+		u_int64_t buffer_push_cnt_full_loop_last;
+		u_int64_t buffer_push_sum_usleep_full_loop_last;
+		u_int64_t buffer_push_last_time_us;
+		#endif
+	};
 	struct sThread {
 		int tid;
 		pthread_t thread;
 		string description;
-		pstat_data pstat[5][2];
-		context_switches_data cs[5][2];
-		u_int64_t last_time_us[5][2];
 		int orig_scheduler;
 		int orig_priority;
 		#if SNIFFER_THREADS_EXT
 		volatile u_int64_t usleep_sum;
-		u_int64_t usleep_sum_last[5];
 		volatile u_int64_t packets_cnt_in;
 		volatile u_int64_t packets_cnt_out;
 		volatile u_int64_t packets_size_in;
 		volatile u_int64_t packets_size_out;
-		u_int64_t packets_cnt_in_last[5];
-		u_int64_t packets_cnt_out_last[5];
-		u_int64_t packets_size_in_last[5];
-		u_int64_t packets_size_out_last[5];
-		u_int64_t packets_last_time_us[5];
 		inline void inc_packets_in(u_int64_t size, u_int64_t cnt = 1) {
 			packets_size_in += size;
 			packets_cnt_in += cnt;
@@ -3968,12 +3997,8 @@ public:
 		volatile u_int64_t buffer_push_cnt_full;
 		volatile u_int64_t buffer_push_cnt_full_loop;
 		volatile u_int64_t buffer_push_sum_usleep_full_loop;
-		u_int64_t buffer_push_cnt_all_last[5];
-		u_int64_t buffer_push_cnt_full_last[5];
-		u_int64_t buffer_push_cnt_full_loop_last[5];
-		u_int64_t buffer_push_sum_usleep_full_loop_last[5];
-		u_int64_t buffer_push_last_time_us[5];
 		#endif
+		sThreadStatData stat[5];
 	};
 private:
 	#if SNIFFER_THREADS_EXT
@@ -4016,54 +4041,15 @@ private:
 		sBufferPush buffer_push;
 		#endif
 	};
-public:
-	// Per-thread pstat data for one session
-	struct sSessionThreadData {
-		sSessionThreadData() {
-			memset(pstat, 0, sizeof(pstat));
-			memset(cs, 0, sizeof(cs));
-			last_time_us = 0;
-			#if SNIFFER_THREADS_EXT
-			usleep_sum_last = 0;
-			packets_cnt_in_last = 0;
-			packets_cnt_out_last = 0;
-			packets_size_in_last = 0;
-			packets_size_out_last = 0;
-			packets_last_time_us = 0;
-			buffer_push_cnt_all_last = 0;
-			buffer_push_cnt_full_last = 0;
-			buffer_push_cnt_full_loop_last = 0;
-			buffer_push_sum_usleep_full_loop_last = 0;
-			buffer_push_last_time_us = 0;
-			#endif
-		}
-		pstat_data pstat[2];
-		context_switches_data cs[2];
-		u_int64_t last_time_us;
-		#if SNIFFER_THREADS_EXT
-		u_int64_t usleep_sum_last;
-		u_int64_t packets_cnt_in_last;
-		u_int64_t packets_cnt_out_last;
-		u_int64_t packets_size_in_last;
-		u_int64_t packets_size_out_last;
-		u_int64_t packets_last_time_us;
-		u_int64_t buffer_push_cnt_all_last;
-		u_int64_t buffer_push_cnt_full_last;
-		u_int64_t buffer_push_cnt_full_loop_last;
-		u_int64_t buffer_push_sum_usleep_full_loop_last;
-		u_int64_t buffer_push_last_time_us;
-		#endif
-	};
-	// Session for one monitoring client
 	struct sSession {
 		sSession() : last_access_us(0) {}
 		~sSession() {
-			for(std::map<int, sSessionThreadData*>::iterator it = thread_data.begin();
+			for(std::map<int, sThreadStatData*>::iterator it = thread_data.begin();
 			    it != thread_data.end(); ++it) {
 				delete it->second;
 			}
 		}
-		std::map<int, sSessionThreadData*> thread_data;  // tid -> data
+		std::map<int, sThreadStatData*> thread_data;  // tid -> data
 		u_int64_t last_access_us;
 	};
 public:
@@ -4078,22 +4064,18 @@ public:
 	string output(int uid, int outputFlags, bool useSession);  // session-based version
 	void cleanupSessions(u_int64_t max_age_us = 120000000ULL);  // 120 sec default
 private:
-	double getCpuUsagePerc(sThread *thread, int indexPstat);
-	double getCpuUsagePerc(sThread *thread, sSessionThreadData *sessData);
-	context_switches_data getContextSwitches(sThread *thread, int indexPstat);
-	context_switches_data getContextSwitches(sThread *thread, sSessionThreadData *sessData);
-	u_int64_t getUsleep(sThread *thread, int indexPstat);
-	u_int64_t getUsleep(sThread *thread, sSessionThreadData *sessData);
-	u_int64_t getTimeUS(sThread *thread, int indexPstat);
-	u_int64_t getTimeUS(sThread *thread, sSessionThreadData *sessData);
+	string output(list<sDescrCpuPerc> *descrPerc, int outputFlags);
+	double getCpuUsagePerc(sThread *thread, sThreadStatData *stat);
+	context_switches_data getContextSwitches(sThread *thread, sThreadStatData *stat);
+	u_int64_t getUsleep(sThread *thread, sThreadStatData *stat);
+	u_int64_t getTimeUS(sThread *thread, sThreadStatData *stat);
 	#if SNIFFER_THREADS_EXT
-	bool evalTraffic(sThread *thread, sTraffic *traffic, u_int64_t time_us, int indexStat);
-	bool evalTraffic(sThread *thread, sSessionThreadData *sessData, sTraffic *traffic, u_int64_t time_us);
-	bool evalBufferPush(sThread *thread, sBufferPush *buffer_push, u_int64_t time_us, int indexStat);
-	bool evalBufferPush(sThread *thread, sSessionThreadData *sessData, sBufferPush *buffer_push, u_int64_t time_us);
+	bool evalTraffic(sThread *thread, sTraffic *traffic, sThreadStatData *stat, u_int64_t time_us);
+	bool evalBufferPush(sThread *thread, sBufferPush *buffer_push, sThreadStatData *stat, u_int64_t time_us);
 	#endif
+	int evalThreadStat(sThread *thread, sThreadStatData *stat, sDescrCpuPerc *dp, int outputFlags, u_int64_t time_us, double *cpu_perc);
 	sSession* getOrCreateSession(int uid);
-	sSessionThreadData* getOrCreateSessionThreadData(sSession *session, int tid);
+	sThreadStatData* getOrCreateSessionThreadData(sSession *session, int tid);
 	void tm_lock() {
 		__SYNC_LOCK_QUICK(this->_sync);
 	}
