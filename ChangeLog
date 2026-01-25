@@ -1,3 +1,12 @@
+2026.01.4 25.01.2026
+====================
+- Disk I/O calibration now detects external I/O load before starting to ensure accurate baseline
+- Load classification: IDLE (<20%) calibrates immediately, MODERATE (20-50%) waits 60s, HEAVY (>50%) waits for idle
+- Auto-recalibration triggers when disk idle (<10%) for 10+ minutes if previous calibration was under load
+- New status line indicators: WAIT_CALIB (waiting for idle disk), RECAL_PEND (recalibration pending)
+- Before calibration status shows basic metrics: IO[U<util>|W<write>|R<read>|Q<qdepth>] WAIT_CALIB
+
+
 2026.01.3 23.01.2026
 ====================
 - Add disk I/O saturation monitoring for spool directory writes
