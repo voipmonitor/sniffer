@@ -8458,15 +8458,69 @@ string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags) {
 	for(list<sDescrCpuPerc>::iterator iter_dp = descrPerc->begin(); iter_dp != descrPerc->end(); iter_dp++) {
 		sum_cpu += iter_dp->cpu_perc;
 	}
-	ostringstream outStr;
 	if(!(outputFlags & _of_no_sort)) {
 		descrPerc->sort();
 	}
+	if(outputFlags & _of_json) {
+		JsonExport json;
+		json.add("cpu_all", sum_cpu);
+		JsonExport *threads = json.addArray("threads");
+		for(list<sDescrCpuPerc>::iterator iter_dp = descrPerc->begin(); iter_dp != descrPerc->end(); iter_dp++) {
+			#if SNIFFER_THREADS_EXT
+			if((outputFlags & _of_only_traffic) &&
+			   !(iter_dp->traffic.packets_cnt_in > 0 || iter_dp->traffic.packets_cnt_out > 0)) {
+				continue;
+			}
+			#endif
+			JsonExport *thread = threads->addObject(NULL);
+			thread->add("description", iter_dp->description);
+			thread->add("tid", iter_dp->tid);
+			thread->add("cpu_perc", iter_dp->cpu_perc);
+			int sched_type = sched_getscheduler(iter_dp->tid);
+			sched_param sch_param;
+			sched_getparam(iter_dp->tid, &sch_param);
+			thread->add("sched_type", get_sched_type_str(sched_type));
+			thread->add("sched_priority", sch_param.sched_priority);
+			if(sched_type == SCHED_OTHER && sch_param.sched_priority == 0) {
+				thread->add("nice", getpriority(PRIO_PROCESS, iter_dp->tid));
+			}
+			thread->add("cs_non_voluntary", iter_dp->cs.non_voluntary);
+			thread->add("cs_voluntary", iter_dp->cs.voluntary);
+			if(iter_dp->cs.voluntary) {
+				thread->add("cs_ratio", (double)iter_dp->cs.non_voluntary / iter_dp->cs.voluntary);
+			}
+			#if SNIFFER_THREADS_EXT
+			if(iter_dp->usleep && iter_dp->time_us) {
+				thread->add("usleep_perc", (double)iter_dp->usleep / iter_dp->time_us * 100);
+			}
+			sTraffic *iter_tr = &iter_dp->traffic;
+			if(iter_tr->packets_cnt_in > 0 || iter_tr->packets_cnt_out > 0) {
+				JsonExport *traffic = thread->addObject("traffic");
+				traffic->add("packets_in", iter_tr->packets_cnt_in);
+				traffic->add("packets_out", iter_tr->packets_cnt_out);
+				traffic->add("bytes_in", iter_tr->packets_size_in);
+				traffic->add("bytes_out", iter_tr->packets_size_out);
+				traffic->add("time_us", iter_tr->time_us);
+			}
+			sBufferPush *iter_bp = &iter_dp->buffer_push;
+			if(iter_bp->cnt_all > 0 || iter_bp->cnt_full_loop > 0) {
+				JsonExport *buffer_push = thread->addObject("buffer_push");
+				buffer_push->add("cnt_all", iter_bp->cnt_all);
+				buffer_push->add("cnt_full", iter_bp->cnt_full);
+				buffer_push->add("cnt_full_loop", iter_bp->cnt_full_loop);
+				buffer_push->add("sum_usleep_full_loop", iter_bp->sum_usleep_full_loop);
+				buffer_push->add("time_us", iter_bp->time_us);
+			}
+			#endif
+		}
+		return(json.getJson());
+	}
+	ostringstream outStr;
 	int counter = 0;
 	int maxDescrLength = 45;
 	for(list<sDescrCpuPerc>::iterator iter_dp = descrPerc->begin(); iter_dp != descrPerc->end(); iter_dp++) {
 		#if SNIFFER_THREADS_EXT
-		if((outputFlags & _of_only_traffic) && 
+		if((outputFlags & _of_only_traffic) &&
 		   !(iter_dp->traffic.packets_cnt_in > 0 || iter_dp->traffic.packets_cnt_out > 0)) {
 			continue;
 		}

@@ -3932,7 +3932,8 @@ public:
 		_of_no_sort = (1 << 0),
 		_of_only_traffic = (1 << 1),
 		_of_all = (1 << 2),
-		_of_line = (1 << 3)
+		_of_line = (1 << 3),
+		_of_json = (1 << 4)
 	};
 public:
 	struct sThreadStatData {

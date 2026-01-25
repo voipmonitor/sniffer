@@ -4798,6 +4798,9 @@ int Mgmt_sniffer_threads(Mgmt_params *params) {
 	if(strstr(params->buf, "line") != NULL) {
 		outputFlags |= cThreadMonitor::_of_line;
 	}
+	if(strstr(params->buf, "json") != NULL) {
+		outputFlags |= cThreadMonitor::_of_json;
+	}
 	// Parse uid parameter for session-based monitoring
 	int uid = 0;
 	const char *uid_str = strstr(params->buf, "uid=");
