@@ -35,6 +35,13 @@ const double cDiskIOMonitor::CAPACITY_CRITICAL_PCT = 95.0;
 const double cDiskIOMonitor::LATENCY_CRITICAL_RATIO = 3.0;
 const double cDiskIOMonitor::BUFFER_GROW_THRESHOLD = 5.0;
 
+// External I/O load detection thresholds (v2026.01.4)
+const double cDiskIOMonitor::LOAD_IDLE_THRESHOLD = 20.0;
+const double cDiskIOMonitor::LOAD_HEAVY_THRESHOLD = 50.0;
+const int cDiskIOMonitor::LOAD_MODERATE_WAIT_SEC = 60;
+const double cDiskIOMonitor::AUTO_RECAL_IDLE_THRESHOLD = 10.0;
+const int cDiskIOMonitor::AUTO_RECAL_IDLE_TIME_SEC = 600;
+
 
 // ============================================================================
 // Calibration Constants
@@ -94,6 +101,9 @@ cDiskIOMonitor::cDiskIOMonitor()
     , first_sample_(true)
     , prev_buffer_level_(0)
     , buffer_growing_count_(0)
+    , calibration_state_(CALIB_STATE_NONE)
+    , idle_time_sec_(0)
+    , last_update_time_ms_(0)
 {
 }
 
@@ -445,8 +455,120 @@ void* cDiskIOMonitor::calibrationThreadFunc(void *arg) {
     return NULL;
 }
 
+
+double cDiskIOMonitor::measureExternalLoad() {
+    // Measure current I/O utilization over 3 seconds
+    sDiskStats stats1, stats2;
+
+    if (!readDiskStats(stats1)) {
+        syslog(LOG_WARNING, "disk_io_monitor: Cannot read stats for load measurement");
+        return 0;
+    }
+
+    sleep(3);
+
+    if (!readDiskStats(stats2)) {
+        return 0;
+    }
+
+    // Calculate utilization: io_time_delta / measurement_interval (3000ms)
+    uint64_t io_time_delta = stats2.io_time_ms - stats1.io_time_ms;
+    double util_pct = io_time_delta / 30.0;  // 3000ms -> percentage
+
+    // Cap at 100%
+    if (util_pct > 100.0) {
+        util_pct = 100.0;
+    }
+
+    return util_pct;
+}
+
+
+void cDiskIOMonitor::checkAutoRecalibration() {
+    if (!profile_.needs_recalibration || calibrating_) {
+        return;
+    }
+
+    // Calculate time since last update
+    uint64_t now = getTimestampMs();
+    uint64_t interval_sec = 10;  // Default assumption
+    if (last_update_time_ms_ > 0) {
+        interval_sec = (now - last_update_time_ms_) / 1000;
+        if (interval_sec < 1) interval_sec = 1;
+        if (interval_sec > 60) interval_sec = 60;  // Cap at 1 minute
+    }
+
+    // Track how long the disk has been idle
+    if (metrics_.utilization_pct < AUTO_RECAL_IDLE_THRESHOLD) {
+        idle_time_sec_ += interval_sec;
+    } else {
+        idle_time_sec_ = 0;
+    }
+
+    // After 10 minutes idle, trigger recalibration
+    if (idle_time_sec_ >= (uint64_t)AUTO_RECAL_IDLE_TIME_SEC) {
+        syslog(LOG_INFO, "disk_io_monitor: Disk idle for %d minutes, starting auto-recalibration",
+               AUTO_RECAL_IDLE_TIME_SEC / 60);
+        idle_time_sec_ = 0;
+        profile_.needs_recalibration = false;
+        profile_.calibrated_under_load = false;
+
+        // Start calibration in background
+        forceRecalibrate();
+    }
+}
+
+
 void cDiskIOMonitor::runCalibration() {
     syslog(LOG_INFO, "disk_io_monitor: Starting disk calibration for %s", spool_path_.c_str());
+
+    // === External I/O load detection (v2026.01.4) ===
+    calibration_state_ = CALIB_STATE_WAITING;
+
+    double load = measureExternalLoad();
+    syslog(LOG_INFO, "disk_io_monitor: Pre-calibration I/O load: %.1f%%", load);
+
+    if (load >= LOAD_HEAVY_THRESHOLD) {
+        // HEAVY LOAD: Wait until disk becomes idle
+        syslog(LOG_WARNING, "disk_io_monitor: Disk heavily loaded (%.1f%%), waiting for idle...", load);
+
+        while (calibrating_) {
+            sleep(30);
+            load = measureExternalLoad();
+            syslog(LOG_DEBUG, "disk_io_monitor: Current I/O load: %.1f%%", load);
+
+            if (load < LOAD_IDLE_THRESHOLD) {
+                syslog(LOG_INFO, "disk_io_monitor: Disk now idle (%.1f%%), starting calibration", load);
+                break;
+            }
+        }
+
+        if (!calibrating_) {
+            // Calibration was cancelled
+            calibration_state_ = CALIB_STATE_NONE;
+            return;
+        }
+    } else if (load >= LOAD_IDLE_THRESHOLD) {
+        // MODERATE LOAD: Wait 60s, then calibrate anyway
+        syslog(LOG_INFO, "disk_io_monitor: Disk moderately loaded (%.1f%%), waiting %ds...",
+               load, LOAD_MODERATE_WAIT_SEC);
+        sleep(LOAD_MODERATE_WAIT_SEC);
+
+        load = measureExternalLoad();
+        if (load >= LOAD_IDLE_THRESHOLD) {
+            // Still busy -> calibrate with dirty flag
+            syslog(LOG_WARNING, "disk_io_monitor: Still busy (%.1f%%), calibrating anyway (will recalibrate later)", load);
+            profile_.calibrated_under_load = true;
+            profile_.needs_recalibration = true;
+        } else {
+            syslog(LOG_INFO, "disk_io_monitor: Disk now idle (%.1f%%), clean calibration", load);
+        }
+    }
+    // IDLE: Proceed immediately
+
+    profile_.pre_calibration_util = load;
+    calibration_state_ = CALIB_STATE_RUNNING;
+    // === End external I/O load detection ===
 
     // Allocate aligned buffer
     char *write_buffer = NULL;
@@ -609,9 +731,11 @@ void cDiskIOMonitor::runCalibration() {
     saveCalibrationProfile();
 
     calibration_progress_ = 100;
-    syslog(LOG_INFO, "disk_io_monitor: Calibration complete - baseline: %.2fms/%.0f IOPS, knee: %.0f MB/s/%.0f IOPS, max: %.0f MB/s/%.0f IOPS",
-           baseline_latency, baseline_iops, knee_throughput, knee_iops, max_throughput, max_iops);
+    syslog(LOG_INFO, "disk_io_monitor: Calibration complete - baseline: %.2fms/%.0f IOPS, knee: %.0f MB/s/%.0f IOPS, max: %.0f MB/s/%.0f IOPS%s",
+           baseline_latency, baseline_iops, knee_throughput, knee_iops, max_throughput, max_iops,
+           profile_.calibrated_under_load ? " (under load, will recalibrate)" : "");
 
+    calibration_state_ = profile_.calibrated_under_load ? CALIB_STATE_DONE_DIRTY : CALIB_STATE_DONE;
     calibrating_ = false;
 }
 
@@ -908,6 +1032,12 @@ void cDiskIOMonitor::update(double buffer_level_pct) {
     calculateMetrics();
     detectSaturation();
     prev_buffer_level_ = buffer_level_pct;
+
+    // Update timestamp for auto-recalibration tracking
+    last_update_time_ms_ = getTimestampMs();
+
+    // Check if auto-recalibration is needed (v2026.01.4)
+    checkAutoRecalibration();
 }
 
 
@@ -917,6 +1047,19 @@ void cDiskIOMonitor::update(double buffer_level_pct) {
 
 std::string cDiskIOMonitor::formatStatusString() const {
     char buf[256];
+
+    // Waiting for idle disk before calibration (v2026.01.4)
+    if (calibration_state_ == CALIB_STATE_WAITING || calibration_state_ == CALIB_STATE_NONE) {
+        if (calibrating_) {
+            // Show basic metrics while waiting
+            snprintf(buf, sizeof(buf), "IO[U%.0f|W%.0f|R%.0f|Q%.1f] WAIT_CALIB",
+                     metrics_.utilization_pct,
+                     metrics_.write_throughput_mbs,
+                     metrics_.read_throughput_mbs,
+                     metrics_.queue_depth);
+            return buf;
+        }
+    }
 
     if (calibrating_) {
         snprintf(buf, sizeof(buf), "IO[calibrating %d%%]", (int)DIOM_ATOMIC_LOAD(calibration_progress_));
@@ -987,6 +1130,12 @@ std::string cDiskIOMonitor::formatStatusString() const {
              riops_str);
 
     std::string result = buf;
+
+    // Add RECAL_PEND if calibration was under load (v2026.01.4)
+    if (profile_.needs_recalibration || profile_.calibrated_under_load) {
+        result += " RECAL_PEND";
+    }
+
     const char *state_str = metrics_.getStateString();
     if (state_str && state_str[0]) {
         result += " ";

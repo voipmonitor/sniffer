@@ -84,6 +84,11 @@ struct sCalibrationProfile {
     double knee_iops;                 // IOPS at knee point
     double max_iops;                  // Maximum measured IOPS
 
+    // External I/O load detection (v2026.01.4)
+    bool calibrated_under_load;       // Calibration ran with external I/O activity
+    double pre_calibration_util;      // I/O utilization measured before calibration
+    bool needs_recalibration;         // Flag for automatic recalibration when idle
+
     bool valid;
 
     sCalibrationProfile() { clear(); }
@@ -101,6 +106,9 @@ struct sCalibrationProfile {
         baseline_iops = 0;
         knee_iops = 0;
         max_iops = 0;
+        calibrated_under_load = false;
+        pre_calibration_util = 0;
+        needs_recalibration = false;
         valid = false;
     }
 };
@@ -139,6 +147,18 @@ enum eSaturationState {
     STATE_CALIBRATING,           // Background calibration in progress
     STATE_WARNING,               // Approaching capacity limits
     STATE_DISK_SATURATED         // Disk cannot keep up
+};
+
+
+/**
+ * Calibration state machine (for external I/O load detection)
+ */
+enum eCalibrationState {
+    CALIB_STATE_NONE,            // No calibration performed yet
+    CALIB_STATE_WAITING,         // Waiting for idle disk
+    CALIB_STATE_RUNNING,         // Calibration in progress
+    CALIB_STATE_DONE,            // Calibration completed (clean)
+    CALIB_STATE_DONE_DIRTY       // Calibration completed under load, needs recalibration
 };
 
 
@@ -262,7 +282,23 @@ public:
      */
     void forceRecalibrate();
 
+    /**
+     * Get calibration state (for status line).
+     */
+    eCalibrationState getCalibrationState() const { return calibration_state_; }
+
 private:
+    /**
+     * Measure external I/O load over 3 seconds.
+     * @return utilization percentage (0-100)
+     */
+    double measureExternalLoad();
+
+    /**
+     * Check and trigger auto-recalibration if conditions met.
+     * Called from update().
+     */
+    void checkAutoRecalibration();
     // Device detection
     std::string detectBlockDevice(const char *path);
     std::string getFilesystemUUID(const char *path);
@@ -321,6 +357,18 @@ private:
     static const double LATENCY_CRITICAL_RATIO;    // Latency 3× baseline
     static const double BUFFER_GROW_THRESHOLD;     // % buffer increase
     static const int BUFFER_GROW_SAMPLES = 3;      // Consecutive samples (int OK inline)
+
+    // External I/O load detection thresholds (v2026.01.4)
+    static const double LOAD_IDLE_THRESHOLD;       // <20% = idle, calibrate immediately
+    static const double LOAD_HEAVY_THRESHOLD;      // >50% = heavy, wait for idle
+    static const int LOAD_MODERATE_WAIT_SEC;       // Wait time for moderate load (60s)
+    static const double AUTO_RECAL_IDLE_THRESHOLD; // <10% for auto-recalibration
+    static const int AUTO_RECAL_IDLE_TIME_SEC;     // 10 minutes idle before auto-recal
+
+    // Calibration state tracking
+    eCalibrationState calibration_state_;
+    uint64_t idle_time_sec_;
+    uint64_t last_update_time_ms_;
 };
 
 
