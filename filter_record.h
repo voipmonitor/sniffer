@@ -217,6 +217,16 @@ public:
 			nums.push_back(num);
 		}
 	}
+	void addNumComb(const char *numStr) {
+		vector<string> elems = split(numStr, split(" |,|;|\t|\r|\n", "|"), true);
+		for(size_t i = 0; i < elems.size(); i++) {
+			if(elems[i][0] == '!') {
+				nums_not.push_back(atol(elems[i].substr(1).c_str()));
+			} else {
+				nums.push_back(atol(elems[i].c_str()));
+			}
+		}
+	}
 	bool check(void *rec, bool *findInBlackList = NULL) {
 		if(nums_not.size()) {
 			for(list<int64_t>::iterator iter = nums_not.begin(); iter != nums_not.end(); iter++) {
