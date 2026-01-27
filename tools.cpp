@@ -10806,7 +10806,8 @@ bool set_eth_ringparam(const char *ifname, string *log) {
 		ringparam.rx_pending = ringparam.rx_max_pending;
 		string log_set = "set rx_pending " + intToString(ringparam.rx_pending);
 		if(ioctl(sock, SIOCETHTOOL, &ifr) < 0) {
-			if(log) *log = "failed ioctl (" + log_set + ") - " + strerror(errno);
+			if(log) *log = "failed ioctl (" + log_set + ") - " + strerror(errno) +
+				" (This is not a fatal error. Some NICs don't support it.)";
 			close(sock);
 			return(false);
 		} else {
@@ -10903,7 +10904,8 @@ bool set_eth_channels(const char *ifname, unsigned limit, string *log) {
 			++count_set;
 		}
 		if(ioctl(sock, SIOCETHTOOL, &ifr) < 0) {
-			if(log) *log = "failed ioctl (" + log_set + ") - " + strerror(errno);
+			if(log) *log = "failed ioctl (" + log_set + ") - " + strerror(errno) +
+				" (This is not a fatal error. Some NICs don't support it.)";
 			close(sock);
 			return(false);
 		} else {

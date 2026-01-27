@@ -3897,7 +3897,7 @@ int main(int argc, char *argv[]) {
 		printf("local time %s\n", localActTime.c_str());
 		syslog(LOG_NOTICE, "local time %s", localActTime.c_str());
 #ifndef FREEBSD
-		if(opt_ifaces_optimize && !sverb.suppress_fork) {
+		if(opt_ifaces_optimize && !sverb.suppress_fork && !opt_use_dpdk) {
 			handleInterfaceOptions();
 		}
 #endif
