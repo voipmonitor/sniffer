@@ -188,12 +188,12 @@ void cCallFilter::setFilter(const char *filter) {
 	}
 	if(!filterData["sensor_id"].empty()) {
 		cRecordFilterItem_numList *filter = new FILE_LINE(0) cRecordFilterItem_numList(this, cf_id_sensor);
-		filter->addNum(atol(filterData["sensor_id"].c_str()));
+		filter->addNumComb(filterData["sensor_id"].c_str());
 		addFilter(filter);
 	}
 	if(!filterData["vlan"].empty()) {
 		cRecordFilterItem_numList *filter = new FILE_LINE(0) cRecordFilterItem_numList(this, cf_vlan);
-		filter->addNum(atoi(filterData["vlan"].c_str()));
+		filter->addNumComb(filterData["vlan"].c_str());
 		addFilter(filter);
 	}
 	if(!filterData["connected"].empty() && atoi(filterData["connected"].c_str())) {
@@ -202,7 +202,7 @@ void cCallFilter::setFilter(const char *filter) {
 	}
 	if(!filterData["international"].empty()) {
 		cRecordFilterItem_numList *filter = new FILE_LINE(0) cRecordFilterItem_numList(this, cf_called_international);
-		filter->addNum(atoi(filterData["international"].c_str()));
+		filter->addNumComb(filterData["international"].c_str());
 		addFilter(filter);
 	}
 	if(custom_headers_cdr) {

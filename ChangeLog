@@ -1,3 +1,10 @@
+2026.01.5 28.01.2026
+====================
+- Allow negative number values in listcalls management command [VG-2951]
+- Don't set ethtool options when dpdk is used, adjust ethtool error messages [VS-1803]
+- Create json output in cThreadMonitor::output
+
+
 2026.01.4 25.01.2026
 ====================
 - Disk I/O calibration now detects external I/O load before starting to ensure accurate baseline
