@@ -180,6 +180,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 					packetS->_packet_alloc_type = _t_packet_alloc_header_std; 
 					packetS->pflags.init();
 					packetS->pflags.set_tcp(2);
+					packetS->header_ip_encaps_offset = 0xFFFF; 
 					packetS->header_ip_offset = ethHeaderLength; 
 					#if not NOT_USE_SEPARATE_TIME_US
 					packetS->time_us = ::getTimeUS(tcpHeader);

@@ -4802,10 +4802,24 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		rfield->set(connect_duration_active_s());
 		break;
 	case cf_caller:
-		rfield->set(branch_main()->caller.c_str());
+		{
+		extern bool opt_pii_enable;
+		string numb_caller = branch_main()->caller;
+		if(opt_pii_enable) {
+			numb_caller = pii_masking(numb_caller.c_str());
+		}
+		rfield->set(numb_caller.c_str());
+		}
 		break;
 	case cf_called:
-		rfield->set(get_called(branch_main()));
+		{
+		extern bool opt_pii_enable;
+		string numb_called = get_called(branch_main());
+		if(opt_pii_enable) {
+			numb_called = pii_masking(numb_called.c_str());
+		}
+		rfield->set(numb_called.c_str());
+		}
 		break;
 	case cf_caller_country:
 		rfield->set(getCountryByPhoneNumber(branch_main()->caller.c_str(), getSipcallerip(branch_main(), true), true).c_str());
@@ -4820,7 +4834,15 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		rfield->set(!isLocalByPhoneNumber(get_called(branch_main()), getSipcalledip(branch_main(), true, true)));
 		break;
 	case cf_callername:
-		rfield->set(branch_main()->callername.c_str());
+		{
+		extern bool opt_pii_enable;
+		extern bool opt_pii_anonymize_callername;
+		string callername = branch_main()->callername;
+		if(opt_pii_enable && opt_pii_anonymize_callername) {
+			callername = pii_masking(callername.c_str());
+		}
+		rfield->set(callername.c_str());
+		}
 		break;
 	case cf_callerdomain:
 		rfield->set(branch_main()->caller_domain.c_str());
@@ -7165,14 +7187,32 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr.add(useSensorId, "id_sensor");
 	}
 
-	cdr.add(sqlEscapeString_limit(c_branch->caller, 255), "caller");
-	cdr.add(sqlEscapeString_limit(reverseString(c_branch->caller.c_str()).c_str(), 255), "caller_reverse");
-	cdr.add(sqlEscapeString_limit(get_called(c_branch), 255), "called");
-	cdr.add(sqlEscapeString_limit(reverseString(get_called(c_branch)).c_str(), 255), "called_reverse");
+	string num_caller = c_branch->caller;
+	string num_caller_reverse = reverseString(num_caller.c_str());
+	string num_called = get_called(c_branch);
+	string num_called_reverse = reverseString(num_called.c_str());
+	string callername = c_branch->callername;
+	string callername_reverse = reverseString(callername.c_str());
+	extern bool opt_pii_enable;
+	extern bool opt_pii_anonymize_callername;
+	if(opt_pii_enable) {
+		num_caller = pii_masking(num_caller.c_str());
+		num_caller_reverse = pii_masking(num_caller_reverse.c_str());
+		num_called = pii_masking(num_called.c_str());
+		num_called_reverse = pii_masking(num_called_reverse.c_str());
+		if(opt_pii_anonymize_callername) {
+			callername = pii_masking(callername.c_str());
+			callername_reverse = pii_masking(callername_reverse.c_str());
+		}
+	}
+	cdr.add(sqlEscapeString_limit(num_caller, 255), "caller");
+	cdr.add(sqlEscapeString_limit(num_caller_reverse, 255), "caller_reverse");
+	cdr.add(sqlEscapeString_limit(num_called, 255), "called");
+	cdr.add(sqlEscapeString_limit(num_called_reverse, 255), "called_reverse");
 	cdr.add(sqlEscapeString_limit(c_branch->caller_domain, 255), "caller_domain");
 	cdr.add(sqlEscapeString_limit(get_called_domain(c_branch), 255), "called_domain");
-	cdr.add(sqlEscapeString_limit(c_branch->callername, 255), "callername");
-	cdr.add(sqlEscapeString_limit(reverseString(c_branch->callername.c_str()).c_str(), 255), "callername_reverse");
+	cdr.add(sqlEscapeString_limit(callername, 255), "callername");
+	cdr.add(sqlEscapeString_limit(callername_reverse, 255), "callername_reverse");
 	/*
 	cdr_phone_number_caller.add(sqlEscapeString(caller), "number");
 	cdr_phone_number_caller.add(sqlEscapeString(reverseString(caller).c_str()), "number_reverse");
@@ -9300,10 +9340,21 @@ void Call::prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch
 		next_branch_row.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
 	}
 	
-	next_branch_row.add(sqlEscapeString_limit(n_branch->caller, 255), "caller");
-	next_branch_row.add(sqlEscapeString_limit(reverseString(n_branch->caller.c_str()).c_str(), 255), "caller_reverse");
-	next_branch_row.add(sqlEscapeString_limit(get_called(n_branch), 255), "called");
-	next_branch_row.add(sqlEscapeString_limit(reverseString(get_called(n_branch)).c_str(), 255), "called_reverse");
+	string num_caller = n_branch->caller;
+	string num_caller_reverse = reverseString(num_caller.c_str());
+	string num_called = get_called(n_branch);
+	string num_called_reverse = reverseString(num_called.c_str());
+	extern bool opt_pii_enable;
+	if(opt_pii_enable) {
+		num_caller = pii_masking(num_caller.c_str());
+		num_caller_reverse = pii_masking(num_caller_reverse.c_str());
+		num_called = pii_masking(num_called.c_str());
+		num_called_reverse = pii_masking(num_called_reverse.c_str());
+	}
+	next_branch_row.add(sqlEscapeString_limit(num_caller, 255), "caller");
+	next_branch_row.add(sqlEscapeString_limit(num_caller_reverse, 255), "caller_reverse");
+	next_branch_row.add(sqlEscapeString_limit(num_called, 255), "called");
+	next_branch_row.add(sqlEscapeString_limit(num_called_reverse, 255), "called_reverse");
 	next_branch_row.add(sqlEscapeString_limit(n_branch->caller_domain, 255), "caller_domain");
 	next_branch_row.add(sqlEscapeString_limit(get_called_domain(n_branch), 255), "called_domain");
 	next_branch_row.add(sqlEscapeString_limit(n_branch->callername, 255), "callername");
@@ -10053,14 +10104,32 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	if(useSensorId > -1) {
 		msg.add(useSensorId, "id_sensor");
 	}
-	msg.add(sqlEscapeString_limit(c_branch->caller, 255), "caller");
-	msg.add(sqlEscapeString_limit(reverseString(c_branch->caller.c_str()).c_str(), 255), "caller_reverse");
-	msg.add(sqlEscapeString_limit(get_called(c_branch), 255), "called");
-	msg.add(sqlEscapeString_limit(reverseString(get_called(c_branch)).c_str(), 255), "called_reverse");
+	string num_caller = c_branch->caller;
+	string num_caller_reverse = reverseString(num_caller.c_str());
+	string num_called = get_called(c_branch);
+	string num_called_reverse = reverseString(num_called.c_str());
+	string callername = c_branch->callername;
+	string callername_reverse = reverseString(callername.c_str());
+	extern bool opt_pii_enable;
+	extern bool opt_pii_anonymize_callername;
+	if(opt_pii_enable) {
+		num_caller = pii_masking(num_caller.c_str());
+		num_caller_reverse = pii_masking(num_caller_reverse.c_str());
+		num_called = pii_masking(num_called.c_str());
+		num_called_reverse = pii_masking(num_called_reverse.c_str());
+		if(opt_pii_anonymize_callername) {
+			callername = pii_masking(callername.c_str());
+			callername_reverse = pii_masking(callername_reverse.c_str());
+		}
+	}
+	msg.add(sqlEscapeString_limit(num_caller, 255), "caller");
+	msg.add(sqlEscapeString_limit(num_caller_reverse, 255), "caller_reverse");
+	msg.add(sqlEscapeString_limit(num_called, 255), "called");
+	msg.add(sqlEscapeString_limit(num_called_reverse, 255), "called_reverse");
 	msg.add(sqlEscapeString_limit(c_branch->caller_domain, 255), "caller_domain");
 	msg.add(sqlEscapeString_limit(get_called_domain(c_branch), 255), "called_domain");
-	msg.add(sqlEscapeString_limit(c_branch->callername, 255), "callername");
-	msg.add(sqlEscapeString_limit(reverseString(c_branch->callername.c_str()).c_str(), 255), "callername_reverse");
+	msg.add(sqlEscapeString_limit(callername, 255), "callername");
+	msg.add(sqlEscapeString_limit(callername_reverse, 255), "callername_reverse");
 	msg.add(getSipcallerip(c_branch), "sipcallerip", false, sqlDbSaveCall, sql_message_table.c_str());
 	msg.add(getSipcalledip(c_branch), "sipcalledip", false, sqlDbSaveCall, sql_message_table.c_str());
 	msg.add_calldate(calltime_us(), "calldate", existsColumns.message_calldate_ms);

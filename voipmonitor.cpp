@@ -1687,6 +1687,18 @@ bool opt_use_thread_setname = false;
 
 bool opt_manager_enable_unencrypted = false;
 
+bool opt_pii_enable;
+int opt_pii_masking_mode = cPiiMasking::_mmode_hmac;
+string opt_pii_masking_secret;
+int opt_pii_redact_mode = cPiiMasking::_redact_char;
+string opt_pii_redact_char = "X";
+string opt_pii_redact_text = "REDACTED";
+string opt_pii_prefix_hash = "piih_";
+string opt_pii_prefix_encrypt = "piie_";
+string opt_pii_sip_headers = "all";
+bool opt_pii_anonymize_callername = true;
+cPiiMasking *pii_mask;
+
 static cCreatePartitions CreatePartitions;
 
 
@@ -4690,6 +4702,27 @@ int main_init_read() {
 	if(useChartsCacheProcessThreads()) {
 		chartsCacheInit(sqlDbInit);
 	}
+	
+	if(opt_pii_enable) {
+		cPiiMasking::eMaskingMode mode = opt_pii_masking_mode == cPiiMasking::_mmode_redact ? cPiiMasking::_mode_redact :
+						 (opt_pii_masking_secret.empty() ? cPiiMasking::_mode_hash : cPiiMasking::_mode_encrypt);
+		pii_mask = new FILE_LINE(0) cPiiMasking(mode, opt_pii_masking_secret.c_str(), false);
+		if(mode == cPiiMasking::_mode_redact) {
+			if(opt_pii_redact_mode == cPiiMasking::_redact_char) {
+				if(!opt_pii_redact_char.empty()) {
+					pii_mask->setRedactChar(opt_pii_redact_char[0]);
+				}
+			} else {
+				if(!opt_pii_redact_text.empty()) {
+					pii_mask->setRedactText(opt_pii_redact_text.c_str());
+				}
+			}
+		}
+		pii_mask->setHashPrefix(opt_pii_prefix_hash.c_str());
+		pii_mask->setEncryptPrefix(opt_pii_prefix_encrypt.c_str());
+		cPiiMaskingSipPacket::setHeaders(opt_pii_sip_headers.c_str());
+		cPiiMaskingSipPacket::setAnonymizeCallername(opt_pii_anonymize_callername);
+	}
 
 	if(opt_t2_boost && opt_t2_boost_call_threads > 0) {
 		preProcessPacketCallX_count = opt_t2_boost_call_threads;
@@ -5788,6 +5821,10 @@ void main_term_read() {
 	}
 	delete calltable;
 	calltable = NULL;
+	if(pii_mask) {
+		delete pii_mask;
+		pii_mask = NULL;
+	}
 	destroyTranscribe();
 	#if DEBUG_ASYNC_TAR_WRITE
 	delete destroy_calls_info;
@@ -7764,6 +7801,21 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_net_map("anonymize_ip", &opt_anonymize_ip_map));
 			addConfigItem(new FILE_LINE(0) cConfigItem_domain_map("anonymize_sipdomain", &opt_anonymize_domain_map));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("rtcp_params", &opt_rtcp_params));
+		subgroup("pii");
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pii_enable", &opt_pii_enable));
+			addConfigItem((new FILE_LINE(0) cConfigItem_integer("pii_masking_mode", &opt_pii_masking_mode))
+				->addValues(("redact:" + intToString(cPiiMasking::_mmode_redact) + 
+					     "|hmac_token:" + intToString(cPiiMasking::_mmode_hmac)).c_str()));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("pii_masking_secret", &opt_pii_masking_secret));
+			addConfigItem((new FILE_LINE(0) cConfigItem_integer("pii_redact_mode", &opt_pii_redact_mode))
+				->addValues(("char:" + intToString(cPiiMasking::_redact_char) + 
+					     "|text:" + intToString(cPiiMasking::_redact_text)).c_str()));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("pii_redact_char", &opt_pii_redact_char));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("pii_redact_text", &opt_pii_redact_text));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("pii_prefix_hash", &opt_pii_prefix_hash));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("pii_prefix_encrypt", &opt_pii_prefix_encrypt));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("pii_sip_headers", &opt_pii_sip_headers));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pii_anonymize_callername", &opt_pii_anonymize_callername));
 	minorEnd();
 	
 	setDefaultValues();

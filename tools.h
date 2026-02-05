@@ -820,6 +820,12 @@ private:
 	static volatile u_int64_t buffers_sumcapacity;
 };
 
+bool changePacketPayload(u_char *packet, pcap_pkthdr *header,
+			 u_char *payload_new, unsigned payload_new_len,
+			 u_char **packet_new, pcap_pkthdr **header_new,
+			 u_int16_t dlt, u_int16_t header_ip_encaps_offset, u_int16_t header_ip_offset,
+			 bool sip);
+
 class PcapDumper {
 public:
 	enum eTypePcapDump {
@@ -5220,5 +5226,85 @@ string format_metric(double value, int sig_digits, const char *zero = "0");
 
 bool files_name_cmp(const string &a, const string &b);
 
+
+class cPiiMasking {
+public:
+	class cKey {
+	public:
+		cKey(const char *secret);
+		const unsigned char *getKey() { return(key); }
+		const unsigned char *getIv() { return(iv); }
+	private:
+		unsigned char key[16];
+		unsigned char iv[16];
+	};
+	enum eMainMaskingMode {
+		_mmode_redact,
+		_mmode_hmac
+	};
+	enum eMaskingMode {
+		_mode_redact,
+		_mode_hash,
+		_mode_encrypt
+	};
+	enum eRedactMode {
+		_redact_char,
+		_redact_text
+	};
+	cPiiMasking(eMaskingMode mode, const char *secret = NULL, bool do_normalize = true,
+		    cKey *key = NULL);
+	~cPiiMasking();
+	void setRedactChar(char c = 'X');
+	void setRedactText(const char *text = "REDACTED");
+	void setHashPrefix(const char *prefix = "piih_");
+	void setEncryptPrefix(const char *prefix = "piie_");
+	string normalize(const char *number);
+	string mask(const char *number);
+	string unmask(const char *masked);
+	string redact(const char *number);
+	string hash(const char *number);
+	string encrypt(const char *number);
+	string decrypt(const char *encrypted);
+	bool isEncrypted(const char *str);
+private:
+	string hmacSha256(const char *data);
+	string aesEncrypt(const char *data);
+	string aesDecrypt(const char *data);
+	string toBase64Url(const unsigned char *data, size_t len);
+	string fromBase64Url(const char *data, size_t *out_len);
+	void initKey();
+	cKey *getKey();
+private:
+	eMaskingMode mode;
+	string secret;
+	bool do_normalize;
+	eRedactMode redact_mode;
+	char redact_char;
+	string redact_text;
+	string hash_prefix;
+	string encrypt_prefix;
+	cKey *key;
+	bool key_is_ext;
+};
+
+string pii_masking(const char *number);
+
+class cPiiMaskingSipPacket {
+public:
+	static string mask(const char *sip_content, size_t len, const char **headers = NULL);
+	static void setHeaders(const char *headers_str);
+	static void setAnonymizeCallername(bool anonymize) { anonymize_callername = anonymize; }
+	static vector<string> *getHeaders() { return(all_headers ? NULL : &headers); }
+private:
+	static bool lineMatchesHeader(const char *line_start, size_t line_len, const char **headers);
+	static string maskLine(const char *line, size_t len);
+	static vector<string> headers;
+	static bool all_headers;
+	static bool anonymize_callername;
+};
+
+string pii_sip_packet_masking(const char *sip_content, size_t len);
+string pii_sip_packet_masking(const char *sip_content, size_t len, const char **headers);
+string pii_sip_packet_masking(const char *sip_content, size_t len, vector<string> *headers);
 
 #endif

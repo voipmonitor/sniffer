@@ -28,6 +28,9 @@
 #include <json.h>
 #ifdef HAVE_OPENSSL
 #include <openssl/sha.h>
+#include <openssl/hmac.h>
+#include <openssl/evp.h>
+#include <openssl/rand.h>
 #endif
 #include <fcntl.h>
 #include <math.h>
@@ -1620,6 +1623,87 @@ unsigned long getUptime() {
 	time_t actTime;
 	time(&actTime);
 	return(actTime - startTime);
+}
+
+
+bool changePacketPayload(u_char *packet, pcap_pkthdr *header,
+			 u_char *payload_new, unsigned payload_new_len,
+			 u_char **packet_new, pcap_pkthdr **header_new,
+			 u_int16_t dlt, u_int16_t header_ip_encaps_offset, u_int16_t header_ip_offset,
+			 bool sip) {
+	*packet_new = NULL;
+	*header_new = NULL;
+	if(header_ip_encaps_offset == 0 || header_ip_encaps_offset == 0xFFFF) {
+		u_int16_t protocol;
+		u_int16_t vlan;
+		if(!parseEtherHeader(dlt, packet,
+				     NULL, NULL,
+				     header_ip_encaps_offset, protocol, vlan)) {
+			return(false);
+		}
+	}
+	unsigned h_ip_counter = 0;
+	unsigned h_ip_offsets[20];
+	unsigned h_ip_offset = header_ip_encaps_offset;
+	while(h_ip_counter < sizeof(h_ip_offsets) / sizeof(h_ip_offsets[0]) - 1) {
+		h_ip_offsets[h_ip_counter] = h_ip_offset;
+		++h_ip_counter;
+		int next_h_ip_offset = findNextHeaderIp((iphdr2*)(packet + h_ip_offset), h_ip_offset,
+							packet, header->caplen, NULL);
+		if(next_h_ip_offset > 0) {
+			h_ip_offset += next_h_ip_offset;
+		} else {
+			break;
+		}
+	}
+	if(header_ip_offset == 0 || header_ip_offset == 0xFFFF) {
+		header_ip_offset = h_ip_offset;
+	} else if(header_ip_offset != h_ip_offset) {
+		return(false);
+	}
+	iphdr2 *h_ip = (iphdr2*)(packet + header_ip_offset);
+	udphdr2 *h_udp = NULL;
+	tcphdr2 *h_tcp = NULL;
+	u_char *data = NULL;
+	unsigned datalen = 0;
+	if(h_ip->get_protocol() == IPPROTO_UDP) {
+		h_udp = (udphdr2*)((u_char*)h_ip + h_ip->get_hdr_size());
+		datalen = get_udp_data_len(h_ip, h_udp, (char**)&data, packet, header->caplen);
+	} else if(h_ip->get_protocol() == IPPROTO_TCP) {
+		h_tcp = (tcphdr2*)((u_char*)h_ip + h_ip->get_hdr_size());
+		datalen = get_tcp_data_len(h_ip, h_tcp, (char**)&data, packet, header->caplen);
+	} else {
+		return(false);
+	}
+	if(payload_new_len != datalen) {
+		int diffLen = payload_new_len - datalen;
+		*header_new = new FILE_LINE(0) pcap_pkthdr;
+		memcpy(*header_new, header, sizeof(pcap_pkthdr));
+		unsigned packet_new_len = header->caplen + diffLen;
+		unsigned packet_new_data_len = packet_new_len - (data - packet);
+		*packet_new = new FILE_LINE(0) u_char[packet_new_len];
+		memset(*packet_new, 0, packet_new_len);
+		memcpy(*packet_new, packet, (data - packet));
+		memcpy(*packet_new + (data - packet), payload_new, min(payload_new_len, packet_new_data_len));
+		for(unsigned i = 0; i < h_ip_counter; i++) {
+			iphdr2 *h_ip = (iphdr2*)(*packet_new + h_ip_offsets[i]);
+			h_ip->set_tot_len(h_ip->get_tot_len() + diffLen);
+			h_ip->set_check(0);
+			if(h_ip->get_protocol() == IPPROTO_UDP) {
+				udphdr2* h_udp = (udphdr2*)((u_char*)h_ip + h_ip->get_hdr_size());
+				h_udp->len = htons(ntohs(h_udp->len) + diffLen);
+				h_udp->check = 0;
+			} else if(h_ip->get_protocol() == IPPROTO_TCP) {
+				tcphdr2* h_tcp = (tcphdr2*)((u_char*)h_ip + h_ip->get_hdr_size());
+				h_tcp->check = 0;
+			}
+		}
+		(*header_new)->caplen += diffLen;
+		(*header_new)->len += diffLen;
+	} else {
+		memcpy(data, payload_new, min((unsigned)(header->caplen - (data - packet)), payload_new_len));
+	}
+	return(true);
 }
 
 
@@ -11592,4 +11676,457 @@ bool files_name_cmp(const string &a, const string &b) {
 	} else {
 		return(strcmp(a.c_str(), b.c_str()) < 0);
 	}
+}
+
+
+cPiiMasking::cKey::cKey(const char *secret) {
+	#ifdef HAVE_OPENSSL
+	unsigned char hash[SHA256_DIGEST_LENGTH];
+	SHA256_CTX sha256;
+	SHA256_Init(&sha256);
+	SHA256_Update(&sha256, secret, strlen(secret));
+	SHA256_Final(hash, &sha256);
+	memcpy(key, hash, sizeof(key));
+	memcpy(iv, hash + 16, sizeof(iv));
+	#else
+	memset(key, 0, sizeof(key));
+	memset(iv, 0, sizeof(iv));
+	#endif
+}
+
+cPiiMasking::cPiiMasking(eMaskingMode mode, const char *secret, bool do_normalize, cKey *key) {
+	this->mode = mode;
+	if(secret) {
+		this->secret = secret;
+	}
+	this->do_normalize = do_normalize;
+	this->redact_mode = _redact_char;
+	this->redact_char = 'X';
+	this->redact_text = "REDACTED";
+	this->hash_prefix = "piih_";
+	this->encrypt_prefix = "piie_";
+	this->key = key;
+	this->key_is_ext = key != NULL;
+}
+
+cPiiMasking::~cPiiMasking() {
+	if(key && !key_is_ext) {
+		delete key;
+	}
+}
+
+void cPiiMasking::setRedactChar(char c) {
+	redact_mode = _redact_char;
+	redact_char = c;
+}
+
+void cPiiMasking::setRedactText(const char *text) {
+	redact_mode = _redact_text;
+	redact_text = text;
+}
+
+void cPiiMasking::setHashPrefix(const char *prefix) {
+	hash_prefix = prefix;
+}
+
+void cPiiMasking::setEncryptPrefix(const char *prefix) {
+	encrypt_prefix = prefix;
+}
+
+string cPiiMasking::normalize(const char *number) {
+	string result;
+	bool has_plus = false;
+	const char *p = number;
+	while(*p) {
+		if(*p == '+' && !has_plus && result.empty()) {
+			result += '+';
+			has_plus = true;
+		} else if(isdigit(*p)) {
+			result += *p;
+		} else if(!has_plus && result.empty() && *p == '0' && *(p+1) == '0') {
+			result += '+';
+			has_plus = true;
+			p++;
+		}
+		p++;
+	}
+	return(result);
+}
+
+string cPiiMasking::mask(const char *number) {
+	switch(mode) {
+	case _mode_redact:
+		return(redact(number));
+	case _mode_hash:
+		return(hash(number));
+	case _mode_encrypt:
+		return(encrypt(number));
+	}
+	return(redact(number));
+}
+
+string cPiiMasking::unmask(const char *masked) {
+	if(isEncrypted(masked)) {
+		return(decrypt(masked));
+	}
+	return(masked);
+}
+
+string cPiiMasking::redact(const char *number) {
+	if(redact_mode == _redact_text) {
+		return(redact_text);
+	}
+	size_t len = strlen(number);
+	return(string(len, redact_char));
+}
+
+string cPiiMasking::hash(const char *number) {
+	string input = do_normalize ? normalize(number) : number;
+	return(hash_prefix + hmacSha256(input.c_str()));
+}
+
+string cPiiMasking::encrypt(const char *number) {
+	string input = do_normalize ? normalize(number) : number;
+	return(encrypt_prefix + aesEncrypt(input.c_str()));
+}
+
+string cPiiMasking::decrypt(const char *encrypted) {
+	if(!isEncrypted(encrypted)) {
+		return(encrypted);
+	}
+	return(aesDecrypt(encrypted + encrypt_prefix.length()));
+}
+
+bool cPiiMasking::isEncrypted(const char *str) {
+	return(!strncmp(str, encrypt_prefix.c_str(), encrypt_prefix.length()));
+}
+
+void cPiiMasking::initKey() {
+	if(key) {
+		return;
+	}
+	key = new cKey(secret.c_str());
+}
+
+cPiiMasking::cKey *cPiiMasking::getKey() {
+	initKey();
+	return(key);
+}
+
+string cPiiMasking::hmacSha256(const char *data) {
+	#ifdef HAVE_OPENSSL
+	unsigned char hash[EVP_MAX_MD_SIZE];
+	unsigned int hash_len;
+	HMAC(EVP_sha256(), secret.c_str(), secret.length(),
+	     (unsigned char*)data, strlen(data), hash, &hash_len);
+	return(toBase64Url(hash, 12));
+	#else
+	(void)data;
+	return("");
+	#endif
+}
+
+string cPiiMasking::aesEncrypt(const char *data) {
+	#ifdef HAVE_OPENSSL
+	cKey *k = getKey();
+	int data_len = strlen(data);
+	unsigned char *buf = new unsigned char[data_len];
+	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+	EVP_EncryptInit_ex(ctx, EVP_aes_128_ctr(), NULL, k->getKey(), k->getIv());
+	int out_len = 0;
+	EVP_EncryptUpdate(ctx, buf, &out_len, (unsigned char*)data, data_len);
+	EVP_CIPHER_CTX_free(ctx);
+	string encoded = toBase64Url(buf, out_len);
+	delete[] buf;
+	return(encoded);
+	#else
+	(void)data;
+	return("");
+	#endif
+}
+
+string cPiiMasking::aesDecrypt(const char *data) {
+	#ifdef HAVE_OPENSSL
+	size_t decoded_len;
+	string decoded = fromBase64Url(data, &decoded_len);
+	if(decoded_len < 1) {
+		return("");
+	}
+	cKey *k = getKey();
+	unsigned char *buf = new unsigned char[decoded_len];
+	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+	EVP_DecryptInit_ex(ctx, EVP_aes_128_ctr(), NULL, k->getKey(), k->getIv());
+	int out_len = 0;
+	EVP_DecryptUpdate(ctx, buf, &out_len, (unsigned char*)decoded.data(), decoded_len);
+	EVP_CIPHER_CTX_free(ctx);
+	string result((char*)buf, out_len);
+	delete[] buf;
+	return(result);
+	#else
+	(void)data;
+	return("");
+	#endif
+}
+
+string cPiiMasking::toBase64Url(const unsigned char *data, size_t len) {
+	string b64 = base64_encode(data, len);
+	for(size_t i = 0; i < b64.length(); i++) {
+		if(b64[i] == '+') b64[i] = '-';
+		else if(b64[i] == '/') b64[i] = '_';
+	}
+	while(!b64.empty() && b64[b64.length() - 1] == '=') {
+		b64.erase(b64.length() - 1);
+	}
+	return(b64);
+}
+
+string cPiiMasking::fromBase64Url(const char *data, size_t *out_len) {
+	string b64 = data;
+	for(size_t i = 0; i < b64.length(); i++) {
+		if(b64[i] == '-') b64[i] = '+';
+		else if(b64[i] == '_') b64[i] = '/';
+	}
+	while(b64.length() % 4 != 0) {
+		b64 += '=';
+	}
+	int dst_len;
+	u_char *decoded = base64decode(b64.c_str(), &dst_len);
+	string result((char*)decoded, dst_len);
+	delete[] decoded;
+	*out_len = dst_len;
+	return(result);
+}
+
+string pii_masking(const char *number) {
+	extern bool opt_pii_enable;
+	extern cPiiMasking *pii_mask;
+	if(!opt_pii_enable || !pii_mask) {
+		return(number);
+	}
+	return(pii_mask->mask(number));
+}
+
+string cPiiMaskingSipPacket::mask(const char *sip_content, size_t len, const char **headers) {
+	extern bool opt_pii_enable;
+	if(!opt_pii_enable) {
+		return(string(sip_content, len));
+	}
+	size_t header_end = len;
+	for(size_t i = 0; i + 3 < len; i++) {
+		if(sip_content[i] == '\r' && sip_content[i+1] == '\n' &&
+		   sip_content[i+2] == '\r' && sip_content[i+3] == '\n') {
+			header_end = i + 4;
+			break;
+		}
+	}
+	string result;
+	result.reserve(len + 256);
+	size_t i = 0;
+	bool first_line = true;
+	while(i < header_end) {
+		size_t line_start = i;
+		while(i < header_end && sip_content[i] != '\r' && sip_content[i] != '\n') {
+			i++;
+		}
+		size_t line_end = i;
+		if(first_line || lineMatchesHeader(sip_content + line_start, line_end - line_start, headers)) {
+			result += maskLine(sip_content + line_start, line_end - line_start);
+		} else {
+			result.append(sip_content + line_start, line_end - line_start);
+		}
+		while(i < header_end && (sip_content[i] == '\r' || sip_content[i] == '\n')) {
+			result += sip_content[i++];
+		}
+		first_line = false;
+	}
+	if(header_end < len) {
+		result.append(sip_content + header_end, len - header_end);
+	}
+	return(result);
+}
+
+bool cPiiMaskingSipPacket::lineMatchesHeader(const char *line_start, size_t line_len, const char **headers) {
+	if(!headers || !headers[0]) {
+		return(true);
+	}
+	for(size_t h = 0; headers[h]; h++) {
+		size_t hdr_len = strlen(headers[h]);
+		if(hdr_len <= line_len) {
+			bool match = true;
+			for(size_t j = 0; j < hdr_len; j++) {
+				if(tolower((unsigned char)line_start[j]) != tolower((unsigned char)headers[h][j])) {
+					match = false;
+					break;
+				}
+			}
+			if(match) {
+				return(true);
+			}
+		}
+	}
+	return(false);
+}
+
+string cPiiMaskingSipPacket::maskLine(const char *line, size_t len) {
+	string result;
+	result.reserve(len + 64);
+	size_t i = 0;
+	string callername;
+	bool in_quotes = false;
+	size_t callername_start = 0;
+	while(i < len) {
+		if(anonymize_callername && line[i] == '"') {
+			if(!in_quotes) {
+				in_quotes = true;
+				callername_start = i + 1;
+				result += line[i++];
+			} else {
+				callername.assign(line + callername_start, i - callername_start);
+				in_quotes = false;
+				result += line[i++];
+			}
+			continue;
+		}
+		if(in_quotes) {
+			result += line[i++];
+			continue;
+		}
+		bool found_angle_sip = false;
+		bool found_angle_tel = false;
+		if(i + 5 <= len && line[i] == '<' &&
+		   (line[i+1] == 's' || line[i+1] == 'S') &&
+		   (line[i+2] == 'i' || line[i+2] == 'I') &&
+		   (line[i+3] == 'p' || line[i+3] == 'P') &&
+		   line[i+4] == ':') {
+			found_angle_sip = true;
+		} else if(i + 5 <= len && line[i] == '<' &&
+			  (line[i+1] == 't' || line[i+1] == 'T') &&
+			  (line[i+2] == 'e' || line[i+2] == 'E') &&
+			  (line[i+3] == 'l' || line[i+3] == 'L') &&
+			  line[i+4] == ':') {
+			found_angle_tel = true;
+		}
+		if(anonymize_callername && (found_angle_sip || found_angle_tel) && !callername.empty()) {
+			size_t cname_pos = result.rfind(callername);
+			if(cname_pos != string::npos) {
+				string masked_cname = pii_masking(callername.c_str());
+				result.replace(cname_pos, callername.length(), masked_cname);
+			}
+			callername.clear();
+		}
+		bool found_sip = found_angle_sip;
+		bool found_tel = found_angle_tel;
+		if(!found_sip && i + 4 <= len &&
+		   (line[i] == 's' || line[i] == 'S') &&
+		   (line[i+1] == 'i' || line[i+1] == 'I') &&
+		   (line[i+2] == 'p' || line[i+2] == 'P') &&
+		   line[i+3] == ':') {
+			found_sip = true;
+		}
+		if(!found_tel && i + 4 <= len &&
+		   (line[i] == 't' || line[i] == 'T') &&
+		   (line[i+1] == 'e' || line[i+1] == 'E') &&
+		   (line[i+2] == 'l' || line[i+2] == 'L') &&
+		   line[i+3] == ':') {
+			found_tel = true;
+		}
+		if(found_sip) {
+			if(found_angle_sip) {
+				result += line[i++];
+			}
+			size_t at_pos = 0;
+			size_t uri_end = i + 4;
+			while(uri_end < len &&
+			      line[uri_end] != '>' &&
+			      line[uri_end] != ' ' &&
+			      line[uri_end] != '\r' &&
+			      line[uri_end] != '\n') {
+				if(line[uri_end] == '@' && at_pos == 0) {
+					at_pos = uri_end;
+				}
+				uri_end++;
+			}
+			if(at_pos > 0) {
+				result.append(line + i, 4);
+				i += 4;
+				size_t user_end = i;
+				while(user_end < at_pos && line[user_end] != ';') {
+					user_end++;
+				}
+				string user_part(line + i, user_end - i);
+				result += pii_masking(user_part.c_str());
+				i = user_end;
+			} else {
+				result += line[i++];
+			}
+		} else if(found_tel) {
+			if(found_angle_tel) {
+				result += line[i++];
+			}
+			result.append(line + i, 4);
+			i += 4;
+			size_t user_start = i;
+			while(i < len &&
+			      line[i] != ';' &&
+			      line[i] != '>' &&
+			      line[i] != ' ' &&
+			      line[i] != '\r' &&
+			      line[i] != '\n') {
+				i++;
+			}
+			if(i > user_start) {
+				string user_part(line + user_start, i - user_start);
+				result += pii_masking(user_part.c_str());
+			}
+		} else {
+			result += line[i++];
+		}
+	}
+	return(result);
+}
+
+vector<string> cPiiMaskingSipPacket::headers;
+bool cPiiMaskingSipPacket::all_headers = false;
+bool cPiiMaskingSipPacket::anonymize_callername = true;
+
+void cPiiMaskingSipPacket::setHeaders(const char *headers_str) {
+	headers.clear();
+	all_headers = false;
+	if(!headers_str || !*headers_str) {
+		return;
+	}
+	if(!strcasecmp(headers_str, "all")) {
+		all_headers = true;
+		return;
+	}
+	vector<string> h = split(headers_str, split(",|;| ", "|"), true);
+	for(size_t i = 0; i < h.size(); i++) {
+		if(!h[i].empty()) {
+			string header = h[i];
+			if(header[header.length() - 1] != ':') {
+				header += ':';
+			}
+			headers.push_back(header);
+		}
+	}
+}
+
+string pii_sip_packet_masking(const char *sip_content, size_t len) {
+	return(pii_sip_packet_masking(sip_content, len, cPiiMaskingSipPacket::getHeaders()));
+}
+
+string pii_sip_packet_masking(const char *sip_content, size_t len, const char **headers) {
+	return(cPiiMaskingSipPacket::mask(sip_content, len, headers));
+}
+
+string pii_sip_packet_masking(const char *sip_content, size_t len, vector<string> *headers) {
+	if(!headers || headers->empty()) {
+		return(cPiiMaskingSipPacket::mask(sip_content, len, NULL));
+	}
+	const char *h[headers->size() + 1];
+	for(size_t i = 0; i < headers->size(); i++) {
+		h[i] = (*headers)[i].c_str();
+	}
+	h[headers->size()] = NULL;
+	return(cPiiMaskingSipPacket::mask(sip_content, len, h));
 }

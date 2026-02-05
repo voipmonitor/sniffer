@@ -548,6 +548,12 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 			}
 		}
 	}
+	
+	extern bool opt_pii_enable;
+	if(opt_pii_enable && description[0]) {
+		string description_pii = pii_sip_packet_masking(description, strlen(description));
+		strcpy_null_term(description, description_pii.c_str());
+	}
 
 	// construct query and push it to mysqlquery queue
 	char query_buff[20000];
@@ -810,23 +816,73 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 	__SYNC_UNLOCK(usersniffer_sync);
 }
 
-void save_live_packet(packet_s_process *packetS) {
+void save_live_packet(packet_s_process *packetS, pcap_pkthdr *header = NULL, u_char *packet = NULL) {
 	if(global_livesniffer) {
+		bool allocHeader = false;
+		bool allocPacket = false;
+		extern bool opt_pii_enable;
+		if(opt_pii_enable && packetS->typeContentIsSip() && !header && !packet) {
+			header = packetS->header_pt;
+			packet = (u_char*)packetS->packet;
+			u_char *sip_data = (u_char*)packetS->data_()+ packetS->sipDataOffset;
+			unsigned sip_data_len = packetS->sipDataLen;
+			bool ws_alloc = false;
+			u_char *ws_data = NULL;
+			if(check_websocket(sip_data, sip_data_len, packetS->pflags.get_tcp() ? cWebSocketHeader::_chdst_na : cWebSocketHeader::_chdst_ge_limit)) {
+				cWebSocketHeader ws(sip_data, sip_data_len);
+				if(sip_data_len > ws.getHeaderLength()) {
+					ws_data = ws.decodeData(&ws_alloc, sip_data_len);
+					if(ws_data) {
+						sip_data = ws_data;
+						sip_data_len = ws.getDataLength();
+					} else {
+						sip_data = NULL;
+					}
+				}
+			}
+			if(sip_data) {
+				string sip_content_masked = pii_sip_packet_masking((char*)sip_data, sip_data_len);
+				if(!sip_content_masked.empty() &&
+				   (sip_content_masked.length() != sip_data_len ||
+				    memcmp(sip_content_masked.c_str(), sip_data, sip_data_len))) {
+					u_char *packet_new = NULL;
+					pcap_pkthdr *header_new = NULL;
+					if(changePacketPayload(packet, header,
+							       (u_char*)sip_content_masked.c_str(), sip_content_masked.length(),
+							       &packet_new, &header_new,
+							       packetS->dlt, packetS->header_ip_encaps_offset, packetS->header_ip_offset,
+							       true)) {
+						if(packet_new) {
+							packet = packet_new;
+							allocPacket = true;
+						}
+						if(header_new) {
+							header = header_new;
+							allocHeader = true;
+						}
+					}
+				}
+			}
+			if(ws_alloc) {
+				delete [] ws_data;
+			}
+		}
 		if(packetS->is_message() && livesnifferfilterUseSipTypes.u_message) {
-			save_live_packet(NULL, packetS, MESSAGE,
-					 NULL, NULL);
+			save_live_packet(NULL, packetS, MESSAGE, header, packet);
 		} else if(packetS->is_register() && livesnifferfilterUseSipTypes.u_register) {
-			save_live_packet(NULL, packetS, REGISTER,
-					 NULL, NULL);
+			save_live_packet(NULL, packetS, REGISTER, header, packet);
 		} else if(packetS->is_subscribe() && livesnifferfilterUseSipTypes.u_subscribe) {
-			save_live_packet(NULL, packetS, SUBSCRIBE,
-					 NULL, NULL);
+			save_live_packet(NULL, packetS, SUBSCRIBE, header, packet);
 		} else if(packetS->is_options() && livesnifferfilterUseSipTypes.u_options) {
-			save_live_packet(NULL, packetS, OPTIONS,
-					 NULL, NULL);
+			save_live_packet(NULL, packetS, OPTIONS, header, packet);
 		} else if(packetS->is_notify() && livesnifferfilterUseSipTypes.u_notify) {
-			save_live_packet(NULL, packetS, NOTIFY,
-					 NULL, NULL);
+			save_live_packet(NULL, packetS, NOTIFY, header, packet);
+		}
+		if(allocPacket) {
+			delete [] packet;
+		}
+		if(allocHeader) {
+			delete header;
 		}
 	}
 }
@@ -953,14 +1009,61 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 			memcpy(packet, packetS->packet, header->caplen);
 		}
 	}
+	
+	extern bool opt_pii_enable;
+	if(opt_pii_enable && type == _t_packet_sip && packetS->typeContentIsSip()) {
+		u_char *sip_data = (u_char*)packetS->data_()+ packetS->sipDataOffset;
+		unsigned sip_data_len = packetS->sipDataLen;
+		bool ws_alloc = false;
+		u_char *ws_data = NULL;
+		if(check_websocket(sip_data, sip_data_len, packetS->pflags.get_tcp() ? cWebSocketHeader::_chdst_na : cWebSocketHeader::_chdst_ge_limit)) {
+			cWebSocketHeader ws(sip_data, sip_data_len);
+			if(sip_data_len > ws.getHeaderLength()) {
+				ws_data = ws.decodeData(&ws_alloc, sip_data_len);
+				if(ws_data) {
+					sip_data = ws_data;
+					sip_data_len = ws.getDataLength();
+				} else {
+					sip_data = NULL;
+				}
+			}
+		}
+		if(sip_data) {
+			string sip_content_masked = pii_sip_packet_masking((char*)sip_data, sip_data_len);
+			if(!sip_content_masked.empty() &&
+			   (sip_content_masked.length() != sip_data_len ||
+			    memcmp(sip_content_masked.c_str(), sip_data, sip_data_len))) {
+				u_char *packet_new = NULL;
+				pcap_pkthdr *header_new = NULL;
+				if(changePacketPayload(packet, header,
+						       (u_char*)sip_content_masked.c_str(), sip_content_masked.length(),
+						       &packet_new, &header_new,
+						       packetS->dlt, packetS->header_ip_encaps_offset, packetS->header_ip_offset,
+						       true)) {
+					if(packet_new) {
+						if(allocPacket) delete [] packet;
+						packet = packet_new;
+						allocPacket = true;
+					}
+					if(header_new) {
+						if(allocHeader) delete header;
+						header = header_new;
+						allocHeader = true;
+					}
+				}
+			}
+		}
+		if(ws_alloc) {
+			delete [] ws_data;
+		}
+	}
  
 	// check if it should be stored to mysql 
 	if(type == _t_packet_sip && global_livesniffer) {
 		if(call->typeIs(INVITE) && livesnifferfilterUseSipTypes.u_invite) {
-			save_live_packet(call, packetS, INVITE,
-					 header, packet);
+			save_live_packet(call, packetS, INVITE, header, packet);
 		} else {
-			save_live_packet(packetS);
+			save_live_packet(packetS, header, packet);
 		}
 	}
 

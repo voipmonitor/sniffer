@@ -979,8 +979,79 @@ void check_check_phone_number() {
 	     << endl << endl;
 }
 
+void pii_masking_test() {
+	string number = "+420 123-456-789";
+	string secret = "test_secret_key_123";
+	cout << "=== PII MASKING TEST ===" << endl;
+	cout << "Original number: " << number << endl << endl;
+	cout << "--- NORMALIZE ---" << endl;
+	cPiiMasking pii_norm(cPiiMasking::_mode_redact);
+	cout << "Normalized: " << pii_norm.normalize(number.c_str()) << endl << endl;
+	cout << "--- REDACT (char mode, default 'X') ---" << endl;
+	cPiiMasking pii_redact1(cPiiMasking::_mode_redact);
+	cout << "Redacted: " << pii_redact1.redact(number.c_str()) << endl;
+	cout << "mask(): " << pii_redact1.mask(number.c_str()) << endl << endl;
+	cout << "--- REDACT (char mode, '*') ---" << endl;
+	cPiiMasking pii_redact2(cPiiMasking::_mode_redact);
+	pii_redact2.setRedactChar('*');
+	cout << "Redacted: " << pii_redact2.redact(number.c_str()) << endl << endl;
+	cout << "--- REDACT (text mode, default 'REDACTED') ---" << endl;
+	cPiiMasking pii_redact3(cPiiMasking::_mode_redact);
+	pii_redact3.setRedactText();
+	cout << "Redacted: " << pii_redact3.redact(number.c_str()) << endl << endl;
+	cout << "--- REDACT (text mode, 'HIDDEN') ---" << endl;
+	cPiiMasking pii_redact4(cPiiMasking::_mode_redact);
+	pii_redact4.setRedactText("HIDDEN");
+	cout << "Redacted: " << pii_redact4.redact(number.c_str()) << endl << endl;
+	cout << "--- HASH (with normalization) ---" << endl;
+	cPiiMasking pii_hash1(cPiiMasking::_mode_hash, secret.c_str());
+	string hashed1 = pii_hash1.hash(number.c_str());
+	cout << "Hashed: " << hashed1 << endl;
+	cout << "mask(): " << pii_hash1.mask(number.c_str()) << endl;
+	cPiiMasking pii_hash1b(cPiiMasking::_mode_hash, secret.c_str());
+	cout << "Same number again: " << pii_hash1b.hash(number.c_str()) << endl << endl;
+	cout << "--- HASH (without normalization) ---" << endl;
+	cPiiMasking pii_hash2(cPiiMasking::_mode_hash, secret.c_str(), false);
+	cout << "Hashed: " << pii_hash2.hash(number.c_str()) << endl << endl;
+	cout << "--- HASH (custom prefix 'H:') ---" << endl;
+	cPiiMasking pii_hash3(cPiiMasking::_mode_hash, secret.c_str());
+	pii_hash3.setHashPrefix("H:");
+	cout << "Hashed: " << pii_hash3.hash(number.c_str()) << endl << endl;
+	cout << "--- ENCRYPT (with normalization) ---" << endl;
+	cPiiMasking pii_enc1(cPiiMasking::_mode_encrypt, secret.c_str());
+	string encrypted1 = pii_enc1.encrypt(number.c_str());
+	cout << "Encrypted: " << encrypted1 << endl;
+	cout << "isEncrypted: " << (pii_enc1.isEncrypted(encrypted1.c_str()) ? "true" : "false") << endl;
+	cout << "Decrypted: " << pii_enc1.decrypt(encrypted1.c_str()) << endl;
+	cout << "mask(): " << pii_enc1.mask(number.c_str()) << endl;
+	cout << "unmask(): " << pii_enc1.unmask(encrypted1.c_str()) << endl << endl;
+	cout << "--- ENCRYPT (without normalization) ---" << endl;
+	cPiiMasking pii_enc2(cPiiMasking::_mode_encrypt, secret.c_str(), false);
+	string encrypted2 = pii_enc2.encrypt(number.c_str());
+	cout << "Encrypted: " << encrypted2 << endl;
+	cout << "Decrypted: " << pii_enc2.decrypt(encrypted2.c_str()) << endl << endl;
+	cout << "--- ENCRYPT (custom prefix 'E:') ---" << endl;
+	cPiiMasking pii_enc3(cPiiMasking::_mode_encrypt, secret.c_str());
+	pii_enc3.setEncryptPrefix("E:");
+	string encrypted3 = pii_enc3.encrypt(number.c_str());
+	cout << "Encrypted: " << encrypted3 << endl;
+	cout << "isEncrypted: " << (pii_enc3.isEncrypted(encrypted3.c_str()) ? "true" : "false") << endl;
+	cout << "Decrypted: " << pii_enc3.decrypt(encrypted3.c_str()) << endl << endl;
+	cout << "--- ENCRYPT (with external key) ---" << endl;
+	cPiiMasking::cKey ext_key(secret.c_str());
+	cPiiMasking pii_enc4(cPiiMasking::_mode_encrypt, NULL, true, &ext_key);
+	cPiiMasking pii_enc5(cPiiMasking::_mode_encrypt, NULL, true, &ext_key);
+	string encrypted4 = pii_enc4.encrypt(number.c_str());
+	string encrypted5 = pii_enc5.encrypt("+420987654321");
+	cout << "Encrypted (key reused): " << encrypted4 << endl;
+	cout << "Decrypted: " << pii_enc4.decrypt(encrypted4.c_str()) << endl;
+	cout << "Encrypted (key reused, different number): " << encrypted5 << endl;
+	cout << "Decrypted: " << pii_enc5.decrypt(encrypted5.c_str()) << endl << endl;
+	cout << "=== PII MASKING TEST END ===" << endl;
+}
+
 void test() {
- 
+
 	switch(opt_test) {
 	 
 	case 21 : {
@@ -1040,6 +1111,9 @@ void test() {
 	} break;
 	 
 	case 1: {
+	 
+		pii_masking_test();
+		break;
 	 
 		test_norm_reftabs_sip_response();
 		break;

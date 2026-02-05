@@ -811,9 +811,18 @@ u_int8_t Register::saveNewStateToDb(RegisterState *state) {
 		reg.add(sipcallerip_encaps_prot, "sipcallerip_encaps_prot", sipcallerip_encaps_prot == 0xFF);
 		reg.add(sipcalledip_encaps_prot, "sipcalledip_encaps_prot", sipcalledip_encaps_prot == 0xFF);
 	}
-	reg.add(sqlEscapeString_limit(REG_CONV_STR(state->from_num == EQ_REG ? from_num : state->from_num), 255), "from_num");
-	reg.add(sqlEscapeString_limit(REG_CONV_STR(to_num), 255), "to_num");
-	reg.add(sqlEscapeString_limit(REG_CONV_STR(state->contact_num == EQ_REG ? contact_num : state->contact_num), 255), "contact_num");
+	string num_from = REG_CONV_STR(state->from_num == EQ_REG ? from_num : state->from_num);
+	string num_to = REG_CONV_STR(to_num);
+	string num_contact = REG_CONV_STR(state->contact_num == EQ_REG ? contact_num : state->contact_num);
+	extern bool opt_pii_enable;
+	if(opt_pii_enable) {
+		num_from = pii_masking(num_from.c_str());
+		num_to = pii_masking(num_to.c_str());
+		num_contact = pii_masking(num_contact.c_str());
+	}
+	reg.add(sqlEscapeString_limit(num_from, 255), "from_num");
+	reg.add(sqlEscapeString_limit(num_to, 255), "to_num");
+	reg.add(sqlEscapeString_limit(num_contact, 255), "contact_num");
 	reg.add(sqlEscapeString_limit(REG_CONV_STR(state->contact_domain == EQ_REG ? contact_domain : state->contact_domain), 255), "contact_domain");
 	reg.add(sqlEscapeString_limit(REG_CONV_STR(to_domain), 255), "to_domain");
 	reg.add(sqlEscapeString_limit(REG_CONV_STR(digest_username), 255), "digestusername");
@@ -1154,6 +1163,15 @@ bool Register::getDataRow(RecordArray *rec) {
 		unlock_states();
 		return(false);
 	}
+	string num_from = state->from_num == EQ_REG ? from_num : state->from_num;
+	string num_to = to_num;
+	string num_contact = state->contact_num == EQ_REG ? contact_num : state->contact_num;
+	extern bool opt_pii_enable;
+	if(opt_pii_enable) {
+		num_from = pii_masking(num_from.c_str());
+		num_to = pii_masking(num_to.c_str());
+		num_contact = pii_masking(num_contact.c_str());
+	}
 	rec->fields[rf_id].set(id);
 	rec->fields[rf_sipcallerip].set(sipcallerip, RecordArrayField::tf_ip_n4_cmpstr);
 	rec->fields[rf_sipcalledip].set(sipcalledip, RecordArrayField::tf_ip_n4_cmpstr);
@@ -1165,9 +1183,9 @@ bool Register::getDataRow(RecordArray *rec) {
 	}
 	rec->fields[rf_sipcallerport].set(sipcallerport, RecordArrayField::tf_port);
 	rec->fields[rf_sipcalledport].set(sipcalledport, RecordArrayField::tf_port);
-	rec->fields[rf_to_num].set(to_num);
+	rec->fields[rf_to_num].set(num_to.c_str());
 	rec->fields[rf_to_domain].set(to_domain);
-	rec->fields[rf_contact_num].set(state->contact_num == EQ_REG ? contact_num : state->contact_num);
+	rec->fields[rf_contact_num].set(num_contact.c_str());
 	rec->fields[rf_contact_domain].set(state->contact_domain == EQ_REG ? contact_domain : state->contact_domain);
 	rec->fields[rf_digestusername].set(digest_username);
 	rec->fields[rf_id_sensor].set(state->id_sensor);
@@ -1177,7 +1195,7 @@ bool Register::getDataRow(RecordArray *rec) {
 	} else {
 		rec->fields[rf_calldate].set(TIME_US_TO_S(state->state_to_us), RecordArrayField::tf_time);
 	}
-	rec->fields[rf_from_num].set(state->from_num == EQ_REG ? from_num : state->from_num);
+	rec->fields[rf_from_num].set(num_from.c_str());
 	rec->fields[rf_from_name].set(state->from_name == EQ_REG ? from_name : state->from_name);
 	rec->fields[rf_from_domain].set(state->from_domain == EQ_REG ? from_domain : state->from_domain);
 	rec->fields[rf_digestrealm].set(state->digest_realm == EQ_REG ? digest_realm : state->digest_realm);
