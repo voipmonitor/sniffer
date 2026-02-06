@@ -11914,10 +11914,12 @@ string cPiiMaskingSipPacket::mask(const char *sip_content, size_t len, const cha
 		return(string(sip_content, len));
 	}
 	size_t header_end = len;
-	for(size_t i = 0; i + 3 < len; i++) {
-		if(sip_content[i] == '\r' && sip_content[i+1] == '\n' &&
-		   sip_content[i+2] == '\r' && sip_content[i+3] == '\n') {
-			header_end = i + 4;
+	for(size_t i = 0; i + 1 < len; i++) {
+		if((sip_content[i] == '\n' && sip_content[i+1] == '\n') ||
+		   (i + 3 < len &&
+		    sip_content[i] == '\r' && sip_content[i+1] == '\n' &&
+		    sip_content[i+2] == '\r' && sip_content[i+3] == '\n')) {
+			header_end = (sip_content[i] == '\n') ? i + 2 : i + 4;
 			break;
 		}
 	}
@@ -11931,10 +11933,31 @@ string cPiiMaskingSipPacket::mask(const char *sip_content, size_t len, const cha
 			i++;
 		}
 		size_t line_end = i;
-		if(first_line || lineMatchesHeader(sip_content + line_start, line_end - line_start, headers)) {
-			result += maskLine(sip_content + line_start, line_end - line_start);
+		size_t line_len = line_end - line_start;
+		bool is_auth_header = anonymize_username && line_len > 14 &&
+				      (((sip_content[line_start] == 'a' || sip_content[line_start] == 'A') &&
+					!strncasecmp(sip_content + line_start + 1, "uthorization:", 13)) ||
+				       (line_len > 20 &&
+					(sip_content[line_start] == 'p' || sip_content[line_start] == 'P') &&
+					!strncasecmp(sip_content + line_start + 1, "roxy-authorization:", 19)));
+		if(first_line || lineMatchesHeader(sip_content + line_start, line_len, headers)) {
+			string masked = maskLine(sip_content + line_start, line_len);
+			if(is_auth_header) {
+				string masked_username = maskUsername(masked.c_str(), masked.length());
+				if(!masked_username.empty()) {
+					masked = masked_username;
+				}
+			}
+			result += masked;
+		} else if(is_auth_header) {
+			string masked_username = maskUsername(sip_content + line_start, line_len);
+			if(!masked_username.empty()) {
+				result += masked_username;
+			} else {
+				result.append(sip_content + line_start, line_len);
+			}
 		} else {
-			result.append(sip_content + line_start, line_end - line_start);
+			result.append(sip_content + line_start, line_len);
 		}
 		while(i < header_end && (sip_content[i] == '\r' || sip_content[i] == '\n')) {
 			result += sip_content[i++];
@@ -11946,150 +11969,6 @@ string cPiiMaskingSipPacket::mask(const char *sip_content, size_t len, const cha
 	}
 	return(result);
 }
-
-bool cPiiMaskingSipPacket::lineMatchesHeader(const char *line_start, size_t line_len, const char **headers) {
-	if(!headers || !headers[0]) {
-		return(true);
-	}
-	for(size_t h = 0; headers[h]; h++) {
-		size_t hdr_len = strlen(headers[h]);
-		if(hdr_len <= line_len) {
-			bool match = true;
-			for(size_t j = 0; j < hdr_len; j++) {
-				if(tolower((unsigned char)line_start[j]) != tolower((unsigned char)headers[h][j])) {
-					match = false;
-					break;
-				}
-			}
-			if(match) {
-				return(true);
-			}
-		}
-	}
-	return(false);
-}
-
-string cPiiMaskingSipPacket::maskLine(const char *line, size_t len) {
-	string result;
-	result.reserve(len + 64);
-	size_t i = 0;
-	string callername;
-	bool in_quotes = false;
-	size_t callername_start = 0;
-	while(i < len) {
-		if(anonymize_callername && line[i] == '"') {
-			if(!in_quotes) {
-				in_quotes = true;
-				callername_start = i + 1;
-				result += line[i++];
-			} else {
-				callername.assign(line + callername_start, i - callername_start);
-				in_quotes = false;
-				result += line[i++];
-			}
-			continue;
-		}
-		if(in_quotes) {
-			result += line[i++];
-			continue;
-		}
-		bool found_angle_sip = false;
-		bool found_angle_tel = false;
-		if(i + 5 <= len && line[i] == '<' &&
-		   (line[i+1] == 's' || line[i+1] == 'S') &&
-		   (line[i+2] == 'i' || line[i+2] == 'I') &&
-		   (line[i+3] == 'p' || line[i+3] == 'P') &&
-		   line[i+4] == ':') {
-			found_angle_sip = true;
-		} else if(i + 5 <= len && line[i] == '<' &&
-			  (line[i+1] == 't' || line[i+1] == 'T') &&
-			  (line[i+2] == 'e' || line[i+2] == 'E') &&
-			  (line[i+3] == 'l' || line[i+3] == 'L') &&
-			  line[i+4] == ':') {
-			found_angle_tel = true;
-		}
-		if(anonymize_callername && (found_angle_sip || found_angle_tel) && !callername.empty()) {
-			size_t cname_pos = result.rfind(callername);
-			if(cname_pos != string::npos) {
-				string masked_cname = pii_masking(callername.c_str());
-				result.replace(cname_pos, callername.length(), masked_cname);
-			}
-			callername.clear();
-		}
-		bool found_sip = found_angle_sip;
-		bool found_tel = found_angle_tel;
-		if(!found_sip && i + 4 <= len &&
-		   (line[i] == 's' || line[i] == 'S') &&
-		   (line[i+1] == 'i' || line[i+1] == 'I') &&
-		   (line[i+2] == 'p' || line[i+2] == 'P') &&
-		   line[i+3] == ':') {
-			found_sip = true;
-		}
-		if(!found_tel && i + 4 <= len &&
-		   (line[i] == 't' || line[i] == 'T') &&
-		   (line[i+1] == 'e' || line[i+1] == 'E') &&
-		   (line[i+2] == 'l' || line[i+2] == 'L') &&
-		   line[i+3] == ':') {
-			found_tel = true;
-		}
-		if(found_sip) {
-			if(found_angle_sip) {
-				result += line[i++];
-			}
-			size_t at_pos = 0;
-			size_t uri_end = i + 4;
-			while(uri_end < len &&
-			      line[uri_end] != '>' &&
-			      line[uri_end] != ' ' &&
-			      line[uri_end] != '\r' &&
-			      line[uri_end] != '\n') {
-				if(line[uri_end] == '@' && at_pos == 0) {
-					at_pos = uri_end;
-				}
-				uri_end++;
-			}
-			if(at_pos > 0) {
-				result.append(line + i, 4);
-				i += 4;
-				size_t user_end = i;
-				while(user_end < at_pos && line[user_end] != ';') {
-					user_end++;
-				}
-				string user_part(line + i, user_end - i);
-				result += pii_masking(user_part.c_str());
-				i = user_end;
-			} else {
-				result += line[i++];
-			}
-		} else if(found_tel) {
-			if(found_angle_tel) {
-				result += line[i++];
-			}
-			result.append(line + i, 4);
-			i += 4;
-			size_t user_start = i;
-			while(i < len &&
-			      line[i] != ';' &&
-			      line[i] != '>' &&
-			      line[i] != ' ' &&
-			      line[i] != '\r' &&
-			      line[i] != '\n') {
-				i++;
-			}
-			if(i > user_start) {
-				string user_part(line + user_start, i - user_start);
-				result += pii_masking(user_part.c_str());
-			}
-		} else {
-			result += line[i++];
-		}
-	}
-	return(result);
-}
-
-vector<string> cPiiMaskingSipPacket::headers;
-bool cPiiMaskingSipPacket::all_headers = false;
-bool cPiiMaskingSipPacket::anonymize_callername = true;
 
 void cPiiMaskingSipPacket::setHeaders(const char *headers_str) {
 	headers.clear();
@@ -12112,6 +11991,204 @@ void cPiiMaskingSipPacket::setHeaders(const char *headers_str) {
 		}
 	}
 }
+
+bool cPiiMaskingSipPacket::lineMatchesHeader(const char *line_start, size_t line_len, const char **headers) {
+	if(!headers || !headers[0]) {
+		return(true);
+	}
+	for(size_t h = 0; headers[h]; h++) {
+		size_t hdr_len = strlen(headers[h]);
+		if(hdr_len <= line_len && !strncasecmp(line_start, headers[h], hdr_len)) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
+string cPiiMaskingSipPacket::maskLine(const char *line, size_t len) {
+	string result;
+	result.reserve(len + 64);
+	size_t i = 0;
+	string callername;
+	bool in_quotes = false;
+	size_t callername_start = 0;
+	size_t callername_result_pos = 0;
+	while(i < len) {
+		if(anonymize_callername && line[i] == '"') {
+			if(!in_quotes) {
+				in_quotes = true;
+				callername_start = i + 1;
+				result += line[i++];
+				callername_result_pos = result.length();
+			} else {
+				callername.assign(line + callername_start, i - callername_start);
+				in_quotes = false;
+				result += line[i++];
+			}
+			continue;
+		}
+		if(in_quotes) {
+			result += line[i++];
+			continue;
+		}
+		bool found_angle_sip = (line[i] == '<' && isSipUri(line, len, i + 1));
+		bool found_angle_tel = (line[i] == '<' && isTelUri(line, len, i + 1));
+		if(anonymize_callername && (found_angle_sip || found_angle_tel)) {
+			if(!callername.empty()) {
+				string masked_cname = maskCallername(callername);
+				result.replace(callername_result_pos, callername.length(), masked_cname);
+				callername.clear();
+			} else {
+				size_t end_pos = result.length();
+				while(end_pos > 0 && result[end_pos - 1] == ' ') {
+					end_pos--;
+				}
+				if(end_pos > 0) {
+					size_t colon_pos = result.rfind(':');
+					size_t start_pos = 0;
+					if(colon_pos != string::npos && colon_pos < end_pos) {
+						start_pos = colon_pos + 1;
+						while(start_pos < end_pos && result[start_pos] == ' ') {
+							start_pos++;
+						}
+					}
+					if(start_pos < end_pos) {
+						string unquoted_cname = result.substr(start_pos, end_pos - start_pos);
+						if(strcasecmp(unquoted_cname.c_str(), "sip") != 0 &&
+						   strcasecmp(unquoted_cname.c_str(), "tel") != 0 &&
+						   strcasecmp(unquoted_cname.c_str(), "urn") != 0 &&
+						   unquoted_cname.find(':') == string::npos) {
+							string masked_cname = maskCallername(unquoted_cname);
+							result.replace(start_pos, end_pos - start_pos, masked_cname);
+						}
+					}
+				}
+			}
+		}
+		bool found_sip = found_angle_sip || isSipUri(line, len, i);
+		bool found_tel = found_angle_tel || isTelUri(line, len, i);
+		if(found_sip) {
+			if(found_angle_sip) {
+				result += line[i++];
+			}
+			result += maskUriUserPart(line, len, i, true);
+		} else if(found_tel) {
+			if(found_angle_tel) {
+				result += line[i++];
+			}
+			result += maskUriUserPart(line, len, i, false);
+		} else {
+			size_t block_start = i++;
+			while(i < len &&
+			      line[i] != '"' && line[i] != '<' &&
+			      !isSipUri(line, len, i) && !isTelUri(line, len, i)) {
+				i++;
+			}
+			result.append(line + block_start, i - block_start);
+		}
+	}
+	return(result);
+}
+
+string cPiiMaskingSipPacket::maskCallername(const string &cname) {
+	const char *cname_str = cname.c_str();
+	size_t cname_length = cname.length();
+	bool has_uri = false;
+	for(size_t i = 0; i + 4 <= cname_length; i++) {
+		if(isSipUri(cname_str, cname_length, i) || isTelUri(cname_str, cname_length, i)) {
+			has_uri = true;
+			break;
+		}
+	}
+	if(!has_uri) {
+		return(pii_masking(cname_str));
+	}
+	string result;
+	result.reserve(cname_length + 32);
+	size_t i = 0;
+	while(i < cname_length) {
+		if(isSipUri(cname_str, cname_length, i)) {
+			result += maskUriUserPart(cname_str, cname_length, i, true);
+		} else if(isTelUri(cname_str, cname_length, i)) {
+			result += maskUriUserPart(cname_str, cname_length, i, false);
+		} else {
+			size_t block_start = i++;
+			while(i < cname_length && !isSipUri(cname_str, cname_length, i) && !isTelUri(cname_str, cname_length, i)) {
+				i++;
+			}
+			result.append(cname_str + block_start, i - block_start);
+		}
+	}
+	return(result);
+}
+
+string cPiiMaskingSipPacket::maskUsername(const char *line, size_t len) {
+	const char *found = strncasestr(line, "username=\"", len);
+	if(!found) {
+		return("");
+	}
+	string result;
+	result.reserve(len + 32);
+	size_t pos = 0;
+	while(found) {
+		size_t found_pos = found - line;
+		result.append(line + pos, found_pos - pos + 10);
+		pos = found_pos + 10;
+		size_t username_start = pos;
+		while(pos < len && line[pos] != '"') {
+			pos++;
+		}
+		if(pos > username_start) {
+			string username(line + username_start, pos - username_start);
+			result += pii_masking(username.c_str());
+		}
+		if(pos < len) {
+			found = strncasestr(line + pos, "username=\"", len - pos);
+		} else {
+			found = NULL;
+		}
+	}
+	if(pos < len) {
+		result.append(line + pos, len - pos);
+	}
+	return(result);
+}
+
+string cPiiMaskingSipPacket::maskUriUserPart(const char *s, size_t len, size_t &pos, bool is_sip) {
+	string result;
+	result.append(s + pos, 4);
+	pos += 4;
+	if(is_sip) {
+		size_t at_pos = pos;
+		while(at_pos < len && s[at_pos] != '@' && s[at_pos] != '>' && s[at_pos] != ' ' && s[at_pos] != '\r' && s[at_pos] != '\n') {
+			at_pos++;
+		}
+		if(at_pos < len && s[at_pos] == '@') {
+			size_t user_end = pos;
+			while(user_end < at_pos && s[user_end] != ';') {
+				user_end++;
+			}
+			string user_part(s + pos, user_end - pos);
+			result += pii_masking(user_part.c_str());
+			pos = user_end;
+		}
+	} else {
+		size_t num_start = pos;
+		while(pos < len && s[pos] != ';' && s[pos] != '>' && s[pos] != ' ' && s[pos] != '\r' && s[pos] != '\n') {
+			pos++;
+		}
+		if(pos > num_start) {
+			string num_part(s + num_start, pos - num_start);
+			result += pii_masking(num_part.c_str());
+		}
+	}
+	return(result);
+}
+
+vector<string> cPiiMaskingSipPacket::headers;
+bool cPiiMaskingSipPacket::all_headers = false;
+bool cPiiMaskingSipPacket::anonymize_callername = true;
+bool cPiiMaskingSipPacket::anonymize_username = true;
 
 string pii_sip_packet_masking(const char *sip_content, size_t len) {
 	return(pii_sip_packet_masking(sip_content, len, cPiiMaskingSipPacket::getHeaders()));

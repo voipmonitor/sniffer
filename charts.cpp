@@ -3005,6 +3005,11 @@ void cCdrProblems::add(sChartsCallData *call) {
 		}
 		number_src = _branch->caller;
 		number_dst = _call->get_called(_branch);
+		extern bool opt_pii_enable;
+		if(opt_pii_enable) {
+			number_src = pii_masking(number_src.c_str());
+			number_dst = pii_masking(number_dst.c_str());
+		}
 	} else {
 		sensor_id = call->tables_content()->getValue_int(_t_cdr, "id_sensor");
 		callbegin_us = call->tables_content()->getValue_int(_t_cdr, "calldate");
@@ -3374,6 +3379,11 @@ void cCdrSummary::add(sChartsCallData *call) {
 		dst_ip = _call->getSipcalledip(_branch);
 		src_number = _branch->caller;
 		dst_number = _call->get_called(_branch);
+		extern bool opt_pii_enable;
+		if(opt_pii_enable) {
+			src_number = pii_masking(src_number.c_str());
+			dst_number = pii_masking(dst_number.c_str());
+		}
 		codec = _call->get_payload_rslt();
 		lsr_num = _branch->lastSIPresponseNum;
 		lsr_str = _branch->lastSIPresponse;

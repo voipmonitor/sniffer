@@ -5292,15 +5292,34 @@ string pii_masking(const char *number);
 class cPiiMaskingSipPacket {
 public:
 	static string mask(const char *sip_content, size_t len, const char **headers = NULL);
-	static void setHeaders(const char *headers_str);
 	static void setAnonymizeCallername(bool anonymize) { anonymize_callername = anonymize; }
+	static void setAnonymizeUsername(bool anonymize) { anonymize_username = anonymize; }
+	static void setHeaders(const char *headers_str);
 	static vector<string> *getHeaders() { return(all_headers ? NULL : &headers); }
 private:
 	static bool lineMatchesHeader(const char *line_start, size_t line_len, const char **headers);
 	static string maskLine(const char *line, size_t len);
+	static string maskCallername(const string &cname);
+	static string maskUsername(const char *line, size_t len);
+	inline static bool isSipUri(const char *s, size_t len, size_t pos) {
+		return(pos + 4 <= len &&
+		       (s[pos] == 's' || s[pos] == 'S') &&
+		       (s[pos+1] == 'i' || s[pos+1] == 'I') &&
+		       (s[pos+2] == 'p' || s[pos+2] == 'P') &&
+		       s[pos+3] == ':');
+	}
+	inline static bool isTelUri(const char *s, size_t len, size_t pos) {
+		return(pos + 4 <= len &&
+		       (s[pos] == 't' || s[pos] == 'T') &&
+		       (s[pos+1] == 'e' || s[pos+1] == 'E') &&
+		       (s[pos+2] == 'l' || s[pos+2] == 'L') &&
+		       s[pos+3] == ':');
+	}
+	static string maskUriUserPart(const char *s, size_t len, size_t &pos, bool is_sip);
 	static vector<string> headers;
 	static bool all_headers;
 	static bool anonymize_callername;
+	static bool anonymize_username;
 };
 
 string pii_sip_packet_masking(const char *sip_content, size_t len);

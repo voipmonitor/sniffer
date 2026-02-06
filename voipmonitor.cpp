@@ -1697,6 +1697,7 @@ string opt_pii_prefix_hash = "piih_";
 string opt_pii_prefix_encrypt = "piie_";
 string opt_pii_sip_headers = "all";
 bool opt_pii_anonymize_callername = true;
+bool opt_pii_anonymize_username = true;
 cPiiMasking *pii_mask;
 
 static cCreatePartitions CreatePartitions;
@@ -4722,6 +4723,7 @@ int main_init_read() {
 		pii_mask->setEncryptPrefix(opt_pii_prefix_encrypt.c_str());
 		cPiiMaskingSipPacket::setHeaders(opt_pii_sip_headers.c_str());
 		cPiiMaskingSipPacket::setAnonymizeCallername(opt_pii_anonymize_callername);
+		cPiiMaskingSipPacket::setAnonymizeUsername(opt_pii_anonymize_username);
 	}
 
 	if(opt_t2_boost && opt_t2_boost_call_threads > 0) {
@@ -7816,6 +7818,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("pii_prefix_encrypt", &opt_pii_prefix_encrypt));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("pii_sip_headers", &opt_pii_sip_headers));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pii_anonymize_callername", &opt_pii_anonymize_callername));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pii_anonymize_username", &opt_pii_anonymize_username));
 	minorEnd();
 	
 	setDefaultValues();
