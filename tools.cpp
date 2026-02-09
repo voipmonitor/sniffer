@@ -2486,7 +2486,7 @@ volatile bool cSystemdService::detected = false;
 volatile bool cSystemdService::is_service = false;
 string cSystemdService::unit_name;
 
-RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *build, const char *url, const char *md5_32, const char *md5_64, const char *md5_arm, const char *md5_64_ws) {
+RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *build, const char *url, const char *md5_32, const char *md5_64, const char *md5_arm, const char *md5_64_ws, const char *md5_arm64) {
 	this->upgrade = upgrade;
 	if(version) {
 		this->version = version;
@@ -2509,10 +2509,16 @@ RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *bu
 	if(md5_arm) {
 		this->md5_arm = md5_arm;
 	}
+	if(md5_arm64) {
+		this->md5_arm64 = md5_arm64;
+	}
 	this->_64bit = false;
 	this->_64bit_ws = false;
 	this->_arm = false;
-	#if defined(__arm__)
+	this->_arm64 = false;
+	#if defined(__aarch64__)
+		this->_arm64 = true;
+	#elif defined(__arm__)
 		this->_arm = true;
 	#else
 		if(sizeof(int *) == 8) {
@@ -2578,7 +2584,8 @@ bool RestartUpgrade::runUpgrade() {
 		string urlSuffix = "/voipmonitor" +
 				   (this->_64bit_ws ?
 					string("-wireshark.gz.64") :
-					(string(".gz.") + (this->_arm ? "armv6k" :
+					(string(".gz.") + (this->_arm64 ? "arm64" :
+							   this->_arm ? "armv6k" :
 							   this->_64bit ? "64" : "32")));
 		if(!this->downloadUpgradeFile(url + urlSuffix, urlHttp + urlSuffix, binaryGzFilepathName)) {
 			return(false);
@@ -2621,13 +2628,13 @@ bool RestartUpgrade::runUpgrade() {
 	} else {
 		string tarFileName = appname + "-" +
 				     (this->_64bit_ws ? "wireshark-" : "") +
-				     (this->_arm ? "armv6k" : (this->_64bit || this->_64bit_ws ? "amd64" : "i686")) + "-" +
+				     (this->_arm64 ? "arm64" : this->_arm ? "armv6k" : (this->_64bit || this->_64bit_ws ? "amd64" : "i686")) + "-" +
 				     version + "-" +
 				     "static.tar.gz";
 		string tarFilepathName = this->upgradeTempFileName + "/" + tarFileName;
 		string tarBinaryFilepathName = appname + "-" +
 					       (this->_64bit_ws ? "wireshark-" : "") +
-					       (this->_arm ? "armv6k" : (this->_64bit || this->_64bit_ws ? "amd64" : "i686")) + "-" +
+					       (this->_arm64 ? "arm64" : this->_arm ? "armv6k" : (this->_64bit || this->_64bit_ws ? "amd64" : "i686")) + "-" +
 					       version + "-" +
 					       "static" + "/usr/local/sbin/voipmonitor";
 		binaryFilepathName = this->upgradeTempFileName + "/" + appname;

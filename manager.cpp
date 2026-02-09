@@ -4420,6 +4420,7 @@ int Mgmt_upgrade_restart(Mgmt_params *params) {
 	string md5_64;
 	string md5_arm;
 	string md5_64_ws;
+	string md5_arm64;
 	string rsltForSend;
 
 	if(strstr(params->buf, "upgrade") != NULL) {
@@ -4464,7 +4465,7 @@ int Mgmt_upgrade_restart(Mgmt_params *params) {
 						if(posEnd != string::npos) {
 							md5_32 = command.substr(pos + 6, posEnd - pos - 6);
 						}
-						for(int i = 0; i < 3; i++) {
+						for(int i = 0; i < 4; i++) {
 							pos = command.find(" / [", pos);
 							if(pos != string::npos) {
 								size_t posEnd = command.find("]", pos);
@@ -4474,6 +4475,7 @@ int Mgmt_upgrade_restart(Mgmt_params *params) {
 										case 0: md5_64 = md5; break;
 										case 1: md5_arm = md5; break;
 										case 2: md5_64_ws = md5; break;
+										case 3: md5_arm64 = md5; break;
 									}
 									pos = posEnd;
 								} else {
@@ -4518,7 +4520,7 @@ int Mgmt_upgrade_restart(Mgmt_params *params) {
 		}
 	}
 	bool ok = false;
-	RestartUpgrade restart(upgrade, version.c_str(), build.c_str(), url.c_str(), md5_32.c_str(), md5_64.c_str(), md5_arm.c_str(), md5_64_ws.c_str());
+	RestartUpgrade restart(upgrade, version.c_str(), build.c_str(), url.c_str(), md5_32.c_str(), md5_64.c_str(), md5_arm.c_str(), md5_64_ws.c_str(), md5_arm64.c_str());
 	if(!rsltForSend.length()) {
 		if(restart.createRestartScript() && restart.createSafeRunScript()) {
 			if((!upgrade || restart.runUpgrade()) &&
