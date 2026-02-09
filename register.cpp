@@ -1168,11 +1168,11 @@ bool Register::getDataRow(RecordArray *rec) {
 		unlock_states();
 		return(false);
 	}
-	string num_from = state->from_num == EQ_REG ? from_num : state->from_num;
-	string num_to = to_num;
-	string num_contact = state->contact_num == EQ_REG ? contact_num : state->contact_num;
-	string name_from = state->from_name == EQ_REG ? from_name : state->from_name;
-	string username = digest_username;
+	string num_from = REG_CONV_STR(state->from_num == EQ_REG ? from_num : state->from_num);
+	string num_to = REG_CONV_STR(to_num);
+	string num_contact = REG_CONV_STR(state->contact_num == EQ_REG ? contact_num : state->contact_num);
+	string name_from = REG_CONV_STR(state->from_name == EQ_REG ? from_name : state->from_name);
+	string username = REG_CONV_STR(digest_username);
 	extern bool opt_pii_enable;
 	extern bool opt_pii_anonymize_username;
 	if(opt_pii_enable) {

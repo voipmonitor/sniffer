@@ -11900,6 +11900,9 @@ string cPiiMasking::fromBase64Url(const char *data, size_t *out_len) {
 }
 
 string pii_masking(const char *number) {
+	if(!number || !*number) {
+		return("");
+	}
 	extern bool opt_pii_enable;
 	extern cPiiMasking *pii_mask;
 	if(!opt_pii_enable || !pii_mask) {
