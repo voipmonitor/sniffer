@@ -767,7 +767,7 @@ void cSipMsgRelation::close_pcaps_by_limit_time(u_int64_t limit_time_us, cSipMsg
 	deque<cSipMsgRequestResponse*>::iterator iter;
 	for(iter = queue_req_resp.begin(); iter != queue_req_resp.end(); iter++) {
 		if((*iter)->getLastTime() < limit_time_us && 
-		   (!is_read_from_file_by_pb_acttime() || (*iter)->response)) {
+		   (!is_read_from_file() || is_read_from_file_by_pb_acttime() || (*iter)->response)) {
 			if((*iter)->needSaveToDb(relations, this)) {
 				(*iter)->saveToDb(relations);
 			}
@@ -1353,7 +1353,7 @@ void *cSipMsgRelations::_loadParamsInBackground(void *arg) {
 void cSipMsgRelations::internalThread() {
 	while(!terminate) {
 		do_close_pcaps_by_limit_time(getTimeMS_rdtsc());
-		if(!is_read_from_file()) {
+		if(!is_read_from_file() || is_read_from_file_by_pb_acttime()) {
 			do_cleanup_relations(getTimeMS_rdtsc());
 		}
 		do_cleanup_cdq();
