@@ -1076,11 +1076,19 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 			case _t_packet_skinny:
 			case _t_packet_mgcp:
 			case _t_packet_diameter:
-				if(call->getPcapSip()->isOpen()){
+				if(!call->getPcapSip()->isOpen() && enable_save_sip(call)) {
+					string pathfilename = call->get_pathfilename(tsf_sip);
+					if(call->getPcapSip()->open(tsf_sip, pathfilename.c_str(), call->useHandle, call->useDlt)) {
+						if(verbosity > 3) {
+							syslog(LOG_NOTICE,"pcap_filename: [%s]\n", pathfilename.c_str());
+						}
+					}
+				}
+				if(call->getPcapSip()->isOpen() && enable_save_sip(call)) {
 					if(type == _t_packet_sip) {
-						save_ok = call->getPcapSip()->dump(header, packet, packetS->dlt, false, 
+						save_ok = call->getPcapSip()->dump(header, packet, packetS->dlt, false,
 										   (u_char*)packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen, 0,
-										   packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.get_tcp(), forceVirtualUdp, 
+										   packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.get_tcp(), forceVirtualUdp,
 										   forceVirtualUdp == 2 ? packetS->getTimeval_pt() : NULL, &pcap_dump_error);
 					} else {
 						save_ok = call->getPcapSip()->dump(header, packet, packetS->dlt, false,
@@ -1121,12 +1129,22 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 				break;
 			}
 		} else {
+			if(!call->getPcap()->isOpen() && enable_save_sip(call) && type == _t_packet_sip) {
+				string pathfilename = call->get_pathfilename(tsf_sip);
+				if(call->getPcap()->open(tsf_sip, pathfilename.c_str(), call->useHandle, call->useDlt)) {
+					if(verbosity > 3) {
+						syslog(LOG_NOTICE,"pcap_filename: [%s]\n", pathfilename.c_str());
+					}
+				}
+			}
 			if(call->getPcap()->isOpen()){
 				if(type == _t_packet_sip) {
-					save_ok = call->getPcap()->dump(header, packet, packetS->dlt, false, 
-									(u_char*)packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen, 0,
-									packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.get_tcp(), forceVirtualUdp, 
-									forceVirtualUdp == 2 ? packetS->getTimeval_pt() : NULL, &pcap_dump_error);
+					if(enable_save_sip(call)) {
+						save_ok = call->getPcap()->dump(header, packet, packetS->dlt, false,
+										(u_char*)packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen, 0,
+										packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.get_tcp(), forceVirtualUdp,
+										forceVirtualUdp == 2 ? packetS->getTimeval_pt() : NULL, &pcap_dump_error);
+					}
 				} else {
 					save_ok = call->getPcap()->dump(header, packet, packetS->dlt, false,
 									(u_char*)packetS->data_(), packetS->datalen_(), 0,
