@@ -4759,21 +4759,12 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	if(!packetS->_createCall) {
 		unsigned long int flags = call->flags;
 		if(SIP_HEADERfilter::add_call_flags(&packetS->parseContents, &flags, NULL)) {
-			if((call->flags & FLAG_SAVERTP) && !(flags & FLAG_SAVERTP)) {
-				call->flags &= ~FLAG_SAVERTP;
+			if(sverb.dump_call_flags) {
+				if(flags != call->flags) {
+					cout << "set flags for headers (re-evaluation) " << call->call_id << " : " << printCallFlags(flags) << endl;
+				}
 			}
-			if((call->flags & FLAG_SAVEAUDIO) && !(flags & FLAG_SAVEAUDIO)) {
-				call->flags &= ~FLAG_SAVEAUDIO;
-			}
-			if((call->flags & FLAG_SAVEAUDIOGRAPH) && !(flags & FLAG_SAVEAUDIOGRAPH)) {
-				call->flags &= ~FLAG_SAVEAUDIOGRAPH;
-			}
-			if((call->flags & FLAG_AUDIOTRANSCRIBE) && !(flags & FLAG_AUDIOTRANSCRIBE)) {
-				call->flags &= ~FLAG_AUDIOTRANSCRIBE;
-			}
-			if(flags & FLAG_SKIPCDR) {
-				call->flags |= FLAG_SKIPCDR;
-			}
+			call->flags = flags;
 		}
 	}
 	 
