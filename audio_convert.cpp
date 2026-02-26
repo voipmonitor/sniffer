@@ -332,6 +332,9 @@ bool cAudioConvert::readWavHeader(sWavHeader *wavHeader) {
 
 cAudioConvert::eResult cAudioConvert::writeWavHeader(long int size) {
 	if(size == -1) {
+		if(!fileHandle) {
+			return(_rslt_write_failed);
+		}
 		fseek(fileHandle, 0, SEEK_END);
 		size = ftello(fileHandle);
 	}
@@ -347,6 +350,9 @@ cAudioConvert::eResult cAudioConvert::writeWavHeader(long int size) {
 }
 
 cAudioConvert::eResult cAudioConvert::writeWavData(u_char *data, unsigned datalen) {
+	if(!fileHandle) {
+		return(_rslt_write_failed);
+	}
 	return(fwrite(data, 1, datalen, fileHandle) == datalen ?
 		_rslt_ok :
 		_rslt_write_failed);
@@ -870,7 +876,7 @@ cAudioConvert::eResult cAudioConvert::write(u_char *data, unsigned datalen) {
 				}
 				headerIsWrited = true;
 			}
-		} else {
+		} else if(headerIsWrited) {
 			switch(destAudio->formatType) {
 			case _format_raw:
 				break;
@@ -935,14 +941,17 @@ bool cAudioConvert::open_for_write() {
 				fileHandle = fopen(fileName.c_str(), "w");
 				if(fileHandle) {
 					spooldir_file_chmod_own(fileHandle);
+					if(write_buffer) {
+						delete [] write_buffer;
+					}
+					unsigned write_buffer_size = 32768;
+					write_buffer = new u_char[write_buffer_size];
+					setvbuf(fileHandle, (char*)write_buffer, _IOFBF, write_buffer_size);
 					break;
 				}
-				if(write_buffer) {
-					delete write_buffer;
-				}
-				unsigned write_buffer_size = 32768;
-				write_buffer = new u_char[write_buffer_size];
-				setvbuf(fileHandle, (char*)write_buffer, _IOFBF, write_buffer_size);
+			}
+			if(!fileHandle) {
+				return(false);
 			}
 		}
 	}
