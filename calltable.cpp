@@ -1373,12 +1373,12 @@ Call::closeRawFiles() {
 			if(!rtp_i->channel_record_is_adaptive()) {
 				rtp_i->jitterbuffer_fixed_flush(rtp_i->channel_record);
 			}
-			if(rtp_i->gfileRAW) {
-				/* preventing race condition as gfileRAW is checking for NULL pointer in rtp classes */ 
-				FILE *tmp;
-				tmp = rtp_i->gfileRAW;
-				rtp_i->gfileRAW = NULL;
-				fclose(tmp);
+			__SYNC_LOCK(rtp_i->gfileRAW_lock);
+			FILE *tmp_gfileRAW = rtp_i->gfileRAW;
+			rtp_i->gfileRAW = NULL;
+			__SYNC_UNLOCK(rtp_i->gfileRAW_lock);
+			if(tmp_gfileRAW) {
+				fclose(tmp_gfileRAW);
 			}
 			rtp_i->initRAW = false;
 		}

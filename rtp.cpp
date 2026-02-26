@@ -270,6 +270,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	gfilename[0] = '\0';
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 	gfileRAW = NULL;
+	gfileRAW_lock = 0;
 	initRAW = false;
 	needInitRawForChannelRecord = false;
 	#endif
@@ -710,8 +711,12 @@ RTP::~RTP() {
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 	if(gfileRAW || initRAW) {
 		jitterbuffer_fixed_flush(channel_record);
-		if(gfileRAW) {
-			fclose(gfileRAW);
+		__SYNC_LOCK(gfileRAW_lock);
+		FILE *tmp_gfileRAW = gfileRAW;
+		gfileRAW = NULL;
+		__SYNC_UNLOCK(gfileRAW_lock);
+		if(tmp_gfileRAW) {
+			fclose(tmp_gfileRAW);
 		}
 	}
 	#endif
@@ -1885,8 +1890,12 @@ bool RTP::read(CallBranch *c_branch,
 			jitterbuffer_fixed_flush(channel_record);
 			ast_jb_empty_and_reset(channel_record);
 			ast_jb_destroy(channel_record);
-			if(gfileRAW) {
-				fclose(gfileRAW);
+			__SYNC_LOCK(gfileRAW_lock);
+			FILE *tmp_gfileRAW = gfileRAW;
+			gfileRAW = NULL;
+			__SYNC_UNLOCK(gfileRAW_lock);
+			if(tmp_gfileRAW) {
+				fclose(tmp_gfileRAW);
 			}
 		} else {
 			/* look for the last RTP stream belonging to this direction and let jitterbuffer put silence 
@@ -1908,6 +1917,7 @@ bool RTP::read(CallBranch *c_branch,
 		if(save_audio || mos_lqo) {
 			char raw_filename[1024 + 100];
 			snprintf(raw_filename, sizeof(raw_filename), "%s.%d.%lu.%d.%ld.%ld.raw", basefilename, ssrc_index, raw_unique, codec, header->ts.tv_sec, header->ts.tv_usec);
+			FILE *new_gfileRAW = NULL;
 			for(int passOpen = 0; passOpen < 2; passOpen++) {
 				if(passOpen == 1) {
 					char *pointToLastDirSeparator = strrchr(raw_filename, '/');
@@ -1919,8 +1929,8 @@ bool RTP::read(CallBranch *c_branch,
 						break;
 					}
 				}
-				gfileRAW = fopen(raw_filename, "w");
-				if(gfileRAW) {
+				new_gfileRAW = fopen(raw_filename, "w");
+				if(new_gfileRAW) {
 					spooldir_file_chmod_own(raw_filename);
 					break;
 				}
@@ -1932,11 +1942,14 @@ bool RTP::read(CallBranch *c_branch,
 					exit(2);
 				}
 			}
-			if(!gfileRAW) {
+			if(!new_gfileRAW) {
 				syslog(LOG_ERR, "Cannot open file %s for writing: %s\n", raw_filename, strerror (errno));
 			} else if(gfileRAW_buffer) {
-				setvbuf(gfileRAW, gfileRAW_buffer, _IOFBF, 32768);
+				setvbuf(new_gfileRAW, gfileRAW_buffer, _IOFBF, 32768);
 			}
+			__SYNC_LOCK(gfileRAW_lock);
+			gfileRAW = new_gfileRAW;
+			__SYNC_UNLOCK(gfileRAW_lock);
 			
 			/* write file info to "playlist" */
 			char rawinfo_filename[1024 + 100];

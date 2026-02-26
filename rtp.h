@@ -366,6 +366,7 @@ public:
 	RtpGraphSaver graph;
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 	FILE *gfileRAW;	 //!< file for storing RTP payload in RAW format
+	volatile int gfileRAW_lock;
 	bool initRAW;
 	bool needInitRawForChannelRecord;
 	char *gfileRAW_buffer;
