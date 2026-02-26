@@ -1686,6 +1686,13 @@ std::vector<int> split2int(const std::string &s, char delim) {
     return elems;
 }
 
+void split2int(const std::string &s, std::vector<std::string> delim, set<int> *dst) {
+    std::vector<std::string> tmpelems = split(s.c_str(), delim, true);
+    for (uint i = 0; i < tmpelems.size(); i++) {
+	dst->insert(atoi(tmpelems.at(i).c_str()));
+    }
+}
+
 std::vector<std::string> split2chars(const std::string &s) {
 	std::vector<std::string> elems;
 	string _s = trim_str(s);

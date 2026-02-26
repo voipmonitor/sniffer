@@ -51,13 +51,20 @@ private:
 
 class cRecordFilterItem_Call : public cRecordFilterItem_rec {
 public:
-	cRecordFilterItem_Call(cRecordFilter *parent, const char *filter)
-	 : cRecordFilterItem_rec(parent) {
-		this->filter = filter;
-	}
+	enum eTypeFilter {
+		_tf_codec,
+		_tf_codec_exclude,
+		_tf_codec_ab_eq,
+		_tf_codec_ab_diff,
+		_tf_custom_headers_cond
+	};
+public:
+	cRecordFilterItem_Call(cRecordFilter *parent, eTypeFilter typeFilter, const char *filter);
 	bool check(void *rec, bool *findInBlackList = NULL);
 private:
+	eTypeFilter typeFilter;
 	string filter;
+	set<int> filter_int;
 };
 
 
@@ -90,25 +97,41 @@ public:
 			return(((Call*)rec)->getSipcallerip_encaps(((Call*)rec)->branch_main(), true));
 		case cf_calledip_encaps:
 			return(((Call*)rec)->getSipcalledip_encaps(((Call*)rec)->branch_main(), true, true));
+		case cf_rtp_src:
+		case cf_rtp_dst: {
+			RecordArrayField rfield;
+			((Call*)rec)->getValue((eCallField)registerFieldIndex, &rfield);
+			return(rfield.v_ip);
+			}
 		}
 		return(0);
 	}
-	const char *getField_string(void *rec, unsigned registerFieldIndex) {
+	string getField_string(void *rec, unsigned registerFieldIndex) {
 		switch(registerFieldIndex) {
 		case cf_caller:
-			return(((Call*)rec)->branch_main()->caller.c_str());
+			return(((Call*)rec)->branch_main()->caller);
 		case cf_called:
 			return(((Call*)rec)->get_called(((Call*)rec)->branch_main()));
 		case cf_callerdomain:
-			return(((Call*)rec)->branch_main()->caller_domain.c_str());
+			return(((Call*)rec)->branch_main()->caller_domain);
 		case cf_calleddomain:
 			return(((Call*)rec)->get_called_domain(((Call*)rec)->branch_main()));
 		case cf_calleragent:
-			return(((Call*)rec)->branch_main()->a_ua.c_str());
+			return(((Call*)rec)->branch_main()->a_ua);
 		case cf_calledagent:
-			return(((Call*)rec)->branch_main()->b_ua.c_str());
+			return(((Call*)rec)->branch_main()->b_ua);
 		case cf_callid:
 			return(((Call*)rec)->fbasename);
+		case cf_callername:
+			return(((Call*)rec)->branch_main()->callername);
+		case cf_caller_country:
+			return(getCountryByPhoneNumber(((Call*)rec)->branch_main()->caller.c_str(), ((Call*)rec)->getSipcallerip(((Call*)rec)->branch_main(), true), true));
+		case cf_called_country:
+			return(getCountryByPhoneNumber(((Call*)rec)->get_called(((Call*)rec)->branch_main()), ((Call*)rec)->getSipcalledip(((Call*)rec)->branch_main(), true, true), true));
+		case cf_callerip_country:
+			return(getCountryByIP(((Call*)rec)->getSipcallerip(((Call*)rec)->branch_main(), true), true));
+		case cf_calledip_country:
+			return(getCountryByIP(((Call*)rec)->getSipcalledip(((Call*)rec)->branch_main(), true, true), true));
 		}
 		return("");
 	}

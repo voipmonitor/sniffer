@@ -1358,28 +1358,28 @@ public:
 		}
 		return(0);
 	}
-	const char *getField_string(void *rec, unsigned registerFieldIndex) {
+	string getField_string(void *rec, unsigned registerFieldIndex) {
 		switch(registerFieldIndex) {
 		case rf_to_num:
-			return(((sFraudRegisterInfo*)rec)->to_num.c_str());
+			return(((sFraudRegisterInfo*)rec)->to_num);
 		case rf_to_domain:
-			return(((sFraudRegisterInfo*)rec)->to_domain.c_str());
+			return(((sFraudRegisterInfo*)rec)->to_domain);
 		case rf_contact_num:
-			return(((sFraudRegisterInfo*)rec)->contact_num.c_str());
+			return(((sFraudRegisterInfo*)rec)->contact_num);
 		case rf_contact_domain:
-			return(((sFraudRegisterInfo*)rec)->contact_domain.c_str());
+			return(((sFraudRegisterInfo*)rec)->contact_domain);
 		case rf_digestusername:
-			return(((sFraudRegisterInfo*)rec)->digest_username.c_str());
+			return(((sFraudRegisterInfo*)rec)->digest_username);
 		case rf_from_num:
-			return(((sFraudRegisterInfo*)rec)->from_num.c_str());
+			return(((sFraudRegisterInfo*)rec)->from_num);
 		case rf_from_name:
-			return(((sFraudRegisterInfo*)rec)->from_name.c_str());
+			return(((sFraudRegisterInfo*)rec)->from_name);
 		case rf_from_domain:
-			return(((sFraudRegisterInfo*)rec)->from_domain.c_str());
+			return(((sFraudRegisterInfo*)rec)->from_domain);
 		case rf_digestrealm:
-			return(((sFraudRegisterInfo*)rec)->digest_realm.c_str());
+			return(((sFraudRegisterInfo*)rec)->digest_realm);
 		case rf_ua:
-			return(((sFraudRegisterInfo*)rec)->ua.c_str());
+			return(((sFraudRegisterInfo*)rec)->ua);
 		}
 		return("");
 	}

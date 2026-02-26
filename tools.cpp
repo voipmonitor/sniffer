@@ -3808,11 +3808,11 @@ GroupIP *GroupsIP::getGroup(vmIP ip) {
 	return(NULL);
 }
 
-void ListPhoneNumber::addComb(string &number, ListPhoneNumber *negList) {
-	addComb(number.c_str(), negList);
+void ListPhoneNumber::addComb(string &number, ListPhoneNumber *negList, PhoneNumber::eTypeNumber type) {
+	addComb(number.c_str(), negList, type);
 }
 
-void ListPhoneNumber::addComb(const char *number, ListPhoneNumber *negList) {
+void ListPhoneNumber::addComb(const char *number, ListPhoneNumber *negList, PhoneNumber::eTypeNumber type) {
 	vector<string> delimiters = split(" |,|;|\t|\r|\n", "|");
 	vector<sNoSplitBorders> no_split_borders;
 	no_split_borders.push_back(sNoSplitBorders("R(", ")"));
@@ -3821,10 +3821,10 @@ void ListPhoneNumber::addComb(const char *number, ListPhoneNumber *negList) {
 	for(size_t i = 0; i < number_elems.size(); i++) {
 		if(number_elems[i][0] == '!') {
 			if(negList) {
-				negList->add(number_elems[i].substr(1).c_str());
+				negList->add(number_elems[i].substr(1).c_str(), type);
 			}
 		} else {
-			add(number_elems[i].c_str());
+			add(number_elems[i].c_str(), type);
 		}
 	}
 }
@@ -3907,20 +3907,20 @@ ListPhoneNumber_wb::ListPhoneNumber_wb(bool autoLock)
    black(autoLock) {
 }
 
-void ListPhoneNumber_wb::addWhite(string &number) {
-	white.addComb(number, &black);
+void ListPhoneNumber_wb::addWhite(string &number, PhoneNumber::eTypeNumber type) {
+	white.addComb(number, &black, type);
 }
 
-void ListPhoneNumber_wb::addWhite(const char *number) {
-	white.addComb(number, &black);
+void ListPhoneNumber_wb::addWhite(const char *number, PhoneNumber::eTypeNumber type) {
+	white.addComb(number, &black, type);
 }
 
-void ListPhoneNumber_wb::addBlack(string &number) {
-	black.addComb(number, &white);
+void ListPhoneNumber_wb::addBlack(string &number, PhoneNumber::eTypeNumber type) {
+	black.addComb(number, &white, type);
 }
 
-void ListPhoneNumber_wb::addBlack(const char *number) {
-	black.addComb(number, &white);
+void ListPhoneNumber_wb::addBlack(const char *number, PhoneNumber::eTypeNumber type) {
+	black.addComb(number, &white, type);
 }
 
 ListUA_wb::ListUA_wb(bool autoLock)

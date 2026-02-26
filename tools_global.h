@@ -9,6 +9,7 @@
 #include <vector>
 #include <queue>
 #include <map>
+#include <set>
 #include <regex.h>
 #include <zlib.h>
 #include <string.h>
@@ -695,6 +696,7 @@ std::vector<std::string> split(const char *s, const char *delim, bool enableTrim
 std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim = false, bool useEmptyItems = false, bool enableTrimString = true);
 std::vector<int> split2int(const std::string &s, char delim);
 std::vector<int> split2int(const std::string &s, std::vector<std::string> delim, bool enableTrim);
+void split2int(const std::string &s, std::vector<std::string> delim, set<int> *dst);
 std::vector<std::string> split2chars(const std::string &s);
 
 struct sNoSplitBorders {

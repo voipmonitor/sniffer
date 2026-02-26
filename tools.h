@@ -1547,21 +1547,102 @@ public:
 
 class PhoneNumber {
 public:
-	PhoneNumber(const char *number, bool prefix = true) {
+	enum eTypeNumber {
+		_tn_norm,
+		_tn_prefix,
+		_tn_suffix,
+		_tn_part,
+		_tn_regexp
+	};
+public:
+	PhoneNumber(const char *number, eTypeNumber type) {
 		this->number = number;
-		if(prefix && this->number.size() > 1 && this->number[0] != '%') {
-			while(this->number.size() > 1 && this->number[this->number.size() - 1] == '%') {
-				this->number.erase(this->number.length() - 1, 1);
+		interval = false;
+		interval_num_length = -1;
+		interval_from = -1;
+		interval_to = -1;
+		size_t intervalSeparator;
+		if((intervalSeparator = this->number.find('-')) != string::npos &&
+		   intervalSeparator > 0 && intervalSeparator < this->number.length() - 2) {
+			string from = this->number.substr(0, intervalSeparator);
+			string to = this->number.substr(intervalSeparator + 1);
+			from = trim(from);
+			to = trim(to);
+			unsigned eqLength = 0;
+			while(eqLength < from.length() && eqLength < to.length() &&
+			      from[eqLength] == to[eqLength]) {
+				++eqLength;
+			}
+			bool okOnlyDigit = true;
+			for(unsigned i = eqLength; i < from.length(); i++) {
+				if(!isdigit(from[i])) {
+					okOnlyDigit = false;
+				}
+			}
+			if(okOnlyDigit) {
+				for(unsigned i = eqLength; i < to.length(); i++) {
+					if(!isdigit(to[i])) {
+						okOnlyDigit = false;
+					}
+				}
+			}
+			if(okOnlyDigit) {
+				number_length = this->number.length();
+				boundLeft = true;
+				boundRight = true;
+				wildcard = 0;
+				interval = true;
+				interval_eq = from.substr(0, eqLength);
+				if(interval_eq.length() && interval_eq[0] == '%') {
+					interval_eq = interval_eq.substr(1);
+					boundLeft = false;
+				}
+				interval_num_length = max(from.length(), to.length()) - eqLength;
+				if(from.length() > eqLength) {
+					interval_from = atoi(from.c_str() + eqLength);
+				}
+				if(to.length() > eqLength) {
+					interval_to = atoi(to.c_str() + eqLength);
+				}
+				return;
+			}
+		}
+		if(this->number.size() > 1) {
+			if(type == _tn_prefix) {
+				if(this->number[0] != '%') {
+					while(this->number.size() > 1 && this->number[this->number.size() - 1] == '%') {
+						this->number.erase(this->number.length() - 1, 1);
+					}
+				}
+			} else if(type == _tn_suffix) {
+				if(this->number[this->number.size() - 1] != '%') {
+					while(this->number.size() > 1 && this->number[0] == '%') {
+						this->number.erase(0, 1);
+					}
+				}
+			} else if(type == _tn_part) {
+				while(this->number.size() > 1 && this->number[0] == '%') {
+					this->number.erase(0, 1);
+				}
+				while(this->number.size() > 1 && this->number[this->number.size() - 1] == '%') {
+					this->number.erase(this->number.length() - 1, 1);
+				}
 			}
 		}
 		number_length = this->number.length();
-		if(prefix && this->number.find_first_of("_%") == string::npos) {
-			boundLeft = true;
-			boundRight = false;
+		if(this->number.find_first_of("_%") == string::npos) {
+			boundLeft = type == _tn_norm || type == _tn_prefix;
+			boundRight = type == _tn_norm || type == _tn_suffix;
 			wildcard = 0;
 		} else {
-			if(prefix && this->number.size() && this->number[0] != '%' && this->number[this->number.size() - 1] != '%') {
-				this->number += '%';
+			if(this->number.size() && this->number[0] != '%' && this->number[this->number.size() - 1] != '%') {
+				if(type == _tn_prefix) {
+					this->number += '%';
+				} else if(type == _tn_suffix) {
+					this->number = '%' + this->number;
+				} else if(type == _tn_part) {
+					this->number = '%' + this->number + '%';
+				}
 			}
 			string _number = this->number;
 			boundLeft = true;
@@ -1584,6 +1665,42 @@ public:
 		}
 	}
 	bool checkNumber(const char *check_number) {
+		if(interval) {
+			unsigned check_length = strlen(check_number);
+			if(check_length <= interval_eq.length()) {
+				return(false);
+			}
+			if(interval_eq.length()) {
+				if(boundLeft && interval_num_length > 0) {
+					string strCmp = check_number;
+					strCmp = strCmp.substr(0, strCmp.length() - interval_num_length);
+					strCmp = strCmp.substr(strCmp.length() - interval_eq.length());
+					if(strcasecmp(interval_eq.c_str(), strCmp.c_str())) {
+						return(false);
+					}
+				} else {
+					if(strncasecmp(check_number, interval_eq.c_str(), interval_eq.length())) {
+						return(false);
+					}
+				}
+			}
+			if(boundLeft && interval_num_length > 0) {
+				if(check_length <= (unsigned)interval_num_length) {
+					return(false);
+				}
+				int checkNum = atoi(check_number + check_length - interval_num_length);
+				if(checkNum < interval_from || checkNum > interval_to) {
+					return(false);
+				}
+			} else {
+				int checkNum = atoi(string(check_number).substr(interval_eq.length(), interval_num_length).c_str());
+				if((interval_from >= 0 && checkNum < interval_from) ||
+				   (interval_to >= 0 && checkNum > interval_to)) {
+					return(false);
+				}
+			}
+			return(true);
+		}
 		if((boundLeft && boundRight) || wildcard == 2) {
 			return(wildcard ?
 				!strcasecmp_wildcard(check_number, number.c_str(), "_", "%") :
@@ -1616,6 +1733,11 @@ public:
 	bool boundLeft;
 	bool boundRight;
 	int wildcard;
+	bool interval;
+	std::string interval_eq;
+	int interval_num_length;
+	int interval_from;
+	int interval_to;
 };
 
 class UA {
@@ -1979,16 +2101,21 @@ public:
 			delete *iter;
 		}
 	}
-	void add(const char *number, bool prefix = true) {
+	void add(const char *number, PhoneNumber::eTypeNumber type) {
 		if(autoLock) lock();
 		if(number[0] == 'R' && number[1] == '(' && number[strlen(number) - 1] == ')') {
 			if(check_regexp(number)) {
 				cRegExp *regexp = new cRegExp(string(number).substr(2, strlen(number) - 3).c_str());
 				listRegExp.push_back(regexp);
 			}
+		} else if(type == PhoneNumber::_tn_regexp) {
+			if(check_regexp((string("R(") + number + ")").c_str())) {
+				cRegExp *regexp = new cRegExp(number);
+				listRegExp.push_back(regexp);
+			}
 		} else {
-			PhoneNumber pn(number, prefix);
-			if(!pn.wildcard && pn.boundLeft) {
+			PhoneNumber pn(number, type);
+			if(!pn.wildcard && !pn.interval && pn.boundLeft) {
 				if(pn.boundRight) {
 					listPhoneNumber.push_back(pn);
 				} else {
@@ -2000,8 +2127,8 @@ public:
 		}
 		if(autoLock) unlock();
 	}
-	void addComb(string &number, ListPhoneNumber *negList = NULL);
-	void addComb(const char *number, ListPhoneNumber *negList = NULL);
+	void addComb(string &number, ListPhoneNumber *negList, PhoneNumber::eTypeNumber type);
+	void addComb(const char *number, ListPhoneNumber *negList, PhoneNumber::eTypeNumber type);
 	bool checkNumber(const char *check_number) {
 		bool rslt =  false;
 		if(autoLock) lock();
@@ -2010,7 +2137,7 @@ public:
 				std::sort(listPhoneNumber.begin(), listPhoneNumber.end());
 				_listPhoneNumber_sorted = true;
 			}
-			std::vector<PhoneNumber>::iterator it_number = std::lower_bound(listPhoneNumber.begin(), listPhoneNumber.end(), PhoneNumber(check_number, false));
+			std::vector<PhoneNumber>::iterator it_number = std::lower_bound(listPhoneNumber.begin(), listPhoneNumber.end(), PhoneNumber(check_number, PhoneNumber::_tn_norm));
 			if(it_number != listPhoneNumber.end() && it_number->checkNumber(check_number)) {
 				rslt = true;
 			}
@@ -2020,7 +2147,7 @@ public:
 				std::sort (listPrefixes.begin(), listPrefixes.end());
 				_listPrefixes_sorted = true;
 			}
-			std::vector<PhoneNumber>::iterator it_prefix = std::lower_bound(listPrefixes.begin(), listPrefixes.end(), PhoneNumber(check_number, false));
+			std::vector<PhoneNumber>::iterator it_prefix = std::lower_bound(listPrefixes.begin(), listPrefixes.end(), PhoneNumber(check_number, PhoneNumber::_tn_norm));
 			if(it_prefix != listPrefixes.end() && it_prefix->checkNumber(check_number)) {
 				rslt = true;
 			} else if(it_prefix != listPrefixes.begin()) {
@@ -2216,10 +2343,10 @@ private:
 class ListPhoneNumber_wb {
 public:
 	ListPhoneNumber_wb(bool autoLock = true);
-	void addWhite(string &number);
-	void addWhite(const char *number);
-	void addBlack(string &number);
-	void addBlack(const char *number);
+	void addWhite(string &number, PhoneNumber::eTypeNumber type);
+	void addWhite(const char *number, PhoneNumber::eTypeNumber type);
+	void addBlack(string &number, PhoneNumber::eTypeNumber type);
+	void addBlack(const char *number, PhoneNumber::eTypeNumber type);
 	bool checkNumber(const char *check_number, bool *findInBlackList = NULL) {
 		if(findInBlackList) {
 			*findInBlackList = false;

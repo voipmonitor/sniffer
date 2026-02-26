@@ -13621,6 +13621,10 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				callFilters.push_back(new FILE_LINE(0) cCallFilter(filter.c_str()));
 			}
 		}
+		string form_filters = jsonParams.getValue("form_filters");
+		if(!form_filters.empty()) {
+			callFilters.push_back(new FILE_LINE(0) cCallFilter(form_filters.c_str()));
+		}
 	} else {
 		if(zip) {
 			*zip = false;

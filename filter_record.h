@@ -27,7 +27,7 @@ public:
 	virtual int64_t getField_int(void *rec);
 	virtual vmIP getField_ip(void *rec);
 	virtual double getField_float(void *rec);
-	virtual const char *getField_string(void *rec);
+	virtual string getField_string(void *rec);
 	virtual bool getField_bool(void *rec);
 	virtual vmPort getField_port(void *rec);
 public:
@@ -106,6 +106,34 @@ private:
 	ListIP_wb ipData;
 };
 
+class cRecordFilterItem_PhoneNumber : public cRecordFilterItem_base {
+public:
+	cRecordFilterItem_PhoneNumber(cRecordFilter *parent, unsigned recordFieldIndex)
+	 : cRecordFilterItem_base(parent, recordFieldIndex) {
+	}
+	void addWhite(const char *number, PhoneNumber::eTypeNumber type) {
+		phoneNumberData.addWhite(number, type);
+	}
+	void addWhite(const char *table, const char *column, const char * idstr, PhoneNumber::eTypeNumber type) {
+		vector<string> ids = split(idstr, ',');
+		for(unsigned i = 0; i < ids.size(); i++) {
+			addWhite(table, column, atol(ids[i].c_str()), type);
+		}
+	}
+	void addWhite(const char *table, const char *column, u_int32_t id, PhoneNumber::eTypeNumber type) {
+		setCodebook(table, column);
+		phoneNumberData.addWhite(getCodebookValue(id).c_str(), type);
+	}
+	bool check(void *rec, bool *findInBlackList = NULL) {
+		if(!phoneNumberData.checkNumber(getField_string(rec).c_str(), findInBlackList)) {
+			return(false);
+		}
+		return(true);
+	}
+protected:
+	ListPhoneNumber_wb phoneNumberData;
+};
+
 class cRecordFilterItem_CheckString : public cRecordFilterItem_base {
 public:
 	cRecordFilterItem_CheckString(cRecordFilter *parent, unsigned recordFieldIndex, bool enableSpaceSeparator = true)
@@ -126,8 +154,7 @@ public:
 		checkStringData.addWhite(getCodebookValue(id).c_str(), enableSpaceSeparator);
 	}
 	bool check(void *rec, bool *findInBlackList = NULL) {
-		if(!getField_string(rec) ||
-		   !checkStringData.check(getField_string(rec), findInBlackList)) {
+		if(!checkStringData.check(getField_string(rec).c_str(), findInBlackList)) {
 			return(false);
 		}
 		return(true);
@@ -271,7 +298,7 @@ public:
 	};
 public:
 	cRecordFilterItems(eCond cond = _or);
-	void addFilter(cRecordFilterItem_base *filter);
+	void addFilter(cRecordFilterItem_base *filter1, cRecordFilterItem_base *filter2 = NULL, cRecordFilterItem_base *filter3 = NULL);
 	void addFilter(cRecordFilterItems *group);
 	bool check(void *rec, bool *findInBlackList = NULL) {
 		if(findInBlackList) {
@@ -341,7 +368,7 @@ public:
 	void addFilter(cRecordFilterItem_base *filter1, cRecordFilterItem_base *filter2 = NULL, cRecordFilterItem_base *filter3 = NULL);
 	void addFilter(cRecordFilterItems *group);
 	bool check(void *rec) {
-		for(list<cRecordFilterItems>::iterator iter = gItems.begin(); iter !=gItems.end(); iter++) {
+		for(list<cRecordFilterItems>::iterator iter = gItems.begin(); iter != gItems.end(); iter++) {
 			bool _findInBlackList = false;
 			bool rsltCheck = iter->check(rec, &_findInBlackList);
 			if(_findInBlackList) {
@@ -374,7 +401,7 @@ public:
 			((RecordArray*)rec)->fields[recordFieldIndex].get_float() :
 			getField_int(rec, recordFieldIndex));
 	}
-	virtual const char *getField_string(void *rec, unsigned recordFieldIndex) {
+	virtual string getField_string(void *rec, unsigned recordFieldIndex) {
 		return(useRecordArray ?
 			((RecordArray*)rec)->fields[recordFieldIndex].get_string() :
 			"");
@@ -410,7 +437,7 @@ vmPort cRecordFilterItem_base::getField_port(void *rec) {
 bool cRecordFilterItem_base::getField_bool(void *rec) {
 	return(parent->getField_bool(rec, recordFieldIndex));
 }
-const char *cRecordFilterItem_base::getField_string(void *rec) {
+string cRecordFilterItem_base::getField_string(void *rec) {
 	return(parent->getField_string(rec, recordFieldIndex));
 }
 

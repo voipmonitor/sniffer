@@ -28,8 +28,20 @@ cRecordFilterItems::cRecordFilterItems(eCond cond) {
 	this->cond = cond;
 }
 
-void cRecordFilterItems::addFilter(cRecordFilterItem_base *filter) {
-	fItems.push_back(filter);
+void cRecordFilterItems::addFilter(cRecordFilterItem_base *filter1, cRecordFilterItem_base *filter2, cRecordFilterItem_base *filter3) {
+	if(!filter2 && !filter3) {
+		fItems.push_back(filter1);
+	} else {
+		cRecordFilterItems fSubItems;
+		fSubItems.addFilter(filter1);
+		if(filter2) {
+			fSubItems.addFilter(filter2);
+		}
+		if(filter3) {
+			fSubItems.addFilter(filter3);
+		}
+		gItems.push_back(fSubItems);
+	}
 }
 
 void cRecordFilterItems::addFilter(cRecordFilterItems *group) {

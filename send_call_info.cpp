@@ -162,14 +162,14 @@ bool SendCallInfoItem::load(SqlDb *sqlDb) {
 			}
 		}
 	}
-	phoneNumberCallerFilter.addWhite(dbRow["whitelist_number_caller"].c_str());
-	phoneNumberCallerFilter.addWhite(dbRow["whitelist_number_caller_group"].c_str());
-	phoneNumberCallerFilter.addBlack(dbRow["blacklist_number_caller"].c_str());
-	phoneNumberCallerFilter.addBlack(dbRow["blacklist_number_caller_group"].c_str());
-	phoneNumberCalledFilter.addWhite(dbRow["whitelist_number_called"].c_str());
-	phoneNumberCalledFilter.addWhite(dbRow["whitelist_number_called_group"].c_str());
-	phoneNumberCalledFilter.addBlack(dbRow["blacklist_number_called"].c_str());
-	phoneNumberCalledFilter.addBlack(dbRow["blacklist_number_called_group"].c_str());
+	phoneNumberCallerFilter.addWhite(dbRow["whitelist_number_caller"].c_str(), PhoneNumber::_tn_prefix);
+	phoneNumberCallerFilter.addWhite(dbRow["whitelist_number_caller_group"].c_str(), PhoneNumber::_tn_prefix);
+	phoneNumberCallerFilter.addBlack(dbRow["blacklist_number_caller"].c_str(), PhoneNumber::_tn_prefix);
+	phoneNumberCallerFilter.addBlack(dbRow["blacklist_number_caller_group"].c_str(), PhoneNumber::_tn_prefix);
+	phoneNumberCalledFilter.addWhite(dbRow["whitelist_number_called"].c_str(), PhoneNumber::_tn_prefix);
+	phoneNumberCalledFilter.addWhite(dbRow["whitelist_number_called_group"].c_str(), PhoneNumber::_tn_prefix);
+	phoneNumberCalledFilter.addBlack(dbRow["blacklist_number_called"].c_str(), PhoneNumber::_tn_prefix);
+	phoneNumberCalledFilter.addBlack(dbRow["blacklist_number_called_group"].c_str(), PhoneNumber::_tn_prefix);
 	ipCallerFilter.addWhite(dbRow["whitelist_ip_caller"].c_str());
 	ipCallerFilter.addWhite(dbRow["whitelist_ip_caller_group"].c_str());
 	ipCallerFilter.addBlack(dbRow["blacklist_ip_caller"].c_str());

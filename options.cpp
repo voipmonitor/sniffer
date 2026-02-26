@@ -1329,10 +1329,10 @@ void cSipMsgRelations::loadParams(sParams *params) {
 			recordParams.ip_src.addComb(dbRow["ip_src_group"].c_str());
 			recordParams.ip_dst.addComb(dbRow["ip_dst"].c_str());
 			recordParams.ip_dst.addComb(dbRow["ip_dst_group"].c_str());
-			recordParams.number_src.addComb(dbRow["number_src"].c_str());
-			recordParams.number_src.addComb(dbRow["number_src_group"].c_str());
-			recordParams.number_dst.addComb(dbRow["number_dst"].c_str());
-			recordParams.number_dst.addComb(dbRow["number_dst_group"].c_str());
+			recordParams.number_src.addComb(dbRow["number_src"].c_str(), NULL, PhoneNumber::_tn_prefix);
+			recordParams.number_src.addComb(dbRow["number_src_group"].c_str(), NULL, PhoneNumber::_tn_prefix);
+			recordParams.number_dst.addComb(dbRow["number_dst"].c_str(), NULL, PhoneNumber::_tn_prefix);
+			recordParams.number_dst.addComb(dbRow["number_dst_group"].c_str(), NULL, PhoneNumber::_tn_prefix);
 			recordParams.domain_src.addComb(dbRow["domain_src"].c_str());
 			recordParams.domain_src.addComb(dbRow["domain_src_group"].c_str());
 			recordParams.domain_dst.addComb(dbRow["domain_dst"].c_str());

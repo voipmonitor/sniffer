@@ -18,21 +18,50 @@ bool cRecordFilterItem_CustomHeader::check(void *rec, bool *findInBlackList) {
 }
 
 
+cRecordFilterItem_Call::cRecordFilterItem_Call(cRecordFilter *parent, eTypeFilter typeFilter, const char *filter)
+ : cRecordFilterItem_rec(parent) {
+	this->typeFilter = typeFilter;
+	this->filter = filter ? filter : "";
+	if(typeFilter == _tf_codec ||
+	   typeFilter == _tf_codec_exclude) {
+		split2int(this->filter, split(",|;|\n", '|'), &filter_int);
+	}
+}
+
 bool cRecordFilterItem_Call::check(void *rec, bool */*findInBlackList*/) {
-	if(custom_headers_cdr) {
-		map<string, string> custom_headers;
-		custom_headers_cdr->getHeaderValues((Call*)rec, INVITE, &custom_headers);
-		string filter_data = filter;
-		size_t pos[2];
-		while((pos[0] = filter_data.find("{{")) != string::npos &&
-		      (pos[1] = filter_data.find("}}", pos[0])) != string::npos) {
-			string field = filter_data.substr(pos[0] + 2, pos[1] - pos[0] - 2);
-			map<string, string>::iterator iter = custom_headers.find(field);
-			string value = iter != custom_headers.end() ? iter->second : "";
-			filter_data = filter_data.substr(0, pos[0]) + "'" + value + "'" + filter_data.substr(pos[1] + 2);
+	if(typeFilter == _tf_codec ||
+	   typeFilter == _tf_codec_exclude ||
+	   typeFilter == _tf_codec_ab_eq ||
+	   typeFilter == _tf_codec_ab_diff) {
+		int a_codec = ((Call*)rec)->last_callercodec;
+		int b_codec = ((Call*)rec)->last_calledcodec;
+		if(typeFilter == _tf_codec) {
+			return((a_codec >= 0 && filter_int.find(a_codec) != filter_int.end()) ||
+			       (b_codec >= 0 && filter_int.find(b_codec) != filter_int.end()));
+		} else if(typeFilter == _tf_codec_exclude) {
+			return(filter_int.find(a_codec) == filter_int.end() &&
+			       filter_int.find(b_codec) == filter_int.end());
+		} else if(typeFilter == _tf_codec_ab_eq) {
+			return(a_codec >= 0 && a_codec == b_codec);
+		} else if(typeFilter == _tf_codec_ab_diff) {
+			return(a_codec >= 0 && b_codec >= 0 && a_codec != b_codec);
 		}
-		cEvalFormula f(cEvalFormula::_est_na);
-		return(f.e(filter_data.c_str()).getBool());
+	} else if(typeFilter == _tf_custom_headers_cond) {
+		if(custom_headers_cdr) {
+			map<string, string> custom_headers;
+			custom_headers_cdr->getHeaderValues((Call*)rec, INVITE, &custom_headers);
+			string filter_data = filter;
+			size_t pos[2];
+			while((pos[0] = filter_data.find("{{")) != string::npos &&
+			      (pos[1] = filter_data.find("}}", pos[0])) != string::npos) {
+				string field = filter_data.substr(pos[0] + 2, pos[1] - pos[0] - 2);
+				map<string, string>::iterator iter = custom_headers.find(field);
+				string value = iter != custom_headers.end() ? iter->second : "";
+				filter_data = filter_data.substr(0, pos[0]) + "'" + value + "'" + filter_data.substr(pos[1] + 2);
+			}
+			cEvalFormula f(cEvalFormula::_est_na);
+			return(f.e(filter_data.c_str()).getBool());
+		}
 	}
 	return(true);
 }
@@ -60,13 +89,21 @@ void cCallFilter::setFilter(const char *filter) {
 		cRecordFilterItem_calldate *filter = new FILE_LINE(0) cRecordFilterItem_calldate(this, cf_calldate, atol(filterData["calldate"].c_str()), cRecordFilterItem_base::_ge);
 		addFilter(filter);
 	}
+	if(!filterData["calldate_from"].empty()) {
+		cRecordFilterItem_calldate *filter = new FILE_LINE(0) cRecordFilterItem_calldate(this, cf_calldate, atol(filterData["calldate_from"].c_str()), cRecordFilterItem_base::_ge);
+		addFilter(filter);
+	}
+	if(!filterData["calldate_to"].empty()) {
+		cRecordFilterItem_calldate *filter = new FILE_LINE(0) cRecordFilterItem_calldate(this, cf_calldate, atol(filterData["calldate_to"].c_str()), cRecordFilterItem_base::_lt);
+		addFilter(filter);
+	}
 	if(!filterData["sipcallerip"].empty() &&
 	   filterData["sipcallerdip_type"] == "0") {
 		cRecordFilterItem_IP *filter1 =  new FILE_LINE(0) cRecordFilterItem_IP(this, cf_callerip);
 		filter1->addWhite(filterData["sipcallerip"].c_str());
 		cRecordFilterItem_IP *filter2 = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_calledip);
 		filter2->addWhite(filterData["sipcallerip"].c_str());
-		if(!filterData["fsipcallerdip_with_proxy"].empty() && is_true(filterData["fsipcallerdip_with_proxy"].c_str())) {
+		if(!filterData["sipcallerdip_with_proxy"].empty() && is_true(filterData["sipcallerdip_with_proxy"].c_str())) {
 			cRecordFilterItem_CallProxy *filter3 = new FILE_LINE(0) cRecordFilterItem_CallProxy(this);
 			filter3->addWhite(filterData["sipcallerip"].c_str());
 			addFilter(filter1, filter2, filter3);
@@ -78,11 +115,92 @@ void cCallFilter::setFilter(const char *filter) {
 		if(!filterData["sipcallerip"].empty()) {
 			cRecordFilterItem_IP *filter = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_callerip);
 			filter->addWhite(filterData["sipcallerip"].c_str());
-			gItems.addFilter(filter);
+			if(!filterData["sipcallerdip_with_proxy"].empty() && is_true(filterData["sipcallerdip_with_proxy"].c_str())) {
+				cRecordFilterItem_CallProxy *filter_proxy = new FILE_LINE(0) cRecordFilterItem_CallProxy(this);
+				filter_proxy->addWhite(filterData["sipcallerip"].c_str());
+				gItems.addFilter(filter, filter_proxy);
+			} else {
+				gItems.addFilter(filter);
+			}
 		}
 		if(!filterData["sipcalledip"].empty()) {
 			cRecordFilterItem_IP *filter = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_calledip);
 			filter->addWhite(filterData["sipcalledip"].c_str());
+			if(!filterData["sipcallerdip_with_proxy"].empty() && is_true(filterData["sipcallerdip_with_proxy"].c_str())) {
+				cRecordFilterItem_CallProxy *filter_proxy = new FILE_LINE(0) cRecordFilterItem_CallProxy(this);
+				filter_proxy->addWhite(filterData["sipcalledip"].c_str());
+				gItems.addFilter(filter, filter_proxy);
+			} else {
+				gItems.addFilter(filter);
+			}
+		}
+		if(gItems.isSet()) {
+			addFilter(&gItems);
+		}
+	}
+	if(!filterData["proxyip"].empty()) {
+		cRecordFilterItem_CallProxy *filter = new FILE_LINE(0) cRecordFilterItem_CallProxy(this);
+		filter->addWhite(filterData["proxyip"].c_str());
+		addFilter(filter);
+	}
+	if(!filterData["sipcallerip_group_id"].empty() &&
+	   filterData["sipcallerdip_group_id_type"] == "0") {
+		cRecordFilterItem_IP *filter1 =  new FILE_LINE(0) cRecordFilterItem_IP(this, cf_callerip);
+		filter1->addWhite("cb_ip_groups", "ip", filterData["sipcallerip_group_id"].c_str());
+		cRecordFilterItem_IP *filter2 = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_calledip);
+		filter2->addWhite("cb_ip_groups", "ip", filterData["sipcallerip_group_id"].c_str());
+		if(!filterData["sipcallerdip_with_proxy"].empty() && is_true(filterData["sipcallerdip_with_proxy"].c_str())) {
+			cRecordFilterItem_CallProxy *filter3 = new FILE_LINE(0) cRecordFilterItem_CallProxy(this);
+			filter3->addWhite("cb_ip_groups", "ip", filterData["sipcallerip_group_id"].c_str());
+			addFilter(filter1, filter2, filter3);
+		} else {
+			addFilter(filter1, filter2);
+		}
+	} else {
+		cRecordFilterItems gItems(cRecordFilterItems::_and);
+		if(!filterData["sipcallerip_group_id"].empty()) {
+			cRecordFilterItem_IP *filter = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_callerip);
+			filter->addWhite("cb_ip_groups", "ip", filterData["sipcallerip_group_id"].c_str());
+			if(!filterData["sipcallerdip_with_proxy"].empty() && is_true(filterData["sipcallerdip_with_proxy"].c_str())) {
+				cRecordFilterItem_CallProxy *filter_proxy = new FILE_LINE(0) cRecordFilterItem_CallProxy(this);
+				filter_proxy->addWhite("cb_ip_groups", "ip", filterData["sipcallerip_group_id"].c_str());
+				gItems.addFilter(filter, filter_proxy);
+			} else {
+				gItems.addFilter(filter);
+			}
+		}
+		if(!filterData["sipcalledip_group_id"].empty()) {
+			cRecordFilterItem_IP *filter = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_calledip);
+			filter->addWhite("cb_ip_groups", "ip", filterData["sipcalledip_group_id"].c_str());
+			if(!filterData["sipcallerdip_with_proxy"].empty() && is_true(filterData["sipcallerdip_with_proxy"].c_str())) {
+				cRecordFilterItem_CallProxy *filter_proxy = new FILE_LINE(0) cRecordFilterItem_CallProxy(this);
+				filter_proxy->addWhite("cb_ip_groups", "ip", filterData["sipcalledip_group_id"].c_str());
+				gItems.addFilter(filter, filter_proxy);
+			} else {
+				gItems.addFilter(filter);
+			}
+		}
+		if(gItems.isSet()) {
+			addFilter(&gItems);
+		}
+	}
+	if(!filterData["country_code_sipcallerip"].empty() &&
+	   filterData["country_code_sipcallerdip_type"] == "0") {
+		cRecordFilterItem_CheckString *filter1 =  new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_callerip_country);
+		filter1->addWhite(filterData["country_code_sipcallerip"].c_str());
+		cRecordFilterItem_CheckString *filter2 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calledip_country);
+		filter2->addWhite(filterData["country_code_sipcallerip"].c_str());
+		addFilter(filter1, filter2);
+	} else {
+		cRecordFilterItems gItems(cRecordFilterItems::_and);
+		if(!filterData["country_code_sipcallerip"].empty()) {
+			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_callerip_country);
+			filter->addWhite(filterData["country_code_sipcallerip"].c_str());
+			gItems.addFilter(filter);
+		}
+		if(!filterData["country_code_sipcalledip"].empty()) {
+			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calledip_country);
+			filter->addWhite(filterData["country_code_sipcalledip"].c_str());
 			gItems.addFilter(filter);
 		}
 		if(gItems.isSet()) {
@@ -112,23 +230,116 @@ void cCallFilter::setFilter(const char *filter) {
 			addFilter(&gItems);
 		}
 	}
+	if(!filterData["a_saddr"].empty() &&
+	   filterData["ab_saddr_type"] == "0") {
+		cRecordFilterItem_IP *filter1 =  new FILE_LINE(0) cRecordFilterItem_IP(this, cf_rtp_src);
+		filter1->addWhite(filterData["a_saddr"].c_str());
+		cRecordFilterItem_IP *filter2 = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_rtp_dst);
+		filter2->addWhite(filterData["a_saddr"].c_str());
+		addFilter(filter1, filter2);
+	} else {
+		cRecordFilterItems gItems(cRecordFilterItems::_and);
+		if(!filterData["a_saddr"].empty()) {
+			cRecordFilterItem_IP *filter = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_rtp_src);
+			filter->addWhite(filterData["a_saddr"].c_str());
+			gItems.addFilter(filter);
+		}
+		if(!filterData["b_saddr"].empty()) {
+			cRecordFilterItem_IP *filter = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_rtp_dst);
+			filter->addWhite(filterData["b_saddr"].c_str());
+			gItems.addFilter(filter);
+		}
+		if(gItems.isSet()) {
+			addFilter(&gItems);
+		}
+	}
+	if(!filterData["a_saddr_group_id"].empty() &&
+	   filterData["ab_saddr_group_id_type"] == "0") {
+		cRecordFilterItem_IP *filter1 =  new FILE_LINE(0) cRecordFilterItem_IP(this, cf_rtp_src);
+		filter1->addWhite("cb_ip_groups", "ip", filterData["a_saddr_group_id"].c_str());
+		cRecordFilterItem_IP *filter2 = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_rtp_dst);
+		filter2->addWhite("cb_ip_groups", "ip", filterData["a_saddr_group_id"].c_str());
+		addFilter(filter1, filter2);
+	} else {
+		cRecordFilterItems gItems(cRecordFilterItems::_and);
+		if(!filterData["a_saddr_group_id"].empty()) {
+			cRecordFilterItem_IP *filter = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_rtp_src);
+			filter->addWhite("cb_ip_groups", "ip", filterData["a_saddr_group_id"].c_str());
+			gItems.addFilter(filter);
+		}
+		if(!filterData["b_saddr_group_id"].empty()) {
+			cRecordFilterItem_IP *filter = new FILE_LINE(0) cRecordFilterItem_IP(this, cf_rtp_dst);
+			filter->addWhite("cb_ip_groups", "ip", filterData["b_saddr_group_id"].c_str());
+			gItems.addFilter(filter);
+		}
+		if(gItems.isSet()) {
+			addFilter(&gItems);
+		}
+	}
+	PhoneNumber::eTypeNumber callerd_search_type = (PhoneNumber::eTypeNumber)atoi(filterData["callerd_search_type"].c_str());
 	if(!filterData["caller"].empty() &&
 	   filterData["callerd_type"] == "0") {
-		cRecordFilterItem_CheckString *filter1 =  new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_caller);
-		filter1->addWhite(filterData["caller"].c_str());
-		cRecordFilterItem_CheckString *filter2 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_called);
-		filter2->addWhite(filterData["caller"].c_str());
+		cRecordFilterItem_PhoneNumber *filter1 =  new FILE_LINE(0) cRecordFilterItem_PhoneNumber(this, cf_caller);
+		filter1->addWhite(filterData["caller"].c_str(), callerd_search_type);
+		cRecordFilterItem_PhoneNumber *filter2 = new FILE_LINE(0) cRecordFilterItem_PhoneNumber(this, cf_called);
+		filter2->addWhite(filterData["caller"].c_str(), callerd_search_type);
 		addFilter(filter1, filter2);
 	} else {
 		cRecordFilterItems gItems(cRecordFilterItems::_and);
 		if(!filterData["caller"].empty()) {
-			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_caller);
-			filter->addWhite(filterData["caller"].c_str());
+			cRecordFilterItem_PhoneNumber *filter = new FILE_LINE(0) cRecordFilterItem_PhoneNumber(this, cf_caller);
+			filter->addWhite(filterData["caller"].c_str(), callerd_search_type);
 			gItems.addFilter(filter);
 		}
 		if(!filterData["called"].empty()) {
-			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_called);
-			filter->addWhite(filterData["called"].c_str());
+			cRecordFilterItem_PhoneNumber *filter = new FILE_LINE(0) cRecordFilterItem_PhoneNumber(this, cf_called);
+			filter->addWhite(filterData["called"].c_str(), callerd_search_type);
+			gItems.addFilter(filter);
+		}
+		if(gItems.isSet()) {
+			addFilter(&gItems);
+		}
+	}
+	if(!filterData["country_code_caller"].empty() &&
+	   filterData["country_code_callerd_type"] == "0") {
+		cRecordFilterItem_CheckString *filter1 =  new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_caller_country);
+		filter1->addWhite(filterData["country_code_caller"].c_str());
+		cRecordFilterItem_CheckString *filter2 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_called_country);
+		filter2->addWhite(filterData["country_code_caller"].c_str());
+		addFilter(filter1, filter2);
+	} else {
+		cRecordFilterItems gItems(cRecordFilterItems::_and);
+		if(!filterData["country_code_caller"].empty()) {
+			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_caller_country);
+			filter->addWhite(filterData["country_code_caller"].c_str());
+			gItems.addFilter(filter);
+		}
+		if(!filterData["country_code_called"].empty()) {
+			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_called_country);
+			filter->addWhite(filterData["country_code_called"].c_str());
+			gItems.addFilter(filter);
+		}
+		if(gItems.isSet()) {
+			addFilter(&gItems);
+		}
+	}
+	if(!filterData["caller_group_id"].empty() &&
+	   filterData["callerd_group_id_type"] == "0") {
+		cRecordFilterItem_PhoneNumber *filter1 =  new FILE_LINE(0) cRecordFilterItem_PhoneNumber(this, cf_caller);
+		filter1->addWhite("cb_number_groups", "number", filterData["caller_group_id"].c_str(), PhoneNumber::_tn_prefix);
+		cRecordFilterItem_PhoneNumber *filter2 = new FILE_LINE(0) cRecordFilterItem_PhoneNumber(this, cf_called);
+		filter2->addWhite("cb_number_groups", "number", filterData["caller_group_id"].c_str(), PhoneNumber::_tn_prefix);
+		addFilter(filter1, filter2);
+	} else {
+		cRecordFilterItems gItems(cRecordFilterItems::_and);
+		if(!filterData["caller_group_id"].empty()) {
+			cRecordFilterItem_PhoneNumber *filter = new FILE_LINE(0) cRecordFilterItem_PhoneNumber(this, cf_caller);
+			filter->addWhite("cb_number_groups", "number", filterData["caller_group_id"].c_str(), PhoneNumber::_tn_prefix);
+			gItems.addFilter(filter);
+		}
+		if(!filterData["called_group_id"].empty()) {
+			cRecordFilterItem_PhoneNumber *filter = new FILE_LINE(0) cRecordFilterItem_PhoneNumber(this, cf_called);
+			filter->addWhite("cb_number_groups", "number", filterData["called_group_id"].c_str(), PhoneNumber::_tn_prefix);
 			gItems.addFilter(filter);
 		}
 		if(gItems.isSet()) {
@@ -181,10 +392,56 @@ void cCallFilter::setFilter(const char *filter) {
 			addFilter(&gItems);
 		}
 	}
+	if(!filterData["caller_agent_group_id"].empty() &&
+	   filterData["callerd_agent_group_id_type"] == "0") {
+		cRecordFilterItem_CheckString *filter1 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calleragent, false);
+		filter1->addWhite("cb_ua_groups", "ua", filterData["caller_agent_group_id"].c_str());
+		cRecordFilterItem_CheckString *filter2 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calledagent, false);
+		filter2->addWhite("cb_ua_groups", "ua", filterData["caller_agent_group_id"].c_str());
+		addFilter(filter1, filter2);
+	} else {
+		cRecordFilterItems gItems(cRecordFilterItems::_and);
+		if(!filterData["caller_agent_group_id"].empty()) {
+			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calleragent, false);
+			filter->addWhite("cb_ua_groups", "ua", filterData["caller_agent_group_id"].c_str());
+			gItems.addFilter(filter);
+		}
+		if(!filterData["called_agent_group_id"].empty()) {
+			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calledagent, false);
+			filter->addWhite("cb_ua_groups", "ua", filterData["called_agent_group_id"].c_str());
+			gItems.addFilter(filter);
+		}
+		if(gItems.isSet()) {
+			addFilter(&gItems);
+		}
+	}
 	if(!filterData["callid"].empty()) {
 		cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_callid);
 		filter->addWhite(filterData["callid"].c_str());
 		addFilter(filter);
+	}
+	if(!filterData["callername"].empty()) {
+		cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_callername);
+		filter->addWhite(filterData["callername"].c_str());
+		addFilter(filter);
+	}
+	if(!filterData["codec"].empty()) {
+		cRecordFilterItem_Call *filter = new FILE_LINE(0) cRecordFilterItem_Call(this, cRecordFilterItem_Call::_tf_codec, filterData["codec"].c_str());
+		addFilter(filter);
+	}
+	if(!filterData["exclude_codec"].empty()) {
+		cRecordFilterItem_Call *filter = new FILE_LINE(0) cRecordFilterItem_Call(this, cRecordFilterItem_Call::_tf_codec_exclude, filterData["exclude_codec"].c_str());
+		addFilter(filter);
+	}
+	if(!filterData["codec_compare"].empty()) {
+		if(atoi(filterData["codec_compare"].c_str()) == 1) {
+			cRecordFilterItem_Call *filter = new FILE_LINE(0) cRecordFilterItem_Call(this, cRecordFilterItem_Call::_tf_codec_ab_eq, NULL);
+			addFilter(filter);
+		}
+		if(atoi(filterData["codec_compare"].c_str()) == 2) {
+			cRecordFilterItem_Call *filter = new FILE_LINE(0) cRecordFilterItem_Call(this, cRecordFilterItem_Call::_tf_codec_ab_diff, NULL);
+			addFilter(filter);
+		}
 	}
 	if(!filterData["sensor_id"].empty()) {
 		cRecordFilterItem_numList *filter = new FILE_LINE(0) cRecordFilterItem_numList(this, cf_id_sensor);
@@ -216,7 +473,7 @@ void cCallFilter::setFilter(const char *filter) {
 			}
 		}
 		if(!filterData["custom_headers_cdr_cond"].empty()) {
-			cRecordFilterItem_Call *filter = new FILE_LINE(0) cRecordFilterItem_Call(this, filterData["custom_headers_cdr_cond"].c_str());
+			cRecordFilterItem_Call *filter = new FILE_LINE(0) cRecordFilterItem_Call(this, cRecordFilterItem_Call::_tf_custom_headers_cond, filterData["custom_headers_cdr_cond"].c_str());
 			addFilter(filter);
 		}
 	}
@@ -279,7 +536,7 @@ void cUserRestriction::apply() {
 	}
 	if(!src_number.empty()) {
 		cond_number = new FILE_LINE(0) ListPhoneNumber;
-		cond_number->add(src_number.c_str());
+		cond_number->add(src_number.c_str(), PhoneNumber::_tn_prefix);
 	}
 	if(!src_domain.empty()) {
 		cond_domain = new FILE_LINE(0) ListCheckString;

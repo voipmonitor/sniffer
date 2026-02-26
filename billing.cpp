@@ -98,7 +98,8 @@ void cBillingAssignment::loadCond(SqlDb *sqlDb) {
 		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
 		while((row = rows.fetchRow())) {
-			list_number.add(row["number"].c_str(), !atoi(row["fixed"].c_str()));
+			list_number.add(row["number"].c_str(),
+					atoi(row["fixed"].c_str()) ? PhoneNumber::_tn_norm : PhoneNumber::_tn_prefix);
 		}
 	}
 	if(typeAssignment == _billing_ta_customer) {
@@ -392,10 +393,12 @@ void cBillingExclude::load(SqlDb *sqlDb) {
 		SqlDb_row row;
 		while((row = rows.fetchRow())) {
 			if(row["side"] == "src" || row["side"] == "both") {
-				list_number_src.add(row["number"].c_str(), !atoi(row["fixed"].c_str()));
+				list_number_src.add(row["number"].c_str(), 
+						    atoi(row["fixed"].c_str()) ? PhoneNumber::_tn_norm : PhoneNumber::_tn_prefix);
 			}
 			if(row["side"] == "dst" || row["side"] == "both") {
-				list_number_dst.add(row["number"].c_str(), !atoi(row["fixed"].c_str()));
+				list_number_dst.add(row["number"].c_str(),
+						    atoi(row["fixed"].c_str()) ? PhoneNumber::_tn_norm : PhoneNumber::_tn_prefix);
 			}
 		}
 	}

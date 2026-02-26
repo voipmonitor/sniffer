@@ -904,7 +904,7 @@ void check_check_phone_number() {
 	int fails = 0;
 	for(size_t i = 0; i < cases_size; ++i) {
 		const check_check_phone_number_case& c = cases[i];
-		PhoneNumber pn(c.pattern, c.prefix);
+		PhoneNumber pn(c.pattern, c.prefix ? PhoneNumber::_tn_prefix : PhoneNumber::_tn_norm);
 		bool got = pn.checkNumber(c.input);
 		if(got != c.expect) {
 			cout << "[TEST " << (i+1) << "] pat=\"" << c.pattern << "\""
@@ -930,7 +930,7 @@ void check_check_phone_number() {
 	fails = 0;
 	for(size_t i = 0; i < cases_size; ++i) {
 		const check_check_phone_number_case& c = cases[i];
-		PhoneNumber pn(c.pattern, c.prefix);
+		PhoneNumber pn(c.pattern, c.prefix ? PhoneNumber::_tn_prefix : PhoneNumber::_tn_norm);
 		bool got = strstr_wildcard(c.input, c.pattern, "_", "%", true);
 		if(got != c.expect_strstr) {
 			cout << "[TEST " << (i+1) << "] pat=\"" << c.pattern << "\""
@@ -956,7 +956,7 @@ void check_check_phone_number() {
 	fails = 0;
 	for(size_t i = 0; i < cases_size; ++i) {
 		const check_check_phone_number_case& c = cases[i];
-		PhoneNumber pn(c.pattern, c.prefix);
+		PhoneNumber pn(c.pattern, c.prefix ? PhoneNumber::_tn_prefix : PhoneNumber::_tn_norm);
 		bool got = str_like(c.input, c.pattern);
 		if(got != c.expect_strlike) {
 		cout << "[TEST " << (i+1) << "] pat=\"" << c.pattern << "\""

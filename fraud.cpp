@@ -489,16 +489,16 @@ bool FraudAlert::loadAlert(bool *useUserRestriction, bool *useUserRestriction_cu
 				       _cond12_and;
 	}
 	if(defFilterNumber()) {
-		phoneNumberFilter.addWhite(dbRow["fraud_whitelist_number"].c_str());
-		phoneNumberFilter.addWhite(dbRow["fraud_whitelist_number_g"].c_str());
-		phoneNumberFilter.addBlack(dbRow["fraud_blacklist_number"].c_str());
-		phoneNumberFilter.addBlack(dbRow["fraud_blacklist_number_g"].c_str());
+		phoneNumberFilter.addWhite(dbRow["fraud_whitelist_number"].c_str(), PhoneNumber::_tn_prefix);
+		phoneNumberFilter.addWhite(dbRow["fraud_whitelist_number_g"].c_str(), PhoneNumber::_tn_prefix);
+		phoneNumberFilter.addBlack(dbRow["fraud_blacklist_number"].c_str(), PhoneNumber::_tn_prefix);
+		phoneNumberFilter.addBlack(dbRow["fraud_blacklist_number_g"].c_str(), PhoneNumber::_tn_prefix);
 	}
 	if(defFilterNumber2()) {
-		phoneNumberFilter2.addWhite(dbRow["fraud_whitelist_number_2"].c_str());
-		phoneNumberFilter2.addWhite(dbRow["fraud_whitelist_number_2_g"].c_str());
-		phoneNumberFilter2.addBlack(dbRow["fraud_blacklist_number_2"].c_str());
-		phoneNumberFilter2.addBlack(dbRow["fraud_blacklist_number_2_g"].c_str());
+		phoneNumberFilter2.addWhite(dbRow["fraud_whitelist_number_2"].c_str(), PhoneNumber::_tn_prefix);
+		phoneNumberFilter2.addWhite(dbRow["fraud_whitelist_number_2_g"].c_str(), PhoneNumber::_tn_prefix);
+		phoneNumberFilter2.addBlack(dbRow["fraud_blacklist_number_2"].c_str(), PhoneNumber::_tn_prefix);
+		phoneNumberFilter2.addBlack(dbRow["fraud_blacklist_number_2_g"].c_str(), PhoneNumber::_tn_prefix);
 	}
 	if(defFilterNumberCondition12()) {
 		phoneNumberFilterCondition12 = dbRow["fraud_number_condition_12"] == "and" ? _cond12_and :

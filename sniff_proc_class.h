@@ -1182,6 +1182,22 @@ public:
 		return(true);
 	}
 	inline void push_packet_to_rtp_delay_queue(packet_s_process *packetS) {
+		#if EXPERIMENTAL_CHECK_TID_IN_PUSH
+		static __thread unsigned _tid = 0;
+		if(!_tid) {
+			_tid = get_unix_tid();
+		}
+		if(!push_thread) {
+			push_thread = _tid;
+		} else if(push_thread != _tid) {
+			u_int64_t time = getTimeMS_rdtsc();
+			if(time > last_race_log[0] + 1000) {
+				syslog(LOG_ERR, "race in %s %s %i (%i != %i)", getNameTypeThread().c_str(), __FILE__, __LINE__, push_thread, _tid);
+				last_race_log[0] = time;
+			}
+			push_thread = _tid;
+		}
+		#endif
 		extern bool use_push_batch_limit_ms;
 		u_int64_t time_us = use_push_batch_limit_ms ? packetS->getTimeUS() : 0;
 		if(!rtp_delay_queue_push_item) {
