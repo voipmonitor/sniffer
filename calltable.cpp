@@ -7905,6 +7905,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		sIPFixQosStreamStat *ipfix_qos_streams_ab[2] = { NULL, NULL };
 		ipfixData.findAB(ipfix_qos_streams_ab);
 		int payload_rslt = -1;
+		int mos_mult10_min = -1;
+		int packet_loss_perc_mult1000_max = -1;
+		int jitter_mult10_max = -1;
 		for(int i = 0; i < 2; i++) {
 			if(!ipfix_qos_streams_ab[i]) continue;
 			string c = i == 0 ? "a" : "b";
@@ -7917,14 +7920,41 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr.add(ipfix_qos_streams_ab[i]->SrcIP, c+"_saddr", false, sqlDbSaveCall, sql_cdr_table);
 			cdr.add(LIMIT_MEDIUMINT_UNSIGNED(ipfix_qos_streams_ab[i]->RtpPackets), c+"_received");
 			cdr.add(LIMIT_MEDIUMINT_UNSIGNED(ipfix_qos_streams_ab[i]->RtpLostPackets), c+"_lost");
-			cdr.add(LIMIT_TINYINT_UNSIGNED(ipfix_qos_streams_ab[i]->Mos/10), c+"_mos_f2_mult10");
+			cdr.add(LIMIT_TINYINT_UNSIGNED((int)round((double)ipfix_qos_streams_ab[i]->Mos/10)), c+"_mos_f2_mult10");
+			int ticks_bycodec;
 			if(opt_ipfix_qos_fill_jitter) {
-				int ticks_bycodec = get_ticks_bycodec(ipfix_qos_streams_ab[i]->CodecType);
+				ticks_bycodec = get_ticks_bycodec(ipfix_qos_streams_ab[i]->CodecType);
 				cdr.add(LIMIT_SMALLINT_UNSIGNED(round((double)ipfix_qos_streams_ab[i]->RtpMaxJitter / ticks_bycodec)), c+"_maxjitter");
 				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(round((double)ipfix_qos_streams_ab[i]->RtpAvgJitter / ticks_bycodec) * 10), c+"_avgjitter_mult10");
 				cdr.add(LIMIT_SMALLINT_UNSIGNED(round((double)ipfix_qos_streams_ab[i]->RtcpMaxJitter / ticks_bycodec)), c+"_rtcp_maxjitter");
 				cdr.add(LIMIT_SMALLINT_UNSIGNED(round((double)ipfix_qos_streams_ab[i]->RtcpAvgJitter / ticks_bycodec) * 10), c+"_rtcp_avgjitter_mult10");
 			}
+			int _mos_mult_10 = (int)round((double)ipfix_qos_streams_ab[i]->Mos/10);
+			if(mos_mult10_min < 0 || _mos_mult_10 < mos_mult10_min) {
+				mos_mult10_min = _mos_mult_10;
+			}
+			u_int32_t total_packets = ipfix_qos_streams_ab[i]->RtpPackets + ipfix_qos_streams_ab[i]->RtpLostPackets;
+			if(total_packets > 0) {
+				int _packet_loss_perc_mult1000 = (int)round((double)ipfix_qos_streams_ab[i]->RtpLostPackets / total_packets * 100 * 1000);
+				if(_packet_loss_perc_mult1000 > packet_loss_perc_mult1000_max) {
+					packet_loss_perc_mult1000_max = _packet_loss_perc_mult1000;
+				}
+			}
+			if(opt_ipfix_qos_fill_jitter) {
+				int _jitter_mult10 = (int)(round((double)ipfix_qos_streams_ab[i]->RtpAvgJitter / ticks_bycodec) * 10);
+				if(_jitter_mult10 > jitter_mult10_max) {
+					jitter_mult10_max = _jitter_mult10;
+				}
+			}
+		}
+		if(mos_mult10_min >= 0) {
+			cdr.add(LIMIT_TINYINT_UNSIGNED(mos_mult10_min), "mos_min_mult10");
+		}
+		if(packet_loss_perc_mult1000_max >= 0) {
+			cdr.add(LIMIT_MEDIUMINT_UNSIGNED(packet_loss_perc_mult1000_max), "packet_loss_perc_mult1000");
+		}
+		if(jitter_mult10_max >= 0) {
+			cdr.add(LIMIT_MEDIUMINT_UNSIGNED(jitter_mult10_max), "jitter_mult10");
 		}
 		if(payload_rslt >= 0) {
 			cdr.add(payload_rslt, "payload");
