@@ -207,6 +207,9 @@ public:
 	void evTimeoutStream();
 	void add_ref() { __SYNC_INC(ref_count); }
 	void destroy() { if(__SYNC_DEC(ref_count) == 0) delete this; }
+	void processPacket(vmPort port, bool rtcp, u_char *data, unsigned len, vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port);
+	void lock_processing() { __SYNC_LOCK(_sync_lock_processing); }
+	void unlock_processing() { __SYNC_UNLOCK(_sync_lock_processing); }
 private:
 	const char *parseSipHeaders(const char *ptr, map<string, string> &tags);
 	string extractTag(const string& header);
@@ -255,6 +258,7 @@ public:
 	vmIP local_ip;
 	vmPort local_port;
 	int thread_idx;
+	volatile int _sync_lock_processing;
 };
 
 class cSipRecStream {
@@ -279,8 +283,8 @@ public:
 	static void *_thread_fce(void *arg);
 	void thread_fce();
 	bool addStream(cSipRecCall *call, vmPort port, bool rtcp);
-	void removeStream(vmPort port);
-	void _removeStream(vmPort port);
+	cSipRecCall *removeStream(vmPort port);
+	cSipRecCall *_removeStream(vmPort port);
 	unsigned getStreamsCount() { return(streams.size()); }
 	void stop();
 private:

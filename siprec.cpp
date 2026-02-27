@@ -23,6 +23,7 @@ cSipRecCall::cSipRecCall() {
 	start_time_us = getTimeUS();
 	ref_count = 1;
 	thread_idx = -1;
+	_sync_lock_processing = 0;
 }
 
 cSipRecCall::~cSipRecCall() {
@@ -1003,6 +1004,41 @@ vmIP cSipRecCall::getExternalIP() {
 	return(sip_rec->getExternalIP().isSet() ? sip_rec->getExternalIP() : local_ip);
 }
 
+void cSipRecCall::processPacket(vmPort port, bool rtcp, u_char *data, unsigned len, vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port) {
+	if(!sip_rec) return;
+	if(sip_rec->getUseRealRtpIpPorts() && metadata.isCompleted(true) &&
+	   (!rtcp || metadata.isCompletedCallerdRtcpPort())) {
+		sSdpMedia *media = NULL;
+		sdp.lock();
+		for(vector<sSdpMedia>::iterator it = sdp.media.begin(); it != sdp.media.end(); it++) {
+			if(it->reverse_port == port || (rtcp && it->reverse_rtcp_port == port)) {
+				media = &(*it);
+				break;
+			}
+		}
+		if(!media || media->direction == sdp_media_direction_unknown) {
+			sdp.unlock();
+			return;
+		}
+		bool is_caller_stream = (media->direction == sdp_media_direction_caller);
+		sdp.unlock();
+		if(is_caller_stream) {
+			src_ip = metadata.caller_ip;
+			src_port = rtcp ? metadata.caller_rtcp_port : metadata.caller_rtp_port;
+			dst_ip = metadata.called_ip;
+			dst_port = rtcp ? metadata.called_rtcp_port : metadata.called_rtp_port;
+		} else {
+			src_ip = metadata.called_ip;
+			src_port = rtcp ? metadata.called_rtcp_port : metadata.called_rtp_port;
+			dst_ip = metadata.caller_ip;
+			dst_port = rtcp ? metadata.caller_rtcp_port : metadata.caller_rtp_port;
+		}
+	}
+	sip_rec->sendPacket(data, len, src_ip, src_port, dst_ip, dst_port);
+	u_int64_t now_ms = getTimeMS_rdtsc();
+	sdp.updateLastPacketTime(port, now_ms);
+}
+
 
 cSipRecStream::cSipRecStream(cSipRecCall *call, vmPort port, bool rtcp) {
 	call->add_ref();
@@ -1023,7 +1059,6 @@ cSipRecStream::~cSipRecStream() {
 	if(sip_rec) {
 		sip_rec->freeRtpPort(port);
 	}
-	call->destroy();
 }
 
 bool cSipRecStream::createSocket() {
@@ -1077,43 +1112,7 @@ bool cSipRecStream::createSocket() {
 }
 
 void cSipRecStream::processPacket(u_char *data, unsigned len, vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port) {
-	/*
-	cout << (rtcp ? "rtcp" : "rtp") << " packet "
-	     << src_ip.getString() << " : " << src_port.getString() << " -> "
-	     << dst_ip.getString() << " : " << dst_port.getString() << endl;
-	*/
-	if(!sip_rec) return;
-	if(sip_rec->getUseRealRtpIpPorts() && call->metadata.isCompleted(true) && 
-	   (!rtcp || call->metadata.isCompletedCallerdRtcpPort())) {
-		cSipRecCall::sSdpMedia *media = NULL;
-		call->sdp.lock();
-		for(vector<cSipRecCall::sSdpMedia>::iterator it = call->sdp.media.begin(); it != call->sdp.media.end(); it++) {
-			if(it->reverse_port == port || (rtcp && it->reverse_rtcp_port == port)) {
-				media = &(*it);
-				break;
-			}
-		}
-		if(!media || media->direction == cSipRecCall::sdp_media_direction_unknown) {
-			call->sdp.unlock();
-			return;
-		}
-		bool is_caller_stream = (media->direction == cSipRecCall::sdp_media_direction_caller);
-		call->sdp.unlock();
-		if(is_caller_stream) {
-			src_ip = call->metadata.caller_ip;
-			src_port = rtcp ? call->metadata.caller_rtcp_port : call->metadata.caller_rtp_port;
-			dst_ip = call->metadata.called_ip;
-			dst_port = rtcp ? call->metadata.called_rtcp_port : call->metadata.called_rtp_port;
-		} else {
-			src_ip = call->metadata.called_ip;
-			src_port = rtcp ? call->metadata.called_rtcp_port : call->metadata.called_rtp_port;
-			dst_ip = call->metadata.caller_ip;
-			dst_port = rtcp ? call->metadata.caller_rtcp_port : call->metadata.caller_rtp_port;
-		}
-	}
-	sip_rec->sendPacket(data, len, src_ip, src_port, dst_ip, dst_port);
-	u_int64_t now_ms = getTimeMS_rdtsc();
-	call->sdp.updateLastPacketTime(port, now_ms);
+	call->processPacket(port, rtcp, data, len, src_ip, src_port, dst_ip, dst_port);
 }
 
 
@@ -1135,12 +1134,17 @@ cSipRecThread::cSipRecThread() {
 
 cSipRecThread::~cSipRecThread() {
 	stop();
+	vector<cSipRecCall*> calls_to_destroy;
 	lock();
 	for(map<vmPort, cSipRecStream*>::iterator it = streams.begin(); it != streams.end(); it++) {
+		calls_to_destroy.push_back(it->second->call);
 		delete it->second;
 	}
 	streams.clear();
 	unlock();
+	for(vector<cSipRecCall*>::iterator it = calls_to_destroy.begin(); it != calls_to_destroy.end(); it++) {
+		(*it)->destroy();
+	}
 	close(epoll_fd);
 	close(pipe_fd[0]);
 	close(pipe_fd[1]);
@@ -1162,60 +1166,79 @@ void cSipRecThread::thread_fce() {
 					char dummy;
 					read(pipe_fd[0], &dummy, 1);
 				} else {
-					cSipRecStream *stream = (cSipRecStream*)events[i].data.ptr;
+					sockaddr_storage src_addr;
+					struct iovec iov;
+					iov.iov_base = buffer;
+					iov.iov_len = sizeof(buffer);
+					#if VM_IPV6
+					char control_buf[CMSG_SPACE(sizeof(struct in6_pktinfo))];
+					#else
+					char control_buf[CMSG_SPACE(sizeof(struct in_pktinfo))];
+					#endif
+					struct msghdr msg;
+					memset(&msg, 0, sizeof(msg));
+					msg.msg_name = &src_addr;
+					msg.msg_namelen = sizeof(src_addr);
+					msg.msg_iov = &iov;
+					msg.msg_iovlen = 1;
+					msg.msg_control = control_buf;
+					msg.msg_controllen = sizeof(control_buf);
+					cSipRecCall *ev_call = NULL;
+					vmPort ev_port;
+					bool ev_rtcp = false;
+					ssize_t len = -1;
+					lock();
+					cSipRecStream *stream = NULL;
+					for(map<vmPort, cSipRecStream*>::iterator sit = streams.begin(); sit != streams.end(); ++sit) {
+						if(sit->second == events[i].data.ptr) {
+							stream = sit->second;
+							break;
+						}
+					}
 					if(stream && stream->socket >= 0) {
-						sockaddr_storage src_addr;
-						struct iovec iov;
-						iov.iov_base = buffer;
-						iov.iov_len = sizeof(buffer);
-						#if VM_IPV6
-						char control_buf[CMSG_SPACE(sizeof(struct in6_pktinfo))];
-						#else
-						char control_buf[CMSG_SPACE(sizeof(struct in_pktinfo))];
-						#endif
-						struct msghdr msg;
-						memset(&msg, 0, sizeof(msg));
-						msg.msg_name = &src_addr;
-						msg.msg_namelen = sizeof(src_addr);
-						msg.msg_iov = &iov;
-						msg.msg_iovlen = 1;
-						msg.msg_control = control_buf;
-						msg.msg_controllen = sizeof(control_buf);
-						ssize_t len = recvmsg(stream->socket, &msg, 0);
+						len = recvmsg(stream->socket, &msg, 0);
 						if(len > 0) {
-							vmIP src_ip;
-							vmPort src_port;
-							vmIP dst_ip;
-							vmPort dst_port;
-							dst_port = stream->port;
-							if(src_addr.ss_family == AF_INET) {
-								sockaddr_in *addr_in = (sockaddr_in*)&src_addr;
-								src_ip.setIPv4(addr_in->sin_addr.s_addr, true);
-								src_port.setPort(addr_in->sin_port, true);
+							ev_call = stream->call;
+							ev_call->add_ref();
+							ev_port = stream->port;
+							ev_rtcp = stream->rtcp;
+						}
+					}
+					unlock();
+					if(len > 0 && ev_call) {
+						vmIP src_ip;
+						vmPort src_port;
+						vmIP dst_ip;
+						vmPort dst_port;
+						dst_port = ev_port;
+						if(src_addr.ss_family == AF_INET) {
+							sockaddr_in *addr_in = (sockaddr_in*)&src_addr;
+							src_ip.setIPv4(addr_in->sin_addr.s_addr, true);
+							src_port.setPort(addr_in->sin_port, true);
+						}
+						#if VM_IPV6
+						else if(src_addr.ss_family == AF_INET6) {
+							sockaddr_in6 *addr_in6 = (sockaddr_in6*)&src_addr;
+							src_ip.setIPv6(addr_in6->sin6_addr, true);
+							src_port.setPort(addr_in6->sin6_port, true);
+						}
+						#endif
+						for(struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+							if(cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_PKTINFO) {
+								struct in_pktinfo *pktinfo = (struct in_pktinfo*)CMSG_DATA(cmsg);
+								dst_ip.setIPv4(pktinfo->ipi_addr.s_addr, true);
+								break;
 							}
 							#if VM_IPV6
-							else if(src_addr.ss_family == AF_INET6) {
-								sockaddr_in6 *addr_in6 = (sockaddr_in6*)&src_addr;
-								src_ip.setIPv6(addr_in6->sin6_addr, true);
-								src_port.setPort(addr_in6->sin6_port, true);
+							else if(cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_PKTINFO) {
+								struct in6_pktinfo *pktinfo = (struct in6_pktinfo*)CMSG_DATA(cmsg);
+								dst_ip.setIPv6(pktinfo->ipi6_addr, true);
+								break;
 							}
 							#endif
-							for(struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
-								if(cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_PKTINFO) {
-									struct in_pktinfo *pktinfo = (struct in_pktinfo*)CMSG_DATA(cmsg);
-									dst_ip.setIPv4(pktinfo->ipi_addr.s_addr, true);
-									break;
-								}
-								#if VM_IPV6
-								else if(cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_PKTINFO) {
-									struct in6_pktinfo *pktinfo = (struct in6_pktinfo*)CMSG_DATA(cmsg);
-									dst_ip.setIPv6(pktinfo->ipi6_addr, true);
-									break;
-								}
-								#endif
-							}
-							stream->processPacket(buffer, len, src_ip, src_port, dst_ip, dst_port);
 						}
+						ev_call->processPacket(ev_port, ev_rtcp, buffer, len, src_ip, src_port, dst_ip, dst_port);
+						ev_call->destroy();
 					}
 				}
 			}
@@ -1263,6 +1286,7 @@ bool cSipRecThread::addStream(cSipRecCall *call, vmPort port, bool rtcp) {
 	if(stream->socket < 0) {
 		delete stream;
 		unlock();
+		call->destroy();
 		return(false);
 	}
 	epoll_event ev;
@@ -1272,6 +1296,7 @@ bool cSipRecThread::addStream(cSipRecCall *call, vmPort port, bool rtcp) {
 	if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, stream->socket, &ev) < 0) {
 		delete stream;
 		unlock();
+		call->destroy();
 		return(false);
 	}
 	streams[port] = stream;
@@ -1281,21 +1306,25 @@ bool cSipRecThread::addStream(cSipRecCall *call, vmPort port, bool rtcp) {
 	return(true);
 }
 
-void cSipRecThread::removeStream(vmPort port) {
+cSipRecCall *cSipRecThread::removeStream(vmPort port) {
 	lock();
-	_removeStream(port);
+	cSipRecCall *call = _removeStream(port);
 	unlock();
 	char dummy = 1;
 	write(pipe_fd[1], &dummy, 1);
+	return(call);
 }
 
-void cSipRecThread::_removeStream(vmPort port) {
+cSipRecCall *cSipRecThread::_removeStream(vmPort port) {
+	cSipRecCall *call = NULL;
 	map<vmPort, cSipRecStream*>::iterator it = streams.find(port);
 	if(it != streams.end()) {
+		call = it->second->call;
 		epoll_ctl(epoll_fd, EPOLL_CTL_DEL, it->second->socket, NULL);
 		delete it->second;
 		streams.erase(it);
 	}
+	return(call);
 }
 
 void cSipRecThread::stop() {
@@ -1377,28 +1406,39 @@ bool cSipRecStreams::addStream(cSipRecCall *call, vmPort port, bool rtcp) {
 }
 
 void cSipRecStreams::stopStream(vmPort port) {
+	cSipRecCall *call = NULL;
 	lock();
 	map<vmPort, unsigned>::iterator it = stream_by_thread.find(port);
 	if(it != stream_by_thread.end()) {
 		unsigned thread_idx = it->second;
 		if(thread_idx < threads_count && threads[thread_idx]) {
-			threads[thread_idx]->removeStream(port);
+			call = threads[thread_idx]->removeStream(port);
 		}
 		stream_by_thread.erase(it);
 	}
 	unlock();
+	if(call) {
+		call->destroy();
+	}
 }
 
 void cSipRecStreams::stopAllStreams() {
+	vector<cSipRecCall*> calls_to_destroy;
 	lock();
 	for(map<vmPort, unsigned>::iterator it = stream_by_thread.begin(); it != stream_by_thread.end(); it++) {
 		unsigned thread_idx = it->second;
 		if(thread_idx < threads_count && threads[thread_idx]) {
-			threads[thread_idx]->removeStream(it->first);
+			cSipRecCall *call = threads[thread_idx]->removeStream(it->first);
+			if(call) {
+				calls_to_destroy.push_back(call);
+			}
 		}
 	}
 	stream_by_thread.clear();
 	unlock();
+	for(vector<cSipRecCall*>::iterator it = calls_to_destroy.begin(); it != calls_to_destroy.end(); it++) {
+		(*it)->destroy();
+	}
 }
 
 void cSipRecStreams::stopAllThreads() {
@@ -1602,6 +1642,9 @@ cSipRec::~cSipRec() {
 	if(streams) {
 		delete streams;
 	}
+	for(map<cSipRecCall::sId, cSipRecCall*>::iterator it = calls_by_call_id.begin(); it != calls_by_call_id.end(); it++) {
+		it->second->destroy();
+	}
 	if(packet_sender) {
 		delete packet_sender;
 	}
@@ -1715,6 +1758,7 @@ void cSipRec::processInvite(u_char *data, size_t dataLen, vmIP ip, vmPort port, 
 		call->destroy();
 		return;
 	}
+	bool is_reinvite = false;
 	lock();
 	if(calls_by_call_id.find(call->id) == calls_by_call_id.end()) {
 		calls_by_call_id[call->id] = call;
@@ -1728,10 +1772,14 @@ void cSipRec::processInvite(u_char *data, size_t dataLen, vmIP ip, vmPort port, 
 		exists_call->add_ref();
 		call->destroy();
 		call = exists_call;
+		is_reinvite = true;
+	}
+	unlock();
+	call->lock_processing();
+	if(is_reinvite) {
 		call->stopStreams();
 		call->clearSdpData();
 	}
-	unlock();
 	call->parseXmlMetadata();
 	call->parseSdpData();
 	call->setSdpMediaDirections();
@@ -1770,6 +1818,7 @@ void cSipRec::processInvite(u_char *data, size_t dataLen, vmIP ip, vmPort port, 
 		response_int = response;
 	}
 	sendPacket((u_char*)response_int.c_str(), response_int.length(), ip_int_dst, port_int_dst, ip_int_src, port_int_src);
+	call->unlock_processing();
 	call->destroy();
 }
 
@@ -1796,6 +1845,7 @@ void cSipRec::processBye(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmI
 		call = exists_call;
 	}
 	unlock();
+	call->lock_processing();
 	string request_int;
 	if(use_real_caller_called) {
 		request_int = call->createByeRequest(use_real_caller_called);
@@ -1828,6 +1878,7 @@ void cSipRec::processBye(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmI
 	sendPacket((u_char*)response_int.c_str(), response_int.length(), ip_int_dst, port_int_dst, ip_int_src, port_int_src);
 	call->stopStreams();
 	deleteCall(call, "bye");
+	call->unlock_processing();
 	call->destroy();
 }
 
@@ -1854,6 +1905,7 @@ void cSipRec::processCancel(u_char *data, size_t dataLen, vmIP ip, vmPort port, 
 		call = exists_call;
 	}
 	unlock();
+	call->lock_processing();
 	string request_int;
 	if(use_real_caller_called) {
 		request_int = call->createCancelRequest(use_real_caller_called);
@@ -1886,6 +1938,7 @@ void cSipRec::processCancel(u_char *data, size_t dataLen, vmIP ip, vmPort port, 
 	sendPacket((u_char*)response_int.c_str(), response_int.length(), ip_int_dst, port_int_dst, ip_int_src, port_int_src);
 	call->stopStreams();
 	deleteCall(call, "cancel");
+	call->unlock_processing();
 	call->destroy();
 }
 
