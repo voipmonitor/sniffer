@@ -4759,9 +4759,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	if(!packetS->_createCall) {
 		unsigned long int flags = call->flags;
 		if(SIP_HEADERfilter::add_call_flags(&packetS->parseContents, &flags, NULL)) {
-			if((call->flags & FLAG_SAVERTP) && !(flags & FLAG_SAVERTP)) {
-				call->flags &= ~FLAG_SAVERTP;
-			}
+			/* Apply both FLAG_SAVERTP and FLAG_SAVERTPHEADER from filter - when filter sets full RTP
+			   it clears FLAG_SAVERTPHEADER, which we must copy or we'd still truncate to header-only */
+			unsigned long rtp_mask = FLAG_SAVERTP | FLAG_SAVERTPHEADER;
+			call->flags = (call->flags & ~rtp_mask) | (flags & rtp_mask);
 			if((call->flags & FLAG_SAVEAUDIO) && !(flags & FLAG_SAVEAUDIO)) {
 				call->flags &= ~FLAG_SAVEAUDIO;
 			}
