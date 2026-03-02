@@ -10398,8 +10398,7 @@ void dns_lookup_common_hostnames() {
 		"download.voipmonitor.org",
 		"cloud.voipmonitor.org",
 		"cloud2.voipmonitor.org",
-		"cloud3.voipmonitor.org",
-		"1.2.3.4"
+		"cloud3.voipmonitor.org"
 	};
 	vector<vmIP> ips;
 	for(unsigned int i = 0; i < sizeof(hostnames) / sizeof(hostnames[0]) && !terminating; i++) {

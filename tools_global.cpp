@@ -2570,56 +2570,68 @@ vmIP cResolver::resolve_std(const char *host, vector<vmIP> *ips) {
 
 
 vmIP cResolver::resolve(const char *host, vector<vmIP> *ips, unsigned timeout, eTypeResolve typeResolve) {
+	vmIP ip;
+	time_t now = time(NULL);
+	if(ip_is_valid(host)) {
+		ip.setFromString(host);
+		if(ips) {
+			ips->push_back(ip);
+		}
+		return(ip);
+	}
+	if(!strcasecmp(host, "localhost")) {
+		ip.setFromString("127.0.0.1");
+		if(ips) {
+			ips->clear();
+			ips->push_back(ip);
+			#if VM_IPV6
+			if(useIPv6) {
+				vmIP ipv6;
+				ipv6.setFromString("::1");
+				ips->push_back(ipv6);
+			}
+			#endif
+		}
+		return(ip);
+	}
 	if(use_lock) {
 		lock();
 	}
-	vmIP ip;
-	time_t now = time(NULL);
 	map<string, sIP_time>::iterator iter_find = res_table.find(host);
 	if(iter_find != res_table.end() &&
 	   (iter_find->second.timeout == UINT_MAX ||
 	    iter_find->second.at + iter_find->second.timeout > now) &&
 	   iter_find->second.ips.size()) {
 		ip = iter_find->second.ips[0];
-		if (ips) {
+		if(ips) {
 			*ips = iter_find->second.ips;
 		}
-	}
-	if(!ip.isSet()) {
-		if(ip_is_valid(host)) {
-			ip.setFromString(host);
-			res_table[host].ips.clear();
-			res_table[host].ips.push_back(ip);
-			res_table[host].at = now;
-			res_table[host].timeout = UINT_MAX;
-			if (ips) {
-				ips->push_back(ip);
-			}
-		} else {
-			if(typeResolve == _typeResolve_default) {
-				#if defined(__arm__)
-					typeResolve = _typeResolve_system_host;
-				#else
-					typeResolve = _typeResolve_std;
-				#endif
-			}
-			if(typeResolve == _typeResolve_std) {
-				ip = resolve_std(host, ips);
-			} else if(typeResolve == _typeResolve_system_host) {
-				ip = resolve_by_system_host(host, ips);
-			}
-			if (ips && ips->size()) {
-				res_table[host].ips.clear();
-				res_table[host].ips = *ips;
-				res_table[host].at = now;
-				res_table[host].timeout = timeout ? timeout : 120;
-			} else if(ip.isSet()) {
-				res_table[host].ips.clear();
-				res_table[host].ips.push_back(ip);
-				res_table[host].at = now;
-				res_table[host].timeout = timeout ? timeout : 120;
-			}
+		if(use_lock) {
+			unlock();
 		}
+		return(ip);
+	}
+	if(typeResolve == _typeResolve_default) {
+		#if defined(__arm__)
+			typeResolve = _typeResolve_system_host;
+		#else
+			typeResolve = _typeResolve_std;
+		#endif
+	}
+	if(typeResolve == _typeResolve_std) {
+		ip = resolve_std(host, ips);
+	} else if(typeResolve == _typeResolve_system_host) {
+		ip = resolve_by_system_host(host, ips);
+	}
+	if(ip.isSet()) {
+		res_table[host].ips.clear();
+		if(ips && ips->size()) {
+			res_table[host].ips = *ips;
+		} else {
+			res_table[host].ips.push_back(ip);
+		}
+		res_table[host].at = now;
+		res_table[host].timeout = timeout ? timeout : 120;
 	}
 	if(use_lock) {
 		unlock();
