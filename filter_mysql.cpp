@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <syslog.h>
 #include <string.h>
 #include "voipmonitor.h"
@@ -948,7 +949,12 @@ void SIP_HEADERfilter::loadFile(u_int32_t *global_flags) {
 	}
 	cCsv csv;
 	csv.setFirstRowContainFieldNames();
-	csv.load(opt_capture_rules_sip_header_file);
+	int loadRslt = csv.load(opt_capture_rules_sip_header_file);
+	if(loadRslt < 0) {
+		syslog(LOG_WARNING, "SIP_HEADERfilter: cannot open capture_rules_sip_header_file [%s]: %s",
+		       opt_capture_rules_sip_header_file, strerror(errno));
+		return;
+	}
 	unsigned rowsCount = csv.getRowsCount();
 	vector<db_row> vectDbRow;
 	for(unsigned i = 1; i <= rowsCount; i++) {
