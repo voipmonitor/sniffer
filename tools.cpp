@@ -8548,6 +8548,13 @@ string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags) {
 	if(outputFlags & _of_json) {
 		JsonExport json;
 		json.add("cpu_all", sum_cpu);
+		json.add("cpu_count", get_cpu_count());
+		json.add("cpu_ht", get_cpu_ht());
+		double la_1, la_5, la_15;
+		getLoadAvg(&la_1, &la_5, &la_15);
+		json.add("la_1", la_1);
+		json.add("la_5", la_5);
+		json.add("la_15", la_15);
 		JsonExport *threads = json.addArray("threads");
 		for(list<sDescrCpuPerc>::iterator iter_dp = descrPerc->begin(); iter_dp != descrPerc->end(); iter_dp++) {
 			#if SNIFFER_THREADS_EXT
