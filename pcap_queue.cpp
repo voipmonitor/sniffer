@@ -1454,27 +1454,28 @@ uint64_t pcap_store_queue::getFileStoreUseSize(bool lock) {
 void pcap_store_queue::memoryBufferIsFull_log() {
 	static volatile int _sync = 0;
 	static volatile u_int64_t lastTimeLogErrMemoryIsFull_s = 0;
-	u_int64_t actTime = getTimeMS();
-	__SYNC_LOCK(_sync);
-	if(actTime - 5000 > this->lastTimeLogErrMemoryIsFull &&
-	   actTime - 5000 > lastTimeLogErrMemoryIsFull_s) {
-		this->lastTimeLogErrMemoryIsFull = actTime;
-		lastTimeLogErrMemoryIsFull_s = actTime;
-		__SYNC_UNLOCK(_sync);
-		syslog(LOG_ERR, "packetbuffer: MEMORY IS FULL");
-		if(!this->firstTimeLogErrMemoryIsFull) {
-			this->firstTimeLogErrMemoryIsFull = actTime;
-		} else if(this->lastTimeLogErrMemoryIsFull > this->firstTimeLogErrMemoryIsFull &&
-			  this->lastTimeLogErrMemoryIsFull - this->firstTimeLogErrMemoryIsFull > 2 * 60 * 1000) {
-			extern bool opt_abort_if_heap_full;
-			if(opt_abort_if_heap_full || sverb.abort_if_heap_full) {
-				syslog(LOG_NOTICE, "buffersControl: %s", buffersControl.debug().c_str());
-				syslog(LOG_ERR, "MEMORY IS FULL - ABORT!");
-				abort();
+	if(!__SYNC_TEST_LOCK(_sync)) {
+		u_int64_t actTime = getTimeMS_rdtsc();
+		if(actTime - 5000 > this->lastTimeLogErrMemoryIsFull &&
+		   actTime - 5000 > lastTimeLogErrMemoryIsFull_s) {
+			this->lastTimeLogErrMemoryIsFull = actTime;
+			lastTimeLogErrMemoryIsFull_s = actTime;
+			__SYNC_UNLOCK(_sync);
+			syslog(LOG_ERR, "packetbuffer: MEMORY IS FULL");
+			if(!this->firstTimeLogErrMemoryIsFull) {
+				this->firstTimeLogErrMemoryIsFull = actTime;
+			} else if(this->lastTimeLogErrMemoryIsFull > this->firstTimeLogErrMemoryIsFull &&
+				  this->lastTimeLogErrMemoryIsFull - this->firstTimeLogErrMemoryIsFull > 2 * 60 * 1000) {
+				extern bool opt_abort_if_heap_full;
+				if(opt_abort_if_heap_full || sverb.abort_if_heap_full) {
+					syslog(LOG_NOTICE, "buffersControl: %s", buffersControl.debug().c_str());
+					syslog(LOG_ERR, "MEMORY IS FULL - ABORT!");
+					abort();
+				}
 			}
+		} else {
+			__SYNC_UNLOCK(_sync);
 		}
-	} else {
-		__SYNC_UNLOCK(_sync);
 	}
 }
 
