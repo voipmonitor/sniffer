@@ -4220,7 +4220,10 @@ int main(int argc, char *argv[]) {
 
 	if(opt_rrd && (is_read_from_file() || sverb.suppress_fork)) {
 		//disable update of rrd statistics when reading packets from file
-		opt_rrd = 0;
+		cConfigItem *item = CONFIG.getItem("rrd");
+		if(!item || !item->is_set_in_json()) {
+			opt_rrd = 0;
+		}
 	}
 
 	if(!opt_test) {
