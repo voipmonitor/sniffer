@@ -4011,6 +4011,105 @@ inline bool init_call_branch(Call *call, CallBranch *c_branch, packet_s_process 
 
 }
 
+inline void new_invite_register__init_branch(CallBranch *c_branch, Call *call, s_detect_callerd *data_callerd) {
+	c_branch->branch_call_id = call->call_id;
+	c_branch->branch_fbasename = call->fbasename;
+	string branch_to_key = (opt_callidmerge_force_separate_branches ? c_branch->branch_call_id + ':' : "") +
+			       data_callerd->branch_to_key();
+	call->branches_to_map[branch_to_key] = 0;
+	if(!data_callerd->caller_tag.empty()) {
+		call->branches_tag_map[data_callerd->caller_tag] = 0;
+	}
+	if(!data_callerd->called_tag_to.empty()) {
+		call->branches_tag_map[data_callerd->called_tag_to] = 0;
+	}
+}
+
+inline void new_invite_register__copy_packet_flags(Call *call, packet_s_process *packetS) {
+	call->is_ssl = packetS->pflags.is_ssl();
+	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+	call->is_audiocodes = packetS->audiocodes != NULL;
+	#endif
+}
+
+inline void new_invite_register__no_record_header(Call *call, packet_s_process *packetS) {
+	if(opt_norecord_header) {
+		char *s;
+		unsigned long l;
+		s = gettag_sip(packetS, "\nX-VoipMonitor-norecord:", &l);
+		if(s) {
+			call->stoprecording();
+		}
+	}
+}
+
+inline void new_invite_register__fraud(Call *call, packet_s_process *packetS) {
+	if(opt_enable_fraud && isFraudReady()) {
+		if(needCustomHeadersForFraud()) {
+			process_packet__parse_custom_headers(call, packetS);
+		}
+		fraudBeginCall(call, packetS->getTimeval());
+	}
+}
+
+inline void new_invite_register__diameter(Call *call, packet_s_process *packetS) {
+	if(opt_enable_diameter) {
+		string sip_uri;
+		string sip_to;
+		string sip_from;
+		get_sip_sip(packetS, "INVITE ", NULL, &sip_uri, ppntt_invite, ppndt_called);
+		get_sip_sip(packetS, "\nTo:", "\nt:", &sip_to, ppntt_to, ppndt_called);
+		get_sip_sip(packetS, "\nFrom:", "\nf:", &sip_from, ppntt_from, ppndt_caller);
+		if(!sip_uri.empty()) {
+			call->setDiameterToSip(sip_uri.c_str());
+		}
+		if(!sip_to.empty() && sip_to != sip_uri) {
+			call->setDiameterToSip(sip_to.c_str());
+		}
+		if(!sip_from.empty()) {
+			call->setDiameterFromSip(sip_from.c_str());
+		}
+	}
+}
+
+inline void new_invite_register__conference(Call *call, s_detect_callerd *data_callerd) {
+	if(opt_conference_processing) {
+		string uri = data_callerd->called_uri[0] && data_callerd->called_domain_uri[0] ?
+			      string(data_callerd->called_uri) + "@" + data_callerd->called_domain_uri :
+			     data_callerd->called_uri[0] ?
+			      data_callerd->called_uri : data_callerd->called_domain_uri;
+		for(vector<string>::iterator iter = opt_conference_uri.begin(); iter != opt_conference_uri.end(); iter++) {
+			if(uri == *iter) {
+				call->conference_is_main_leg = true;
+				break;
+			}
+		}
+	}
+}
+
+inline void new_invite_register__srvcc(CallBranch *c_branch, Call *call) {
+	if(srvcc_set) {
+		call->srvcc_check_post(c_branch);
+		if(opt_srvcc_processing_only && call->srvcc_flag != Call::_srvcc_post) {
+			call->stopProcessing = true;
+			call->flags |= FLAG_SKIPCDR;
+		}
+	}
+}
+
+inline void new_invite_register__open_call_pcap(Call *call) {
+	if(enable_save_sip_rtp(call) &&
+	   (enable_pcap_split ? enable_save_sip(call) : enable_save_sip_rtp(call))) {
+		string pathfilename = call->get_pathfilename(tsf_sip);
+		PcapDumper *dumper = enable_pcap_split ? call->getPcapSip() : call->getPcap();
+		if(dumper->open(tsf_sip, pathfilename.c_str(), call->useHandle, call->useDlt)) {
+			if(verbosity > 3) {
+				syslog(LOG_NOTICE,"pcap_filename: [%s]\n", pathfilename.c_str());
+			}
+		}
+	}
+}
+
 inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char *callidstr, int8_t ci = -1, map<string, Call*> *map_calls = NULL) {
 
 	#if DEBUG_PACKET_COUNT
@@ -4115,22 +4214,9 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	}
 	
 	CallBranch *c_branch = &call->first_branch;
-	c_branch->branch_call_id = call->call_id;
-	c_branch->branch_fbasename = call->fbasename;
-	string branch_to_key = (opt_callidmerge_force_separate_branches ? c_branch->branch_call_id + ':' : "") +
-			       data_callerd.branch_to_key();
-	call->branches_to_map[branch_to_key] = 0;
-	if(!data_callerd.caller_tag.empty()) {
-		call->branches_tag_map[data_callerd.caller_tag] = 0;
-	}
-	if(!data_callerd.called_tag_to.empty()) {
-		call->branches_tag_map[data_callerd.called_tag_to] = 0;
-	}
+	new_invite_register__init_branch(c_branch, call, &data_callerd);
 	
-	call->is_ssl = packetS->pflags.is_ssl();
-	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-	call->is_audiocodes = packetS->audiocodes != NULL;
-	#endif
+	new_invite_register__copy_packet_flags(call, packetS);
 	
 	call->set_first_packet_time_us(packetS->getTimeUS());
 	call->flags = flags;
@@ -4146,22 +4232,10 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		++counter_registers;
 	}
 
-	if(opt_norecord_header) {
-		char *s;
-		unsigned long l;
-		s = gettag_sip(packetS, "\nX-VoipMonitor-norecord:", &l);
-		if(s) {
-			call->stoprecording();
-		}
-	}
+	new_invite_register__no_record_header(call, packetS);
 	
 	if(sip_method == INVITE or sip_method == REGISTER or sip_method == MESSAGE) {
-		if(opt_enable_fraud && isFraudReady()) {
-			if(needCustomHeadersForFraud()) {
-				process_packet__parse_custom_headers(call, packetS);
-			}
-			fraudBeginCall(call, packetS->getTimeval());
-		}
+		new_invite_register__fraud(call, packetS);
 	}
 
 	// opening dump file
@@ -4174,56 +4248,15 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 				syslog(LOG_NOTICE,"pcap_filename: [%s]\n", pathfilename.c_str());
 			}
 		}
-	} else if((call->typeIs(INVITE) || call->typeIs(MESSAGE)) && enable_save_sip_rtp(call)) {
-		if(enable_pcap_split ? enable_save_sip(call) : enable_save_sip_rtp(call)) {
-			string pathfilename = call->get_pathfilename(tsf_sip);
-			PcapDumper *dumper = enable_pcap_split ? call->getPcapSip() : call->getPcap();
-			if(dumper->open(tsf_sip, pathfilename.c_str(), call->useHandle, call->useDlt)) {
-				if(verbosity > 3) {
-					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", pathfilename.c_str());
-				}
-			}
-		}
+	} else if(call->typeIs(INVITE) || call->typeIs(MESSAGE)) {
+		new_invite_register__open_call_pcap(call);
 	}
 	
-	if(opt_enable_diameter) {
-		string sip_uri;
-		string sip_to;
-		string sip_from;
-		get_sip_sip(packetS, "INVITE ", NULL, &sip_uri, ppntt_invite, ppndt_called);
-		get_sip_sip(packetS, "\nTo:", "\nt:", &sip_to, ppntt_to, ppndt_called);
-		get_sip_sip(packetS, "\nFrom:", "\nf:", &sip_from, ppntt_from, ppndt_caller);
-		if(!sip_uri.empty()) {
-			call->setDiameterToSip(sip_uri.c_str());
-		}
-		if(!sip_to.empty() && sip_to != sip_uri) {
-			call->setDiameterToSip(sip_to.c_str());
-		}
-		if(!sip_from.empty()) {
-			call->setDiameterFromSip(sip_from.c_str());
-		}
-	}
+	new_invite_register__diameter(call, packetS);
 	
 	if(sip_method == INVITE) {
-		if(opt_conference_processing) {
-			string uri = data_callerd.called_uri[0] && data_callerd.called_domain_uri[0] ?
-				      string(data_callerd.called_uri) + "@" + data_callerd.called_domain_uri :
-				     data_callerd.called_uri[0] ?
-				      data_callerd.called_uri : data_callerd.called_domain_uri;
-			for(vector<string>::iterator iter = opt_conference_uri.begin(); iter != opt_conference_uri.end(); iter++) {
-				if(uri == *iter) {
-					call->conference_is_main_leg = true;
-					break;
-				}
-			}
-		}
-		if(srvcc_set) {
-			call->srvcc_check_post(c_branch);
-			if(opt_srvcc_processing_only && call->srvcc_flag != Call::_srvcc_post) {
-				call->stopProcessing = true;
-				call->flags |= FLAG_SKIPCDR;
-			}
-		}
+		new_invite_register__conference(call, &data_callerd);
+		new_invite_register__srvcc(c_branch, call);
 	}
 	
 	if(packetS->cseq.is_set()) {
@@ -4272,6 +4305,62 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	}
 	
 	return call;
+}
+
+inline Call *new_premature_response_call(packet_s_process *packetS, int sip_method, char *callidstr, int8_t ci = -1, map<string, Call*> *map_calls = NULL) {
+	if(opt_callslimit != 0 and opt_callslimit < (calls_counter + registers_counter)) {
+		if(verbosity > 0) {
+			static u_int64_t lastTimeSyslog = 0;
+			u_int64_t actTime = getTimeMS();
+			if(actTime - 5 * 60000 > lastTimeSyslog) {
+				syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls_counter + registers_counter);
+				lastTimeSyslog = actTime;
+			}
+		}
+		return NULL;
+	}
+	s_detect_callerd data_callerd;
+	detect_callerd(packetS, sip_method, &data_callerd);
+	unsigned long int flags = 0;
+	nat_aliases_t *nat_aliases = NULL;
+	set_global_flags(flags);
+	flags = setCallFlags(flags, &nat_aliases,
+			     packetS->saddr_(), packetS->daddr_(),
+			     data_callerd.caller.c_str(), data_callerd.called().c_str(),
+			     data_callerd.caller_domain.c_str(), data_callerd.called_domain().c_str(),
+			     &packetS->parseContents);
+	if(nat_aliases) {
+		delete nat_aliases;
+	}
+	if(flags & FLAG_SKIPCDR) {
+		if(verbosity > 1)
+			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
+		return NULL;
+	}
+	Call *call = calltable->add(INVITE_RESPONSE_PREMATURE, callidstr, min(strlen(callidstr), (size_t)MAX_FNAME), packetS->callid_alternative,
+				    packetS->getTimeUS(), packetS->saddr_(), packetS->source_(), 
+				    get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_(), ci, map_calls);
+	bool use_fbasename_header = false;
+	if(opt_fbasename_header[0]) {
+		char *s;
+		unsigned long l;
+		s = gettag_sip(packetS, opt_fbasename_header, &l);
+		if(l && l < 255) {
+			if(l > MAX_FNAME - 1) {
+				l = MAX_FNAME - 1;
+			}
+			strncpy(call->fbasename, s, l);
+			call->fbasename[l] = 0;
+			use_fbasename_header = true;
+		}
+	}
+	if(!use_fbasename_header) {
+		strcpy_null_term(call->fbasename, callidstr);
+	}
+	CallBranch *c_branch = &call->first_branch;
+	c_branch->branch_call_id = call->call_id;
+	c_branch->branch_fbasename = call->fbasename;
+	return(call);
 }
 
 void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, int iscaller, char *from_data, unsigned sdplen, 
@@ -4535,6 +4624,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	bool tag_content_to_detected = false;
 	bool in_dialog_invite = false;
 	bool dont_save = false;
+	bool prematureResponsesProcess = false;
 	u_int64_t packet_time_us = packetS->getTimeUS();
 	
 	s = gettag_sip(packetS, "\nContent-Type:", "\nc:", &l);
@@ -4605,9 +4695,17 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		goto endsip;
 	}
 	
+	if(call->typeIs(INVITE_RESPONSE_PREMATURE) && packetS->sip_method != INVITE) {
+		save_live_packet(packetS);
+		if(packetS->sip_response) {
+			call->addPrematureResponse(packetS);
+		}
+		goto endsip;
+	}
+	
 	if(opt_call_branches == 0) {
 		c_branch = &call->first_branch;
-	} else {
+	} else if(!call->typeIs(INVITE_RESPONSE_PREMATURE)) {
 	
 		int c_branch_id = -1;
 		int c_branch_id_by_from_tag = -1;
@@ -4709,6 +4807,41 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			c_branch = call->branch_main();
 		}
 	
+	}
+	
+	if(call->typeIs(INVITE_RESPONSE_PREMATURE) && packetS->sip_method == INVITE) {
+		s_detect_callerd data_callerd;
+		detect_callerd(packetS, INVITE, &data_callerd);
+		unsigned long int flags = 0;
+		nat_aliases_t *nat_aliases = NULL;
+		set_global_flags(flags);
+		flags = setCallFlags(flags, &nat_aliases,
+				     packetS->saddr_(), packetS->daddr_(),
+				     data_callerd.caller.c_str(), data_callerd.called().c_str(),
+				     data_callerd.caller_domain.c_str(), data_callerd.called_domain().c_str(),
+				     &packetS->parseContents);
+		if(flags & FLAG_SKIPCDR) {
+			if(nat_aliases) {
+				delete nat_aliases;
+			}
+			goto endsip;
+		}
+		call->type_base = INVITE;
+		call->set_first_packet_time_us(packetS->getTimeUS());
+		call->flags = flags;
+		call->nat_aliases = nat_aliases;
+		c_branch = &call->first_branch;
+		new_invite_register__init_branch(c_branch, call, &data_callerd);
+		new_invite_register__copy_packet_flags(call, packetS);
+		init_call_branch(call, c_branch, packetS, INVITE, &data_callerd);
+		new_invite_register__no_record_header(call, packetS);
+		new_invite_register__fraud(call, packetS);
+		new_invite_register__diameter(call, packetS);
+		new_invite_register__conference(call, &data_callerd);
+		new_invite_register__srvcc(c_branch, call);
+		new_invite_register__open_call_pcap(call);
+		++counter_calls;
+		prematureResponsesProcess = true;
 	}
 	
 	if(sverb.dump_sip) {
@@ -6316,6 +6449,10 @@ endsip:
 			, packetS->sip_method, lastSIPresponseNum, packetS->getTimeval(), 
 			packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(),
 			c_branch, logPacketSipMethodCallDescr);
+	}
+	
+	if(prematureResponsesProcess && call) {
+		call->processPrematureResponses();
 	}
 }
 
@@ -9271,7 +9408,7 @@ void TcpReassemblySip::complete(tcp_stream *stream, tcp_stream_id /*id*/, PrePro
 		completePacketS = stream->packets->packetS;
 		stream->packets->packetS = NULL;
 	} else {
-		completePacketS = PreProcessPacket::clonePacketS(stream->complete_data->data(), stream->complete_data->size(), stream->packets->packetS);
+		completePacketS = stream->packets->packetS->clone(stream->complete_data->data(), stream->complete_data->size());
 	}
 	completePacketS->pflags.set_tcp(2);
 	if(sverb.reassembly_sip || sverb.reassembly_sip_output) {
@@ -9608,6 +9745,52 @@ void link_packets_queue::destroyAll() {
 		delete link;
 	}
 	links.clear();
+}
+
+
+packet_s_process *packet_s_process::clone() {
+	packet_s_process *newPacketS = PACKET_S_PROCESS_SIP_CREATE();
+	*newPacketS = *this;
+	newPacketS->blockstore_clear();
+	pcap_pkthdr *new_header = new FILE_LINE(0) pcap_pkthdr;
+	*new_header = *newPacketS->header_pt;
+	u_char *new_packet = new FILE_LINE(0) u_char[new_header->caplen];
+	#if DEBUG_ALLOC_PACKETS
+	debug_alloc_packet_alloc(new_packet, "PreProcessPacket::clonePacketS (2)");
+	#endif
+	memcpy(new_packet, newPacketS->packet, new_header->caplen);
+	newPacketS->header_pt = new_header;
+	newPacketS->packet = new_packet;
+	newPacketS->_packet_alloc_type = _t_packet_alloc_header_std;
+	return(newPacketS);
+}
+
+packet_s_process *packet_s_process::clone(u_char *newData, unsigned newDataLength) {
+	packet_s_process *newPacketS = PACKET_S_PROCESS_SIP_CREATE();
+	*newPacketS = *this;
+	newPacketS->blockstore_clear();
+	long newLen = newDataLength + newPacketS->dataoffset_();
+	pcap_pkthdr *new_header = new FILE_LINE(0) pcap_pkthdr;
+	*new_header = *newPacketS->header_pt;
+	new_header->caplen = newLen;
+	new_header->len = newLen;
+	u_char *new_packet = new FILE_LINE(0) u_char[newLen];
+	#if DEBUG_ALLOC_PACKETS
+	debug_alloc_packet_alloc(new_packet, "PreProcessPacket::clonePacketS (1)");
+	#endif
+	memcpy(new_packet, newPacketS->packet, newPacketS->dataoffset_());
+	memcpy(new_packet + newPacketS->dataoffset_(), newData, newDataLength);
+	//u_char *newDataInNewPacket = new_packet + newPacketS->dataoffset_();
+	iphdr2 *newHeaderIpInNewPacket = (iphdr2*)(new_packet + newPacketS->header_ip_offset);
+	newHeaderIpInNewPacket->set_tot_len(newLen - newPacketS->header_ip_offset);
+	//newPacketS->data = (char*)newDataInNewPacket;
+	newPacketS->_datalen = newDataLength;
+	newPacketS->_datalen_set = 0;
+	newPacketS->header_pt = new_header;
+	newPacketS->packet = new_packet;
+	//newPacketS->header_ip = newHeaderIpInNewPacket;
+	newPacketS->_packet_alloc_type = _t_packet_alloc_header_std;
+	return(newPacketS);
 }
 
 
@@ -10030,8 +10213,11 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 								if(!packetS->call) {
 									packetS->call = calltable->find_by_call_id_alter_map(packetS->get_callid(), 0, packetS->getTime_s(), &next_thread_data->map_calls);
 								}
-								if(packetS->enableCreateCall()) {
-									packetS->call_created = new_invite_register(packetS, packetS->sip_method, packetS->get_callid(), -1, &next_thread_data->map_calls);
+								int enableCreateCallRslt;
+								if((enableCreateCallRslt = packetS->enableCreateCall()) != 0) {
+									packetS->call_created = enableCreateCallRslt == 1 ?
+												 new_invite_register(packetS, packetS->sip_method, packetS->get_callid(), -1, &next_thread_data->map_calls) :
+												 new_premature_response_call(packetS, packetS->sip_method, packetS->get_callid(), -1, &next_thread_data->map_calls);
 									packetS->_createCall = true;
 								}
 								packetS->_findCall = true;
@@ -11908,7 +12094,7 @@ void PreProcessPacket::process_SIP_OTHER(packet_s_process *packetS) {
 
 void PreProcessPacket::process_DIAMETER(packet_s_process *packetS) {
 	if(packetS->typeContentIsDiameter()) {
-		process_packet_diameter(clonePacketS(packetS));
+		process_packet_diameter(packetS->clone());
 	}
 	PACKET_S_PROCESS_DESTROY(&packetS);
 }
@@ -12331,7 +12517,7 @@ void PreProcessPacket::process_websocket(packet_s_process **packetS_ref, packet_
 	bool allocWsData;
 	u_char *ws_data = ws.decodeData(&allocWsData);
 	if(ws_data) {
-		newPacketS = clonePacketS(ws_data, ws.getDataLength(), packetS);
+		newPacketS = packetS->clone(ws_data, ws.getDataLength());
 		#if WEBSOCKET_CLONE_PACKETS
 		string call_id;
 		unsigned long l;
@@ -12341,7 +12527,7 @@ void PreProcessPacket::process_websocket(packet_s_process **packetS_ref, packet_
 			call_id = string(s, l);
 			char call_id_clone_first_char = call_id[0];
 			for(unsigned i = 0; i < WEBSOCKET_CLONE_PACKETS; i++) {
-				newPacketS_clone[i] = clonePacketS(ws_data, ws.getDataLength(), packetS);
+				newPacketS_clone[i] = packetS->clone(ws_data, ws.getDataLength());
 				u_char *call_id_clone = (u_char*)memmem(newPacketS_clone[i]->data_(), newPacketS_clone[i]->datalen_(), call_id.c_str(), call_id.length());
 				if(call_id_clone) {
 					++call_id_clone_first_char;
@@ -12471,8 +12657,11 @@ void PreProcessPacket::process_findSipCall(packet_s_process **packetS_ref, map<s
 
 void PreProcessPacket::process_createSipCall(packet_s_process **packetS_ref, map<string, Call*> *map_calls) {
 	packet_s_process *packetS = *packetS_ref;
-	if(packetS->_findCall && packetS->enableCreateCall()) {
-		packetS->call_created = new_invite_register(packetS, packetS->sip_method, packetS->get_callid(), -1, map_calls);
+	int enableCreateCallRslt;
+	if(packetS->_findCall && (enableCreateCallRslt = packetS->enableCreateCall()) != 0) {
+		packetS->call_created = enableCreateCallRslt == 1 ?
+					 new_invite_register(packetS, packetS->sip_method, packetS->get_callid(), -1, map_calls) :
+					 new_premature_response_call(packetS, packetS->sip_method, packetS->get_callid(), -1, map_calls);
 		packetS->_createCall = true;
 	}
 }
@@ -12516,51 +12705,6 @@ void PreProcessPacket::autoStopLastLevelPreProcessPacket(bool force) {
 	if(i > 0 && preProcessPacket[i]->isActiveOutThread()) {
 		preProcessPacket[i]->stopOutThread(force);
 	}
-}
-
-packet_s_process *PreProcessPacket::clonePacketS(u_char *newData, unsigned newDataLength, packet_s_process *packetS) {
-	packet_s_process *newPacketS = PACKET_S_PROCESS_SIP_CREATE();
-	*newPacketS = *packetS;
-	newPacketS->blockstore_clear();
-	long newLen = newDataLength + newPacketS->dataoffset_();
-	pcap_pkthdr *new_header = new FILE_LINE(0) pcap_pkthdr;
-	*new_header = *newPacketS->header_pt;
-	new_header->caplen = newLen;
-	new_header->len = newLen;
-	u_char *new_packet = new FILE_LINE(0) u_char[newLen];
-	#if DEBUG_ALLOC_PACKETS
-	debug_alloc_packet_alloc(new_packet, "PreProcessPacket::clonePacketS (1)");
-	#endif
-	memcpy(new_packet, newPacketS->packet, newPacketS->dataoffset_());
-	memcpy(new_packet + newPacketS->dataoffset_(), newData, newDataLength);
-	//u_char *newDataInNewPacket = new_packet + newPacketS->dataoffset_();
-	iphdr2 *newHeaderIpInNewPacket = (iphdr2*)(new_packet + newPacketS->header_ip_offset);
-	newHeaderIpInNewPacket->set_tot_len(newLen - newPacketS->header_ip_offset);
-	//newPacketS->data = (char*)newDataInNewPacket;
-	newPacketS->_datalen = newDataLength;
-	newPacketS->_datalen_set = 0;
-	newPacketS->header_pt = new_header;
-	newPacketS->packet = new_packet;
-	//newPacketS->header_ip = newHeaderIpInNewPacket;
-	newPacketS->_packet_alloc_type = _t_packet_alloc_header_std;
-	return(newPacketS);
-}
-
-packet_s_process *PreProcessPacket::clonePacketS(packet_s_process *packetS) {
-	packet_s_process *newPacketS = PACKET_S_PROCESS_SIP_CREATE();
-	*newPacketS = *packetS;
-	newPacketS->blockstore_clear();
-	pcap_pkthdr *new_header = new FILE_LINE(0) pcap_pkthdr;
-	*new_header = *newPacketS->header_pt;
-	u_char *new_packet = new FILE_LINE(0) u_char[new_header->caplen];
-	#if DEBUG_ALLOC_PACKETS
-	debug_alloc_packet_alloc(new_packet, "PreProcessPacket::clonePacketS (2)");
-	#endif
-	memcpy(new_packet, newPacketS->packet, new_header->caplen);
-	newPacketS->header_pt = new_header;
-	newPacketS->packet = new_packet;
-	newPacketS->_packet_alloc_type = _t_packet_alloc_header_std;
-	return(newPacketS);
 }
 
 u_long PreProcessPacket::autoStartNextLevelPreProcessPacket_last_time_s = 0;

@@ -1626,8 +1626,6 @@ public:
 		}
 		return("");
 	}
-	static packet_s_process *clonePacketS(u_char *newData, unsigned newDataLength, packet_s_process *packetS);
-	static packet_s_process *clonePacketS(packet_s_process *packetS);
 	bool existsNextThread(int next_thread_index) {
 		return(next_thread_index < MAX_PRE_PROCESS_PACKET_NEXT_THREADS &&
 		       this->next_threads[next_thread_index].thread_id);

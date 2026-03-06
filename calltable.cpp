@@ -920,6 +920,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	
 	_hash_add_lock = 0;
 	
+	prematureResponses = NULL;
+	
 	counter = ++counter_s;
 	
 	syslog_sdp_multiplication = false;
@@ -1358,7 +1360,8 @@ Call::~Call(){
 	for(unsigned i = 0; i < next_branches.size(); i++) {
 		delete next_branches[i];
 	}
-	
+
+	clearPrematureResponses();
 }
 
 void
@@ -15831,6 +15834,37 @@ void Call::moveDiameterPacketsToPcap(bool enableSave) {
 		     << (use_retrieve_from_sip ? "FROM " + retrieve_from_sip_hbh_str + " " : "")
 		     <<	(use_retrieve_to_sip ? "TO " + retrieve_to_sip_hbh_str + " " : "")
 		     << endl;
+	}
+}
+
+void Call::addPrematureResponse(packet_s_process *packetS) {
+	if(!prematureResponses) {
+		prematureResponses = new FILE_LINE(0) list<packet_s_process*>;
+	}
+	packet_s_process *packetS_clone = packetS->clone();
+	packetS_clone->call = this;
+	prematureResponses->push_back(packetS_clone);
+}
+
+void Call::processPrematureResponses() {
+	if(prematureResponses) {
+		extern void process_packet_sip_call(packet_s_process *packetS);
+		for(list<packet_s_process*>::iterator iter = prematureResponses->begin(); iter != prematureResponses->end(); iter++) {
+			process_packet_sip_call(*iter);
+			PACKET_S_PROCESS_DESTROY(&*iter);
+		}
+		delete prematureResponses;
+		prematureResponses = NULL;
+	}
+}
+
+void Call::clearPrematureResponses() {
+	if(prematureResponses) {
+		for(list<packet_s_process*>::iterator iter = prematureResponses->begin(); iter != prematureResponses->end(); iter++) {
+			PACKET_S_PROCESS_DESTROY(&*iter);
+		}
+		delete prematureResponses;
+		prematureResponses = NULL;
 	}
 }
 

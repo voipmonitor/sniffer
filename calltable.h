@@ -62,6 +62,7 @@ typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
 
 #define INVITE 1
 #define REINVITE 1000
+#define INVITE_RESPONSE_PREMATURE -1
 #define BYE 2
 #define CANCEL 3
 #define RES10X 100
@@ -2485,14 +2486,16 @@ public:
 	
 	void calls_counter_inc() {
 		extern volatile int calls_counter;
-		if(typeIs(INVITE) || typeIs(MESSAGE) || typeIs(MGCP) || typeIs(SKINNY_NEW)) {
+		if(typeIs(INVITE) || typeIs(INVITE_RESPONSE_PREMATURE) ||
+		   typeIs(MESSAGE) || typeIs(MGCP) || typeIs(SKINNY_NEW)) {
 			__SYNC_INC(calls_counter);
 			set_call_counter = true;
 		}
 	}
 	void calls_counter_dec() {
 		extern volatile int calls_counter;
-		if(typeIs(INVITE) || typeIs(MESSAGE) || typeIs(MGCP) || typeIs(SKINNY_NEW)) {
+		if(typeIs(INVITE) || typeIs(INVITE_RESPONSE_PREMATURE) ||
+		   typeIs(MESSAGE) || typeIs(MGCP) || typeIs(SKINNY_NEW)) {
 			__SYNC_DEC(calls_counter);
 			set_call_counter = false;
 		}
@@ -3086,6 +3089,10 @@ public:
 		return(payload_rslt);
 	}
 	
+	void addPrematureResponse(packet_s_process *packetS);
+	void processPrematureResponses();
+	void clearPrematureResponses();
+	
 private:
 	
 	volatile int8_t callerd_confirm_rtp_by_both_sides_sdp[2];
@@ -3102,6 +3109,7 @@ private:
 	int payload_rslt;
 	map<string, bool> diameter_from_sip;
 	map<string, bool> diameter_to_sip;
+	list<packet_s_process*> *prematureResponses;
 public:
 	list<vmPort> sdp_ip0_ports[2];
 	bool error_negative_payload_length;

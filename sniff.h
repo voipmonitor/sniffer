@@ -970,14 +970,24 @@ struct packet_s_process : public packet_s_process_0 {
 		       parseContents.doubleEndLine > (data_()+ sipDataOffset) &&
 		       parseContents.doubleEndLine - (data_()+ sipDataOffset) + parseContents.doubleEndLineSize + parseContents.contentLength == sipDataLen);
 	}
-	inline bool enableCreateCall() {
+	inline int enableCreateCall() {
 		extern bool opt_sip_message;
 		extern bool opt_detect_alone_bye;
-		return(!call &&
-		       (sip_method == INVITE ||
-			(opt_sip_message && sip_method == MESSAGE) ||
-			(opt_detect_alone_bye && sip_method == BYE)));
+		extern bool opt_enable_premature_response;
+		if(!call) {
+			if((sip_method == INVITE ||
+			   (opt_sip_message && sip_method == MESSAGE) ||
+			   (opt_detect_alone_bye && sip_method == BYE))) {
+				return(1);
+			}
+			if(opt_enable_premature_response && sip_response && cseq.method == INVITE) {
+				return(2);
+			}
+		}
+		return(0);
 	}
+	packet_s_process *clone();
+	packet_s_process *clone(u_char *newData, unsigned newDataLength);
 };
 
 
