@@ -61,6 +61,10 @@ enum eRegisterField {
 	rf_spool_index,
 	rf_is_sipalg_detected,
 	rf_vlan,
+	rf_sipcallerip_country_code,
+	rf_sipcalledip_country_code,
+	rf_from_num_country_code,
+	rf_to_num_country_code,
 	rf__max
 };
 

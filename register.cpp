@@ -4,6 +4,7 @@
 #include "record_array.h"
 #include "fraud.h"
 #include "sniff.h"
+#include "country_detect.h"
 
 
 #define NEW_REGISTERS_DEBUG_PERIOD false
@@ -49,6 +50,7 @@ extern bool opt_sip_register_save_eq_states_time;
 
 extern int opt_mysql_enable_multiple_rows_insert;
 extern int opt_mysql_max_multiple_rows_insert;
+extern int opt_register_country_code;
 
 extern Calltable *calltable;
 
@@ -91,7 +93,11 @@ struct RegisterFields {
 	{ rf_rrd_avg, "rrd_avg" },
 	{ rf_spool_index, "spool_index" },
 	{ rf_is_sipalg_detected, "is_sipalg_detected" },
-	{ rf_vlan, "vlan" }
+	{ rf_vlan, "vlan" },
+	{ rf_sipcallerip_country_code, "sipcallerip_country_code" },
+	{ rf_sipcalledip_country_code, "sipcalledip_country_code" },
+	{ rf_from_num_country_code, "from_num_country_code" },
+	{ rf_to_num_country_code, "to_num_country_code" }
 };
 
 SqlDb *sqlDbSaveRegister = NULL;
@@ -889,9 +895,24 @@ u_int8_t Register::saveNewStateToDb(RegisterState *state) {
 	if(state->id_sensor > -1) {
 		reg.add(state->id_sensor, "id_sensor");
 	}
-	if(state->spool_index && 
+	if(state->spool_index &&
 	   (state->state == rs_Failed ? existsColumns.register_failed_spool_index : existsColumns.register_state_spool_index)) {
 		reg.add(state->spool_index, "spool_index");
+	}
+	if(opt_register_country_code &&
+	   (state->state == rs_Failed ? existsColumns.register_failed_country_code : existsColumns.register_state_country_code)) {
+		CountryDetectApplyReload();
+		if(opt_register_country_code == 2) {
+			reg.add(getCountryIdByIP(sipcallerip), "sipcallerip_country_code");
+			reg.add(getCountryIdByIP(sipcalledip), "sipcalledip_country_code");
+			reg.add(getCountryIdByPhoneNumber(num_from.c_str(), sipcallerip), "from_num_country_code");
+			reg.add(getCountryIdByPhoneNumber(num_to.c_str(), sipcalledip), "to_num_country_code");
+		} else {
+			reg.add(getCountryByIP(sipcallerip, true), "sipcallerip_country_code");
+			reg.add(getCountryByIP(sipcalledip, true), "sipcalledip_country_code");
+			reg.add(getCountryByPhoneNumber(num_from.c_str(), sipcallerip, true), "from_num_country_code");
+			reg.add(getCountryByPhoneNumber(num_to.c_str(), sipcalledip, true), "to_num_country_code");
+		}
 	}
 	if(isSqlDriver("mysql")) {
 		string query_str;
@@ -1223,6 +1244,20 @@ bool Register::getDataRow(RecordArray *rec) {
 		rec->fields[rf_vlan].set(state->vlan);
 	}
 	rec->fields[rf_is_sipalg_detected].set(states_state.isSipAlg());
+	if(opt_register_country_code) {
+		CountryDetectApplyReload();
+		if(opt_register_country_code == 2) {
+			rec->fields[rf_sipcallerip_country_code].set(getCountryIdByIP(sipcallerip));
+			rec->fields[rf_sipcalledip_country_code].set(getCountryIdByIP(sipcalledip));
+			rec->fields[rf_from_num_country_code].set(getCountryIdByPhoneNumber(num_from.c_str(), sipcallerip));
+			rec->fields[rf_to_num_country_code].set(getCountryIdByPhoneNumber(num_to.c_str(), sipcalledip));
+		} else {
+			rec->fields[rf_sipcallerip_country_code].set(getCountryByIP(sipcallerip, true).c_str());
+			rec->fields[rf_sipcalledip_country_code].set(getCountryByIP(sipcalledip, true).c_str());
+			rec->fields[rf_from_num_country_code].set(getCountryByPhoneNumber(num_from.c_str(), sipcallerip, true).c_str());
+			rec->fields[rf_to_num_country_code].set(getCountryByPhoneNumber(num_to.c_str(), sipcalledip, true).c_str());
+		}
+	}
 	unlock_states();
 	return(true);
 }

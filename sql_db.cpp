@@ -75,6 +75,7 @@ extern int opt_enable_ss7;
 extern int opt_ssl_store_sessions;
 extern int opt_cdr_country_code;
 extern int opt_message_country_code;
+extern int opt_register_country_code;
 extern int opt_mysql_enable_multiple_rows_insert;
 extern bool opt_time_precision_in_ms;
 extern bool opt_save_energylevels;
@@ -7439,7 +7440,18 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`flags` bigint unsigned DEFAULT NULL,\
 			`vlan` smallint DEFAULT NULL,\
 			`spool_index` tinyint unsigned DEFAULT NULL," +
-		(opt_cdr_partition ? 
+		(opt_register_country_code ?
+			(opt_register_country_code == 2 ?
+				"`sipcallerip_country_code` smallint DEFAULT NULL,\
+				`sipcalledip_country_code` smallint DEFAULT NULL,\
+				`from_num_country_code` smallint DEFAULT NULL,\
+				`to_num_country_code` smallint DEFAULT NULL," :
+				"`sipcallerip_country_code` varchar(5) DEFAULT NULL,\
+				`sipcalledip_country_code` varchar(5) DEFAULT NULL,\
+				`from_num_country_code` varchar(5) DEFAULT NULL,\
+				`to_num_country_code` varchar(5) DEFAULT NULL,") :
+			"") +
+		(opt_cdr_partition ?
 			"PRIMARY KEY (`ID`, `created_at`)," :
 			"PRIMARY KEY (`ID`),") +
 		"KEY `created_at` (`created_at`),\
@@ -7450,14 +7462,19 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		       KEY `sipcalledip_encaps` (`sipcalledip_encaps`),\
 		      " :
 		      "") +
+		(opt_register_country_code ?
+		      "KEY `sipcallerip_country_code` (`sipcallerip_country_code`),\
+		       KEY `sipcalledip_country_code` (`sipcalledip_country_code`),\
+		      " :
+		      "") +
 		"KEY `vlan` (`vlan`)\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(opt_cdr_partition ?
 		(opt_cdr_partition_by_hours ?
 			string(" PARTITION BY RANGE COLUMNS(created_at)(\
 				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
 				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
-		 opt_cdr_partition_oldver ? 
+		 opt_cdr_partition_oldver ?
 			string(" PARTITION BY RANGE (to_days(created_at))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(created_at)(\
@@ -7526,7 +7543,18 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`flags` bigint unsigned DEFAULT NULL,\
 			`vlan` smallint DEFAULT NULL,\
 			`spool_index` tinyint unsigned DEFAULT NULL," +
-		(opt_cdr_partition ? 
+		(opt_register_country_code ?
+			(opt_register_country_code == 2 ?
+				"`sipcallerip_country_code` smallint DEFAULT NULL,\
+				`sipcalledip_country_code` smallint DEFAULT NULL,\
+				`from_num_country_code` smallint DEFAULT NULL,\
+				`to_num_country_code` smallint DEFAULT NULL," :
+				"`sipcallerip_country_code` varchar(5) DEFAULT NULL,\
+				`sipcalledip_country_code` varchar(5) DEFAULT NULL,\
+				`from_num_country_code` varchar(5) DEFAULT NULL,\
+				`to_num_country_code` varchar(5) DEFAULT NULL,") :
+			"") +
+		(opt_cdr_partition ?
 			"PRIMARY KEY (`ID`, `created_at`)," :
 			"PRIMARY KEY (`ID`),") +
 		"KEY `created_at` (`created_at`),\
@@ -7537,14 +7565,19 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		       KEY `sipcalledip_encaps` (`sipcalledip_encaps`),\
 		      " :
 		      "") +
+		(opt_register_country_code ?
+		      "KEY `sipcallerip_country_code` (`sipcallerip_country_code`),\
+		       KEY `sipcalledip_country_code` (`sipcalledip_country_code`),\
+		      " :
+		      "") +
 		"KEY `vlan` (`vlan`)\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(opt_cdr_partition ?
 		(opt_cdr_partition_by_hours ?
 			string(" PARTITION BY RANGE COLUMNS(created_at)(\
 				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
 				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
-		 opt_cdr_partition_oldver ? 
+		 opt_cdr_partition_oldver ?
 			string(" PARTITION BY RANGE (to_days(created_at))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(created_at)(\
@@ -10240,6 +10273,20 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 				"sipcalledip_encaps", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), NULL_CHAR_PTR,
 				"sipcallerip_encaps_prot", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"sipcalledip_encaps_prot", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("register_state", "register_state country_code", opt_register_country_code,
+				log, &tableSize, &existsColumns.register_state_country_code,
+				"sipcallerip_country_code", (opt_register_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), "`sipcallerip_country_code` (`sipcallerip_country_code`)",
+				"sipcalledip_country_code", (opt_register_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), "`sipcalledip_country_code` (`sipcalledip_country_code`)",
+				"from_num_country_code", (opt_register_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), NULL_CHAR_PTR,
+				"to_num_country_code", (opt_register_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("register_failed", "register_failed country_code", opt_register_country_code,
+				log, &tableSize, &existsColumns.register_failed_country_code,
+				"sipcallerip_country_code", (opt_register_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), "`sipcallerip_country_code` (`sipcallerip_country_code`)",
+				"sipcalledip_country_code", (opt_register_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), "`sipcalledip_country_code` (`sipcalledip_country_code`)",
+				"from_num_country_code", (opt_register_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), NULL_CHAR_PTR,
+				"to_num_country_code", (opt_register_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 	if(opt_sip_register == 2) {
 		existsColumns.register_rrd_count = this->existsColumn("register", "rrd_count");

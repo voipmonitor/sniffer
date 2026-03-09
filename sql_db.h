@@ -1447,6 +1447,8 @@ struct sExistsColumns {
 	bool register_failed_sipcallerport;
 	bool register_state_sipcalledport;
 	bool register_failed_sipcalledport;
+	bool register_state_country_code;
+	bool register_failed_country_code;
 	bool sip_msg_time_ms;
 	bool sip_msg_request_time_ms;
 	bool sip_msg_response_time_ms;
