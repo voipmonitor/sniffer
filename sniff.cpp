@@ -6373,7 +6373,7 @@ endsip_save_packet:
 	}
 
 endsip:
-	if(_save_sip_history && call) {
+	if(_save_sip_history && call && c_branch) {
 		bool save_request = IS_SIP_RESXXX(packetS->sip_method) ?
 				     lastSIPresponseNum && _save_sip_history_all_responses :
 				     packetS->sip_method && (_save_sip_history_all_requests || _save_sip_history_request_types[packetS->sip_method]);
@@ -6403,7 +6403,7 @@ endsip:
 			}
 		}
 	}
-	if(opt_active_call_info) {
+	if(opt_active_call_info && c_branch) {
 		char *sip_data = packetS->data_()+ packetS->sipDataOffset;
 		unsigned sip_data_len = packetS->sipDataLen;
 		char *endFirstSipLine = NULL;
