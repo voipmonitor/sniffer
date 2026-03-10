@@ -2395,8 +2395,8 @@ void cSystemdService::detect() {
 			char line[1024];
 			while(fgets(line, sizeof(line), f)) {
 				string sline = line;
-				while(!sline.empty() && (sline.back() == '\n' || sline.back() == '\r')) {
-					sline.pop_back();
+				while(!sline.empty() && (sline[sline.length() - 1] == '\n' || sline[sline.length() - 1] == '\r')) {
+					sline.erase(sline.length() - 1);
 				}
 				size_t pos = sline.rfind('/');
 				if(pos != string::npos) {
