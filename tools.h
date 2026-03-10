@@ -1403,7 +1403,8 @@ private:
 class RestartUpgrade {
 public:
 	RestartUpgrade(bool upgrade = false, const char *version = NULL, const char *build = NULL, const char *url = NULL,
-		       const char *md5_32 = NULL, const char *md5_64 = NULL, const char *md5_arm = NULL, const char *md5_64_ws = NULL);
+		       const char *md5_32 = NULL, const char *md5_64 = NULL, const char *md5_arm = NULL, const char *md5_64_ws = NULL,
+		       const char *md5_arm64 = NULL);
 	~RestartUpgrade();
 	bool runUpgrade();
 	bool createRestartScript();
@@ -1422,7 +1423,8 @@ private:
 	bool getRestartTempScriptFileName();
 	bool getSafeRunTempScriptFileName();
 	string getMD5() {
-		return(_arm ? md5_arm :
+		return(_arm64 ? md5_arm64 :
+		       _arm ? md5_arm :
 		       _64bit_ws ? md5_64_ws :
 		       _64bit ? md5_64 : md5_32);
 	}
@@ -1437,6 +1439,7 @@ private:
 	string md5_64;
 	string md5_64_ws;
 	string md5_arm;
+	string md5_arm64;
 	string upgradeTempFileName;
 	string restartTempScriptFileName;
 	string safeRunTempScriptFileName;
@@ -1444,6 +1447,7 @@ private:
 	bool _64bit;
 	bool _64bit_ws;
 	bool _arm;
+	bool _arm64;
 };
 
 class VmCodecs {
