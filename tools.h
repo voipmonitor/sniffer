@@ -1386,10 +1386,25 @@ private:
 	volatile int cpuPeak[AsyncClose_maxPcapThreads];
 };
 
+#define SYSTEMD_DEFAULT_UNIT_NAME "voipmonitor.service"
+class cSystemdService {
+public:
+	static bool isService();
+	static string getUnitName();
+	static string safeRestartServiceStr();
+	static void detect();
+private:
+	static bool verifyUnit(const char *unit);
+	static volatile bool detected;
+	static volatile bool is_service;
+	static string unit_name;
+};
+
 class RestartUpgrade {
 public:
-	RestartUpgrade(bool upgrade = false, const char *version = NULL, const char *build = NULL, const char *url = NULL, 
+	RestartUpgrade(bool upgrade = false, const char *version = NULL, const char *build = NULL, const char *url = NULL,
 		       const char *md5_32 = NULL, const char *md5_64 = NULL, const char *md5_arm = NULL, const char *md5_64_ws = NULL);
+	~RestartUpgrade();
 	bool runUpgrade();
 	bool createRestartScript();
 	bool createSafeRunScript();
@@ -1401,6 +1416,8 @@ public:
 	string getErrorString();
 	string getRsltString();
 private:
+	bool checkShellSafeStr(const char *str);
+	bool downloadUpgradeFile(string urlHttps, string urlHttp, string destFilepathName);
 	bool getUpgradeTempFileName();
 	bool getRestartTempScriptFileName();
 	bool getSafeRunTempScriptFileName();
@@ -1478,6 +1495,9 @@ public:
 	~WDT();
 private:
 	void runScript();
+	bool runScript_systemdScope();
+	bool runScript_direct();
+	bool runScript_bash();
 	void killScript();
 	void killOtherScript();
 	bool createScript();

@@ -4406,7 +4406,12 @@ int Mgmt_upgrade_restart(Mgmt_params *params) {
 		params->registerCommand(ch);
 		return(0);
 	}
-
+	static volatile int upgrade_restart_lock = 0;
+	if(__SYNC_TEST_LOCK(upgrade_restart_lock)) {
+		string rslt = "upgrade/restart already in progress";
+		params->sendString(&rslt);
+		return(0);
+	}
 	bool upgrade = false;
 	string build;
 	string version;
@@ -4517,20 +4522,22 @@ int Mgmt_upgrade_restart(Mgmt_params *params) {
 	if(!rsltForSend.length()) {
 		if(restart.createRestartScript() && restart.createSafeRunScript()) {
 			if((!upgrade || restart.runUpgrade()) &&
-					restart.checkReadyRestart() &&
-					restart.isOk()) {
+			   restart.checkReadyRestart() &&
+			   restart.isOk()) {
 				ok = true;
 			}
 		}
 		rsltForSend = restart.getRsltString();
 	}
-	if (params->sendString(&rsltForSend) == -1){
-		return -1;
+	if(params->sendString(&rsltForSend) == -1) {
+		__SYNC_UNLOCK(upgrade_restart_lock);
+		return(-1);
 	}
 	if(ok) {
 		restart.runRestart(params->client.handler, manager_socket_server, params->c_client);
 	}
-	return 0;
+	__SYNC_UNLOCK(upgrade_restart_lock);
+	return(0);
 }
 
 int Mgmt_gitUpgrade(Mgmt_params *params) {
@@ -4538,8 +4545,8 @@ int Mgmt_gitUpgrade(Mgmt_params *params) {
 		params->registerCommand("gitUpgrade", "do upgrade from git");
 		return(0);
 	}
-	char cmd[100];
-	sscanf(params->buf, "gitUpgrade %s", cmd);
+	char cmd[1024];
+	sscanf(params->buf, "gitUpgrade %1023s", cmd);
 	RestartUpgrade upgrade;
 	bool rslt = upgrade.runGitUpgrade(cmd);
 	string rsltString;

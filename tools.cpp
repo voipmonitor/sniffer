@@ -2351,6 +2351,141 @@ void AsyncClose::getQueueSize(vector<unsigned> *size, bool only_non_empty) {
 	}
 }
 
+bool cSystemdService::isService() {
+#ifdef FREEBSD
+	return(false);
+#else
+	detect();
+	return(is_service);
+#endif
+}
+
+string cSystemdService::getUnitName() {
+#ifdef FREEBSD
+	return("");
+#else
+	detect();
+	return(unit_name);
+#endif
+}
+
+string cSystemdService::safeRestartServiceStr() {
+	string unit = getUnitName();
+	return("systemctl kill --signal=SIGKILL " + unit + " 2>/dev/null; "
+	       "sleep 2; "
+	       "timeout 10 systemctl stop " + unit + " 2>/dev/null; "
+	       "systemctl reset-failed " + unit + " 2>/dev/null; "
+	       "systemctl start " + unit);
+}
+
+void cSystemdService::detect() {
+	if(detected) {
+		return;
+	}
+#ifndef FREEBSD
+	if(!file_exists("/run/systemd/system") || !getenv("INVOCATION_ID")) {
+		detected = true;
+		return;
+	}
+	extern string systemd_unit_name;
+	if(systemd_unit_name.empty()) {
+		bool unit_detected = false;
+		FILE *f = fopen("/proc/self/cgroup", "r");
+		if(f) {
+			char line[1024];
+			while(fgets(line, sizeof(line), f)) {
+				string sline = line;
+				while(!sline.empty() && (sline.back() == '\n' || sline.back() == '\r')) {
+					sline.pop_back();
+				}
+				size_t pos = sline.rfind('/');
+				if(pos != string::npos) {
+					string unit = sline.substr(pos + 1);
+					if(unit.length() > 8 && unit.substr(unit.length() - 8) == ".service") {
+						unit_name = unit;
+						unit_detected = true;
+						break;
+					}
+				}
+			}
+			fclose(f);
+		}
+		if(!unit_detected) {
+			unit_name = SYSTEMD_DEFAULT_UNIT_NAME;
+			if(verbosity > 0) {
+				syslog(LOG_NOTICE, "unable to detect systemd unit name from cgroup, using default: %s", unit_name.c_str());
+			}
+		} else {
+			if(verbosity > 0) {
+				syslog(LOG_NOTICE, "detected systemd service unit: %s", unit_name.c_str());
+			}
+		}
+	} else {
+		unit_name = systemd_unit_name;
+		if(verbosity > 0) {
+			syslog(LOG_NOTICE, "using configured systemd unit name: %s", unit_name.c_str());
+		}
+	}
+	if(verifyUnit(unit_name.c_str())) {
+		is_service = true;
+		if(verbosity > 0) {
+			syslog(LOG_NOTICE, "systemd unit '%s' verified", unit_name.c_str());
+		}
+	} else {
+		syslog(LOG_WARNING, "systemd unit '%s' not found or not loaded, disabling systemd integration", unit_name.c_str());
+		unit_name.clear();
+	}
+#endif
+	detected = true;
+}
+
+bool cSystemdService::verifyUnit(const char *unit) {
+	const char *verify_cmds[] = {
+		"systemctl show -p LoadState %s 2>/dev/null",
+		"systemctl show %s 2>/dev/null",
+		"systemctl cat %s >/dev/null 2>&1",
+		"systemctl is-active --quiet %s",
+		NULL
+	};
+	const char *verify_types[] = {
+		"popen",
+		"popen",
+		"system",
+		"system",
+		NULL
+	};
+	for(int i = 0; verify_cmds[i]; i++) {
+		char cmd[512];
+		snprintf(cmd, sizeof(cmd), verify_cmds[i], unit);
+		if(strcmp(verify_types[i], "popen") == 0) {
+			FILE *pf = popen(cmd, "r");
+			if(pf) {
+				bool found = false;
+				char buf[1024];
+				while(fgets(buf, sizeof(buf), pf)) {
+					if(strcasestr(buf, "LoadState=loaded")) {
+						found = true;
+						break;
+					}
+				}
+				pclose(pf);
+				if(found) {
+					return(true);
+				}
+			}
+		} else {
+			if(system(cmd) == 0) {
+				return(true);
+			}
+		}
+	}
+	return(false);
+}
+
+volatile bool cSystemdService::detected = false;
+volatile bool cSystemdService::is_service = false;
+string cSystemdService::unit_name;
+
 RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *build, const char *url, const char *md5_32, const char *md5_64, const char *md5_arm, const char *md5_64_ws) {
 	this->upgrade = upgrade;
 	if(version) {
@@ -2391,6 +2526,18 @@ RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *bu
 	#endif
 }
 
+RestartUpgrade::~RestartUpgrade() {
+	if(!this->upgradeTempFileName.empty() && file_exists(this->upgradeTempFileName)) {
+		rmdir_r(this->upgradeTempFileName.c_str());
+	}
+	if(!this->restartTempScriptFileName.empty() && file_exists(this->restartTempScriptFileName)) {
+		unlink(this->restartTempScriptFileName.c_str());
+	}
+	if(!this->safeRunTempScriptFileName.empty() && file_exists(this->safeRunTempScriptFileName)) {
+		unlink(this->safeRunTempScriptFileName.c_str());
+	}
+}
+
 bool RestartUpgrade::runUpgrade() {
 	if(verbosity > 0) {
 		syslog(LOG_NOTICE, "start upgrade from: '%s'", url.c_str());
@@ -2411,103 +2558,29 @@ bool RestartUpgrade::runUpgrade() {
 	}
 	if(!okUrl) {
 		this->errorString = "url " + url + " not allowed";
-		if(verbosity > 0) {
-			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-		}
+		syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
 		return(false);
 	}
 	if(!this->upgradeTempFileName.length() && !this->getUpgradeTempFileName()) {
 		this->errorString = "failed create temp name for new binary";
-		if(verbosity > 0) {
-			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-		}
+		syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
 		return(false);
 	}
 	if(mkdir(this->upgradeTempFileName.c_str(), 0700)) {
 		this->errorString = "failed create folder " + this->upgradeTempFileName;
-		if(verbosity > 0) {
-			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-		}
+		syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
 		return(false);
 	}
-	unlink(this->upgradeTempFileName.c_str());
 	string binaryFilepathName;
 	if(build.empty()) {
 		binaryFilepathName = this->upgradeTempFileName + "/" + appname;
 		string binaryGzFilepathName = this->upgradeTempFileName + "/" + appname + ".gz";
-		extern int opt_upgrade_try_http_if_https_fail;
-		for(int pass = 0; pass < (opt_upgrade_try_http_if_https_fail ? 2 : 1); pass++) {
-			string error;
-			string _url = (pass == 1 ? urlHttp : url) + "/voipmonitor" +
-				      (this->_64bit_ws ? 
-					"-wireshark.gz.64" :
+		string urlSuffix = "/voipmonitor" +
+				   (this->_64bit_ws ?
+					string("-wireshark.gz.64") :
 					(string(".gz.") + (this->_arm ? "armv6k" :
 							   this->_64bit ? "64" : "32")));
-			if(verbosity > 0) {
-				syslog(LOG_NOTICE, "try download file: '%s'", _url.c_str());
-			}
-			bool get_url_file_rslt = get_url_file(_url.c_str(), binaryGzFilepathName.c_str(), &error);
-			long long int get_url_file_size = 0;
-			if(get_url_file_rslt) {
-				get_url_file_size = GetFileSize(binaryGzFilepathName);
-				if(get_url_file_size <= 0) {
-					get_url_file_rslt = false;
-				} else if(get_url_file_size < 10000) {
-					FILE *check_file_handle = fopen(binaryGzFilepathName.c_str(), "r");
-					if(check_file_handle) {
-						char *check_file_buffer = new FILE_LINE(0) char[get_url_file_size + 1];
-						if(fread(check_file_buffer, 1, get_url_file_size, check_file_handle) == (unsigned)get_url_file_size) {
-							check_file_buffer[get_url_file_size] = 0;
-							vector<string> matches;
-							if(reg_match(check_file_buffer, "<title>(.*)</title>", &matches, true) ||
-							   reg_match(check_file_buffer, "<h1>(.*)</h1>", &matches, true)) {
-								error = matches[1];
-								get_url_file_rslt = false;
-							}
-						} else {
-							get_url_file_rslt = false;
-						}
-						delete [] check_file_buffer;
-						fclose(check_file_handle);
-					} else {
-						error = "failed check of the download file";
-						get_url_file_rslt = false;
-					}
-				}
-			}
-			if(get_url_file_rslt) {
-				syslog(LOG_NOTICE, "download file '%s' finished (size: %lli)", _url.c_str(), GetFileSize(binaryGzFilepathName));
-				this->errorString = "";
-				break;
-			} else {
-				this->errorString = "failed download upgrade";
-				if(!error.empty()) {
-					this->errorString += ": " + error;
-				}
-				if(pass || !opt_upgrade_try_http_if_https_fail) {
-					rmdir_r(this->upgradeTempFileName.c_str());
-					if(verbosity > 0) {
-						syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-					}
-					return(false);
-				}
-			}
-		}
-		if(!file_exists(binaryGzFilepathName)) {
-			this->errorString = "failed download - missing destination file";
-			rmdir_r(this->upgradeTempFileName.c_str());
-			if(verbosity > 0) {
-				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-			}
-			return(false);
-		}
-		long long binaryGzFilepathNameSize = GetFileSize(binaryGzFilepathName.c_str()); 
-		if(!binaryGzFilepathNameSize) {
-			this->errorString = "failed download - zero size of destination file";
-			rmdir_r(this->upgradeTempFileName.c_str());
-			if(verbosity > 0) {
-				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-			}
+		if(!this->downloadUpgradeFile(url + urlSuffix, urlHttp + urlSuffix, binaryGzFilepathName)) {
 			return(false);
 		}
 		if(verbosity > 0) {
@@ -2522,17 +2595,18 @@ bool RestartUpgrade::runUpgrade() {
 			this->errorString = unzip_rslt;
 			if(verbosity > 1) {
 				FILE *f = fopen(binaryGzFilepathName.c_str(), "rt");
-				char buff[10000];
-				while(fgets(buff, sizeof(buff), f)) {
-					cout << buff << endl;
+				if(f) {
+					char buff[10000];
+					while(fgets(buff, sizeof(buff), f)) {
+						cout << buff << endl;
+					}
+					fclose(f);
 				}
 			}
 			if(verbosity < 2) {
 				rmdir_r(this->upgradeTempFileName.c_str());
 			}
-			if(verbosity > 0) {
-				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-			}
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
 			return(false);
 		}
 		if(!this->getMD5().empty()) {
@@ -2540,9 +2614,7 @@ bool RestartUpgrade::runUpgrade() {
 			if(this->getMD5() != md5) {
 				this->errorString = "failed download - bad md5: " + md5 + " <> " + this->getMD5();
 				rmdir_r(this->upgradeTempFileName.c_str());
-				if(verbosity > 0) {
-					syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-				}
+				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
 				return(false);
 			}
 		}
@@ -2553,81 +2625,14 @@ bool RestartUpgrade::runUpgrade() {
 				     version + "-" +
 				     "static.tar.gz";
 		string tarFilepathName = this->upgradeTempFileName + "/" + tarFileName;
-		string tarBinaryFilepathName = appname + "-" + 
+		string tarBinaryFilepathName = appname + "-" +
 					       (this->_64bit_ws ? "wireshark-" : "") +
 					       (this->_arm ? "armv6k" : (this->_64bit || this->_64bit_ws ? "amd64" : "i686")) + "-" +
 					       version + "-" +
 					       "static" + "/usr/local/sbin/voipmonitor";
 		binaryFilepathName = this->upgradeTempFileName + "/" + appname;
-		extern int opt_upgrade_try_http_if_https_fail;
-		for(int pass = 0; pass < (opt_upgrade_try_http_if_https_fail ? 2 : 1); pass++) {
-			string error;
-			string _url = (pass == 1 ? urlHttp : url) + "build-" + build + "/tarballdevel/" + tarFileName;
-			if(verbosity > 0) {
-				syslog(LOG_NOTICE, "try download file: '%s'", _url.c_str());
-			}
-			bool get_url_file_rslt = get_url_file(_url.c_str(), tarFilepathName.c_str(), &error);
-			long long int get_url_file_size = 0;
-			if(get_url_file_rslt) {
-				get_url_file_size = GetFileSize(tarFilepathName);
-				if(get_url_file_size <= 0) {
-					get_url_file_rslt = false;
-				} else if(get_url_file_size < 10000) {
-					FILE *check_file_handle = fopen(tarFilepathName.c_str(), "r");
-					if(check_file_handle) {
-						char *check_file_buffer = new FILE_LINE(0) char[get_url_file_size + 1];
-						if(fread(check_file_buffer, 1, get_url_file_size, check_file_handle) == (unsigned)get_url_file_size) {
-							check_file_buffer[get_url_file_size] = 0;
-							vector<string> matches;
-							if(reg_match(check_file_buffer, "<title>(.*)</title>", &matches, true) ||
-							   reg_match(check_file_buffer, "<h1>(.*)</h1>", &matches, true)) {
-								error = matches[1];
-								get_url_file_rslt = false;
-							}
-						} else {
-							get_url_file_rslt = false;
-						}
-						delete [] check_file_buffer;
-						fclose(check_file_handle);
-					} else {
-						error = "failed check of the download file";
-						get_url_file_rslt = false;
-					}
-				}
-			}
-			if(get_url_file_rslt) {
-				syslog(LOG_NOTICE, "download file '%s' finished (size: %lli)", _url.c_str(), GetFileSize(tarFilepathName));
-				this->errorString = "";
-				break;
-			} else {
-				this->errorString = "failed download upgrade";
-				if(!error.empty()) {
-					this->errorString += ": " + error;
-				}
-				if(pass || !opt_upgrade_try_http_if_https_fail) {
-					rmdir_r(this->upgradeTempFileName.c_str());
-					if(verbosity > 0) {
-						syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-					}
-					return(false);
-				}
-			}
-		}
-		if(!file_exists(tarFilepathName)) {
-			this->errorString = "failed download - missing destination file";
-			rmdir_r(this->upgradeTempFileName.c_str());
-			if(verbosity > 0) {
-				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-			}
-			return(false);
-		}
-		long long binaryGzFilepathNameSize = GetFileSize(tarFilepathName.c_str()); 
-		if(!binaryGzFilepathNameSize) {
-			this->errorString = "failed download - zero size of destination file";
-			rmdir_r(this->upgradeTempFileName.c_str());
-			if(verbosity > 0) {
-				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-			}
+		string urlSuffix = "build-" + build + "/tarballdevel/" + tarFileName;
+		if(!this->downloadUpgradeFile(url + urlSuffix, urlHttp + urlSuffix, tarFilepathName)) {
 			return(false);
 		}
 		if(verbosity > 0) {
@@ -2637,9 +2642,7 @@ bool RestartUpgrade::runUpgrade() {
 		if(!outputFileHandle) {
 			this->errorString = "open output file failed";
 			rmdir_r(this->upgradeTempFileName.c_str());
-			if(verbosity > 0) {
-				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-			}
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
 			return(false);
 		}
 		Tar tar;
@@ -2654,44 +2657,44 @@ bool RestartUpgrade::runUpgrade() {
 		} else {
 			this->errorString = "untar failed";
 			rmdir_r(this->upgradeTempFileName.c_str());
-			if(verbosity > 0) {
-				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-			}
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
 			return(false);
 		}
 		if(!file_exists(binaryFilepathName)) {
 			this->errorString = "untar failed - missing destination file";
 			rmdir_r(this->upgradeTempFileName.c_str());
-			if(verbosity > 0) {
-				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-			}
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
 			return(false);
 		}
-		binaryGzFilepathNameSize = GetFileSize(binaryFilepathName.c_str()); 
-		if(!binaryGzFilepathNameSize) {
+		long long binaryFileSize = GetFileSize(binaryFilepathName.c_str());
+		if(!binaryFileSize) {
 			this->errorString = "untar failed - zero size of destination file";
 			rmdir_r(this->upgradeTempFileName.c_str());
-			if(verbosity > 0) {
-				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-			}
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
 			return(false);
 		}
 	}
-	unlink(binaryNameWithPath.c_str());
-	if(copy_file(binaryFilepathName.c_str(), binaryNameWithPath.c_str(), true) <= 0) {
-		this->errorString = "failed copy new binary to " + binaryNameWithPath;
+	string binaryTmpPath = binaryNameWithPath + ".upgrade_tmp";
+	unlink(binaryTmpPath.c_str());
+	if(copy_file(binaryFilepathName.c_str(), binaryTmpPath.c_str(), true) <= 0) {
+		this->errorString = "failed copy new binary to " + binaryTmpPath;
+		unlink(binaryTmpPath.c_str());
 		rmdir_r(this->upgradeTempFileName.c_str());
-		if(verbosity > 0) {
-			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-		}
+		syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
 		return(false);
 	}
-	if(chmod(binaryNameWithPath.c_str(), 0755)) {
-		this->errorString = "failed chmod 0755 " + binaryNameWithPath + " binary";
+	if(chmod(binaryTmpPath.c_str(), 0755)) {
+		this->errorString = "failed chmod 0755 " + binaryTmpPath;
+		unlink(binaryTmpPath.c_str());
 		rmdir_r(this->upgradeTempFileName.c_str());
-		if(verbosity > 0) {
-			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-		}
+		syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		return(false);
+	}
+	if(rename(binaryTmpPath.c_str(), binaryNameWithPath.c_str())) {
+		this->errorString = "failed rename " + binaryTmpPath + " to " + binaryNameWithPath;
+		unlink(binaryTmpPath.c_str());
+		rmdir_r(this->upgradeTempFileName.c_str());
+		syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
 		return(false);
 	}
 	rmdir_r(this->upgradeTempFileName.c_str());
@@ -2699,63 +2702,96 @@ bool RestartUpgrade::runUpgrade() {
 }
 
 bool RestartUpgrade::createRestartScript() {
+	extern string wdt_run_command;
 	if(verbosity > 0) {
 		syslog(LOG_NOTICE, "create restart script");
 	}
 	if(!this->restartTempScriptFileName.length() && !this->getRestartTempScriptFileName()) {
 		this->errorString = "failed create temp name for restart script";
-		if(verbosity > 0) {
-			syslog(LOG_ERR, "create restart script failed - %s", this->errorString.c_str());
-		}
+		syslog(LOG_ERR, "create restart script failed - %s", this->errorString.c_str());
 		return(false);
 	}
 	FILE *fileHandle = fopen(this->restartTempScriptFileName.c_str(), "wt");
 	if(fileHandle) {
 		fputs(SCRIPT_SHELL, fileHandle);
-		fprintf(fileHandle, "cd '%s'\n%s\n", getRunDir().c_str(), getCmdLine().c_str());
-		fprintf(fileHandle, "rm %s\n", this->restartTempScriptFileName.c_str());
+		if(!wdt_run_command.empty()) {
+			fprintf(fileHandle, "%s\n", wdt_run_command.c_str());
+		} else if(cSystemdService::isService()) {
+			fprintf(fileHandle, "%s\n", cSystemdService::safeRestartServiceStr().c_str());
+		} else {
+			fprintf(fileHandle, "cd '%s'\n%s\n", getRunDir().c_str(), getCmdLine().c_str());
+		}
+		fprintf(fileHandle, "rm '%s'\n", this->restartTempScriptFileName.c_str());
 		fclose(fileHandle);
 		if(chmod(this->restartTempScriptFileName.c_str(), 0755)) {
 			this->errorString = "failed chmod 0755 for restart script";
+			syslog(LOG_ERR, "create restart script failed - %s", this->errorString.c_str());
+			unlink(this->restartTempScriptFileName.c_str());
+			return(false);
 		}
 		return(true);
 	} else {
 		this->errorString = "failed create restart script";
-		if(verbosity > 0) {
-			syslog(LOG_ERR, "create restart script failed - %s", this->errorString.c_str());
-		}
+		syslog(LOG_ERR, "create restart script failed - %s", this->errorString.c_str());
 	}
 	return(false);
 }
 
 bool RestartUpgrade::createSafeRunScript() {
+	extern string wdt_run_command;
+	extern char configfile[1024];
 	if(verbosity > 0) {
 		syslog(LOG_NOTICE, "create safe run script");
 	}
 	if(!this->safeRunTempScriptFileName.length() && !this->getSafeRunTempScriptFileName()) {
 		this->errorString = "failed create temp name for safe run script";
-		if(verbosity > 0) {
-			syslog(LOG_ERR, "create safe run script failed - %s", this->errorString.c_str());
-		}
+		syslog(LOG_ERR, "create safe run script failed - %s", this->errorString.c_str());
 		return(false);
 	}
 	FILE *fileHandle = fopen(this->safeRunTempScriptFileName.c_str(), "wt");
 	if(fileHandle) {
 		fputs(SCRIPT_SHELL, fileHandle);
 		fputs("sleep 60\n", fileHandle);
-		fprintf(fileHandle, "if [[ \"`ps -A -o comm,pid | grep %i`\" == \"%s\"* ]]; then kill -9 %i; sleep 1; fi\n", getpid(), appname.c_str(), getpid());
-		fprintf(fileHandle, "cd '%s'\n%s\n", getRunDir().c_str(), getCmdLine().c_str());
-		fprintf(fileHandle, "rm %s\n", this->safeRunTempScriptFileName.c_str());
+		fprintf(fileHandle, 
+			"if [[ \"`ps -A -o comm,pid | grep %i`\" == \"%s\"* ]]; "
+			"then kill -9 %i; sleep 1; "
+			"fi\n",
+			getpid(), appname.c_str(), getpid());
+		string run_command;
+		if(!wdt_run_command.empty()) {
+			run_command = wdt_run_command;
+		} else if(cSystemdService::isService()) {
+			run_command = cSystemdService::safeRestartServiceStr();
+		} else {
+			run_command = "cd '" + getRunDir() + "'; " + getCmdLine();
+		}
+#ifdef FREEBSD
+		fprintf(fileHandle,
+			"if [ -z \"`ps -a -w -x -o pid,comm,args | grep -E '^ {0,}[[:digit:]]+ %s ' | grep '%s'`\" ]; "
+			"then %s; "
+			"fi\n",
+			appname.c_str(), configfile,
+			run_command.c_str());
+#else
+		fprintf(fileHandle,
+			"if [ -z \"`ps -C '%s' -o pid,args | grep '%s'`\" ]; "
+			"then %s; "
+			"fi\n",
+			appname.substr(0, 15).c_str(), configfile,
+			run_command.c_str());
+#endif
+		fprintf(fileHandle, "rm '%s'\n", this->safeRunTempScriptFileName.c_str());
 		fclose(fileHandle);
 		if(chmod(this->safeRunTempScriptFileName.c_str(), 0755)) {
 			this->errorString = "failed chmod 0755 for safe run script";
+			syslog(LOG_ERR, "create safe run script failed - %s", this->errorString.c_str());
+			unlink(this->safeRunTempScriptFileName.c_str());
+			return(false);
 		}
 		return(true);
 	} else {
 		this->errorString = "failed create safe run script";
-		if(verbosity > 0) {
-			syslog(LOG_ERR, "create safe run script failed - %s", this->errorString.c_str());
-		}
+		syslog(LOG_ERR, "create safe run script failed - %s", this->errorString.c_str());
 	}
 	return(false);
 }
@@ -2765,7 +2801,7 @@ bool RestartUpgrade::checkReadyRestart() {
 		this->errorString = "failed check restart script - script missing";
 		return(false);
 	}
-	if(!this->restartTempScriptFileName.length()) {
+	if(!file_size(this->restartTempScriptFileName)) {
 		this->errorString = "failed check restart script - zero size of restart script";
 		unlink(this->restartTempScriptFileName.c_str());
 		return(false);
@@ -2778,7 +2814,7 @@ bool RestartUpgrade::checkReadySafeRun() {
 		this->errorString = "failed check safe run script - script missing";
 		return(false);
 	}
-	if(!this->safeRunTempScriptFileName.length()) {
+	if(!file_size(this->safeRunTempScriptFileName)) {
 		this->errorString = "failed check safe run script - zero size of safe run script";
 		unlink(this->safeRunTempScriptFileName.c_str());
 		return(false);
@@ -2788,9 +2824,38 @@ bool RestartUpgrade::checkReadySafeRun() {
 
 bool RestartUpgrade::runRestart(int socket1, int socket2, cClient *c_client) {
 	if(!this->checkReadyRestart()) {
-		if(verbosity > 0) {
-			syslog(LOG_ERR, "restart failed - %s", this->errorString.c_str());
+		syslog(LOG_ERR, "restart failed - %s", this->errorString.c_str());
+		return(false);
+	}
+	pid_t pidSafeRunScript = 0;
+	if(!this->safeRunTempScriptFileName.empty() && this->checkReadySafeRun()) {
+		pidSafeRunScript = fork();
+		if(pidSafeRunScript == 0) {
+			setsid();
+			if(verbosity > 0) {
+				syslog(LOG_NOTICE, "run safe run script (%s)", this->safeRunTempScriptFileName.c_str());
+			}
+			close_all_fd();
+			if(cSystemdService::isService()) {
+				if(execlp("systemd-run", "systemd-run", "--scope", "--quiet",
+					  this->safeRunTempScriptFileName.c_str(), NULL) == -1) {
+					syslog(LOG_ERR, "run safe run script via systemd-run failed - %s, trying direct exec", strerror(errno));
+				}
+			}
+			if(execl(this->safeRunTempScriptFileName.c_str(), "Command-line", NULL) == -1) {
+				syslog(LOG_ERR, "run safe run script (%s) failed - %s", this->safeRunTempScriptFileName.c_str(), strerror(errno));
+			}
+			_exit(1);
 		}
+		if(pidSafeRunScript < 0) {
+			syslog(LOG_ERR, "fork safe run script failed - %s", strerror(errno));
+			pidSafeRunScript = 0;
+		}
+	}
+	if(pidSafeRunScript <= 0) {
+		this->errorString = "safe run script is not running, restart aborted" +
+				    (!this->errorString.empty() ? ": " + this->errorString : "");
+		syslog(LOG_ERR, "%s", this->errorString.c_str());
 		return(false);
 	}
 	extern WDT *wdt;
@@ -2807,19 +2872,6 @@ bool RestartUpgrade::runRestart(int socket1, int socket2, cClient *c_client) {
 	if(c_client) {
 		c_client->writeFinal();
 		delete c_client;
-	}
-	pid_t pidSafeRunScript = 0;
-	if(!this->safeRunTempScriptFileName.empty() && this->checkReadySafeRun()) {
-		pidSafeRunScript = fork();
-		if(!pidSafeRunScript) {
-			syslog(LOG_NOTICE, "run safe run script (%s)", this->safeRunTempScriptFileName.c_str());
-			close_all_fd();
-			if(execl(this->safeRunTempScriptFileName.c_str(), "Command-line", 0, NULL) == -1) {
-				syslog(LOG_NOTICE, "run safe run script (%s) failed - %s", this->safeRunTempScriptFileName.c_str(), strerror(errno));
-				kill(getpid(), SIGKILL);
-			}
-			return(true);
-		}
 	}
 	extern int opt_nocdr;
 	extern bool opt_autoload_from_sqlvmexport;
@@ -2842,55 +2894,82 @@ bool RestartUpgrade::runRestart(int socket1, int socket2, cClient *c_client) {
 	extern void stop_cloud_or_client();
 	stop_cloud_or_client();
 	sleep(2);
-
-	// set to all descriptors flag CLOEXEC so exec* will close it and will not inherit it so the next voipmonitor instance will be not blocking it
-	close_all_fd();
-	
 	if(verbosity > 0) {
 		syslog(LOG_NOTICE, "run restart script (%s)", this->restartTempScriptFileName.c_str());
 	}
-	
-	int rsltExec = execl(this->restartTempScriptFileName.c_str(), "Command-line", 0, NULL);
-	if(rsltExec) {
-		this->errorString = "failed execution restart script";
+	close_all_fd();
+	if(cSystemdService::isService()) {
+		pid_t pidRestart = fork();
+		if(pidRestart == 0) {
+			setsid();
+			close_all_fd();
+			if(execlp("systemd-run", "systemd-run", "--scope", "--quiet",
+				  this->restartTempScriptFileName.c_str(), NULL) == -1) {
+				syslog(LOG_ERR, "systemd-run for restart script failed - %s, trying direct exec", strerror(errno));
+				execl(this->restartTempScriptFileName.c_str(), "Command-line", NULL);
+				syslog(LOG_ERR, "restart failed - exec restart script: %s", strerror(errno));
+			}
+			_exit(1);
+		}
+		if(pidRestart < 0) {
+			syslog(LOG_ERR, "restart failed - fork for systemd restart: %s, safe run script will recover", strerror(errno));
+			_exit(1);
+		}
 		if(verbosity > 0) {
-			syslog(LOG_ERR, "restart failed - %s", this->errorString.c_str());
+			syslog(LOG_NOTICE, "systemd restart initiated, exiting main process");
 		}
-		if(pidSafeRunScript) {
-			kill(pidSafeRunScript, 9);
-			unlink(this->safeRunTempScriptFileName.c_str());
-		}
-		return(false);
+		sleep(1);
+		_exit(0);
 	} else {
-		return(true);
+		int rsltExec = execl(this->restartTempScriptFileName.c_str(), "Command-line", NULL);
+		if(rsltExec) {
+			syslog(LOG_ERR, "restart failed - exec restart script: %s, safe run script will recover", strerror(errno));
+			_exit(1);
+		} else {
+			return(true);
+		}
 	}
 }
 
 bool RestartUpgrade::runGitUpgrade(const char *cmd) {
-	syslog(LOG_NOTICE, "call runGitUpgrade command %s", cmd);
+	if(verbosity > 0) {
+		syslog(LOG_NOTICE, "call runGitUpgrade command %s", cmd);
+	}
 	extern char opt_git_folder[1024];
 	extern char opt_configure_param[1024];
 	extern bool opt_upgrade_by_git;
 	SimpleBuffer out;
 	SimpleBuffer err;
 	int exitCode;
-	string pexecCmd = string("sh -c 'cd \"") + opt_git_folder + "\";";
 	if(!opt_upgrade_by_git) {
 		this->errorString = "not enable upgrade by git";
 		return(false);
 	}
+	if(!checkShellSafeStr(opt_git_folder)) {
+		this->errorString = "git folder path contains unsafe characters";
+		syslog(LOG_ERR, "runGitUpgrade command %s FAILED: %s", cmd, this->errorString.c_str());
+		return(false);
+	}
+	if(!checkShellSafeStr(opt_configure_param)) {
+		this->errorString = "configure param contains unsafe characters";
+		syslog(LOG_ERR, "runGitUpgrade command %s FAILED: %s", cmd, this->errorString.c_str());
+		return(false);
+	}
+	string pexecCmd = string("sh -c 'cd \"") + opt_git_folder + "\";";
 	if(cmd == string("check_git_directory")) {
 		if(!file_exists(opt_git_folder)) {
 			this->errorString = string("not exists git directory ") + opt_git_folder;
-			syslog(LOG_NOTICE, "runGitUpgrade command %s FAILED: %s", cmd, this->errorString.c_str());
+			syslog(LOG_ERR, "runGitUpgrade command %s FAILED: %s", cmd, this->errorString.c_str());
 			return(false);
 		}
 		if(!file_exists(string(opt_git_folder) + "/.git")) {
 			this->errorString = string("missing .git folder in ") + opt_git_folder;
-			syslog(LOG_NOTICE, "runGitUpgrade command %s FAILED: %s", cmd, this->errorString.c_str());
+			syslog(LOG_ERR, "runGitUpgrade command %s FAILED: %s", cmd, this->errorString.c_str());
 			return(false);
 		}
-		syslog(LOG_NOTICE, "runGitUpgrade command %s OK", cmd);
+		if(verbosity > 0) {
+			syslog(LOG_NOTICE, "runGitUpgrade command %s OK", cmd);
+		}
 		return(true);
 	} else if(cmd == string("git_pull") ||
 		  cmd == string("configure") ||
@@ -2913,16 +2992,18 @@ bool RestartUpgrade::runGitUpgrade(const char *cmd) {
 			 600, 600 * 1000, 10, 
 			 true, true);
 		if(exitCode == 0) {
-			syslog(LOG_NOTICE, "runGitUpgrade command %s (%s) OK", cmd, pexecCmd.c_str());
+			if(verbosity > 0) {
+				syslog(LOG_NOTICE, "runGitUpgrade command %s (%s) OK", cmd, pexecCmd.c_str());
+			}
 			return(true);
 		} else {
 			this->errorString = string(out) + "\n" + string(err);
-			syslog(LOG_NOTICE, "runGitUpgrade command %s (%s) FAILED: %s", cmd, pexecCmd.c_str(), this->errorString.c_str());
+			syslog(LOG_ERR, "runGitUpgrade command %s (%s) FAILED: %s", cmd, pexecCmd.c_str(), this->errorString.c_str());
 			return(false);
 		}
 	}
 	this->errorString = string("unknown command ") + cmd;
-	syslog(LOG_NOTICE, "runGitUpgrade command %s FAILED: %s", cmd, this->errorString.c_str());
+	syslog(LOG_ERR, "runGitUpgrade command %s FAILED: %s", cmd, this->errorString.c_str());
 	return(false);
 }
 
@@ -2938,6 +3019,86 @@ string RestartUpgrade::getRsltString() {
 	return(this->isOk() ?
 		(this->upgrade ? "upgraded" : "restarted") :
 		this->errorString);
+}
+
+bool RestartUpgrade::checkShellSafeStr(const char *str) {
+	for(const char *c = str; *c; c++) {
+		if(*c == '\'' || *c == '"' || *c == '$' || *c == '`' || *c == '\\' || *c == ';' || *c == '|' || *c == '&' || *c == '\n' || *c == '>' || *c == '<' || *c == '(' || *c == ')') {
+			return(false);
+		}
+	}
+	return(true);
+}
+
+bool RestartUpgrade::downloadUpgradeFile(string urlHttps, string urlHttp, string destFilepathName) {
+	extern int opt_upgrade_try_http_if_https_fail;
+	for(int pass = 0; pass < (opt_upgrade_try_http_if_https_fail ? 2 : 1); pass++) {
+		string error;
+		string _url = (pass == 1 ? urlHttp : urlHttps);
+		if(verbosity > 0) {
+			syslog(LOG_NOTICE, "try download file: '%s'", _url.c_str());
+		}
+		bool get_url_file_rslt = get_url_file(_url.c_str(), destFilepathName.c_str(), &error);
+		long long int get_url_file_size = 0;
+		if(get_url_file_rslt) {
+			get_url_file_size = GetFileSize(destFilepathName);
+			if(get_url_file_size <= 0) {
+				get_url_file_rslt = false;
+			} else if(get_url_file_size < 10000) {
+				FILE *check_file_handle = fopen(destFilepathName.c_str(), "r");
+				if(check_file_handle) {
+					char *check_file_buffer = new FILE_LINE(0) char[get_url_file_size + 1];
+					if(fread(check_file_buffer, 1, get_url_file_size, check_file_handle) == (unsigned)get_url_file_size) {
+						check_file_buffer[get_url_file_size] = 0;
+						vector<string> matches;
+						if(reg_match(check_file_buffer, "<title>(.*)</title>", &matches, true) ||
+						   reg_match(check_file_buffer, "<h1>(.*)</h1>", &matches, true)) {
+							error = matches[1];
+							get_url_file_rslt = false;
+						}
+					} else {
+						get_url_file_rslt = false;
+					}
+					delete [] check_file_buffer;
+					fclose(check_file_handle);
+				} else {
+					error = "failed check of the download file";
+					get_url_file_rslt = false;
+				}
+			}
+		}
+		if(get_url_file_rslt) {
+			if(verbosity > 0) {
+				syslog(LOG_NOTICE, "download file '%s' finished (size: %lli)", _url.c_str(), GetFileSize(destFilepathName));
+			}
+			this->errorString = "";
+			break;
+		} else {
+			this->errorString = "failed download upgrade";
+			if(!error.empty()) {
+				this->errorString += ": " + error;
+			}
+			if(pass || !opt_upgrade_try_http_if_https_fail) {
+				rmdir_r(this->upgradeTempFileName.c_str());
+				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+				return(false);
+			}
+		}
+	}
+	if(!file_exists(destFilepathName)) {
+		this->errorString = "failed download - missing destination file";
+		rmdir_r(this->upgradeTempFileName.c_str());
+		syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		return(false);
+	}
+	long long destFileSize = GetFileSize(destFilepathName.c_str());
+	if(!destFileSize) {
+		this->errorString = "failed download - zero size of destination file";
+		rmdir_r(this->upgradeTempFileName.c_str());
+		syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		return(false);
+	}
+	return(true);
 }
 
 bool RestartUpgrade::getUpgradeTempFileName() {
@@ -3437,34 +3598,45 @@ WDT::~WDT() {
 
 void WDT::runScript() {
 	pid = fork();
-	if(!pid) {
+	if(pid == 0) {
 		if(verbosity > 0) {
 			syslog(LOG_NOTICE, "run watchdog script (pid %i)", getpid());
 		}
 		close_all_fd();
-		bool okRun = false;
-		for(int pass = 0; pass < 2; pass++) {
-			int rsltExec = 0;
-			switch(pass) {
-			case 0:
-				rsltExec = execl(getScriptFileName().c_str(), "Command-line", 0, NULL);
-				break;
-			case 1:
-				syslog(LOG_NOTICE, "try run watchdog script via bash");
-				rsltExec = execlp("bash", "bash", getScriptFileName().c_str(), NULL);
-				break;
-			}
-			if(rsltExec == -1) {
-				syslog(LOG_NOTICE, "run watchdog script (%s) failed - %s (%i)", getScriptFileName().c_str(), strerror(errno), errno);
-			} else {
-				okRun = true;
-				break;
-			}
+		if(cSystemdService::isService() && runScript_systemdScope()) {
+			return;
 		}
-		if(!okRun) {
-			kill(getpid(), SIGKILL);
+		if(runScript_direct()) {
+			return;
 		}
+		if(runScript_bash()) {
+			return;
+		}
+		kill(getpid(), SIGKILL);
 	}
+}
+
+bool WDT::runScript_systemdScope() {
+	if(execlp("systemd-run", "systemd-run", "--scope", "--quiet",
+		  getScriptFileName().c_str(), NULL) == -1) {
+		syslog(LOG_NOTICE, "run watchdog script via systemd-run failed - %s (%i)", strerror(errno), errno);
+	}
+	return(false);
+}
+
+bool WDT::runScript_direct() {
+	if(execl(getScriptFileName().c_str(), "Command-line", NULL) == -1) {
+		syslog(LOG_NOTICE, "run watchdog script (%s) failed - %s (%i)", getScriptFileName().c_str(), strerror(errno), errno);
+	}
+	return(false);
+}
+
+bool WDT::runScript_bash() {
+	syslog(LOG_NOTICE, "try run watchdog script via bash");
+	if(execlp("bash", "bash", getScriptFileName().c_str(), NULL) == -1) {
+		syslog(LOG_NOTICE, "run watchdog script via bash (%s) failed - %s (%i)", getScriptFileName().c_str(), strerror(errno), errno);
+	}
+	return(false);
 }
 
 void WDT::killScript() {
@@ -3493,14 +3665,29 @@ bool WDT::createScript() {
 		fputs("while [ true ]\n", fileHandle);
 		fputs("do\n", fileHandle);
 		fputs("sleep 5\n", fileHandle);
-		fprintf(fileHandle, 
-			"if [[ ! \"`ps -p %i -o pid,command | grep %i`\" =~ \"%s\"* ]]; "
+		string run_command;
+		if(!wdt_run_command.empty()) {
+			run_command = wdt_run_command;
+		} else if(cSystemdService::isService()) {
+			run_command = cSystemdService::safeRestartServiceStr();
+		} else {
+			run_command = "cd '" + getRunDir() + "'; " + getCmdLine();
+		}
+#ifdef FREEBSD
+		fprintf(fileHandle,
+			"if [ -z \"`ps -a -w -x -o pid,comm,args | grep -E '^ {0,}[[:digit:]]+ %s ' | grep '%s'`\" ]; "
 			"then %s; "
-			"fi\n", 
-			getpid(), getpid(), appname.c_str(),
-			wdt_run_command.empty() ?
-			 ("cd '" + getRunDir() + "'; " + getCmdLine()).c_str() :
-			 wdt_run_command.c_str());
+			"fi\n",
+			appname.c_str(), configfile,
+			run_command.c_str());
+#else
+		fprintf(fileHandle,
+			"if [ -z \"`ps -C '%s' -o pid,args | grep '%s'`\" ]; "
+			"then %s; "
+			"fi\n",
+			appname.substr(0, 15).c_str(), configfile,
+			run_command.c_str());
+#endif
 		fputs("done\n", fileHandle);
 		fclose(fileHandle);
 		if(!chmod(getScriptFileName().c_str(), 0755)) {
