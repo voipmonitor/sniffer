@@ -461,6 +461,7 @@ int opt_cdrproxy = 1;
 int opt_messageproxy = 1;
 int opt_cdr_country_code = 1;
 int opt_message_country_code = 1;
+int opt_register_country_code = 1;
 int opt_quick_save_cdr = 0;
 int opt_enable_http_enum_tables = 0;
 int opt_enable_webrtc_table = 0;
@@ -7146,6 +7147,8 @@ void cConfig::addConfigItems() {
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("cdr_country_code", &opt_cdr_country_code))
 				->addValues("id:2"));
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("message_country_code", &opt_message_country_code))
+				->addValues("id:2"));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("register_country_code", &opt_register_country_code))
 				->addValues("id:2"));
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("quick_save_cdr", &opt_quick_save_cdr))
 				->addValues("quick:2"));
