@@ -1,3 +1,23 @@
+2026.03.0 10.03.2026
+====================
+- Add support for processing SIP responses that arrive before INVITE due to mirroring issues; create placeholder call, queue premature responses and replay them once the actual INVITE arrives. Enabled via new config option enable_premature_response=yes (default no) [VS-1805]
+- Revision of RestartUpgrade and WDT classes - improved support for systemd, added lock for restart/upgrade process manager [VS-1821]
+- Add info about country (IP/number) to the registers [VS-1815]
+- Add support for new filter dialog for active calls [VG-2951]
+- Allow control the saving of the SIP by headers inside next SIP packets [VS-1813]
+- Add storage of auxiliary values for graphs for IPFIX QoS [VS-1811]
+- Adding system metrics to json output of sniffer_threads command [VG-3091]
+- Modification of packet buffer loading (-rpba) restrictions for SIP OPTIONS/SUBSCRIBE/NOTIFY [VS-1810]
+- Lock optimization in pcap_store_queue::memoryBufferIsFull_log [VS-1819]
+- Fix issue with resolver locking for valid IP addresses and localhost [VS-1816]
+- Fix potential crash in SIPREC processing
+- Fix potential crash in cAudioConvert
+- Fix potential race condition in cross-thread CallBranch flags
+- Preserve RRD option when explicitly set in JSON config during file read mode
+- Log a message when loading CSV rules fails
+- ARM64 support for sniffer self-upgrade
+
+
 2026.02.1 09.02.2026
 ====================
 - Fix crash in PII masking when processing registers with NULL values [VS-1807]
@@ -6,17 +26,17 @@
 2026.02.0 06.02.2026
 ====================
 - PII (Personally Identifiable Information) masking for phone numbers [VG-3080]
-  - When enabled (pii_enable = yes), caller and called numbers are anonymized before storing to database and in saved PCAP files
-  - Three masking modes: redact (character/text replacement), HMAC-SHA256 one-way hash (default), or AES-128-CTR reversible encryption
-  - Hash and encrypt modes use deterministic tokenization — same number always produces the same token, preserving per-number correlation and statistics
-  - Phone numbers are E.164-normalized before masking for consistent output
-  - Scope: calls, active calls, registrations (active and stored), SIP messages, livesniffer (description and PCAP), charts
-  - PCAP: SIP headers (Request-URI, From, To, Contact, P-Asserted-Identity, etc.) are masked directly in saved packet captures
-  - Configurable SIP header list (pii_sip_headers) or mask all headers (default)
-  - Optional caller name anonymization (pii_anonymize_callername, default yes)
-  - Optional SIP Authorization username anonymization (pii_anonymize_username, default yes)
-  - Configurable token prefixes (piih_ for hash, piie_ for encryption)
-  - New parameters: pii_enable, pii_masking_mode, pii_masking_secret, pii_redact_mode, pii_redact_char, pii_redact_text, pii_prefix_hash, pii_prefix_encrypt, pii_sip_headers, pii_anonymize_callername, pii_anonymize_username
+- When enabled (pii_enable = yes), caller and called numbers are anonymized before storing to database and in saved PCAP files
+- Three masking modes: redact (character/text replacement), HMAC-SHA256 one-way hash (default), or AES-128-CTR reversible encryption
+- Hash and encrypt modes use deterministic tokenization — same number always produces the same token, preserving per-number correlation and statistics
+- Phone numbers are E.164-normalized before masking for consistent output
+- Scope: calls, active calls, registrations (active and stored), SIP messages, livesniffer (description and PCAP), charts
+- PCAP: SIP headers (Request-URI, From, To, Contact, P-Asserted-Identity, etc.) are masked directly in saved packet captures
+- Configurable SIP header list (pii_sip_headers) or mask all headers (default)
+- Optional caller name anonymization (pii_anonymize_callername, default yes)
+- Optional SIP Authorization username anonymization (pii_anonymize_username, default yes)
+- Configurable token prefixes (piih_ for hash, piie_ for encryption)
+- New parameters: pii_enable, pii_masking_mode, pii_masking_secret, pii_redact_mode, pii_redact_char, pii_redact_text, pii_prefix_hash, pii_prefix_encrypt, pii_sip_headers, pii_anonymize_callername, pii_anonymize_username
 
 
 2026.01.5 28.01.2026
