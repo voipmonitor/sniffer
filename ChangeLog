@@ -1,3 +1,8 @@
+2026.03.1 11.03.2026
+====================
+- Fix crash when both save_sip_history and enable_premature_response are enabled
+
+
 2026.03.0 10.03.2026
 ====================
 - Add support for processing SIP responses that arrive before INVITE due to mirroring issues; create placeholder call, queue premature responses and replay them once the actual INVITE arrives. Enabled via new config option enable_premature_response=yes (default no) [VS-1805]
