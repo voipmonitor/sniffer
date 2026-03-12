@@ -46,6 +46,7 @@
 #include "calltable_base.h"
 #include "dtls.h"
 #include "ipfix.h"
+#include "rtcp.h"
 
 
 #define MAX_IP_PER_CALL 40	//!< total maxumum of SDP sessions for one call-id
@@ -207,7 +208,8 @@ enum eCdrBitFlag {
 	_CDR_BIT_PROTO_UDP,
 	_CDR_BIT_PROTO_TLS,
 	_CDR_BIT_STOPPED_JB_DUE_TO_HIGH_OOO,
-	_CDR_BIT_CHANGING_CODEC_IN_STREAM
+	_CDR_BIT_CHANGING_CODEC_IN_STREAM,
+	_CDR_BIT_RTCP_RTD_USE_WS_METHOD
 };
 
 #define CDR_CHANGE_SRC_PORT_CALLER		CDR_FLAG(_CDR_BIT_CHANGE_SRC_PORT_CALLER)
@@ -235,6 +237,7 @@ enum eCdrBitFlag {
 #define CDR_RTP_DUPL_SEQ			CDR_FLAG(_CDR_BIT_RTP_DUPL_SEQ)
 #define CDR_STOPPED_JB_DUE_TO_HIGH_OOO		CDR_FLAG(_CDR_BIT_STOPPED_JB_DUE_TO_HIGH_OOO)
 #define CDR_CHANGING_CODEC_IN_STREAM		CDR_FLAG(_CDR_BIT_CHANGING_CODEC_IN_STREAM)
+#define CDR_RTCP_RTD_USE_WS_METHOD		CDR_FLAG(_CDR_BIT_RTCP_RTD_USE_WS_METHOD)
 
 #define CDR_SAVE_FLAGS				CDR_FLAG(_CDR_BIT_SAVE_FLAGS)
 #define CDR_SAVE_SIP_PCAP			CDR_FLAG(_CDR_BIT_SAVE_SIP_PCAP)
@@ -837,6 +840,7 @@ public:
 	
 	string last_via_branch;
 	
+	cRtcpRtd rtcp_rtd;
 };
 
 struct raws_t {

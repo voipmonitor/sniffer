@@ -12,7 +12,7 @@
 #define NTP_TIMEDIFF1970TO2036SEC 2085978496ul
 
 
-//#include "rtcp.h"
+#include "rtcp.h"
 
 /*
  * Static part of RTCP header
@@ -222,6 +222,116 @@ struct sPrepareRtcpDataParams {
 sPrepareRtcpDataParams *prepare_rtcp_data_params;
 
 
+cRtcpRtd::cRtcpRtd() {
+	queue_limit = 200;
+}
+
+cRtcpRtd::~cRtcpRtd() {
+	while(!queue_recs.empty()) {
+		delete queue_recs.front();
+		queue_recs.pop();
+	}
+}
+
+void cRtcpRtd::newSendDesc(rtcp_sr_senderinfo *senderinfo, struct timeval *pkt_ts) {
+	sRtcpRtd_Rec *rec = new FILE_LINE(0) sRtcpRtd_Rec;
+	rec->send_desc.ssrc = senderinfo->sender_ssrc;
+	rec->send_desc.ntp_ts = ((senderinfo->timestamp_MSW & 0xffff) << 16) |
+				((senderinfo->timestamp_LSW & 0xffff0000) >> 16);
+	rec->send_desc.pkt_ts = pkt_ts->tv_sec * 1000000ull + pkt_ts->tv_usec;
+	if(queue_recs.size() >= queue_limit) {
+		sRtcpRtd_Rec *oldest = queue_recs.front();
+		queue_recs.pop();
+		map_recs.erase(oldest->send_desc);
+		map<u_int32_t, sRtcpRtd_Rec*>::iterator lit = map_last_by_ssrc.find(oldest->send_desc.ssrc);
+		if(lit != map_last_by_ssrc.end() && lit->second == oldest) {
+			map_last_by_ssrc.erase(lit);
+		}
+		delete oldest;
+	}
+	queue_recs.push(rec);
+	map_recs[rec->send_desc] = rec;
+	map_last_by_ssrc[senderinfo->sender_ssrc] = rec;
+}
+
+void cRtcpRtd::addReportBlock(rtcp_sr_senderinfo *senderinfo, rtcp_sr_reportblock *reportblock) {
+	if(!reportblock->lsr) {
+		return;
+	}
+	sRtcpRtd_SendDesc_key key;
+	key.ssrc = senderinfo->sender_ssrc;
+	key.ntp_ts = ((senderinfo->timestamp_MSW & 0xffff) << 16) |
+		     ((senderinfo->timestamp_LSW & 0xffff0000) >> 16);
+	map<sRtcpRtd_SendDesc_key, sRtcpRtd_Rec*>::iterator it = map_recs.find(key);
+	if(it == map_recs.end()) {
+		return;
+	}
+	sRtcpRtd_Rec *rec = it->second;
+	sRtcpRtd_Report report;
+	report.ssrc = reportblock->ssrc;
+	report.last_sr_ts = reportblock->lsr;
+	report.delay = reportblock->delay_since_lsr;
+	rec->reports[reportblock->ssrc] = report;
+}
+
+int cRtcpRtd::getRtd(u_int32_t reporter_ssrc, u_int32_t cur_sr_ts, rtcp_sr_reportblock *reportblock, struct timeval *pkt_ts, int rtd_type_calc) {
+	if(!reportblock->lsr || !reportblock->delay_since_lsr) {
+		return(-1);
+	}
+	sRtcpRtd_SendDesc key;
+	key.ssrc = reportblock->ssrc;
+	key.ntp_ts = reportblock->lsr;
+	map<sRtcpRtd_SendDesc_key, sRtcpRtd_Rec*>::iterator it = map_recs.find(key);
+	if(it == map_recs.end()) {
+		return(-1);
+	}
+	sRtcpRtd_Rec *rec = it->second;
+	if(rtd_type_calc & _rtd_tc_use_last_sr) {
+		map<u_int32_t, sRtcpRtd_Rec*>::iterator lit = map_last_by_ssrc.find(reportblock->ssrc);
+		if(lit == map_last_by_ssrc.end() || lit->second != rec) {
+			return(-1);
+		}
+	}
+	if((rtd_type_calc & _rtd_tc_rfc) && cur_sr_ts) {
+		map<u_int32_t, sRtcpRtd_Report>::iterator rit = rec->reports.find(reporter_ssrc);
+		if(rit != rec->reports.end() && rit->second.last_sr_ts && rit->second.delay) {
+			int32_t rtd = cur_sr_ts -
+				      rit->second.last_sr_ts -
+				      rit->second.delay -
+				      reportblock->delay_since_lsr;
+			if(rtd > 0) {
+				return((int)round((double)rtd * 1000.0 / 65536.0));
+			}
+		}
+	}
+	if(rtd_type_calc & _rtd_tc_ws) {
+		if(rtd_type_calc & _rtd_tc_ws_bug) {
+			time_t sr_sec = rec->send_desc.pkt_ts / 1000000;
+			int sr_usec = rec->send_desc.pkt_ts % 1000000;
+			int seconds_between_packets = (int)(pkt_ts->tv_sec - sr_sec);
+			int nseconds_between_packets = (int)(pkt_ts->tv_usec * 1000) - (int)(sr_usec * 1000);
+			int total_gap = seconds_between_packets * 1000 + nseconds_between_packets / 1000000;
+			int dlsr_ms = (int)(((double)reportblock->delay_since_lsr / 65536.0) * 1000.0);
+			int rtd_ms = total_gap - dlsr_ms;
+			if(rtd_ms > 0) {
+				return(rtd_ms);
+			}
+		} else {
+			u_int64_t cur_pkt_ts = pkt_ts->tv_sec * 1000000ull + pkt_ts->tv_usec;
+			if(cur_pkt_ts > rec->send_desc.pkt_ts) {
+				double diff_us = (double)(cur_pkt_ts - rec->send_desc.pkt_ts);
+				double dlsr_us = (double)reportblock->delay_since_lsr * 1000000.0 / 65536.0;
+				double rtd_ms = (diff_us - dlsr_us) / 1000.0;
+				if(rtd_ms > 0) {
+					return((int)round(rtd_ms));
+				}
+			}
+		}
+	}
+	return(-1);
+}
+
+
 static inline RTP *find_rtp(Call *call, u_int32_t ssrc, u_int32_t ssrc_sender, vmIP ip_src, vmIP ip_dst, int *rtp_find_type) {
 	RTP *rtp = NULL;
 	*rtp_find_type = 0;
@@ -330,9 +440,13 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_br
 	rtcp_sr_senderinfo_t senderinfo;
 	rtcp_sr_reportblock_t reportblock;
 	int reports_seen;
+	bool senderinfo_only = false;
 
 	/* Get the sender info */
-	if((pkt + sizeof(rtcp_sr_senderinfo_t)) < (data + datalen)){
+	if((pkt + sizeof(rtcp_sr_senderinfo_t)) <= (data + datalen)){
+		if((pkt + sizeof(rtcp_sr_senderinfo_t)) == (data + datalen)) {
+			senderinfo_only = true;
+		}
 		memcpy(&senderinfo, pkt, sizeof(rtcp_sr_senderinfo_t));
 		pkt += sizeof(rtcp_sr_senderinfo_t);
 	} else {
@@ -346,31 +460,14 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_br
 	senderinfo.timestamp_RTP = ntohl(senderinfo.timestamp_RTP);
 	senderinfo.sender_pkt_cnt = ntohl(senderinfo.sender_pkt_cnt);
 	senderinfo.sender_octet_cnt = ntohl(senderinfo.sender_octet_cnt);
-
-	#if not EXPERIMENTAL_LITE_RTP_MOD
-	u_int32_t cur_lsr = ((senderinfo.timestamp_MSW & 0xffff) << 16) | ((senderinfo.timestamp_LSW & 0xffff0000) >> 16);
-	u_int32_t last_lsr = 0;
-	u_int32_t last_lsr_delay = 0;
-	RTP *rtp_sender = NULL;
-	for(int find_pass = 0; find_pass < 2 && !rtp_sender; find_pass++) {
-		for(int i = 0; i < c_branch->call->rtp_size(); i++) { 
-			RTP *rtp_i = c_branch->call->rtp_stream_by_index(i);
-			if(rtp_i->ssrc == senderinfo.sender_ssrc &&
-			   ((find_pass == 0 && 
-			     ((rtp_i->saddr == ip_src && rtp_i->daddr == ip_dst) ||
-			      (rtp_i->saddr == ip_dst && rtp_i->daddr == ip_src))) ||
-			    find_pass == 1)) {
-				rtp_sender = rtp_i;
-				rtp_sender->rtcp.lsr4compare = cur_lsr;
-				last_lsr = rtp_sender->rtcp.last_lsr;
-				last_lsr_delay = rtp_sender->rtcp.last_lsr_delay;
-				rtp_sender->rtcp.sniff_ts.tv_sec = ts->tv_sec;
-				rtp_sender->rtcp.sniff_ts.tv_usec = ts->tv_usec;
-				break;
-			}
-		}
+	
+	c_branch->rtcp_rtd.newSendDesc(&senderinfo, ts);
+	
+	if(senderinfo_only) {
+		return pkt;
 	}
-	#endif
+
+	u_int32_t cur_lsr = ((senderinfo.timestamp_MSW & 0xffff) << 16) | ((senderinfo.timestamp_LSW & 0xffff0000) >> 16);
 
 	if(sverb.debug_rtcp) {
 		cout << " * dump_rtcp_sr SSRC: " << hex << senderinfo.sender_ssrc << dec
@@ -399,6 +496,8 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_br
 		reportblock.jitter = ntohl(reportblock.jitter);
 		reportblock.lsr = ntohl(reportblock.lsr);
 		reportblock.delay_since_lsr = ntohl(reportblock.delay_since_lsr);
+		
+		c_branch->rtcp_rtd.addReportBlock(&senderinfo, &reportblock);
 
 		if(!prepare_rtcp_data_params) {
 			int rtp_find_type;
@@ -418,34 +517,23 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_br
 					rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < reportblock.jitter) ? reportblock.jitter : rtp->rtcp.maxjitter;
 					rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.jitt_counter - 1) + reportblock.jitter) / rtp->rtcp.jitt_counter;
 				}
-				// calculate rtcp round trip delay
-				if (reportblock.lsr && reportblock.delay_since_lsr && rtp->rtcp.lsr4compare == reportblock.lsr) {
-					if (last_lsr && last_lsr_delay && rtp_sender) {
-						int tmpdiff = cur_lsr - last_lsr - last_lsr_delay - reportblock.delay_since_lsr;
-						if (tmpdiff > 0) {
-							rtp_sender->rtcp.rtd_sum += tmpdiff;
-							rtp_sender->rtcp.rtd_count++;
-							if (rtp_sender->rtcp.rtd_max < (uint)tmpdiff) {
-								rtp_sender->rtcp.rtd_max = tmpdiff;
-							}
-						}
-					}
-					if (timerisset(&rtp->rtcp.sniff_ts)) {
-						struct timeval tmpts;
-						timersub(ts, &rtp->rtcp.sniff_ts, &tmpts);
-						unsigned int ms = tmpts.tv_sec * 1000 + tmpts.tv_usec / 1000 - reportblock.delay_since_lsr *1000 / 65536;
-						if (ms > 0) {
-							rtp->rtcp.rtd_w_count++;
-							rtp->rtcp.rtd_w_sum += ms;
-							if (rtp->rtcp.rtd_w_max < ms) {
-								rtp->rtcp.rtd_w_max = ms;
-							}
-						}
+				#endif
+				int rtd = c_branch->rtcp_rtd.getRtd(senderinfo.sender_ssrc, cur_lsr, &reportblock, ts, cRtcpRtd::_rtd_tc_rfc);
+				if(rtd > 0) {
+					rtp->rtcp.rtd_rfc_count++;
+					rtp->rtcp.rtd_rfc_sum += rtd;
+					if(rtp->rtcp.rtd_rfc_max < rtd) {
+						rtp->rtcp.rtd_rfc_max = rtd;
 					}
 				}
-				rtp->rtcp.last_lsr = reportblock.lsr;
-				rtp->rtcp.last_lsr_delay = reportblock.delay_since_lsr;
-				#endif
+				int rtd_ws = c_branch->rtcp_rtd.getRtd(senderinfo.sender_ssrc, cur_lsr, &reportblock, ts, cRtcpRtd::_rtd_tc_ws);
+				if(rtd_ws > 0) {
+					rtp->rtcp.rtd_ws_count++;
+					rtp->rtcp.rtd_ws_sum += rtd_ws;
+					if(rtp->rtcp.rtd_ws_max < rtd_ws) {
+						rtp->rtcp.rtd_ws_max = rtd_ws;
+					}
+				}
 				if(sverb.debug_rtcp) {
 					cout << "sSSRC: " << hex << reportblock.ssrc << dec
 					     << " " << ip_src.getString() << "->" << ip_dst.getString() << " (" <<  rtp_find_type << ")"
@@ -456,6 +544,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_br
 					     << " Jitter: " << reportblock.jitter
 					     << " Last SR: " << reportblock.lsr
 					     << " Delay since last SR: " <<reportblock.delay_since_lsr
+					     << " RTD: " << rtd << " / ws " << rtd_ws
 					     << endl;
 				}
 			} else {
@@ -510,7 +599,7 @@ char *dump_rtcp_rr(char *data, int datalen, int count, CallBranch *c_branch, str
 
 	/* Get the SSRC */
 	if((pkt + sizeof(u_int32_t)) < (data + datalen)){
-		ssrc = *pkt;
+		ssrc = *(u_int32_t*)pkt;
 		pkt += sizeof(u_int32_t);
 	} else {
 		return pkt;
@@ -561,22 +650,15 @@ char *dump_rtcp_rr(char *data, int datalen, int count, CallBranch *c_branch, str
 					rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < reportblock.jitter) ? reportblock.jitter : rtp->rtcp.maxjitter;
 					rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.jitt_counter - 1) + reportblock.jitter) / rtp->rtcp.jitt_counter;
 				}
-				// calculate rtcp round trip delay
-				if (reportblock.lsr && reportblock.delay_since_lsr && rtp->rtcp.lsr4compare == reportblock.lsr) {
-					if (timerisset(&rtp->rtcp.sniff_ts)) {
-						struct timeval tmpts;
-						timersub(ts, &rtp->rtcp.sniff_ts, &tmpts);
-						unsigned int ms = tmpts.tv_sec * 1000 + tmpts.tv_usec / 1000 - reportblock.delay_since_lsr * 1000 / 65536;
-						if (ms > 0) {
-							rtp->rtcp.rtd_w_count++;
-							rtp->rtcp.rtd_w_sum += ms;
-							if (rtp->rtcp.rtd_w_max < ms) {
-								rtp->rtcp.rtd_w_max = ms;
-							}
-						}
+				#endif
+				int rtd_ws = c_branch->rtcp_rtd.getRtd(ssrc, 0, &reportblock, ts, cRtcpRtd::_rtd_tc_ws);
+				if(rtd_ws > 0) {
+					rtp->rtcp.rtd_ws_count++;
+					rtp->rtcp.rtd_ws_sum += rtd_ws;
+					if(rtp->rtcp.rtd_ws_max < rtd_ws) {
+						rtp->rtcp.rtd_ws_max = rtd_ws;
 					}
 				}
-				#endif
 				if(sverb.debug_rtcp) {
 					cout << "rSSRC: " << hex << reportblock.ssrc << dec
 					     << " " << ip_src.getString() << "->" << ip_dst.getString() << " (" <<  rtp_find_type << ")"
@@ -587,6 +669,7 @@ char *dump_rtcp_rr(char *data, int datalen, int count, CallBranch *c_branch, str
 					     << " Jitter: " << reportblock.jitter
 					     << " Last SR: " << reportblock.lsr
 					     << " Delay since last SR: " <<reportblock.delay_since_lsr
+					     << " RTD: - / ws " << rtd_ws
 					     << endl;
 				}
 			} else {

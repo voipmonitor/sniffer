@@ -5515,16 +5515,18 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 						_v = rtpab[i]->fr_rtcp_max(&_null);
 						break;
 					case _chartType_rtcp_avgrtd:
-						_v = rtpab[i]->rtcp.rtd_count ? (rtpab[i]->rtcp.rtd_sum * 1000 / 65536 / rtpab[i]->rtcp.rtd_count) : 0;
+						_v = rtpab[i]->rtcp.rtd_rfc_count ? (rtpab[i]->rtcp.rtd_rfc_sum / rtpab[i]->rtcp.rtd_rfc_count) :
+						     rtpab[i]->rtcp.rtd_ws_count > 0 ? (rtpab[i]->rtcp.rtd_ws_sum / rtpab[i]->rtcp.rtd_ws_count) : 0;
 						break;
 					case _chartType_rtcp_maxrtd:
-						_v = rtpab[i]->rtcp.rtd_max * 1000 / 65536;
+						_v = rtpab[i]->rtcp.rtd_rfc_count > 0 ? rtpab[i]->rtcp.rtd_rfc_max :
+						     rtpab[i]->rtcp.rtd_ws_count > 0 ? rtpab[i]->rtcp.rtd_ws_max : 0;
 						break;
 					case _chartType_rtcp_avgrtd_w:
-						_v = rtpab[i]->rtcp.rtd_w_count ? (rtpab[i]->rtcp.rtd_w_sum / rtpab[i]->rtcp.rtd_w_count) : 0;
+						_v = rtpab[i]->rtcp.rtd_ws_count > 0 ? (rtpab[i]->rtcp.rtd_ws_sum / rtpab[i]->rtcp.rtd_ws_count) : 0;
 						break;
 					case _chartType_rtcp_maxrtd_w:
-						_v = rtpab[i]->rtcp.rtd_w_max;
+						_v = rtpab[i]->rtcp.rtd_ws_count > 0 ? rtpab[i]->rtcp.rtd_ws_max : 0;
 						break;
 					}
 					if(!_null) {
@@ -7747,13 +7749,19 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(existsColumns.cdr_rtp_ptime) {
 					cdr.add(LIMIT_TINYINT_UNSIGNED(round(rtpab[i]->avg_ptime)), c+"_rtp_ptime", round(rtpab[i]->avg_ptime) == 0);
 				}
-				if(existsColumns.cdr_rtcp_rtd && rtpab[i]->rtcp.rtd_count) {
-					cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.rtd_max * 10000 / 65536), c+"_rtcp_maxrtd_mult10");
-					cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.rtd_sum * 10000 / 65536 / rtpab[i]->rtcp.rtd_count), c+"_rtcp_avgrtd_mult10");
+				if(existsColumns.cdr_rtcp_rtd) {
+					if(rtpab[i]->rtcp.rtd_rfc_count > 0) {
+						cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.rtd_rfc_max * 10), c+"_rtcp_maxrtd_mult10");
+						cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.rtd_rfc_sum * 10 / rtpab[i]->rtcp.rtd_rfc_count), c+"_rtcp_avgrtd_mult10");
+					} else if(rtpab[i]->rtcp.rtd_ws_count > 0) {
+						cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.rtd_ws_max * 10), c+"_rtcp_maxrtd_mult10");
+						cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.rtd_ws_sum * 10 / rtpab[i]->rtcp.rtd_ws_count), c+"_rtcp_avgrtd_mult10");
+						cdr_flags |= CDR_RTCP_RTD_USE_WS_METHOD;
+					}
 				}
-				if(existsColumns.cdr_rtcp_rtd_w && rtpab[i]->rtcp.rtd_w_count) {
-					cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.rtd_w_max), c+"_rtcp_maxrtd_w");
-					cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.rtd_w_sum / rtpab[i]->rtcp.rtd_w_count), c+"_rtcp_avgrtd_w");
+				if(existsColumns.cdr_rtcp_rtd_w && rtpab[i]->rtcp.rtd_ws_count) {
+					cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.rtd_ws_max), c+"_rtcp_maxrtd_w");
+					cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.rtd_ws_sum / rtpab[i]->rtcp.rtd_ws_count), c+"_rtcp_avgrtd_w");
 				}
 			}
 			#endif
