@@ -223,50 +223,60 @@ sPrepareRtcpDataParams *prepare_rtcp_data_params;
 
 
 cRtcpRtd::cRtcpRtd() {
-	queue_limit = 200;
+	queue_limit_per_ssrc = 5;
 }
 
 cRtcpRtd::~cRtcpRtd() {
-	while(!queue_recs.empty()) {
-		delete queue_recs.front();
-		queue_recs.pop();
+	for(map<u_int32_t, sRtcpRtd_Ssrc*>::iterator it_ssrc = map_ssrc.begin(); it_ssrc != map_ssrc.end(); it_ssrc++) {
+		delete it_ssrc->second;
 	}
 }
 
 void cRtcpRtd::newSendDesc(rtcp_sr_senderinfo *senderinfo, struct timeval *pkt_ts) {
+	u_int32_t ssrc = senderinfo->sender_ssrc;
+	sRtcpRtd_Ssrc *ssrc_data;
+	map<u_int32_t, sRtcpRtd_Ssrc*>::iterator it_ssrc = map_ssrc.find(ssrc);
+	if(it_ssrc != map_ssrc.end()) {
+		ssrc_data = it_ssrc->second;
+	} else {
+		ssrc_data = new FILE_LINE(0) sRtcpRtd_Ssrc;
+		map_ssrc[ssrc] = ssrc_data;
+	}
 	sRtcpRtd_Rec *rec = new FILE_LINE(0) sRtcpRtd_Rec;
-	rec->send_desc.ssrc = senderinfo->sender_ssrc;
 	rec->send_desc.ntp_ts = ((senderinfo->timestamp_MSW & 0xffff) << 16) |
 				((senderinfo->timestamp_LSW & 0xffff0000) >> 16);
 	rec->send_desc.pkt_ts = pkt_ts->tv_sec * 1000000ull + pkt_ts->tv_usec;
-	if(queue_recs.size() >= queue_limit) {
-		sRtcpRtd_Rec *oldest = queue_recs.front();
-		queue_recs.pop();
-		map_recs.erase(oldest->send_desc);
-		map<u_int32_t, sRtcpRtd_Rec*>::iterator lit = map_last_by_ssrc.find(oldest->send_desc.ssrc);
-		if(lit != map_last_by_ssrc.end() && lit->second == oldest) {
-			map_last_by_ssrc.erase(lit);
+	if(ssrc_data->queue_recs.size() >= queue_limit_per_ssrc) {
+		sRtcpRtd_Rec *oldest = ssrc_data->queue_recs.front();
+		ssrc_data->queue_recs.pop();
+		ssrc_data->map_recs.erase(oldest->send_desc.ntp_ts);
+		if(ssrc_data->last == oldest) {
+			ssrc_data->last = NULL;
 		}
 		delete oldest;
 	}
-	queue_recs.push(rec);
-	map_recs[rec->send_desc] = rec;
-	map_last_by_ssrc[senderinfo->sender_ssrc] = rec;
+	ssrc_data->queue_recs.push(rec);
+	ssrc_data->map_recs[rec->send_desc.ntp_ts] = rec;
+	ssrc_data->last = rec;
 }
 
 void cRtcpRtd::addReportBlock(rtcp_sr_senderinfo *senderinfo, rtcp_sr_reportblock *reportblock) {
 	if(!reportblock->lsr) {
 		return;
 	}
-	sRtcpRtd_SendDesc_key key;
-	key.ssrc = senderinfo->sender_ssrc;
-	key.ntp_ts = ((senderinfo->timestamp_MSW & 0xffff) << 16) |
-		     ((senderinfo->timestamp_LSW & 0xffff0000) >> 16);
-	map<sRtcpRtd_SendDesc_key, sRtcpRtd_Rec*>::iterator it = map_recs.find(key);
-	if(it == map_recs.end()) {
+	u_int32_t ssrc = senderinfo->sender_ssrc;
+	map<u_int32_t, sRtcpRtd_Ssrc*>::iterator it_ssrc = map_ssrc.find(ssrc);
+	if(it_ssrc == map_ssrc.end()) {
 		return;
 	}
-	sRtcpRtd_Rec *rec = it->second;
+	sRtcpRtd_Ssrc *ssrc_data = it_ssrc->second;
+	u_int32_t ntp_ts = ((senderinfo->timestamp_MSW & 0xffff) << 16) |
+			   ((senderinfo->timestamp_LSW & 0xffff0000) >> 16);
+	map<u_int32_t, sRtcpRtd_Rec*>::iterator it_rec = ssrc_data->map_recs.find(ntp_ts);
+	if(it_rec == ssrc_data->map_recs.end()) {
+		return;
+	}
+	sRtcpRtd_Rec *rec = it_rec->second;
 	sRtcpRtd_Report report;
 	report.ssrc = reportblock->ssrc;
 	report.last_sr_ts = reportblock->lsr;
@@ -278,17 +288,18 @@ int cRtcpRtd::getRtd(u_int32_t reporter_ssrc, u_int32_t cur_sr_ts, rtcp_sr_repor
 	if(!reportblock->lsr || !reportblock->delay_since_lsr) {
 		return(-1);
 	}
-	sRtcpRtd_SendDesc key;
-	key.ssrc = reportblock->ssrc;
-	key.ntp_ts = reportblock->lsr;
-	map<sRtcpRtd_SendDesc_key, sRtcpRtd_Rec*>::iterator it = map_recs.find(key);
-	if(it == map_recs.end()) {
+	map<u_int32_t, sRtcpRtd_Ssrc*>::iterator it_ssrc = map_ssrc.find(reportblock->ssrc);
+	if(it_ssrc == map_ssrc.end()) {
 		return(-1);
 	}
-	sRtcpRtd_Rec *rec = it->second;
+	sRtcpRtd_Ssrc *ssrc_data = it_ssrc->second;
+	map<u_int32_t, sRtcpRtd_Rec*>::iterator it_rec = ssrc_data->map_recs.find(reportblock->lsr);
+	if(it_rec == ssrc_data->map_recs.end()) {
+		return(-1);
+	}
+	sRtcpRtd_Rec *rec = it_rec->second;
 	if(rtd_type_calc & _rtd_tc_use_last_sr) {
-		map<u_int32_t, sRtcpRtd_Rec*>::iterator lit = map_last_by_ssrc.find(reportblock->ssrc);
-		if(lit == map_last_by_ssrc.end() || lit->second != rec) {
+		if(ssrc_data->last != rec) {
 			return(-1);
 		}
 	}
