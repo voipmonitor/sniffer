@@ -680,10 +680,10 @@ RTP::save_mos_graph(bool delimiter) {
 		       last_interval_mosAD, mosAD_min, mosAD_avg);
 	}
 
-	uint32_t lost = stats.lost2 - last_stat_lost;
+	uint32_t lost = stats.lost_with_reinvite_gaps - last_stat_lost;
 	uint32_t received = stats.received - last_stat_received;
 
-	last_stat_lost = stats.lost2;
+	last_stat_lost = stats.lost_with_reinvite_gaps;
 	last_stat_received = stats.received;
 
 	last_stat_loss_perc_mult10 = (double)lost / ((double)received + (double)lost) * 100.0;
@@ -2706,28 +2706,30 @@ RTP::update_stats() {
 
 	if(forcemark2) {
 		// do not store loss / delay in case this is first packet after reinvite 
-		stats.lost2 += lost - stats.last_lost;
+		if(lost >= stats.last_lost || stats.lost_with_reinvite_gaps >= (u_int32_t)(stats.last_lost - lost)) {
+			stats.lost_with_reinvite_gaps += lost - stats.last_lost;
+		} else {
+			stats.lost_with_reinvite_gaps = 0;
+		}
 		stats.last_lost = lost;
 	} else {
-		if((lost > stats.last_lost) > 0) {
+		if(lost > stats.last_lost) {
 			if(sverb.packet_lost) {
-				cout << this << " RTP - packet_lost -" 
+				cout << this << " RTP - packet_lost -"
 				     << " ssrc: " << hex << this->ssrc << dec << " "
 				     << " src: " << saddr.getString()
 				     << " dst: " << daddr.getString() << " : " << dport
 				     << " forcemark: " << forcemark2 << " "
 				     << " seq: " << getSeqNum() << " "
-				     << " lost - last_lost: " << (lost - stats.last_lost) << " " 
+				     << " lost - last_lost: " << (lost - stats.last_lost) << " "
 				     << " lost: " << lost << " "
-				     << " last_lost: " << stats.last_lost << endl;
+				     << " last_lost: " << stats.last_lost
+				     << endl;
 			}
-			stats.lost2 += lost - stats.last_lost;
-			stats.lost += lost - stats.last_lost;
 			if((lost - stats.last_lost) < 10)
 				stats.slost[lost - stats.last_lost]++;
-			else 
+			else
 				stats.slost[10]++;
-
 			if(owner && (owner->flags & FLAG_SAVEGRAPH) && !is_video()) {
 				nintervals += lost - stats.last_lost;
 				while(nintervals > 20) {
@@ -2737,7 +2739,20 @@ RTP::update_stats() {
 					nintervals -= 20;
 				}
 			}
+		} else if(lost < stats.last_lost) {
+			stats.reordered += stats.last_lost - lost;
 		}
+		if(lost >= stats.last_lost || stats.lost_with_reinvite_gaps >= (u_int32_t)(stats.last_lost - lost)) {
+			stats.lost_with_reinvite_gaps += lost - stats.last_lost;
+		} else {
+			stats.lost_with_reinvite_gaps = 0;
+		}
+		if(lost >= stats.last_lost || stats.lost >= (u_int32_t)(stats.last_lost - lost)) {
+			stats.lost += lost - stats.last_lost;
+		} else {
+			stats.lost = 0;
+		}
+		stats.last_lost = lost;
 		if(owner && (owner->flags & FLAG_SAVEGRAPH) && !is_video()) {
 			if(this->graph.isOpenOrEnableAutoOpen()) {
 				if(nintervals > 20) {
@@ -2751,7 +2766,6 @@ RTP::update_stats() {
 				nintervals++;
 			}
 		}
-		stats.last_lost = lost;
 
 		/* delay statistics */
 		if(adelay >= 50 && adelay < 70) {

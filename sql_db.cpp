@@ -6051,6 +6051,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`b_received` mediumint unsigned DEFAULT NULL,\
 			`a_lost` mediumint unsigned DEFAULT NULL,\
 			`b_lost` mediumint unsigned DEFAULT NULL,\
+			`a_reordered` mediumint unsigned DEFAULT NULL,\
+			`b_reordered` mediumint unsigned DEFAULT NULL,\
 			`a_ua_id` int unsigned DEFAULT NULL,\
 			`b_ua_id` int unsigned DEFAULT NULL,\
 		       " + (opt_disable_cdr_fields_rtp ? "" :
@@ -9633,6 +9635,12 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 			this->query("alter table sensors add unique(id_sensor)");
 		}
 	}
+	
+	this->checkNeedAlterAdd("cdr", "Columns reordered", true,
+				log, &tableSize, &existsColumns.cdr_reordered,
+				"a_reordered", "mediumint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"b_reordered", "mediumint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 }
 
 void SqlDb_mysql::checkColumns_cdr_next(bool log) {

@@ -7594,6 +7594,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr.add(LIMIT_MEDIUMINT_UNSIGNED(lost[i]), c+"_lost");
 			packet_loss_perc_mult1000[i] = (int)round((double)rtpab[i]->lost_() / 
 									(rtpab[i]->received_() + 2 + rtpab[i]->lost_()) * 100 * 1000);
+			if(existsColumns.cdr_reordered) {
+				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(rtpab[i]->stats.reordered), c+"_reordered");
+			}
 			
 			#if not EXPERIMENTAL_LITE_RTP_MOD
 			if(!opt_disable_cdr_fields_rtp) {

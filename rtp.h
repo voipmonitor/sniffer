@@ -503,7 +503,8 @@ public:
 		
 		u_int32_t	received;	//!< overall received packets
 		u_int32_t	lost;		//!< overall lost packets (real)
-		u_int32_t	lost2;		//!< overall lost packets
+		u_int32_t	lost_with_reinvite_gaps;
+		u_int32_t	reordered;
 		int		last_lost;	//!< last overall lost packepts
 		long double 	avgjitter;
 		long double 	maxjitter;
