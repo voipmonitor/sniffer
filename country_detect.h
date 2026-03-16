@@ -324,6 +324,7 @@ public:
 	unsigned getCountryIdByIP(vmIP ip);
 	bool isLocalByIP(vmIP ip);
 	string getContinentByCountry(const char *country);
+	bool countryCodeIsLocal(const char *countryCode);
 	void prepareReload();
 	void applyReload();
 	void lock() {
