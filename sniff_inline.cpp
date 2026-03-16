@@ -728,6 +728,21 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			if(ppd->header_ip->is_more_frag(frag_data) || ppd->header_ip->get_frag_offset(frag_data)) {
 				is_ip_frag = 1;
 				if((ppf & ppf_defrag) && opt_udpfrag) {
+					if(ppd->header_ip->get_tot_len() + ppd->header_ip_offset > HPH(*header_packet)->caplen) {
+						if(interfaceName) {
+							extern BogusDumper *bogusDumper;
+							static u_int64_t lastTimeLogErrBadIpHeader_encaps = 0;
+							if(bogusDumper) {
+								bogusDumper->dump(HPH(*header_packet), HPP(*header_packet), pcapLinklayerHeaderType, interfaceName);
+							}
+							u_int64_t actTime = getTimeMS(HPH(*header_packet));
+							if(actTime - 1000 > lastTimeLogErrBadIpHeader_encaps) {
+								syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP (encaps): %s: bogus ip header length %i, caplen %i", interfaceName, ppd->header_ip->get_tot_len(), HPH(*header_packet)->caplen);
+								lastTimeLogErrBadIpHeader_encaps = actTime;
+							}
+						}
+						return(0);
+					}
 					if(ppd->ip_defrag->defrag(ppd->header_ip, header_packet, NULL, 0, pushToStack_queue_index) > 0) {
 						ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
 						ppd->header_ip->clear_frag_data();

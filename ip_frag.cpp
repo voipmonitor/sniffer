@@ -24,7 +24,7 @@ void cIpFrag::cleanup(unsigned int tv_sec, bool all,
 	unsigned invite_counters = 0;
 	#endif
 	for(unsigned fdata_thread_index = 0; fdata_thread_index < fdata_threads_split; fdata_thread_index++) {
-		for(map<pair<vmIP, u_int32_t>, sFrags*>::iterator it_d = fdata[fdata_thread_index].begin(); it_d != fdata[fdata_thread_index].end(); ) {
+		for(sDefrag::iterator it_d = fdata[fdata_thread_index].begin(); it_d != fdata[fdata_thread_index].end(); ) {
 			sFrags *frags = it_d->second;
 			if(frags->size() &&
 			   (all ||

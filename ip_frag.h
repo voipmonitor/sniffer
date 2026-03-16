@@ -36,7 +36,19 @@ public:
 		}
 		bool has_last;
 	};
-	struct sDefrag : map<pair<vmIP, u_int32_t>, sFrags*> {
+	struct sDefragKey {
+		vmIP saddr;
+		vmIP daddr;
+		u_int32_t frag_id;
+		sDefragKey(vmIP saddr, vmIP daddr, u_int32_t frag_id)
+			: saddr(saddr), daddr(daddr), frag_id(frag_id) {}
+		inline bool operator < (const sDefragKey &other) const {
+			return(saddr != other.saddr ? saddr < other.saddr :
+			       daddr != other.daddr ? daddr < other.daddr :
+			       frag_id < other.frag_id);
+		}
+	};
+	struct sDefrag : map<sDefragKey, sFrags*> {
 	};
 public:
 	cIpFrag(unsigned fdata_threads_split = 0);
@@ -48,7 +60,7 @@ public:
  
 		if(fdata_thread_index < 0) {
 			fdata_thread_index = fdata_threads_split > 1 ?
-					      (header_ip->get_saddr().getHashNumber() % fdata_threads_split) :
+					      ((header_ip->get_saddr().getHashNumber() + header_ip->get_daddr().getHashNumber()) % fdata_threads_split) :
 					      0;
 		}
 	 
@@ -61,7 +73,7 @@ public:
 		iphdr2 *header_ip_orig = header_ip;
 		#endif
 		
-		pair<vmIP, u_int32_t> frags_index(header_ip_orig->get_saddr(), header_ip_orig->get_frag_id());
+		sDefragKey frags_index(header_ip_orig->get_saddr(), header_ip_orig->get_daddr(), header_ip_orig->get_frag_id());
 		sFrags *frags = fdata[fdata_thread_index][frags_index];
 
 		// get queue from ip_frag_stream based on source ip address and ip->id identificator (2-dimensional map array)
@@ -129,7 +141,12 @@ private:
 			frag->header_ip_offset = header_ip_offset;
 			frag->len = len;
 			frag->offset = offset_d;
-			frag->iphdr_len = header_ip->get_hdr_size() - 
+			u_int16_t hdr_size = header_ip->get_hdr_size();
+			if(hdr_size == (u_int16_t)-1 || hdr_size >= len) {
+				frag->destroy(pushToStack_queue_index);
+				return(-1);
+			}
+			frag->iphdr_len = hdr_size -
 					  (header_ip->_get_protocol() == IPPROTO_ESP ? IPPROTO_ESP_HEADER_SIZE : 0);
 
 			// add to queue (which will sort it automatically
@@ -216,19 +233,33 @@ private:
 						len += frag->header_ip_offset;
 						iphdr = (iphdr2*)(HPP(*header_packet) + len);
 					}
+					unsigned cpy_len = min((unsigned)frag->len,
+							       HPH(frag->header_packet)->caplen > frag->header_ip_offset ?
+								HPH(frag->header_packet)->caplen - frag->header_ip_offset :
+								(unsigned)0);
 					memcpy_heapsafe(HPP(*header_packet) + len, *header_packet,
 							HPP(frag->header_packet) + frag->header_ip_offset, frag->header_packet,
-							frag->len);
+							cpy_len);
+					if(cpy_len < frag->len) {
+						memset(HPP(*header_packet) + len + cpy_len, 0, frag->len - cpy_len);
+					}
 					len += frag->len;
 					pid = frag->header_packet->pid;
 				} else {
 					if(len < totallen) {
-						unsigned cpy_len = min((unsigned)(frag->len - frag->iphdr_len), totallen - len);
+						unsigned frag_len = min((unsigned)(frag->len - frag->iphdr_len), totallen - len);
+						unsigned cpy_len = min(frag_len,
+								       HPH(frag->header_packet)->caplen > (frag->header_ip_offset + frag->iphdr_len) ?
+									HPH(frag->header_packet)->caplen - (frag->header_ip_offset + frag->iphdr_len) :
+									(unsigned)0);
 						memcpy_heapsafe(HPP(*header_packet) + len, *header_packet,
 								HPP(frag->header_packet) + frag->header_ip_offset + frag->iphdr_len, frag->header_packet,
 								cpy_len);
-						len += cpy_len;
-						additionallen += cpy_len;
+						if(cpy_len < frag_len) {
+							memset(HPP(*header_packet) + len + cpy_len, 0, frag_len - cpy_len);
+						}
+						len += frag_len;
+						additionallen += frag_len;
 					}
 				}
 				if(i == frags->size() - 1) {
@@ -272,11 +303,14 @@ private:
 								((sHeaderPacketPQout*)frag->header_packet_pqout)->header->get_caplen() - frag->header_ip_offset :
 								0);
 					memcpy_heapsafe(header_packet_pqout->packet + len, header_packet_pqout->packet,
-							((sHeaderPacketPQout*)frag->header_packet_pqout)->packet + frag->header_ip_offset, 
+							((sHeaderPacketPQout*)frag->header_packet_pqout)->packet + frag->header_ip_offset,
 							((sHeaderPacketPQout*)frag->header_packet_pqout)->block_store ?
 							 ((sHeaderPacketPQout*)frag->header_packet_pqout)->block_store->block :
 							 ((sHeaderPacketPQout*)frag->header_packet_pqout)->packet,
 							cpy_len);
+					if(cpy_len < frag->len) {
+						memset(header_packet_pqout->packet + len + cpy_len, 0, frag->len - cpy_len);
+					}
 					len += frag->len;
 					pid = ((sHeaderPacketPQout*)frag->header_packet_pqout)->header->pid;
 				} else {
@@ -288,11 +322,14 @@ private:
 									((sHeaderPacketPQout*)frag->header_packet_pqout)->header->get_caplen() - (frag->header_ip_offset + frag->iphdr_len) :
 									0);
 						memcpy_heapsafe(header_packet_pqout->packet + len, header_packet_pqout->packet,
-								((sHeaderPacketPQout*)frag->header_packet_pqout)->packet + frag->header_ip_offset + frag->iphdr_len, 
+								((sHeaderPacketPQout*)frag->header_packet_pqout)->packet + frag->header_ip_offset + frag->iphdr_len,
 								((sHeaderPacketPQout*)frag->header_packet_pqout)->block_store ?
 								 ((sHeaderPacketPQout*)frag->header_packet_pqout)->block_store->block :
 								 ((sHeaderPacketPQout*)frag->header_packet_pqout)->packet,
 								cpy_len);
+						if(cpy_len < frag_len) {
+							memset(header_packet_pqout->packet + len + cpy_len, 0, frag_len - cpy_len);
+						}
 						len += frag_len;
 						additionallen += frag_len;
 					}

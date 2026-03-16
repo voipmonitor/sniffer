@@ -10933,7 +10933,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 					sHeaderPacketPQout *hp = &batch->batch[batch_index];
 					if(hp->header->header_ip_encaps_offset != 0xFFFF) {
 						iphdr2 *header_ip_encaps = (iphdr2*)(hp->packet + hp->header->header_ip_encaps_offset);
-						this->items_index[batch_index] = header_ip_encaps->get_saddr().getHashNumber() % DEFRAG_THREADS_SPLIT;
+						this->items_index[batch_index] = (header_ip_encaps->get_saddr().getHashNumber() + header_ip_encaps->get_daddr().getHashNumber()) % DEFRAG_THREADS_SPLIT;
 						this->items_thread_index[batch_index] = this->items_index[batch_index] % (_next_threads_count + (_process_only_in_next_threads ? 0 : 1));
 					} else {
 						this->items_index[batch_index] = 0;
@@ -11290,7 +11290,7 @@ bool PcapQueue_outputThread::processDefrag_defrag(sHeaderPacketPQout *hp, int fd
 	if(fdata_thread_index < 0) {
 		if(hp->header->header_ip_encaps_offset != 0xFFFF) {
 			iphdr2 *header_ip_encaps = (iphdr2*)(hp->packet + hp->header->header_ip_encaps_offset);
-			fdata_thread_index = header_ip_encaps->get_saddr().getHashNumber() % DEFRAG_THREADS_SPLIT;
+			fdata_thread_index = (header_ip_encaps->get_saddr().getHashNumber() + header_ip_encaps->get_daddr().getHashNumber()) % DEFRAG_THREADS_SPLIT;
 		} else {
 			fdata_thread_index = 0;
 		}
@@ -11380,6 +11380,16 @@ bool PcapQueue_outputThread::processDefrag_defrag(sHeaderPacketPQout *hp, int fd
 		}
 		int frag_data = header_ip->get_frag_data();
 		if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
+			if(header_ip->get_tot_len() + hp->header->header_ip_offset > hp->header->get_caplen()) {
+				static u_int64_t lastTimeLogErrBadIpHeader_encaps = 0;
+				u_int64_t actTime = hp->header->get_time_ms();
+				if(actTime - 1000 > lastTimeLogErrBadIpHeader_encaps) {
+					syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP (encaps): bogus ip header length %i, caplen %i", header_ip->get_tot_len(), hp->header->get_caplen());
+					lastTimeLogErrBadIpHeader_encaps = actTime;
+				}
+				hp->destroy_or_unlock_blockstore();
+				return(false);
+			}
 			// packet is fragmented
 			int rsltDefrag = ip_defrag->defrag(header_ip, NULL, hp, fdata_thread_index, -1);
 			if(rsltDefrag > 0) {
@@ -11458,9 +11468,9 @@ void PcapQueue_outputThread::processDefrag_push(sHeaderPacketPQout *hp) {
 
 
 void PcapQueue_outputThread::processDefrag_cleanup(u_int32_t time_s) {
-	if((ipfrag_lastcleanup + 2) < time_s) {
+	if((ipfrag_lastcleanup + 5) < time_s) {
 		if(ipfrag_lastcleanup) {
-			ip_defrag->cleanup(time_s, false, -1, 2);
+			ip_defrag->cleanup(time_s, false, -1, 5);
 		}
 		ipfrag_lastcleanup = time_s;
 	}
