@@ -1015,6 +1015,16 @@ string CountryDetect::getContinentByCountry(const char *country) {
 	return(rslt);
 }
 
+bool CountryDetect::countryCodeIsLocal(const char *countryCode) {
+	bool rslt = false;
+	lock();
+	if(checkInternational) {
+		rslt = checkInternational->countryCodeIsLocal(countryCode);
+	}
+	unlock();
+	return(rslt);
+}
+
 void CountryDetect::prepareReload() {
 	if(opt_nocdr) {
 		return;

@@ -1,5 +1,57 @@
 #include "filter_register.h"
 #include "register.h"
+#include "country_detect.h"
+
+
+cRecordFilterItem_Register::cRecordFilterItem_Register(cRecordFilter *parent, eTypeFilter typeFilter)
+ : cRecordFilterItem_rec(parent) {
+	this->typeFilter = typeFilter;
+}
+
+bool cRecordFilterItem_Register::check(void *rec, bool */*findInBlackList*/) {
+	string country1, country2;
+	if(typeFilter == _tf_ip_country_eq || typeFilter == _tf_ip_country_diff ||
+	   typeFilter == _tf_ip_country_national || typeFilter == _tf_ip_country_international) {
+		country1 = parent->getField_string(rec, rf_sipcallerip_country_code);
+		country2 = parent->getField_string(rec, rf_sipcalledip_country_code);
+	} else {
+		country1 = parent->getField_string(rec, rf_from_num_country_code);
+		country2 = parent->getField_string(rec, rf_to_num_country_code);
+	}
+	switch(typeFilter) {
+	case _tf_ip_country_eq:
+	case _tf_num_country_eq:
+		return(country1 == country2);
+	case _tf_ip_country_diff:
+	case _tf_num_country_diff:
+		if(country1.empty() || country2.empty()) {
+			return(false);
+		}
+		return(country1 != country2);
+	case _tf_ip_country_national:
+	case _tf_num_country_national: {
+		extern CountryDetect *countryDetect;
+		if(!countryDetect) {
+			return(country1 == country2);
+		}
+		return((country1.empty() || countryDetect->countryCodeIsLocal(country1.c_str())) &&
+		       (country2.empty() || countryDetect->countryCodeIsLocal(country2.c_str())));
+		}
+	case _tf_ip_country_international:
+	case _tf_num_country_international: {
+		extern CountryDetect *countryDetect;
+		if(!countryDetect) {
+			if(country1.empty() || country2.empty()) {
+				return(false);
+			}
+			return(country1 != country2);
+		}
+		return((!country1.empty() && !countryDetect->countryCodeIsLocal(country1.c_str())) ||
+		       (!country2.empty() && !countryDetect->countryCodeIsLocal(country2.c_str())));
+		}
+	}
+	return(false);
+}
 
 
 cRegisterFilter::cRegisterFilter(const char *filter) {
@@ -291,5 +343,63 @@ void cRegisterFilter::setFilter(const char *filter) {
 	if(!filterData["is_sipalg_detected"].empty()) {
 		cRecordFilterItem_bool *filter = new FILE_LINE(0) cRecordFilterItem_bool(this, rf_is_sipalg_detected, filterData["is_sipalg_detected"].c_str());
 		addFilter(filter);
+	}
+	if(!filterData["country_code_sipcallerip"].empty() &&
+	   filterData["country_code_sipcallerdip_type"] == "0") {
+		cRecordFilterItem_CheckString *filter1 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_sipcallerip_country_code);
+		filter1->addWhite(filterData["country_code_sipcallerip"].c_str());
+		cRecordFilterItem_CheckString *filter2 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_sipcalledip_country_code);
+		filter2->addWhite(filterData["country_code_sipcallerip"].c_str());
+		addFilter(filter1, filter2);
+	} else {
+		cRecordFilterItems gItems(cRecordFilterItems::_and);
+		if(!filterData["country_code_sipcallerip"].empty()) {
+			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_sipcallerip_country_code);
+			filter->addWhite(filterData["country_code_sipcallerip"].c_str());
+			gItems.addFilter(filter);
+		}
+		if(!filterData["country_code_sipcalledip"].empty()) {
+			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_sipcalledip_country_code);
+			filter->addWhite(filterData["country_code_sipcalledip"].c_str());
+			gItems.addFilter(filter);
+		}
+		if(gItems.isSet()) {
+			addFilter(&gItems);
+		}
+	}
+	if(!filterData["country_code_from_num"].empty() &&
+	   filterData["country_code_numFT_type"] == "0") {
+		cRecordFilterItem_CheckString *filter1 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_from_num_country_code);
+		filter1->addWhite(filterData["country_code_from_num"].c_str());
+		cRecordFilterItem_CheckString *filter2 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_to_num_country_code);
+		filter2->addWhite(filterData["country_code_from_num"].c_str());
+		addFilter(filter1, filter2);
+	} else {
+		cRecordFilterItems gItems(cRecordFilterItems::_and);
+		if(!filterData["country_code_from_num"].empty()) {
+			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_from_num_country_code);
+			filter->addWhite(filterData["country_code_from_num"].c_str());
+			gItems.addFilter(filter);
+		}
+		if(!filterData["country_code_to_num"].empty()) {
+			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_to_num_country_code);
+			filter->addWhite(filterData["country_code_to_num"].c_str());
+			gItems.addFilter(filter);
+		}
+		if(gItems.isSet()) {
+			addFilter(&gItems);
+		}
+	}
+	if(!filterData["country_compare_ips"].empty()) {
+		int val = atoi(filterData["country_compare_ips"].c_str());
+		if(val >= 1 && val <= 4) {
+			addFilter(new FILE_LINE(0) cRecordFilterItem_Register(this, (cRecordFilterItem_Register::eTypeFilter)(cRecordFilterItem_Register::_tf_ip_country_eq + val - 1)));
+		}
+	}
+	if(!filterData["country_compare_numbers"].empty()) {
+		int val = atoi(filterData["country_compare_numbers"].c_str());
+		if(val >= 1 && val <= 4) {
+			addFilter(new FILE_LINE(0) cRecordFilterItem_Register(this, (cRecordFilterItem_Register::eTypeFilter)(cRecordFilterItem_Register::_tf_num_country_eq + val - 1)));
+		}
 	}
 }
