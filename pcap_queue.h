@@ -477,10 +477,8 @@ private:
 	cQuickIPfilter *filter_ip_quick;
 	ListIP *filter_ip_std;
 	unsigned read_from_file_index;
-	#if EXPERIMENTAL_CHECK_PCAP_TIME
 	int64_t lastPcapTime_s;
 	u_int64_t lastTimeErrorLogPcapTime_ms;
-	#endif
 	u_int64_t firstTimeErrorLogEtherTypeFFFF_ms;
 	u_int64_t counterErrorLogEtherTypeFFFF_ms;
 	u_int64_t firstPacketTime_us;

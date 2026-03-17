@@ -3900,10 +3900,8 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(sInterface *i
 		}
 	}
 	read_from_file_index = 0;
-	#if EXPERIMENTAL_CHECK_PCAP_TIME
 	lastPcapTime_s = 0;
 	lastTimeErrorLogPcapTime_ms = 0;
-	#endif
 	firstTimeErrorLogEtherTypeFFFF_ms = 0;
 	counterErrorLogEtherTypeFFFF_ms = 0;
 	firstPacketTime_us = 0;
@@ -4377,22 +4375,26 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 			syslog(LOG_NOTICE, "find oneshot libpcap buffer : %s", libpcap_buffer ? "success" : "failed");
 		}
 	}
-	#if EXPERIMENTAL_CHECK_PCAP_TIME
-	if((lastPcapTime_s &&
-	    abs(lastPcapTime_s - (int64_t)((*header)->ts.tv_sec)) > 24 * 60 * 60) ||
-	   (*header)->ts.tv_sec == 0) {
+	if((*header)->ts.tv_sec == 0 ||
+	   (lastPcapTime_s &&
+	    ((abs(lastPcapTime_s - (int64_t)((*header)->ts.tv_sec)) > 24 * 60 * 60 &&
+	      abs((int64_t)getTimeS_rdtsc() - (int64_t)((*header)->ts.tv_sec)) > 24 * 60 * 60) ||
+	     abs(lastPcapTime_s - (int64_t)((*header)->ts.tv_sec)) > 30 * 24 * 60 * 60) &&
+	    !is_read_from_file())) {
 		u_int64_t actTimeMS = getTimeMS_rdtsc();
 		if(!lastTimeErrorLogPcapTime_ms ||
 		   actTimeMS > lastTimeErrorLogPcapTime_ms + 1000) {
+			string header_ts_date_time = sqlDateTimeString((*header)->ts.tv_sec);
 			cLogSensor::log(cLogSensor::error,
-					"bad pcap time from interface %s",
-					interfaceName.c_str());
+					"bad pcap time",
+					"interface %s : %s",
+					getInterfaceAlias().c_str(),
+					header_ts_date_time.empty() ? "0000-00-00 00:00:00" : header_ts_date_time.c_str());
 			lastTimeErrorLogPcapTime_ms = actTimeMS;
 		}
 		return(-12);
 	}
 	lastPcapTime_s = (*header)->ts.tv_sec;
-	#endif
 checkProtocol:
 	if(checkProtocol || filter_ip) {
 		sCheckProtocolData _checkProtocolData;
