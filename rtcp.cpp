@@ -533,7 +533,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_br
 				if(rtd > 0) {
 					rtp->rtcp.rtd_rfc_count++;
 					rtp->rtcp.rtd_rfc_sum += rtd;
-					if(rtp->rtcp.rtd_rfc_max < rtd) {
+					if(rtp->rtcp.rtd_rfc_max < (unsigned)rtd) {
 						rtp->rtcp.rtd_rfc_max = rtd;
 					}
 				}
@@ -541,7 +541,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_br
 				if(rtd_ws > 0) {
 					rtp->rtcp.rtd_ws_count++;
 					rtp->rtcp.rtd_ws_sum += rtd_ws;
-					if(rtp->rtcp.rtd_ws_max < rtd_ws) {
+					if(rtp->rtcp.rtd_ws_max < (unsigned)rtd_ws) {
 						rtp->rtcp.rtd_ws_max = rtd_ws;
 					}
 				}
@@ -666,7 +666,7 @@ char *dump_rtcp_rr(char *data, int datalen, int count, CallBranch *c_branch, str
 				if(rtd_ws > 0) {
 					rtp->rtcp.rtd_ws_count++;
 					rtp->rtcp.rtd_ws_sum += rtd_ws;
-					if(rtp->rtcp.rtd_ws_max < rtd_ws) {
+					if(rtp->rtcp.rtd_ws_max < (unsigned)rtd_ws) {
 						rtp->rtcp.rtd_ws_max = rtd_ws;
 					}
 				}
