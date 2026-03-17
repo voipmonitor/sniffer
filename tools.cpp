@@ -6685,16 +6685,7 @@ void BogusDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char 
 }
 
 
-TrafficDumper::TrafficDumper(const char *path, eBy by, bool force_flush) {
-	this->path = path;
-	this->by = by;
-	this->force_flush = force_flush;
-	this->enabled = true;
-	this->_sync = 0;
-	time = getActDateTimeF(true);
-}
-
-TrafficDumper::~TrafficDumper() {
+TrafficDumper::sDumperDef::~sDumperDef() {
 	for(map<int, PcapDumper*>::iterator iter = dumpers_by_dlt.begin(); iter != dumpers_by_dlt.end(); iter++) {
 		iter->second->close();
 		delete iter->second;
@@ -6705,20 +6696,352 @@ TrafficDumper::~TrafficDumper() {
 	}
 }
 
-void TrafficDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char *interfaceName) {
-	if(!enabled) {
+TrafficDumper::TrafficDumper(const char *path, eBy by, bool force_flush)
+ : default_dumper("traffic") {
+	if(path && path[0]) {
+		this->default_path = path;
+	} else {
+		this->default_path = string(getSpoolDir(tsf_main, 0)) + "/traffic_dumper";
+	}
+	default_dumper.path = this->default_path;
+	default_dumper.by = by;
+	default_dumper_is_defined = false;
+	this->force_flush = force_flush;
+	this->is_enabled = false;
+	this->_sync = 0;
+}
+
+TrafficDumper::~TrafficDumper() {
+	for(map<string, sDumperDef*>::iterator iter = dumpers.begin(); iter != dumpers.end(); iter++) {
+		delete iter->second;
+	}
+}
+
+void TrafficDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char *interfaceName, u_int16_t header_ip_offset) {
+	if(!is_enabled) {
 		return;
+	}
+	if(header_ip_offset == 0 || header_ip_offset == 0xFFFF || header_ip_offset >= header->caplen) {
+		u_int16_t protocol;
+		u_int16_t vlan;
+		if(!parseEtherHeader(dlt, packet, NULL, NULL, header_ip_offset, protocol, vlan)) {
+			return;
+		}
+		if(protocol != ETHERTYPE_IP
+		   #if VM_IPV6
+		   && protocol != ETHERTYPE_IPV6
+		   #endif
+		   ) {
+			return;
+		}
+		if(header_ip_offset >= header->caplen) {
+			return;
+		}
+	}
+	iphdr2 *header_ip_encaps = (iphdr2*)(packet + header_ip_offset);
+	iphdr2 *header_ip = header_ip_encaps;
+	bool is_frag = false;
+	bool frag_offset = false;
+	while(true) {
+		u_int16_t frag_data = header_ip->get_frag_data();
+		if(header_ip->is_more_frag(frag_data)) {
+			is_frag = true;
+		}
+		if(header_ip->get_frag_offset(frag_data) > 0) {
+			is_frag = true;
+			frag_offset = true;
+		}
+		int next_header_ip_offset = findNextHeaderIp(header_ip, header_ip_offset,
+							     packet, header->caplen);
+		if(next_header_ip_offset == 0) {
+			break;
+		} else if(next_header_ip_offset < 0) {
+			break;
+		} else {
+			header_ip = (iphdr2*)((u_char*)header_ip + next_header_ip_offset);
+			header_ip_offset += next_header_ip_offset;
+		}
+	}
+	vmIP saddr = header_ip->get_saddr();
+	vmIP daddr = header_ip->get_daddr();
+	vmIP saddr_encaps;
+	vmIP daddr_encaps;
+	if(header_ip_encaps != header_ip) {
+		saddr_encaps = header_ip_encaps->get_saddr();
+		daddr_encaps = header_ip_encaps->get_daddr();
+	}
+	vmPort sport, dport;
+	bool has_ports = false;
+	u_int8_t ip_protocol = header_ip->get_protocol();
+	if((ip_protocol == IPPROTO_TCP || ip_protocol == IPPROTO_UDP) &&
+	   (!is_frag || !frag_offset) &&
+	   header_ip_offset + header_ip->get_hdr_size() + 4u <= header->caplen) {
+		unsigned ip_hdr_size = header_ip->get_hdr_size();
+		if(ip_protocol == IPPROTO_UDP) {
+			udphdr2 *header_udp = (udphdr2*)((char*)header_ip + ip_hdr_size);
+			sport = header_udp->get_source();
+			dport = header_udp->get_dest();
+		} else {
+			tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + ip_hdr_size);
+			sport = header_tcp->get_source();
+			dport = header_tcp->get_dest();
+		}
+		has_ports = true;
 	}
 	this->lock();
-	if((!filter_ips.empty() || !filter_nets.empty() || !filter_ports.empty()) && !passFilter(packet, dlt, header->caplen)) {
-		this->unlock();
-		return;
+	if(default_dumper_is_defined &&
+	   default_dumper.enabled &&
+	   (!default_dumper.hasFilter() || passFilter(&default_dumper, saddr, daddr, saddr_encaps, daddr_encaps, sport, dport, is_frag, has_ports))) {
+		dump(&default_dumper, header, packet, dlt, interfaceName);
 	}
-	PcapDumper *dumper = NULL;
-	if(this->by == _byDlt) {
-		map<int, PcapDumper*>::iterator iter = dumpers_by_dlt.find(dlt);
-		if(iter != dumpers_by_dlt.end()) {
-			dumper = iter->second;
+	for(map<string, sDumperDef*>::iterator iter = dumpers.begin(); iter != dumpers.end(); iter++) {
+		sDumperDef *dumper = iter->second;
+		if(!dumper->enabled) {
+			continue;
+		}
+		if(dumper->hasFilter()) {
+			if(!passFilter(dumper, saddr, daddr, saddr_encaps, daddr_encaps, sport, dport, is_frag, has_ports)) {
+				continue;
+			}
+		}
+		dump(dumper, header, packet, dlt, interfaceName);
+	}
+	this->unlock();
+}
+
+TrafficDumper::sDumperDef *TrafficDumper::addDumper(const char *prefix) {
+	this->lock();
+	sDumperDef *dumper = new FILE_LINE(0) sDumperDef(prefix);
+	dumpers[prefix] = dumper;
+	this->unlock();
+	return(dumper);
+}
+
+bool TrafficDumper::removeDumper(const char *prefix) {
+	this->lock();
+	map<string, sDumperDef*>::iterator iter = dumpers.find(prefix);
+	if(iter == dumpers.end()) {
+		this->unlock();
+		return(false);
+	}
+	iter->second->enabled = false;
+	updateIsEnabled();
+	delete iter->second;
+	dumpers.erase(iter);
+	this->unlock();
+	return(true);
+}
+
+TrafficDumper::sDumperDef *TrafficDumper::getDumper(const char *prefix) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	this->unlock();
+	return(dumper);
+}
+
+bool TrafficDumper::addFilterSrcIP(const char *ip_str, const char *prefix, unsigned net_to_ip_bits_limit) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	bool rslt = false;
+	if(dumper) {
+		rslt = _addFilterIP(ip_str, &dumper->src_ips, &dumper->src_nets, net_to_ip_bits_limit);
+	}
+	this->unlock();
+	return(rslt);
+}
+
+bool TrafficDumper::addFilterDstIP(const char *ip_str, const char *prefix, unsigned net_to_ip_bits_limit) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	bool rslt = false;
+	if(dumper) {
+		rslt = _addFilterIP(ip_str, &dumper->dst_ips, &dumper->dst_nets, net_to_ip_bits_limit);
+	}
+	this->unlock();
+	return(rslt);
+}
+
+bool TrafficDumper::addFilterIP(const char *ip_str, const char *prefix, unsigned net_to_ip_bits_limit) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	bool rslt = false;
+	if(dumper) {
+		rslt = _addFilterIP(ip_str, &dumper->ips, &dumper->nets, net_to_ip_bits_limit);
+	}
+	this->unlock();
+	return(rslt);
+}
+
+bool TrafficDumper::addFilterSrcPort(const char *port_str, const char *prefix) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	bool rslt = false;
+	if(dumper) {
+		rslt = _addFilterPort(port_str, &dumper->src_ports);
+	}
+	this->unlock();
+	return(rslt);
+}
+
+bool TrafficDumper::addFilterDstPort(const char *port_str, const char *prefix) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	bool rslt = false;
+	if(dumper) {
+		rslt = _addFilterPort(port_str, &dumper->dst_ports);
+	}
+	this->unlock();
+	return(rslt);
+}
+
+bool TrafficDumper::addFilterPort(const char *port_str, const char *prefix) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	bool rslt = false;
+	if(dumper) {
+		rslt = _addFilterPort(port_str, &dumper->ports);
+	}
+	this->unlock();
+	return(rslt);
+}
+
+void TrafficDumper::setFilterFragmented(bool frag, const char *prefix) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	if(dumper) {
+		dumper->only_fragmented = frag;
+	}
+	this->unlock();
+}
+
+void TrafficDumper::setDumperPath(const char *path, const char *prefix) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	if(dumper) {
+		dumper->path = path;
+	}
+	this->unlock();
+}
+
+void TrafficDumper::enableDumper(const char *prefix) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	if(dumper) {
+		if(dumper->path.empty()) {
+			dumper->path = default_path;
+		}
+		dumper->time = getActDateTimeF(true);
+		dumper->enabled = true;
+		updateIsEnabled();
+	}
+	this->unlock();
+}
+
+void TrafficDumper::disableDumper(const char *prefix) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	if(dumper) {
+		dumper->enabled = false;
+		updateIsEnabled();
+	}
+	this->unlock();
+}
+
+void TrafficDumper::clearFilter(const char *prefix) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	if(dumper) {
+		dumper->clearFilter();
+	}
+	this->unlock();
+}
+
+void TrafficDumper::clearFilterIPs(const char *prefix) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	if(dumper) {
+		dumper->src_ips.clear();
+		dumper->dst_ips.clear();
+		dumper->ips.clear();
+	}
+	this->unlock();
+}
+
+void TrafficDumper::clearFilterNets(const char *prefix) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	if(dumper) {
+		dumper->src_nets.clear();
+		dumper->dst_nets.clear();
+		dumper->nets.clear();
+	}
+	this->unlock();
+}
+
+void TrafficDumper::clearFilterPorts(const char *prefix) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	if(dumper) {
+		dumper->src_ports.clear();
+		dumper->dst_ports.clear();
+		dumper->ports.clear();
+	}
+	this->unlock();
+}
+
+void TrafficDumper::setByDlt(const char *prefix) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	if(dumper) {
+		dumper->by = _byDlt;
+	}
+	this->unlock();
+}
+
+void TrafficDumper::setByInterface(const char *prefix) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	if(dumper) {
+		dumper->by = _byInterface;
+	}
+	this->unlock();
+}
+
+TrafficDumper::eBy TrafficDumper::getBy(const char *prefix) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	eBy rslt = dumper ? dumper->by : _byDlt;
+	this->unlock();
+	return(rslt);
+}
+
+string TrafficDumper::printDumpers() {
+	ostringstream out;
+	out << "default_path: " << default_path << endl;
+	out << "force_flush: " << (force_flush ? "yes" : "no") << endl;
+	this->lock();
+	if(default_dumper_is_defined) {
+		out << "--- default dumper (prefix: " << default_dumper.prefix << ") ---" << endl;
+		printDumper(out, &default_dumper, "  ");
+	}
+	if(!dumpers.empty()) {
+		int i = 1;
+		for(map<string, sDumperDef*>::iterator iter = dumpers.begin(); iter != dumpers.end(); iter++) {
+			out << "--- dumper " << i << " (prefix: " << iter->first << ") ---" << endl;
+			printDumper(out, iter->second, "  ");
+			++i;
+		}
+	}
+	this->unlock();
+	return(out.str());
+}
+
+void TrafficDumper::dump(sDumperDef *dumper, pcap_pkthdr *header, u_char *packet, int dlt, const char *interfaceName) {
+	PcapDumper *pcap_dumper = NULL;
+	if(dumper->by == _byDlt) {
+		map<int, PcapDumper*>::iterator iter = dumper->dumpers_by_dlt.find(dlt);
+		if(iter != dumper->dumpers_by_dlt.end()) {
+			pcap_dumper = iter->second;
 		}
 	} else {
 		if(!strncmp(interfaceName, "interface", 9)) {
@@ -6727,218 +7050,319 @@ void TrafficDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const cha
 		while(*interfaceName == ' ') {
 			++interfaceName;
 		}
-		map<string, PcapDumper*>::iterator iter = dumpers_by_interface.find(interfaceName);
-		if(iter != dumpers_by_interface.end()) {
-			dumper = iter->second;
+		map<string, PcapDumper*>::iterator iter = dumper->dumpers_by_interface.find(interfaceName);
+		if(iter != dumper->dumpers_by_interface.end()) {
+			pcap_dumper = iter->second;
 		}
 	}
-	if(!dumper) {
-		string dumpFileName = path + "/traffic_" +
-				      (by == _byDlt ?
+	if(!pcap_dumper) {
+		string dumpFileName = dumper->path + "/" + dumper->prefix + "_" +
+				      (dumper->by == _byDlt ?
 					"dlt_" + intToString(dlt) :
 					"iface_" + find_and_replace(find_and_replace(interfaceName, " ", "").c_str(), "/", "|")) +
-				      "_" + time + ".pcap";
-		dumper = new FILE_LINE(0) PcapDumper(PcapDumper::na, NULL);
-		dumper->setEnableAsyncWrite(false);
-		dumper->setTypeCompress(FileZipHandler::compress_na);
-		if(dumper->open(tsf_na, dumpFileName.c_str(), dlt)) {
-			if(by == _byDlt) {
-				dumpers_by_dlt[dlt] = dumper;
+				      "_" + dumper->time + ".pcap";
+		pcap_dumper = new FILE_LINE(0) PcapDumper(PcapDumper::na, NULL);
+		pcap_dumper->setEnableAsyncWrite(false);
+		pcap_dumper->setTypeCompress(FileZipHandler::compress_na);
+		if(pcap_dumper->open(tsf_na, dumpFileName.c_str(), dlt)) {
+			if(dumper->by == _byDlt) {
+				dumper->dumpers_by_dlt[dlt] = pcap_dumper;
 			} else {
-				dumpers_by_interface[interfaceName] = dumper;
+				dumper->dumpers_by_interface[interfaceName] = pcap_dumper;
 			}
 		} else {
-			delete dumper;
-			dumper = NULL;
+			delete pcap_dumper;
+			pcap_dumper = NULL;
 		}
 	}
-	if(dumper) {
-		dumper->dump(header, packet, dlt, true);
+	if(pcap_dumper) {
+		pcap_dumper->dump(header, packet, dlt, true);
 		if(force_flush) {
-			dumper->flush();
+			pcap_dumper->flush();
 		}
 	}
-	this->unlock();
 }
 
-void TrafficDumper::addFilterIP(vmIP ip) {
-	this->lock();
-	this->filter_ips.insert(ip);
-	this->unlock();
-}
-
-void TrafficDumper::addFilterNet(vmIPmask net) {
-	this->lock();
-	this->filter_nets.push_back(net);
-	this->unlock();
-}
-
-void TrafficDumper::addFilterPort(vmPort port) {
-	this->lock();
-	this->filter_ports.insert(port);
-	this->unlock();
-}
-
-void TrafficDumper::setFilterIPs(const list<vmIP> &ips) {
-	this->lock();
-	this->filter_ips.clear();
-	for(list<vmIP>::const_iterator iter = ips.begin(); iter != ips.end(); ++iter) {
-		this->filter_ips.insert(*iter);
-	}
-	this->unlock();
-}
-
-void TrafficDumper::setFilterNets(const list<vmIPmask> &nets) {
-	this->lock();
-	this->filter_nets.clear();
-	for(list<vmIPmask>::const_iterator iter = nets.begin(); iter != nets.end(); ++iter) {
-		this->filter_nets.push_back(*iter);
-	}
-	this->unlock();
-}
-
-void TrafficDumper::setFilterPorts(const list<vmPort> &ports) {
-	this->lock();
-	this->filter_ports.clear();
-	for(list<vmPort>::const_iterator iter = ports.begin(); iter != ports.end(); ++iter) {
-		this->filter_ports.insert(*iter);
-	}
-	this->unlock();
-}
-
-void TrafficDumper::clearFilterIPs() {
-	this->lock();
-	this->filter_ips.clear();
-	this->unlock();
-}
-
-void TrafficDumper::clearFilterNets() {
-	this->lock();
-	this->filter_nets.clear();
-	this->unlock();
-}
-
-void TrafficDumper::clearFilterPorts() {
-	this->lock();
-	this->filter_ports.clear();
-	this->unlock();
-}
-
-void TrafficDumper::clearFilter() {
-	this->lock();
-	this->filter_ips.clear();
-	this->filter_nets.clear();
-	this->filter_ports.clear();
-	this->unlock();
-}
-
-bool TrafficDumper::matchIP(vmIP ip) {
-	if(filter_ips.find(ip) != filter_ips.end()) {
-		return true;
-	}
-	for(size_t i = 0; i < filter_nets.size(); i++) {
-		if(ip.network(filter_nets[i].mask) == filter_nets[i].network()) {
-			return true;
+bool TrafficDumper::_addFilterIP(const char *ip_str, set<vmIP> *ips, vector<vmIPmask> *nets, unsigned net_to_ip_bits_limit) {
+	vector<string> items = split(ip_str, split(",|;", '|'), true);
+	bool ok = true;
+	bool any = false;
+	for(size_t i = 0; i < items.size(); i++) {
+		if(items[i].empty()) {
+			continue;
+		}
+		any = true;
+		vmIPmask net;
+		if(net.setFromString(items[i].c_str())) {
+			if(net.mask >= net.ip.bits() && items[i].find('/') == string::npos) {
+				for(int m = 8; m <= net.ip.bits() - 8; m += 8) {
+					if(net.ip == net.ip.network(m)) {
+						net.mask = m;
+						break;
+					}
+				}
+			}
+			if(net.mask >= net.ip.bits()) {
+				ips->insert(net.ip);
+			} else if(net_to_ip_bits_limit > 0 &&
+				  (unsigned)(net.ip.bits() - net.mask) <= net_to_ip_bits_limit) {
+				vmIP from = net.network();
+				vmIP to = net.broadcast();
+				for(vmIP ip = from; ip <= to; ip._inc()) {
+					ips->insert(ip);
+				}
+			} else {
+				nets->push_back(net);
+			}
+		} else {
+			ok = false;
 		}
 	}
-	return false;
+	return(ok && any);
 }
 
-bool TrafficDumper::passFilter(u_char* packet, int dlt, unsigned caplen) {
-	u_int16_t header_ip_offset;
-	u_int16_t protocol;
-	u_int16_t vlan;
-	if(!parseEtherHeader(dlt, packet, NULL, NULL, header_ip_offset, protocol, vlan)) {
-		return false;
+bool TrafficDumper::_addFilterPort(const char *port_str, set<vmPort> *ports) {
+	vector<string> items = split(port_str, split(",|;", '|'), true);
+	bool ok = true;
+	bool any = false;
+	for(size_t i = 0; i < items.size(); i++) {
+		if(items[i].empty()) {
+			continue;
+		}
+		any = true;
+		size_t dash = items[i].find('-');
+		if(dash != string::npos) {
+			string s_from = trim_str(items[i].substr(0, dash));
+			string s_to = trim_str(items[i].substr(dash + 1));
+			if(s_from.empty() || !isdigit(s_from[0]) || s_to.empty() || !isdigit(s_to[0])) {
+				ok = false;
+			} else {
+				int from = atoi(s_from.c_str());
+				int to = atoi(s_to.c_str());
+				if(from >= 0 && to >= from && to <= 65535) {
+					for(int p = from; p <= to; p++) {
+						ports->insert(vmPort(p));
+					}
+				} else {
+					ok = false;
+				}
+			}
+		} else {
+			if(!isdigit(items[i][0])) {
+				ok = false;
+			} else {
+				int p = atoi(items[i].c_str());
+				if(p >= 0 && p <= 65535) {
+					ports->insert(vmPort(p));
+				} else {
+					ok = false;
+				}
+			}
+		}
 	}
-	if(protocol != ETHERTYPE_IP
-	   #if VM_IPV6
-	   && protocol != ETHERTYPE_IPV6
-	   #endif
-	   ) {
-		return false;
-	}
-	if(header_ip_offset >= caplen) {
-		return false;
-	}
-	iphdr2 *header_ip = (iphdr2*)(packet + header_ip_offset);
-	vmIP saddr = header_ip->get_saddr();
-	vmIP daddr = header_ip->get_daddr();
-	bool ip_match = (filter_ips.empty() && filter_nets.empty()) ||
-			matchIP(saddr) || matchIP(daddr);
-	if(!ip_match) {
-		return false;
-	}
-	if(filter_ports.empty()) {
-		return true;
-	}
-	u_int8_t ip_protocol = header_ip->get_protocol();
-	if(ip_protocol != IPPROTO_TCP && ip_protocol != IPPROTO_UDP) {
-		return filter_ports.empty();
-	}
-	unsigned ip_hdr_size = header_ip->get_hdr_size();
-	if(header_ip_offset + ip_hdr_size + 4 > caplen) {
-		return false;
-	}
-	vmPort sport, dport;
-	if(ip_protocol == IPPROTO_UDP) {
-		udphdr2 *header_udp = (udphdr2*)((char*)header_ip + ip_hdr_size);
-		sport = header_udp->get_source();
-		dport = header_udp->get_dest();
-	} else {
-		tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + ip_hdr_size);
-		sport = header_tcp->get_source();
-		dport = header_tcp->get_dest();
-	}
-	return filter_ports.find(sport) != filter_ports.end() ||
-	       filter_ports.find(dport) != filter_ports.end();
+	return(ok && any);
 }
 
-string TrafficDumper::getStatus() {
-	ostringstream out;
-	out << "enabled: " << (enabled ? "yes" : "no") << endl;
-	out << "path: " << path << endl;
-	out << "by: " << (by == _byDlt ? "dlt" : "interface") << endl;
-	out << "force_flush: " << (force_flush ? "yes" : "no") << endl;
-	this->lock();
-	out << "filter_ips: ";
-	if(filter_ips.empty()) {
+TrafficDumper::sDumperDef *TrafficDumper::findDumper(const char *prefix) {
+	if(!prefix) {
+		return(&default_dumper);
+	}
+	map<string, sDumperDef*>::iterator iter = dumpers.find(prefix);
+	if(iter != dumpers.end()) {
+		return(iter->second);
+	}
+	return(NULL);
+}
+
+bool TrafficDumper::passFilter(sDumperDef *dumper, vmIP saddr, vmIP daddr, vmIP saddr_encaps, vmIP daddr_encaps, vmPort sport, vmPort dport, bool is_fragmented, bool has_ports) {
+	if(dumper->only_fragmented && !is_fragmented) {
+		return(false);
+	}
+	bool has_ip_filter = !dumper->src_ips.empty() || !dumper->src_nets.empty() ||
+			     !dumper->dst_ips.empty() || !dumper->dst_nets.empty() ||
+			     !dumper->ips.empty() || !dumper->nets.empty();
+	if(has_ip_filter) {
+		bool ip_match = false;
+		if(!dumper->src_ips.empty() || !dumper->src_nets.empty()) {
+			if(matchSrcIP(dumper, saddr) ||
+			   (saddr_encaps.isSet() && matchSrcIP(dumper, saddr_encaps))) {
+				ip_match = true;
+			}
+		}
+		if(!ip_match && (!dumper->dst_ips.empty() || !dumper->dst_nets.empty())) {
+			if(matchDstIP(dumper, daddr) ||
+			   (daddr_encaps.isSet() && matchDstIP(dumper, daddr_encaps))) {
+				ip_match = true;
+			}
+		}
+		if(!ip_match && (!dumper->ips.empty() || !dumper->nets.empty())) {
+			if(matchIP(dumper, saddr) || 
+			   matchIP(dumper, daddr) ||
+			   (saddr_encaps.isSet() && matchIP(dumper, saddr_encaps)) ||
+			   (daddr_encaps.isSet() && matchIP(dumper, daddr_encaps))) {
+				ip_match = true;
+			}
+		}
+		if(!ip_match) {
+			return(false);
+		}
+	}
+	bool has_port_filter = !dumper->src_ports.empty() || !dumper->dst_ports.empty() || !dumper->ports.empty();
+	if(has_port_filter) {
+		if(!has_ports) {
+			return(false);
+		}
+		bool port_match = false;
+		if(!dumper->src_ports.empty()) {
+			if(dumper->src_ports.find(sport) != dumper->src_ports.end()) {
+				port_match = true;
+			}
+		}
+		if(!port_match && !dumper->dst_ports.empty()) {
+			if(dumper->dst_ports.find(dport) != dumper->dst_ports.end()) {
+				port_match = true;
+			}
+		}
+		if(!port_match && !dumper->ports.empty()) {
+			if(dumper->ports.find(sport) != dumper->ports.end() ||
+			   dumper->ports.find(dport) != dumper->ports.end()) {
+				port_match = true;
+			}
+		}
+		if(!port_match) {
+			return(false);
+		}
+	}
+	return(true);
+}
+
+void TrafficDumper::printDumper(ostringstream &out, TrafficDumper::sDumperDef *dumper, const char *indent) {
+	out << indent << "enabled: " << (dumper->enabled ? "yes" : "no") << endl;
+	out << indent << "path: " << (dumper->path.empty() ? "(default)" : dumper->path) << endl;
+	out << indent << "by: " << (dumper->by == TrafficDumper::_byDlt ? "dlt" : "interface") << endl;
+	out << indent << "fragmented_only: " << (dumper->only_fragmented ? "yes" : "no") << endl;
+	out << indent << "src_ips: ";
+	if(dumper->src_ips.empty()) {
 		out << "(none)";
 	} else {
 		bool first = true;
-		for(set<vmIP>::iterator iter = filter_ips.begin(); iter != filter_ips.end(); ++iter) {
+		for(set<vmIP>::iterator iter = dumper->src_ips.begin(); iter != dumper->src_ips.end(); ++iter) {
 			if(!first) out << ", ";
 			out << iter->getString();
 			first = false;
 		}
 	}
 	out << endl;
-	out << "filter_nets: ";
-	if(filter_nets.empty()) {
+	out << indent << "src_nets: ";
+	if(dumper->src_nets.empty()) {
 		out << "(none)";
 	} else {
 		bool first = true;
-		for(size_t i = 0; i < filter_nets.size(); i++) {
+		for(size_t i = 0; i < dumper->src_nets.size(); i++) {
 			if(!first) out << ", ";
-			out << filter_nets[i].getString();
+			out << dumper->src_nets[i].getString();
 			first = false;
 		}
 	}
 	out << endl;
-	out << "filter_ports: ";
-	if(filter_ports.empty()) {
+	out << indent << "dst_ips: ";
+	if(dumper->dst_ips.empty()) {
 		out << "(none)";
 	} else {
 		bool first = true;
-		for(set<vmPort>::iterator iter = filter_ports.begin(); iter != filter_ports.end(); ++iter) {
+		for(set<vmIP>::iterator iter = dumper->dst_ips.begin(); iter != dumper->dst_ips.end(); ++iter) {
 			if(!first) out << ", ";
 			out << iter->getString();
 			first = false;
 		}
 	}
 	out << endl;
-	this->unlock();
-	return out.str();
+	out << indent << "dst_nets: ";
+	if(dumper->dst_nets.empty()) {
+		out << "(none)";
+	} else {
+		bool first = true;
+		for(size_t i = 0; i < dumper->dst_nets.size(); i++) {
+			if(!first) out << ", ";
+			out << dumper->dst_nets[i].getString();
+			first = false;
+		}
+	}
+	out << endl;
+	out << indent << "ips: ";
+	if(dumper->ips.empty()) {
+		out << "(none)";
+	} else {
+		bool first = true;
+		for(set<vmIP>::iterator iter = dumper->ips.begin(); iter != dumper->ips.end(); ++iter) {
+			if(!first) out << ", ";
+			out << iter->getString();
+			first = false;
+		}
+	}
+	out << endl;
+	out << indent << "nets: ";
+	if(dumper->nets.empty()) {
+		out << "(none)";
+	} else {
+		bool first = true;
+		for(size_t i = 0; i < dumper->nets.size(); i++) {
+			if(!first) out << ", ";
+			out << dumper->nets[i].getString();
+			first = false;
+		}
+	}
+	out << endl;
+	out << indent << "src_ports: ";
+	if(dumper->src_ports.empty()) {
+		out << "(none)";
+	} else {
+		bool first = true;
+		for(set<vmPort>::iterator iter = dumper->src_ports.begin(); iter != dumper->src_ports.end(); ++iter) {
+			if(!first) out << ", ";
+			out << iter->getString();
+			first = false;
+		}
+	}
+	out << endl;
+	out << indent << "dst_ports: ";
+	if(dumper->dst_ports.empty()) {
+		out << "(none)";
+	} else {
+		bool first = true;
+		for(set<vmPort>::iterator iter = dumper->dst_ports.begin(); iter != dumper->dst_ports.end(); ++iter) {
+			if(!first) out << ", ";
+			out << iter->getString();
+			first = false;
+		}
+	}
+	out << endl;
+	out << indent << "ports: ";
+	if(dumper->ports.empty()) {
+		out << "(none)";
+	} else {
+		bool first = true;
+		for(set<vmPort>::iterator iter = dumper->ports.begin(); iter != dumper->ports.end(); ++iter) {
+			if(!first) out << ", ";
+			out << iter->getString();
+			first = false;
+		}
+	}
+	out << endl;
+}
+
+void TrafficDumper::updateIsEnabled() {
+	if(default_dumper.enabled) {
+		is_enabled = true;
+		return;
+	}
+	for(map<string, sDumperDef*>::iterator iter = dumpers.begin(); iter != dumpers.end(); iter++) {
+		if(iter->second->enabled) {
+			is_enabled = true;
+			return;
+		}
+	}
+	is_enabled = false;
 }
 
 

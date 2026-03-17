@@ -9955,11 +9955,12 @@ void PcapQueue_readFromFifo::cleanupConnections(bool all) {
 
 void PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp) {
  
-	extern TrafficDumper *trafficDumper;
+	extern TrafficDumper * volatile trafficDumper;
 	if(trafficDumper) {
 		pcap_pkthdr *header = hp->header->convertToStdHeader();
 		trafficDumper->dump(header, hp->packet, hp->dlt,
-				    hp->block_store && hp->block_store->ifname[0] ? hp->block_store->ifname : "undefined");
+				    hp->block_store && hp->block_store->ifname[0] ? hp->block_store->ifname : "undefined",
+				    hp->header->header_ip_offset);
 	}
  
 	sumPacketsSizeOut[0] += hp->header->get_caplen();

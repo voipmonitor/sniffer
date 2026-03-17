@@ -2940,32 +2940,120 @@ public:
 		_byDlt,
 		_byInterface
 	};
+	struct sDumperDef {
+		string prefix;
+		string path;
+		string time;
+		eBy by;
+		set<vmIP> src_ips;
+		vector<vmIPmask> src_nets;
+		set<vmIP> dst_ips;
+		vector<vmIPmask> dst_nets;
+		set<vmIP> ips;
+		vector<vmIPmask> nets;
+		set<vmPort> src_ports;
+		set<vmPort> dst_ports;
+		set<vmPort> ports;
+		bool only_fragmented;
+		map<int, PcapDumper*> dumpers_by_dlt;
+		map<string, PcapDumper*> dumpers_by_interface;
+		bool enabled;
+		sDumperDef(const char *prefix) {
+			this->prefix = prefix;
+			this->by = _byDlt;
+			only_fragmented = false;
+			enabled = false;
+		}
+		~sDumperDef();
+		bool hasFilter() {
+			return(!src_ips.empty() || !src_nets.empty() ||
+			       !dst_ips.empty() || !dst_nets.empty() ||
+			       !ips.empty() || !nets.empty() ||
+			       !src_ports.empty() ||
+			       !dst_ports.empty() ||
+			       !ports.empty() ||
+			       only_fragmented);
+		}
+		void clearFilter() {
+			src_ips.clear(); src_nets.clear();
+			dst_ips.clear(); dst_nets.clear();
+			ips.clear(); nets.clear();
+			src_ports.clear(); dst_ports.clear();
+			ports.clear();
+			only_fragmented = false;
+		}
+	};
 public:
-	TrafficDumper(const char *path, eBy by, bool force_flush);
+	TrafficDumper(const char *path, eBy by = _byDlt, bool force_flush = false);
 	~TrafficDumper();
-	void dump(pcap_pkthdr* header, u_char* packet, int dlt, const char *interfaceName);
-	void addFilterIP(vmIP ip);
-	void addFilterNet(vmIPmask net);
-	void addFilterPort(vmPort port);
-	void setFilterIPs(const list<vmIP> &ips);
-	void setFilterNets(const list<vmIPmask> &nets);
-	void setFilterPorts(const list<vmPort> &ports);
-	void clearFilterIPs();
-	void clearFilterNets();
-	void clearFilterPorts();
-	void clearFilter();
-	void enable() { enabled = true; }
-	void disable() { enabled = false; }
-	bool isEnabled() { return enabled; }
-	void setByDlt() { by = _byDlt; }
-	void setByInterface() { by = _byInterface; }
-	eBy getBy() { return by; }
+	void setDefinedDefaultDumper() { default_dumper_is_defined = true; }
+	bool isDefinedDefaultDumper() { return(default_dumper_is_defined); }
 	void setForceFlush(bool ff) { force_flush = ff; }
 	bool getForceFlush() { return force_flush; }
-	string getStatus();
+	void dump(pcap_pkthdr* header, u_char* packet, int dlt, const char *interfaceName, u_int16_t header_ip_offset);
+	sDumperDef *addDumper(const char *prefix);
+	bool removeDumper(const char *prefix);
+	sDumperDef *getDumper(const char *prefix);
+	sDumperDef *getDefaultDumper() { return(&default_dumper); }
+	bool addFilterSrcIP(const char *ip_str, const char *prefix = NULL, unsigned net_to_ip_bits_limit = 0);
+	bool addFilterDstIP(const char *ip_str, const char *prefix = NULL, unsigned net_to_ip_bits_limit = 0);
+	bool addFilterIP(const char *ip_str, const char *prefix = NULL, unsigned net_to_ip_bits_limit = 0);
+	bool addFilterSrcPort(const char *port_str, const char *prefix = NULL);
+	bool addFilterDstPort(const char *port_str, const char *prefix = NULL);
+	bool addFilterPort(const char *port_str, const char *prefix = NULL);
+	void setFilterFragmented(bool frag, const char *prefix = NULL);
+	void setDumperPath(const char *path, const char *prefix = NULL);
+	void enableDumper(const char *prefix = NULL);
+	void disableDumper(const char *prefix = NULL);
+	void clearFilter(const char *prefix = NULL);
+	void clearFilterIPs(const char *prefix = NULL);
+	void clearFilterNets(const char *prefix = NULL);
+	void clearFilterPorts(const char *prefix = NULL);
+	void setByDlt(const char *prefix = NULL);
+	void setByInterface(const char *prefix = NULL);
+	eBy getBy(const char *prefix = NULL);
+	string printDumpers();
 private:
-	bool passFilter(u_char* packet, int dlt, unsigned caplen);
-	bool matchIP(vmIP ip);
+	void dump(sDumperDef *dumper, pcap_pkthdr *header, u_char *packet, int dlt, const char *interfaceName);
+	bool _addFilterIP(const char *ip_str, set<vmIP> *ips, vector<vmIPmask> *nets, unsigned net_to_ip_bits_limit = 0);
+	bool _addFilterPort(const char *port_str, set<vmPort> *ports);
+	sDumperDef *findDumper(const char *prefix);
+	bool passFilter(sDumperDef *dumper, vmIP saddr, vmIP daddr, vmIP saddr_encaps, vmIP daddr_encaps, vmPort sport, vmPort dport, bool is_fragmented, bool has_ports);
+	inline bool matchSrcIP(sDumperDef *dumper, vmIP ip) {
+		if(dumper->src_ips.find(ip) != dumper->src_ips.end()) {
+			return(true);
+		}
+		for(size_t i = 0; i < dumper->src_nets.size(); i++) {
+			if(ip.network(dumper->src_nets[i].mask) == dumper->src_nets[i].network()) {
+				return(true);
+			}
+		}
+		return(false);
+	}
+	inline bool matchDstIP(sDumperDef *dumper, vmIP ip) {
+		if(dumper->dst_ips.find(ip) != dumper->dst_ips.end()) {
+			return(true);
+		}
+		for(size_t i = 0; i < dumper->dst_nets.size(); i++) {
+			if(ip.network(dumper->dst_nets[i].mask) == dumper->dst_nets[i].network()) {
+				return(true);
+			}
+		}
+		return(false);
+	}
+	inline bool matchIP(sDumperDef *dumper, vmIP ip) {
+		if(dumper->ips.find(ip) != dumper->ips.end()) {
+			return(true);
+		}
+		for(size_t i = 0; i < dumper->nets.size(); i++) {
+			if(ip.network(dumper->nets[i].mask) == dumper->nets[i].network()) {
+				return(true);
+			}
+		}
+		return(false);
+	}
+	void printDumper(ostringstream &out, sDumperDef *dumper, const char *indent = "");
+	void updateIsEnabled();
 	void lock() {
 		__SYNC_LOCK(this->_sync);
 	}
@@ -2973,16 +3061,12 @@ private:
 		__SYNC_UNLOCK(this->_sync);
 	}
 private:
-	map<int, PcapDumper*> dumpers_by_dlt;
-	map<string, PcapDumper*> dumpers_by_interface;
-	eBy by;
+	sDumperDef default_dumper;
+	bool default_dumper_is_defined;
+	map<string, sDumperDef*> dumpers;
 	bool force_flush;
-	string path;
-	string time;
-	set<vmIP> filter_ips;
-	vector<vmIPmask> filter_nets;
-	set<vmPort> filter_ports;
-	bool enabled;
+	string default_path;
+	volatile bool is_enabled;
 	volatile int _sync;
 };
 

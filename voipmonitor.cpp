@@ -1441,10 +1441,9 @@ BogusDumper *bogusDumper;
 char opt_traffic_dumper_path[1204];
 bool opt_traffic_dumper_by_interface = false;
 bool opt_traffic_dumper_force_flush = false;
-vector<vmIP> opt_traffic_dumper_filter_ips;
-vector<vmIPmask> opt_traffic_dumper_filter_nets;
-map<u_int16_t, bool> opt_traffic_dumper_filter_ports;
-TrafficDumper *trafficDumper;
+vector<string> opt_traffic_dumper_filter_ips;
+vector<string> opt_traffic_dumper_filter_ports;
+TrafficDumper * volatile trafficDumper;
 
 char opt_syslog_string[256];
 int opt_cpu_limit_warning_t0 = 80;
@@ -5229,15 +5228,14 @@ int main_init_read() {
 		trafficDumper = new FILE_LINE(0) TrafficDumper(opt_traffic_dumper_path,
 							       opt_traffic_dumper_by_interface ? TrafficDumper::_byInterface : TrafficDumper::_byDlt,
 							       opt_traffic_dumper_force_flush);
+		trafficDumper->setDefinedDefaultDumper();
 		for(size_t i = 0; i < opt_traffic_dumper_filter_ips.size(); i++) {
-			trafficDumper->addFilterIP(opt_traffic_dumper_filter_ips[i]);
+			trafficDumper->addFilterIP(opt_traffic_dumper_filter_ips[i].c_str());
 		}
-		for(size_t i = 0; i < opt_traffic_dumper_filter_nets.size(); i++) {
-			trafficDumper->addFilterNet(opt_traffic_dumper_filter_nets[i]);
+		for(size_t i = 0; i < opt_traffic_dumper_filter_ports.size(); i++) {
+			trafficDumper->addFilterPort(opt_traffic_dumper_filter_ports[i].c_str());
 		}
-		for(map<u_int16_t, bool>::iterator iter = opt_traffic_dumper_filter_ports.begin(); iter != opt_traffic_dumper_filter_ports.end(); ++iter) {
-			trafficDumper->addFilterPort(vmPort(iter->first));
-		}
+		trafficDumper->enableDumper();
 	}
 	
 	clear_readend();
@@ -6808,8 +6806,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("traffic_dumper_path", opt_traffic_dumper_path, sizeof(opt_traffic_dumper_path)));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("traffic_dumper_by_interface", &opt_traffic_dumper_by_interface));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("traffic_dumper_force_flush", &opt_traffic_dumper_force_flush));
-					addConfigItem(new FILE_LINE(0) cConfigItem_hosts("traffic_dumper_filter_ip", &opt_traffic_dumper_filter_ips, &opt_traffic_dumper_filter_nets));
-					addConfigItem(new FILE_LINE(0) cConfigItem_ports("traffic_dumper_filter_port", &opt_traffic_dumper_filter_ports));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("traffic_dumper_filter_ip", &opt_traffic_dumper_filter_ips));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("traffic_dumper_filter_port", &opt_traffic_dumper_filter_ports));
 		subgroup("scaling");
 			addConfigItem(new FILE_LINE(42196) cConfigItem_integer("tar_maxthreads", &opt_pcap_dump_tar_threads));
 				advanced();

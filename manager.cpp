@@ -5974,78 +5974,291 @@ int Mgmt_sql_errors_skip(Mgmt_params *params) {
 }
 
 int Mgmt_traffic_dumper(Mgmt_params *params) {
-	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("traffic_dumper", "traffic dumper management: status, enable, disable, by_dlt, by_interface, force_flush, add_ip, add_net, add_port, clear_ips, clear_nets, clear_ports, clear_filter");
+	const char *commands =
+		"status, force_flush [on|off], "
+		"start <json: prefix, ip, src_ip, dst_ip, port, src_port, dst_port, by, by_dlt, by_interface, fragmented, path, net_to_ip_bits_limit>, "
+		"stop <prefix>, "
+		"enable [prefix], disable [prefix], by_dlt [prefix], by_interface [prefix], "
+		"clear_filter [prefix], clear_ips [prefix], clear_nets [prefix], clear_ports [prefix], "
+		"add_ip <ip/net> [prefix], add_src_ip <ip/net> [prefix], add_dst_ip <ip/net> [prefix], "
+		"add_port <port|range> [prefix], add_src_port <port|range> [prefix], add_dst_port <port|range> [prefix], "
+		"set_fragmented <on|off> [prefix], set_path <path> [prefix]";
+	if(params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("traffic_dumper", (string("traffic dumper management: ") + commands).c_str());
 		return(0);
 	}
-	extern TrafficDumper *trafficDumper;
+	char subcmd[100] = "";
+	char arg[10240] = "";
+	char arg2[256] = "";
+	sscanf(params->buf, "traffic_dumper %99s %10239s %255s", subcmd, arg, arg2);
+	extern TrafficDumper * volatile trafficDumper;
+	static volatile int trafficDumper_create_sync = 0;
+	if(!strcasecmp(subcmd, "start")) {
+		const char *json_start = strstr(params->buf, "start");
+		if(!json_start) {
+			return(params->sendString("internal error\n"));
+		}
+		json_start += strlen("start");
+		while(*json_start == ' ' || *json_start == '\t') {
+			++json_start;
+		}
+		if(!*json_start) {
+			return(params->sendString("missing json parameters\n"));
+		}
+		string json_str = json_start;
+		while(!json_str.empty()) {
+			char c = json_str[json_str.length() - 1];
+			if(c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+				json_str.resize(json_str.length() - 1);
+			} else {
+				break;
+			}
+		}
+		JsonItem jsonParams;
+		jsonParams.parse(json_str);
+		string prefix = jsonParams.getValue("prefix");
+		if(prefix.empty()) {
+			return(params->sendString("missing required parameter 'prefix'\n"));
+		}
+		__SYNC_LOCK(trafficDumper_create_sync);
+		bool new_dumper = false;
+		TrafficDumper *td = trafficDumper;
+		if(!td) {
+			td = new FILE_LINE(0) TrafficDumper(NULL);
+			new_dumper = true;
+		}
+		if(td->getDumper(prefix.c_str())) {
+			if(new_dumper) {
+				delete td;
+			}
+			__SYNC_UNLOCK(trafficDumper_create_sync);
+			return(params->sendString(string("dumper '") + prefix + "' already exists\n"));
+		}
+		td->addDumper(prefix.c_str());
+		string err;
+		const char *_prefix = prefix.c_str();
+		unsigned net_to_ip_bits_limit = 0;
+		string _net_to_ip = jsonParams.getValue("net_to_ip_bits_limit");
+		if(!_net_to_ip.empty()) {
+			net_to_ip_bits_limit = atoi(_net_to_ip.c_str());
+		}
+		for(size_t i = 0; i < jsonParams.getLocalCount() && err.empty(); i++) {
+			JsonItem *item = jsonParams.getLocalItem(i);
+			string name = item->getLocalName();
+			string val = item->getLocalValue();
+			if(!strcasecmp(name.c_str(), "ip")) {
+				if(!td->addFilterIP(val.c_str(), _prefix, net_to_ip_bits_limit)) {
+					err = string("invalid value for '") + name + "'\n";
+				}
+			} else if(!strcasecmp(name.c_str(), "src_ip") || !strcasecmp(name.c_str(), "ip_src")) {
+				if(!td->addFilterSrcIP(val.c_str(), _prefix, net_to_ip_bits_limit)) {
+					err = string("invalid value for '") + name + "'\n";
+				}
+			} else if(!strcasecmp(name.c_str(), "dst_ip") || !strcasecmp(name.c_str(), "ip_dst")) {
+				if(!td->addFilterDstIP(val.c_str(), _prefix, net_to_ip_bits_limit)) {
+					err = string("invalid value for '") + name + "'\n";
+				}
+			} else if(!strcasecmp(name.c_str(), "port")) {
+				if(!td->addFilterPort(val.c_str(), _prefix)) {
+					err = string("invalid value for '") + name + "'\n";
+				}
+			} else if(!strcasecmp(name.c_str(), "src_port") || !strcasecmp(name.c_str(), "port_src")) {
+				if(!td->addFilterSrcPort(val.c_str(), _prefix)) {
+					err = string("invalid value for '") + name + "'\n";
+				}
+			} else if(!strcasecmp(name.c_str(), "dst_port") || !strcasecmp(name.c_str(), "port_dst")) {
+				if(!td->addFilterDstPort(val.c_str(), _prefix)) {
+					err = string("invalid value for '") + name + "'\n";
+				}
+			} else if(!strcasecmp(name.c_str(), "by")) {
+				if(!strcasecmp(val.c_str(), "interface")) {
+					td->setByInterface(_prefix);
+				} else if(!strcasecmp(val.c_str(), "dlt")) {
+					td->setByDlt(_prefix);
+				} else {
+					err = "invalid value for 'by' (use 'dlt' or 'interface')\n";
+				}
+			} else if(!strcasecmp(name.c_str(), "by_dlt")) {
+				if(yesno(val.c_str())) {
+					td->setByDlt(_prefix);
+				}
+			} else if(!strcasecmp(name.c_str(), "by_interface")) {
+				if(yesno(val.c_str())) {
+					td->setByInterface(_prefix);
+				}
+			} else if(!strcasecmp(name.c_str(), "fragmented")) {
+				td->setFilterFragmented(yesno(val.c_str()), _prefix);
+			} else if(!strcasecmp(name.c_str(), "path")) {
+				td->setDumperPath(val.c_str(), _prefix);
+			} else if(strcasecmp(name.c_str(), "prefix") &&
+				  strcasecmp(name.c_str(), "net_to_ip_bits_limit")) {
+				err = string("unknown parameter '") + name + "'\n";
+			}
+		}
+		if(!err.empty()) {
+			td->removeDumper(_prefix);
+			if(new_dumper) {
+				delete td;
+			}
+			__SYNC_UNLOCK(trafficDumper_create_sync);
+			return(params->sendString(err));
+		}
+		td->enableDumper(prefix.c_str());
+		if(new_dumper) {
+			trafficDumper = td;
+		}
+		__SYNC_UNLOCK(trafficDumper_create_sync);
+		return(params->sendString(string("dumper '") + prefix + "' started\n"));
+	}
+	if(!strcasecmp(subcmd, "stop")) {
+		if(!arg[0]) {
+			return(params->sendString("missing prefix\n"));
+		}
+		if(!trafficDumper) {
+			return(params->sendString("traffic_dumper is not configured\n"));
+		}
+		if(!trafficDumper->getDumper(arg)) {
+			return(params->sendString(string("dumper '") + arg + "' not found\n"));
+		}
+		trafficDumper->removeDumper(arg);
+		return(params->sendString(string("dumper '") + arg + "' stopped and removed\n"));
+	}
 	if(!trafficDumper) {
 		return(params->sendString("traffic_dumper is not configured\n"));
 	}
-	char subcmd[100] = "";
-	char arg[256] = "";
-	sscanf(params->buf, "traffic_dumper %99s %255s", subcmd, arg);
-	if(!subcmd[0] || !strcasecmp(subcmd, "status")) {
-		return(params->sendString(trafficDumper->getStatus()));
-	} else if(!strcasecmp(subcmd, "enable")) {
-		trafficDumper->enable();
-		return(params->sendString("traffic_dumper enabled\n"));
-	} else if(!strcasecmp(subcmd, "disable")) {
-		trafficDumper->disable();
-		return(params->sendString("traffic_dumper disabled\n"));
-	} else if(!strcasecmp(subcmd, "add_ip")) {
-		if(!arg[0]) {
-			return(params->sendString("missing IP address\n"));
-		}
-		vmIP ip;
-		if(ip.setFromString(arg)) {
-			trafficDumper->addFilterIP(ip);
-			return(params->sendString(string("added IP: ") + ip.getString() + "\n"));
+	if(!strcasecmp(subcmd, "enable") ||
+	   !strcasecmp(subcmd, "disable") ||
+	   !strcasecmp(subcmd, "by_dlt") ||
+	   !strcasecmp(subcmd, "by_interface") ||
+	   !strcasecmp(subcmd, "clear_filter") ||
+	   !strcasecmp(subcmd, "clear_ips") ||
+	   !strcasecmp(subcmd, "clear_nets") ||
+	   !strcasecmp(subcmd, "clear_ports")) {
+		const char *prefix = arg[0] ? arg : NULL;
+		if(prefix) {
+			if(!trafficDumper->getDumper(prefix)) { 
+				return(params->sendString(string("dumper '") + prefix + "' not found\n"));
+			}
 		} else {
-			return(params->sendString("invalid IP address\n"));
+			if(!trafficDumper->isDefinedDefaultDumper()) {
+				return(params->sendString("default dumper is not defined\n"));
+			}
 		}
-	} else if(!strcasecmp(subcmd, "add_net")) {
-		if(!arg[0]) {
-			return(params->sendString("missing network\n"));
+		string dumper_name = prefix ?
+				      string("dumper ") + prefix :
+				      "default dumper";
+		if(!strcasecmp(subcmd, "enable")) {
+			trafficDumper->enableDumper(prefix);
+			return(params->sendString(dumper_name + " enabled\n"));
+		} else if(!strcasecmp(subcmd, "disable")) {
+			trafficDumper->disableDumper(prefix);
+			return(params->sendString(dumper_name + " disabled\n"));
+		} else if(!strcasecmp(subcmd, "by_dlt")) {
+			trafficDumper->setByDlt(prefix);
+			return(params->sendString(dumper_name + " : set to separate files by DLT\n"));
+		} else if(!strcasecmp(subcmd, "by_interface")) {
+			trafficDumper->setByInterface(prefix);
+			return(params->sendString(dumper_name + " : set to separate files by interface\n"));
+		} else if(!strcasecmp(subcmd, "clear_filter")) {
+			trafficDumper->clearFilter(prefix);
+			return(params->sendString(dumper_name + " cleared\n"));
+		} else if(!strcasecmp(subcmd, "clear_ips")) {
+			trafficDumper->clearFilterIPs(prefix);
+			return(params->sendString(dumper_name + " IPs cleared\n"));
+		} else if(!strcasecmp(subcmd, "clear_nets")) {
+			trafficDumper->clearFilterNets(prefix);
+			return(params->sendString(dumper_name + " nets cleared\n"));
+		} else if(!strcasecmp(subcmd, "clear_ports")) {
+			trafficDumper->clearFilterPorts(prefix);
+			return(params->sendString(dumper_name + " ports cleared\n"));
 		}
-		vmIPmask net;
-		if(net.setFromString(arg)) {
-			trafficDumper->addFilterNet(net);
-			return(params->sendString(string("added network: ") + net.getString() + "\n"));
+	} else if(!strcasecmp(subcmd, "add_ip") ||
+		  !strcasecmp(subcmd, "add_src_ip") ||
+		  !strcasecmp(subcmd, "add_dst_ip") ||
+		  !strcasecmp(subcmd, "add_port") ||
+		  !strcasecmp(subcmd, "add_src_port") ||
+		  !strcasecmp(subcmd, "add_dst_port") ||
+		  !strcasecmp(subcmd, "set_fragmented") ||
+		  !strcasecmp(subcmd, "set_path")) {
+		const char *prefix = arg2[0] ? arg2 : NULL;
+		if(prefix) {
+			if(!trafficDumper->getDumper(prefix)) { 
+				return(params->sendString(string("dumper '") + prefix + "' not found\n"));
+			}
 		} else {
-			return(params->sendString("invalid network\n"));
+			if(!trafficDumper->isDefinedDefaultDumper()) {
+				return(params->sendString("default dumper is not defined\n"));
+			}
 		}
-	} else if(!strcasecmp(subcmd, "add_port")) {
-		if(!arg[0]) {
-			return(params->sendString("missing port\n"));
+		if(!strcasecmp(subcmd, "add_ip")) {
+			if(!arg[0]) {
+				return(params->sendString("missing IP address/network\n"));
+			}
+			if(trafficDumper->addFilterIP(arg, prefix)) {
+				return(params->sendString(string("added ip: ") + arg + "\n"));
+			} else {
+				return(params->sendString("invalid IP address/network\n"));
+			}
+		} else if(!strcasecmp(subcmd, "add_src_ip")) {
+			if(!arg[0]) {
+				return(params->sendString("missing IP address/network\n"));
+			}
+			if(trafficDumper->addFilterSrcIP(arg, prefix)) {
+				return(params->sendString(string("added src_ip: ") + arg + "\n"));
+			} else {
+				return(params->sendString("invalid IP address/network\n"));
+			}
+		} else if(!strcasecmp(subcmd, "add_dst_ip")) {
+			if(!arg[0]) {
+				return(params->sendString("missing IP address/network\n"));
+			}
+			if(trafficDumper->addFilterDstIP(arg, prefix)) {
+				return(params->sendString(string("added dst_ip: ") + arg + "\n"));
+			} else {
+				return(params->sendString("invalid IP address/network\n"));
+			}
+		} else if(!strcasecmp(subcmd, "add_port")) {
+			if(!arg[0]) {
+				return(params->sendString("missing port\n"));
+			}
+			if(trafficDumper->addFilterPort(arg, prefix)) {
+				return(params->sendString(string("added port: ") + arg + "\n"));
+			} else {
+				return(params->sendString("invalid port\n"));
+			}
+		} else if(!strcasecmp(subcmd, "add_src_port")) {
+			if(!arg[0]) {
+				return(params->sendString("missing port\n"));
+			}
+			if(trafficDumper->addFilterSrcPort(arg, prefix)) {
+				return(params->sendString(string("added src_port: ") + arg + "\n"));
+			} else {
+				return(params->sendString("invalid port\n"));
+			}
+		} else if(!strcasecmp(subcmd, "add_dst_port")) {
+			if(!arg[0]) {
+				return(params->sendString("missing port\n"));
+			}
+			if(trafficDumper->addFilterDstPort(arg, prefix)) {
+				return(params->sendString(string("added dst_port: ") + arg + "\n"));
+			} else {
+				return(params->sendString("invalid port\n"));
+			}
+		} else if(!strcasecmp(subcmd, "set_fragmented")) {
+			bool on = yesno(arg);
+			trafficDumper->setFilterFragmented(on, prefix);
+			return(params->sendString(string("fragmented: ") + (on ? "on" : "off") + "\n"));
+		} else if(!strcasecmp(subcmd, "set_path")) {
+			if(!arg[0]) {
+				return(params->sendString("missing path\n"));
+			}
+			trafficDumper->setDumperPath(arg, prefix);
+			return(params->sendString(string("path set: ") + arg + "\n"));
 		}
-		int port = atoi(arg);
-		if(port > 0 && port <= 65535) {
-			trafficDumper->addFilterPort(vmPort(port));
-			return(params->sendString(string("added port: ") + intToString(port) + "\n"));
-		} else {
-			return(params->sendString("invalid port number\n"));
-		}
-	} else if(!strcasecmp(subcmd, "clear_ips")) {
-		trafficDumper->clearFilterIPs();
-		return(params->sendString("filter IPs cleared\n"));
-	} else if(!strcasecmp(subcmd, "clear_nets")) {
-		trafficDumper->clearFilterNets();
-		return(params->sendString("filter networks cleared\n"));
-	} else if(!strcasecmp(subcmd, "clear_ports")) {
-		trafficDumper->clearFilterPorts();
-		return(params->sendString("filter ports cleared\n"));
-	} else if(!strcasecmp(subcmd, "clear_filter")) {
-		trafficDumper->clearFilter();
-		return(params->sendString("all filters cleared\n"));
-	} else if(!strcasecmp(subcmd, "by_dlt")) {
-		trafficDumper->setByDlt();
-		return(params->sendString("set to separate files by DLT\n"));
-	} else if(!strcasecmp(subcmd, "by_interface")) {
-		trafficDumper->setByInterface();
-		return(params->sendString("set to separate files by interface\n"));
+	} else if(!subcmd[0] || !strcasecmp(subcmd, "status")) {
+		return(params->sendString(trafficDumper->printDumpers()));
 	} else if(!strcasecmp(subcmd, "force_flush")) {
-		if(!arg[0] || !strcasecmp(arg, "on") || !strcasecmp(arg, "yes") || !strcasecmp(arg, "1")) {
+		if(yesno(arg)) {
 			trafficDumper->setForceFlush(true);
 			return(params->sendString("force_flush enabled\n"));
 		} else {
@@ -6053,8 +6266,9 @@ int Mgmt_traffic_dumper(Mgmt_params *params) {
 			return(params->sendString("force_flush disabled\n"));
 		}
 	} else {
-		return(params->sendString("unknown subcommand. Use: status, enable, disable, by_dlt, by_interface, force_flush [on|off], add_ip <ip>, add_net <net/mask>, add_port <port>, clear_ips, clear_nets, clear_ports, clear_filter\n"));
+		return(params->sendString(string("unknown subcommand. Use: ") + commands + "\n"));
 	}
+	return(0);
 }
 
 void init_management_functions(void) {
