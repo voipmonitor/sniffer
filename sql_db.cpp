@@ -1423,7 +1423,8 @@ bool SqlDb::ignoreLastError() {
 	return(getLastError() == ER_PARSE_ERROR ||
 	       getLastError() == ER_NO_REFERENCED_ROW_2 ||
 	       getLastError() == ER_SAME_NAME_PARTITION ||
-	       getLastError() == ER_SP_DOES_NOT_EXIST);
+	       getLastError() == ER_SP_DOES_NOT_EXIST ||
+	       getLastError() == ER_DUP_FIELDNAME);
 }
 
 bool SqlDb::isSkipError() {
