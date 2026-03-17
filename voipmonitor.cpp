@@ -1704,6 +1704,8 @@ cPiiMasking *pii_mask;
 
 static cCreatePartitions CreatePartitions;
 
+bool opt_sip_thread_log_ext;
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -7801,6 +7803,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("invite_counters_ip_src", &invite_counters_ip_src));
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("invite_counters_ip_dst", &invite_counters_ip_dst));
 					#endif
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip_thread_log_ext", &opt_sip_thread_log_ext));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));

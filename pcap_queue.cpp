@@ -2612,24 +2612,57 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 						    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_process_call)) {
 							static int do_add_thread_counter[PreProcessPacket::ppt_end_base];
 							static int do_remove_thread_counter[PreProcessPacket::ppt_end_base];
+							ostringstream outStr;
+							extern bool opt_sip_thread_log_ext;
+							if(preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip &&
+							   opt_sip_thread_log_ext) {
+								outStr << "t2cpu_preprocess_packet_next_threads_count: " << t2cpu_preprocess_packet_next_threads_count
+								       << "; t2cpu_preprocess_packet_thread_max: " << t2cpu_preprocess_packet_thread_max
+								       << "; t2cpu_preprocess_packet_next_threads_sum: " << t2cpu_preprocess_packet_next_threads_sum
+								       << "; opt_cpu_limit_new_thread: " << opt_cpu_limit_new_thread
+								       << "; heap_pb_used_perc: " << heap_pb_used_perc
+								       << "; opt_heap_limit_new_thread: " << opt_heap_limit_new_thread
+								       << "; do_add_thread_counter: " << do_add_thread_counter[i]
+								       << "; do_remove_thread_counter: " << do_remove_thread_counter[i];
+							}
 							if((t2cpu_preprocess_packet_next_threads_count < 2 ?
 							     t2cpu_preprocess_packet_thread_max > opt_cpu_limit_new_thread :
 							     t2cpu_preprocess_packet_next_threads_sum / t2cpu_preprocess_packet_next_threads_count > opt_cpu_limit_new_thread) &&
 							   heap_pb_used_perc > opt_heap_limit_new_thread) {
+								if(preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip &&
+								   opt_sip_thread_log_ext) {
+									outStr << "; +cond";
+								}
 								if((++do_add_thread_counter[i]) >= 2) {
 									preProcessPacket[i]->addNextThread();
+									if(preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip &&
+									   opt_sip_thread_log_ext) {
+										outStr << "; addNextThread";
+									}
 									do_add_thread_counter[i] = 0;
 								}
 								do_remove_thread_counter[i] = 0;
 							} else if(t2cpu_preprocess_packet_thread_max < opt_cpu_limit_delete_thread) {
+								if(preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip &&
+								   opt_sip_thread_log_ext) {
+									outStr << "; -cond";
+								}
 								if((++do_remove_thread_counter[i]) >= 2) {
 									preProcessPacket[i]->removeNextThread();
+									if(preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip &&
+									   opt_sip_thread_log_ext) {
+										outStr << "; removeNextThread";
+									}
 									do_remove_thread_counter[i] = 0;
 								}
 								do_add_thread_counter[i] = 0;
 							} else {
 								do_add_thread_counter[i] = 0;
 								do_remove_thread_counter[i] = 0;
+							}
+							if(preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip &&
+							   opt_sip_thread_log_ext) {
+								syslog(LOG_NOTICE, " * SIP thread - %s", outStr.str().c_str());
 							}
 						}
 					}
