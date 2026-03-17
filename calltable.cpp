@@ -14548,13 +14548,17 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 				}
 			}
 		}
+		if(opt_call_id_alternative[0]) {
+			for(unsigned i = 0; i < closeCallsCount; i++) {
+				if(!closeCalls[i]->typeIs(MGCP)) {
+					closeCalls[i]->removeCallIdMap();
+				}
+			}
+		}
 		unlock_calls_listMAP();
 		for(unsigned i = 0; i < closeCallsCount; i++) {
 			Call *call = closeCalls[i];
 			if(!call->typeIs(MGCP)) {
-				if(opt_call_id_alternative[0]) {
-					call->removeCallIdMap();
-				}
 				call->removeMergeCalls();
 			} else {
 				mgcpCleanupTransactions(call);
