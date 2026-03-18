@@ -1888,7 +1888,7 @@ void cConfigItem_net_port_str_map::initBeforeSet() {
 	}
 }
 
-cConfigItem_nat_aliases::cConfigItem_nat_aliases(const char* name, nat_aliases_t *nat_aliases)
+cConfigItem_nat_aliases::cConfigItem_nat_aliases(const char* name, sNatAliasesIpData *nat_aliases)
  : cConfigItem(name) {
 	init();
 	param_nat_aliases = nat_aliases;
@@ -1900,7 +1900,7 @@ string cConfigItem_nat_aliases::getValueStr(bool configFile) {
 	}
 	ostringstream outStr;
 	int counter = 0;
-	for(nat_aliases_t::iterator iter = param_nat_aliases->begin(); iter != param_nat_aliases->end(); iter++) {
+	for(sNatAliasesIpData::iterator iter = param_nat_aliases->begin(); iter != param_nat_aliases->end(); iter++) {
 		if(counter) {
 			if(configFile) {
 				outStr << endl << config_name << " = ";
@@ -1916,7 +1916,7 @@ string cConfigItem_nat_aliases::getValueStr(bool configFile) {
 
 list<string> cConfigItem_nat_aliases::getValueListStr() {
 	list<string> l;
-	for(nat_aliases_t::iterator iter = param_nat_aliases->begin(); iter != param_nat_aliases->end(); iter++) {
+	for(sNatAliasesIpData::iterator iter = param_nat_aliases->begin(); iter != param_nat_aliases->end(); iter++) {
 		l.push_back(iter->first.getString() + ":" + iter->second.getString());
 	}
 	return(l);

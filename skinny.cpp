@@ -68,7 +68,6 @@ extern int opt_rtpnosip;
 extern char opt_cachedir[1024];
 extern int opt_savewav_force;
 extern int opt_saveudptl;
-extern nat_aliases_t nat_aliases;
 extern volatile unsigned int readit;
 extern volatile unsigned int writeit;
 extern unsigned int qringmax;
@@ -1342,7 +1341,7 @@ Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap
 	}
 
 	unsigned long int flags = 0;
-	nat_aliases_t *nat_aliases = NULL;
+	sNatAliases *nat_aliases = NULL;
 	set_global_flags(flags);
 	IPfilter::add_call_flags(&flags, &nat_aliases, saddr, daddr);
 	if(flags & FLAG_SKIPCDR) {

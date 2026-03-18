@@ -1356,7 +1356,7 @@ pthread_mutex_t commmand_type_counter_sync;
 
 pthread_t pcap_read_thread;
 
-nat_aliases_t nat_aliases;	// net_aliases[local_ip] = extern_ip
+cNatAliases nat_aliases_default;
 
 MySqlStore *sqlStore = NULL;
 MySqlStore *sqlStore_2 = NULL;
@@ -7363,7 +7363,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sdp_check_direction_ext", &opt_sdp_check_direction_ext));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("rtp_count_all_sequencegap_as_loss", &opt_rtp_count_all_sequencegap_as_loss));
 		subgroup("NAT");
-			addConfigItem(new FILE_LINE(42328) cConfigItem_nat_aliases("natalias", &nat_aliases));
+			addConfigItem(new FILE_LINE(42328) cConfigItem_nat_aliases("natalias", &nat_aliases_default.ip_data.ip_data));
 			addConfigItem(new FILE_LINE(42329) cConfigItem_yesno("sdp_reverse_ipport", &opt_sdp_reverse_ipport));
 		subgroup("MOS");
 			addConfigItem(new FILE_LINE(42330) cConfigItem_yesno("mos_g729", &opt_mos_g729));
@@ -8548,7 +8548,7 @@ void get_command_line_arguments() {
 					if(ip_nat.size() >= 2) {
 						vmIP _ip_nat[2];
 						if(_ip_nat[0].setFromString(ip_nat[0].c_str()) && _ip_nat[1].setFromString(ip_nat[1].c_str())) {
-							nat_aliases[_ip_nat[0]] = _ip_nat[1];
+							nat_aliases_default.add(_ip_nat[0], _ip_nat[1]);
 						}
 					}
 				}}

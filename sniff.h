@@ -28,7 +28,117 @@
 #define RTP_FIXED_HEADERLEN 12
 
 
-typedef std::map<vmIP, vmIP> nat_aliases_t;
+struct sNatAliasesIpData : public map<vmIP, vmIP> {};
+
+struct sNatAliases {
+	inline vmIP find(vmIP ip) {
+		sNatAliasesIpData::iterator iter = ip_data.find(ip);
+		if(iter != ip_data.end()) {
+			return(iter->second);
+		}
+		return(0);
+	}
+	inline bool find(vmIP ip, vmIP *rslt) {
+		sNatAliasesIpData::iterator iter = ip_data.find(ip);
+		if(iter != ip_data.end()) {
+			*rslt = iter->second;
+			return(true);
+		}
+		return(false);
+	}
+	inline void add(vmIP local_ip, vmIP extern_ip) {
+		ip_data[local_ip] = extern_ip;
+	}
+	inline void add(sNatAliases *data) {
+		if(!data) {
+			return;
+		}
+		for(sNatAliasesIpData::iterator iter = data->ip_data.begin(); iter != data->ip_data.end(); iter++) {
+			ip_data[iter->first] = iter->second;
+		}
+	}
+	inline bool isSet() {
+		return(!ip_data.empty());
+	}
+	inline string getString(const char *separator) {
+		ostringstream outStr;
+		for(sNatAliasesIpData::iterator iter = ip_data.begin(); iter != ip_data.end(); iter++) {
+			if(iter != ip_data.begin()) {
+				outStr << separator;
+			}
+			outStr << iter->first.getString(true) << '=' << iter->second.getString(true);
+		}
+		return(outStr.str());
+	}
+	inline bool remove(vmIP local_ip) {
+		return(ip_data.erase(local_ip) > 0);
+	}
+	inline void remove_all() {
+		ip_data.clear();
+	}
+	sNatAliasesIpData ip_data;
+};
+
+class cNatAliases {
+public:
+	cNatAliases() {
+		_sync = 0;
+	}
+	inline vmIP find(vmIP ip, bool use_lock = true) {
+		vmIP rslt;
+		if(use_lock) lock();
+		rslt = ip_data.find(ip);
+		if(use_lock) unlock();
+		return(rslt);
+	}
+	inline bool find(vmIP ip, vmIP *rslt, bool use_lock = true) {
+		bool found;
+		if(use_lock) lock();
+		found = ip_data.find(ip, rslt);
+		if(use_lock) unlock();
+		return(found);
+	}
+	inline void add(vmIP local_ip, vmIP extern_ip) {
+		lock();
+		ip_data.add(local_ip, extern_ip);
+		unlock();
+	}
+	inline bool isSet(bool use_lock = true) {
+		bool rslt;
+		if(use_lock) lock();
+		rslt = ip_data.isSet();
+		if(use_lock) unlock();
+		return(rslt);
+	}
+	inline string getString(const char *separator) {
+		string rslt;
+		lock();
+		rslt = ip_data.getString(separator);
+		unlock();
+		return(rslt);
+	}
+	inline bool remove(vmIP local_ip) {
+		lock();
+		bool rslt = ip_data.remove(local_ip);
+		unlock();
+		return(rslt);
+	}
+	inline void remove_all() {
+		lock();
+		ip_data.remove_all();
+		unlock();
+	}
+	void lock() {
+		__SYNC_LOCK(_sync);
+	}
+	void unlock() {
+		__SYNC_UNLOCK(_sync);
+	}
+public:
+	sNatAliases ip_data;
+private:
+	volatile int _sync;
+};
 
 
 void *rtp_read_thread_func(void *arg);
@@ -58,7 +168,7 @@ bool open_global_pcap_handle(const char *pcap, string *error = NULL);
 bool process_pcap(const char *pcap_source, const char *pcap_destination, int process_pcap_type, string *error = NULL);
 void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, PcapDumper *destination, int process_pcap_type);
 
-unsigned int setCallFlags(unsigned long int flags, nat_aliases_t **nat_aliases,
+unsigned int setCallFlags(unsigned long int flags, sNatAliases **nat_aliases,
 			  vmIP ip_src, vmIP ip_dst,
 			  const char *caller, const char *called,
 			  const char *caller_domain, const char *called_domain,

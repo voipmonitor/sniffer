@@ -178,7 +178,7 @@ extern int opt_rtpnosip;
 extern char opt_cachedir[1024];
 extern int opt_savewav_force;
 extern int opt_saveudptl;
-extern nat_aliases_t nat_aliases;
+extern cNatAliases nat_aliases_default;
 extern int opt_enable_preprocess_packet;
 extern int opt_enable_process_rtp_packet;
 extern volatile int process_rtp_packets_distribute_threads_use;
@@ -445,17 +445,6 @@ void __ftcp_sip(const char *callid, const char *req, const char *stat) {
 }
 #endif
 
-
-// return IP from nat_aliases[ip] or 0 if not found
-inline vmIP match_nat_aliases(vmIP ip) {
-	nat_aliases_t::iterator iter;
-        iter = nat_aliases.find(ip);
-        if(iter == nat_aliases.end()) {
-                return 0;
-        } else {
-                return iter->second;
-        }
-}
 
 inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 			    pcap_pkthdr *header, u_char *packet) {
@@ -3768,14 +3757,14 @@ void detect_branch_extern(packet_s_process *packetS, char *branch, unsigned bran
 	detect_branch(packetS, branch, branch_length, detected);
 }
 
-inline unsigned int setCallFlags(unsigned long int flags, nat_aliases_t **nat_aliases,
+inline unsigned int setCallFlags(unsigned long int flags, sNatAliases **nat_aliases,
 				 vmIP ip_src, vmIP ip_dst,
 				 const char *caller, const char *called,
 				 const char *caller_domain, const char *called_domain,
 				 ParsePacket::ppContentsX *parseContents,
 				 bool reconfigure) {
 	unsigned long int flags_old = flags;
-	unsigned nat_aliases_count_old = 0;
+	string nat_aliases_str_old = "";
 	cFilters::applyReload();
 	IPfilter::add_call_flags(&flags, nat_aliases, ip_src, ip_dst, reconfigure);
 	if(sverb.dump_call_flags) {
@@ -3783,13 +3772,13 @@ inline unsigned int setCallFlags(unsigned long int flags, nat_aliases_t **nat_al
 			cout << "set flags for ip " << ip_src.getString() << " -> " << ip_dst.getString() << " : " << printCallFlags(flags) << endl;
 			flags_old = flags;
 		}
-		if(nat_aliases && *nat_aliases && (*nat_aliases)->size() && nat_aliases_count_old != (*nat_aliases)->size()) {
-			cout << "nat_aliases for ip " << ip_src.getString() << " -> " << ip_dst.getString() << " : ";
-			for(nat_aliases_t::iterator iter = (*nat_aliases)->begin(); iter != (*nat_aliases)->end(); iter++) {
-				cout << iter->first.getString() << "->" << iter->second.getString() << "; ";
+		if(nat_aliases && *nat_aliases && (*nat_aliases)->isSet()) {
+			string nat_aliases_str = (*nat_aliases)->getString("; ");
+			if(nat_aliases_str != nat_aliases_str_old) {
+				cout << "nat_aliases for ip " << ip_src.getString() << " -> " << ip_dst.getString() << " : ";
+				cout << nat_aliases_str << endl;
+				nat_aliases_str_old = nat_aliases_str;
 			}
-			cout << endl;
-			nat_aliases_count_old = (*nat_aliases)->size();
 		}
 	}
 	TELNUMfilter::add_call_flags(&flags, nat_aliases, caller, called, reconfigure);
@@ -3798,13 +3787,13 @@ inline unsigned int setCallFlags(unsigned long int flags, nat_aliases_t **nat_al
 			cout << "set flags for number " << caller << " -> " << called << " : " << printCallFlags(flags) << endl;
 			flags_old = flags;
 		}
-		if(nat_aliases && *nat_aliases && (*nat_aliases)->size() && nat_aliases_count_old != (*nat_aliases)->size()) {
-			cout << "nat_aliases for number " << caller << " -> " << called << " : ";
-			for(nat_aliases_t::iterator iter = (*nat_aliases)->begin(); iter != (*nat_aliases)->end(); iter++) {
-				cout << iter->first.getString() << "->" << iter->second.getString() << "; ";
+		if(nat_aliases && *nat_aliases && (*nat_aliases)->isSet()) {
+			string nat_aliases_str = (*nat_aliases)->getString("; ");
+			if(nat_aliases_str != nat_aliases_str_old) {
+				cout << "nat_aliases for number " << caller << " -> " << called << " : ";
+				cout << nat_aliases_str << endl;
+				nat_aliases_str_old = nat_aliases_str;
 			}
-			cout << endl;
-			nat_aliases_count_old = (*nat_aliases)->size();
 		}
 	}
 	DOMAINfilter::add_call_flags(&flags, nat_aliases, caller_domain, called_domain, reconfigure);
@@ -3813,13 +3802,13 @@ inline unsigned int setCallFlags(unsigned long int flags, nat_aliases_t **nat_al
 			cout << "set flags for domain " << caller_domain << " -> " << called_domain << " : " << printCallFlags(flags) << endl;
 			flags_old = flags;
 		}
-		if(nat_aliases && *nat_aliases && (*nat_aliases)->size() && nat_aliases_count_old != (*nat_aliases)->size()) {
-			cout << "nat_aliases for domain " << caller_domain << " -> " << called_domain << " : ";
-			for(nat_aliases_t::iterator iter = (*nat_aliases)->begin(); iter != (*nat_aliases)->end(); iter++) {
-				cout << iter->first.getString() << "->" << iter->second.getString() << "; ";
+		if(nat_aliases && *nat_aliases && (*nat_aliases)->isSet()) {
+			string nat_aliases_str = (*nat_aliases)->getString("; ");
+			if(nat_aliases_str != nat_aliases_str_old) {
+				cout << "nat_aliases for domain " << caller_domain << " -> " << called_domain << " : ";
+				cout << nat_aliases_str << endl;
+				nat_aliases_str_old = nat_aliases_str;
 			}
-			cout << endl;
-			nat_aliases_count_old = (*nat_aliases)->size();
 		}
 	}
 	SIP_HEADERfilter::add_call_flags(parseContents, &flags, nat_aliases, reconfigure);
@@ -3828,13 +3817,13 @@ inline unsigned int setCallFlags(unsigned long int flags, nat_aliases_t **nat_al
 			cout << "set flags for headers : " << printCallFlags(flags) << endl;
 			flags_old = flags;
 		}
-		if(nat_aliases && *nat_aliases && (*nat_aliases)->size() && nat_aliases_count_old != (*nat_aliases)->size()) {
-			cout << "nat_aliases for headers : ";
-			for(nat_aliases_t::iterator iter = (*nat_aliases)->begin(); iter != (*nat_aliases)->end(); iter++) {
-				cout << iter->first.getString() << "->" << iter->second.getString() << "; ";
+		if(nat_aliases && *nat_aliases && (*nat_aliases)->isSet()) {
+			string nat_aliases_str = (*nat_aliases)->getString("; ");
+			if(nat_aliases_str != nat_aliases_str_old) {
+				cout << "nat_aliases for headers : ";
+				cout << nat_aliases_str << endl;
+				nat_aliases_str_old = nat_aliases_str;
 			}
-			cout << endl;
-			nat_aliases_count_old = (*nat_aliases)->size();
 		}
 	}
 	return(flags);
@@ -4166,7 +4155,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	
 	//flags
 	unsigned long int flags = 0;
-	nat_aliases_t *nat_aliases = NULL;
+	sNatAliases *nat_aliases = NULL;
 	set_global_flags(flags);
 	if(sverb.dump_call_flags) {
 		cout << "flags init " << callidstr << " : " << printCallFlags(flags) << endl;
@@ -4322,7 +4311,7 @@ inline Call *new_premature_response_call(packet_s_process *packetS, int sip_meth
 	s_detect_callerd data_callerd;
 	detect_callerd(packetS, sip_method, &data_callerd);
 	unsigned long int flags = 0;
-	nat_aliases_t *nat_aliases = NULL;
+	sNatAliases *nat_aliases = NULL;
 	set_global_flags(flags);
 	flags = setCallFlags(flags, &nat_aliases,
 			     packetS->saddr_(), packetS->daddr_(),
@@ -4364,7 +4353,8 @@ inline Call *new_premature_response_call(packet_s_process *packetS, int sip_meth
 }
 
 void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, int iscaller, char *from_data, unsigned sdplen, 
-		 char *callidstr, char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch) {
+		 char *callidstr, char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch,
+		 bool batch_process) {
  
 	extern bool opt_disable_process_sdp;
 	if(opt_disable_process_sdp) {
@@ -4454,14 +4444,10 @@ void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, in
 						// check if the IP address is listed in nat_aliases
 						vmIP alias;
 						if(call->nat_aliases) {
-							nat_aliases_t::iterator iter;
-							iter = nat_aliases.find(sdp_media_data_item->ip);
-							if(iter != nat_aliases.end()) {
-								alias = iter->second;
-							}
+							call->nat_aliases->find(sdp_media_data_item->ip, &alias);
 						}
-						if(nat_aliases.size() && !alias.isSet()) {
-							alias = match_nat_aliases(sdp_media_data_item->ip);
+						if(nat_aliases_default.isSet(!batch_process) && !alias.isSet()) {
+							nat_aliases_default.find(sdp_media_data_item->ip, &alias, !batch_process);
 						}
 						if(alias.isSet()) {
 							call->add_ip_port_hash(c_branch, packetS->saddr_(), alias, ip_port_call_info::_ta_natalias, sdp_media_data_item->port, packetS->getTimeval_pt(), 
@@ -4582,7 +4568,7 @@ void process_ua(Call */*call*/, CallBranch *c_branch, packet_s_process *packetS,
 	}
 }
 
-void process_packet_sip_call(packet_s_process *packetS) {
+void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 	
 	Call *call = NULL;
 	char *s;
@@ -4813,7 +4799,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		s_detect_callerd data_callerd;
 		detect_callerd(packetS, INVITE, &data_callerd);
 		unsigned long int flags = 0;
-		nat_aliases_t *nat_aliases = NULL;
+		sNatAliases *nat_aliases = NULL;
 		set_global_flags(flags);
 		flags = setCallFlags(flags, &nat_aliases,
 				     packetS->saddr_(), packetS->daddr_(),
@@ -6252,7 +6238,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				detect_domain_to_uri(packetS, domain_to_uri, sizeof(domain_to_uri), &domain_to_uri_detected);
 				detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 				process_sdp(call, c_branch, packetS, _iscaller_process_sdp, contenttype_data_ptr, 0,
-					    packetS->get_callid(), to, to_uri, domain_to, domain_to_uri, branch);
+					    packetS->get_callid(), to, to_uri, domain_to, domain_to_uri, branch,
+					    batch_process);
 			} else if(is_multipart_mixed) {
 				char *content_data = contenttype_data_ptr + contenttypetaglen;
 				unsigned content_data_len = packetS->sipDataLen - (content_data - (packetS->data_()+ packetS->sipDataOffset));
@@ -6326,7 +6313,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 									detect_domain_to_uri(packetS, domain_to_uri, sizeof(domain_to_uri), &domain_to_uri_detected);
 									detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 									process_sdp(call, c_branch, packetS, _iscaller_process_sdp, content_data_begin, content_data_length,
-										    packetS->get_callid(), to, to_uri, domain_to, domain_to_uri, branch);
+										    packetS->get_callid(), to, to_uri, domain_to, domain_to_uri, branch,
+										    batch_process);
 								} else if(strcasestr(content_type, "application/rs-metadata+xml")) {
 									call->add_txt(packet_time_us, Call::txt_type_sdp_xml, content_data_begin, content_data_length);
 								}
@@ -6348,7 +6336,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 								detect_domain_to_uri(packetS, domain_to_uri, sizeof(domain_to_uri), &domain_to_uri_detected);
 								detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 								process_sdp(call, c_branch, packetS, _iscaller_process_sdp, s2, 0,
-									    packetS->get_callid(), to, to_uri, domain_to, domain_to_uri, branch);
+									    packetS->get_callid(), to, to_uri, domain_to, domain_to_uri, branch,
+									    batch_process);
 								break;	// stop searching
 							} else {
 								// it is not SDP continue searching for another content-type 
@@ -6452,7 +6441,7 @@ endsip:
 	}
 	
 	if(prematureResponsesProcess && call) {
-		call->processPrematureResponses();
+		call->processPrematureResponses(batch_process);
 	}
 }
 
@@ -7171,7 +7160,7 @@ Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort de
 #if not EXPERIMENTAL_LITE_RTP_MOD
 
 	unsigned long int flags = 0;
-	nat_aliases_t *nat_aliases = NULL;
+	sNatAliases *nat_aliases = NULL;
 	set_global_flags(flags);
 	IPfilter::add_call_flags(&flags, &nat_aliases, saddr, daddr);
 	if(flags & FLAG_SKIPCDR) {
@@ -10261,7 +10250,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 					if(!this->items_flag[batch_index] &&
 					   this->items_thread_index[batch_index] == next_thread_data->thread_index) {
 						packet_s_process *packetS = batch[batch_index];
-						this->process_PROCESS_CALL(packetS, next_thread_data->thread_index);
+						this->process_PROCESS_CALL(packetS, next_thread_data->thread_index, false, true);
 						this->items_flag[batch_index] = 1;
 					}
 				} }
@@ -11094,6 +11083,7 @@ void *PreProcessPacket::outThreadFunction() {
 				unsigned count = batch->count;
 				__SYNC_UNLOCK(this->_sync_count);
 				u_int32_t last_time_s = batch->batch[count - 1]->getTime_s();
+				nat_aliases_default.lock();
 				if(this->next_threads[0].thread_handle) {
 					unsigned completed = 0;
 					int _next_threads_count = this->next_threads_count;
@@ -11159,7 +11149,7 @@ void *PreProcessPacket::outThreadFunction() {
 										thread_data->inc_packets_out(tm_caplen[batch_index]);
 									}
 									#endif
-									this->process_PROCESS_CALL(batch->batch[batch_index], 0);
+									this->process_PROCESS_CALL(batch->batch[batch_index], 0, false, true);
 								}
 							}
 						} else {
@@ -11169,7 +11159,7 @@ void *PreProcessPacket::outThreadFunction() {
 									thread_data->inc_packets_out(tm_caplen[batch_index]);
 								}
 								#endif
-								this->process_PROCESS_CALL(batch->batch[batch_index], 0);
+								this->process_PROCESS_CALL(batch->batch[batch_index], 0, false, true);
 							}
 						}
 					}
@@ -11194,9 +11184,10 @@ void *PreProcessPacket::outThreadFunction() {
 							thread_data->inc_packets_out(tm_caplen[batch_index]);
 						}
 						#endif
-						this->process_PROCESS_CALL(batch->batch[batch_index], 0);
+						this->process_PROCESS_CALL(batch->batch[batch_index], 0, false, true);
 					}
 				}
+				nat_aliases_default.unlock();
 				#if RQUEUE_SAFE
 					if(batch_length_high_traffic_need && batch->max_count < opt_batch_length_sip_high_traffic) {
 						batch->realloc(opt_batch_length_sip_high_traffic);
@@ -12013,7 +12004,7 @@ void PreProcessPacket::_process_FIND_CALL_push(packet_s_process *packetS) {
 	}
 }
 
-void PreProcessPacket::process_PROCESS_CALL(packet_s_process *packetS, int threadIndex, bool callCleanupCalls) {
+void PreProcessPacket::process_PROCESS_CALL(packet_s_process *packetS, int threadIndex, bool callCleanupCalls, bool batch_process) {
 	if(packetS->typeContentIsSip() && !packetS->is_register()) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
@@ -12024,7 +12015,7 @@ void PreProcessPacket::process_PROCESS_CALL(packet_s_process *packetS, int threa
 			if(opt_detect_alone_bye && call && call->typeIs(BYE)) {
 				process_packet_sip_alone_bye(packetS);
 			} else {
-				process_packet_sip_call(packetS);
+				process_packet_sip_call(packetS, batch_process);
 			}
 			#if not PROCESS_PACKETS_INDIC_MOD_1
 			if(packetS->_findCall && packetS->call) {
@@ -12055,7 +12046,7 @@ void PreProcessPacket::process_PROCESS_CALL(packet_s_process *packetS, int threa
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
-		handle_mgcp(packetS);
+		handle_mgcp(packetS, batch_process);
 	} else if(packetS->typeContentIsIpFixQos()) {
 		process_packet_ipfix_qos(packetS);
 		#if not PROCESS_PACKETS_INDIC_MOD_1

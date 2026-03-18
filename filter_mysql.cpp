@@ -161,9 +161,9 @@ u_int64_t filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow, u_int32
 	return(flags);
 }
 
-void filter_base::parseNatAliases(filter_db_row_base *baseRow, nat_aliases_t **nat_aliases) {
+void filter_base::parseNatAliases(filter_db_row_base *baseRow, sNatAliases **nat_aliases) {
 	if(!baseRow->natalias.empty()) {
-		*nat_aliases = new FILE_LINE(0) nat_aliases_t;
+		*nat_aliases = new FILE_LINE(0) sNatAliases;
 		vector<string> nat_aliases_str = split(baseRow->natalias, '\n');
 		for(unsigned i = 0; i < nat_aliases_str.size(); i++) {
 			vmIP ip_nat[2];
@@ -173,11 +173,11 @@ void filter_base::parseNatAliases(filter_db_row_base *baseRow, nat_aliases_t **n
 					++ip_nat_2_str;
 				}
 				if(ip_nat[1].setFromString(ip_nat_2_str, NULL)) {
-					(**nat_aliases)[ip_nat[0]] = ip_nat[1];
+					(*nat_aliases)->add(ip_nat[0], ip_nat[1]);
 				}
 			}
 		}
-		if(!(*nat_aliases)->size()) {
+		if(!(*nat_aliases)->isSet()) {
 			delete *nat_aliases;
 			*nat_aliases = NULL;
 		}
@@ -335,7 +335,7 @@ void IPfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
 	}
 };
 
-int IPfilter::_add_call_flags(volatile unsigned long int *flags, nat_aliases_t **nat_aliases, vmIP saddr, vmIP daddr, bool reconfigure) {
+int IPfilter::_add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, vmIP saddr, vmIP daddr, bool reconfigure) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -369,7 +369,10 @@ int IPfilter::_add_call_flags(volatile unsigned long int *flags, nat_aliases_t *
 		unsigned counter = 0;
 		for(map<int, t_node*>::reverse_iterator iter = nat_aliases_node_mask.rbegin(); iter != nat_aliases_node_mask.rend(); iter++) {
 			if(!counter || iter->second->nat_aliases_inheritance) {
-				comb_nat_aliases(iter->second->nat_aliases, nat_aliases);
+				if(!*nat_aliases) {
+					*nat_aliases = new FILE_LINE(0) sNatAliases;
+				}
+				(*nat_aliases)->add(iter->second->nat_aliases);
 			}
 			++counter;
 		}
@@ -386,7 +389,7 @@ void IPfilter::dump2man(ostringstream &oss) {
 	unlock();
 }
 
-int IPfilter::add_call_flags(volatile unsigned long int *flags, nat_aliases_t **nat_aliases, vmIP saddr, vmIP daddr, bool reconfigure) {
+int IPfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, vmIP saddr, vmIP daddr, bool reconfigure) {
 	int rslt = 0;
 	lock();
 	if(filter_active) {
@@ -589,7 +592,7 @@ void TELNUMfilter::loadFile(u_int32_t *global_flags) {
 	}
 }
 
-int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, nat_aliases_t **nat_aliases, const char *telnum_src, const char *telnum_dst, bool reconfigure) {
+int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *telnum_src, const char *telnum_dst, bool reconfigure) {
 
 	if (this->count == 0) {
 		// no filters, return 
@@ -598,7 +601,7 @@ int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, nat_aliases
 	
 	unsigned found_length = 0;
 	u_int64_t found_flags = 0;
-	nat_aliases_t *found_nat_aliases = NULL;
+	sNatAliases *found_nat_aliases = NULL;
 	for(int src_dst = 1; src_dst <= 2; src_dst++) {
 		const char *telnum = src_dst == 1 ? telnum_src : telnum_dst;
 		unsigned telnum_length = strlen(telnum);
@@ -625,7 +628,12 @@ int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, nat_aliases
 	}
 	if(found_length > 0) {
 		this->setCallFlagsFromFilterFlags(flags, found_flags, reconfigure);
-		comb_nat_aliases(found_nat_aliases, nat_aliases);
+		if(found_nat_aliases) {
+			if(!*nat_aliases) {
+				*nat_aliases = new FILE_LINE(0) sNatAliases;
+			}
+			(*nat_aliases)->add(found_nat_aliases);
+		}
 	}
 	return(found_length > 0);
 }
@@ -647,7 +655,7 @@ void TELNUMfilter::dump2man(ostringstream &oss, t_node_tel *node) {
 		unlock();
 }
 
-int TELNUMfilter::add_call_flags(volatile unsigned long int *flags, nat_aliases_t **nat_aliases, const char *telnum_src, const char *telnum_dst, bool reconfigure) {
+int TELNUMfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *telnum_src, const char *telnum_dst, bool reconfigure) {
 	int rslt = 0;
 	lock();
 	if(filter_active) {
@@ -777,7 +785,7 @@ void DOMAINfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
 };
 
 int
-DOMAINfilter::_add_call_flags(volatile unsigned long int *flags, nat_aliases_t **nat_aliases, const char *domain_src, const char *domain_dst, bool reconfigure) {
+DOMAINfilter::_add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *domain_src, const char *domain_dst, bool reconfigure) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -787,10 +795,15 @@ DOMAINfilter::_add_call_flags(volatile unsigned long int *flags, nat_aliases_t *
 	t_node *node;
 	for(node = first_node; node != NULL; node = node->next) {
 
-		if(((node->direction == 0 or node->direction == 2) and (domain_dst == node->domain)) || 
+		if(((node->direction == 0 or node->direction == 2) and (domain_dst == node->domain)) ||
 			((node->direction == 0 or node->direction == 1) and (domain_src == node->domain))) {
 			this->setCallFlagsFromFilterFlags(flags, node->flags, reconfigure);
-			comb_nat_aliases(node->nat_aliases, nat_aliases);
+			if(node->nat_aliases) {
+				if(!*nat_aliases) {
+					*nat_aliases = new FILE_LINE(0) sNatAliases;
+				}
+				(*nat_aliases)->add(node->nat_aliases);
+			}
 			return 1;
 		}
 	}
@@ -807,7 +820,7 @@ void DOMAINfilter::dump2man(ostringstream &oss) {
 	unlock();
 }
 
-int DOMAINfilter::add_call_flags(volatile unsigned long int *flags, nat_aliases_t **nat_aliases, const char *domain_src, const char *domain_dst, bool reconfigure) {
+int DOMAINfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *domain_src, const char *domain_dst, bool reconfigure) {
 	int rslt = 0;
 	lock();
 	if(filter_active) {
@@ -985,7 +998,7 @@ void SIP_HEADERfilter::loadFile(u_int32_t *global_flags) {
 	}
 }
 
-int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, nat_aliases_t **nat_aliases, bool reconfigure) {
+int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, sNatAliases **nat_aliases, bool reconfigure) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -1003,7 +1016,12 @@ int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, v
 			if(it_content != data->strict_prefix.end() &&
 			   it_content->first == content) {
 				this->setCallFlagsFromFilterFlags(flags, it_content->second->flags, reconfigure);
-				comb_nat_aliases(it_content->second->nat_aliases, nat_aliases);
+				if(it_content->second->nat_aliases) {
+					if(!*nat_aliases) {
+						*nat_aliases = new FILE_LINE(0) sNatAliases;
+					}
+					(*nat_aliases)->add(it_content->second->nat_aliases);
+				}
 				if(sverb.capture_filter) {
 					syslog(LOG_NOTICE, "SIP_HEADERfilter::add_call_flags - strict (eq) : %s",  it_content->first.c_str());
 				}
@@ -1015,7 +1033,12 @@ int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, v
 			if(it_content->second->prefix &&
 			   !strncmp(it_content->first.c_str(), content.c_str(), it_content->first.length())) {
 				this->setCallFlagsFromFilterFlags(flags, it_content->second->flags, reconfigure);
-				comb_nat_aliases(it_content->second->nat_aliases, nat_aliases);
+				if(it_content->second->nat_aliases) {
+					if(!*nat_aliases) {
+						*nat_aliases = new FILE_LINE(0) sNatAliases;
+					}
+					(*nat_aliases)->add(it_content->second->nat_aliases);
+				}
 				if(sverb.capture_filter) {
 					syslog(LOG_NOTICE, "SIP_HEADERfilter::add_call_flags - prefix : %s",  it_content->first.c_str());
 				}
@@ -1026,7 +1049,12 @@ int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, v
 			for(map<string, item_data*>::iterator it_content = data->regexp.begin(); it_content != data->regexp.end(); it_content++) {
 				if(reg_match(content.c_str(), it_content->first.c_str(), __FILE__, __LINE__)) {
 					this->setCallFlagsFromFilterFlags(flags, it_content->second->flags, reconfigure);
-					comb_nat_aliases(it_content->second->nat_aliases, nat_aliases);
+					if(it_content->second->nat_aliases) {
+						if(!*nat_aliases) {
+							*nat_aliases = new FILE_LINE(0) sNatAliases;
+						}
+						(*nat_aliases)->add(it_content->second->nat_aliases);
+					}
 					if(sverb.capture_filter) {
 						syslog(LOG_NOTICE, "SIP_HEADERfilter::add_call_flags - regexp : %s",  it_content->first.c_str());
 					}
@@ -1059,7 +1087,7 @@ void SIP_HEADERfilter::_prepareCustomNodes(ParsePacket *parsePacket) {
 	}
 }
 
-int SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, nat_aliases_t **nat_aliases, bool reconfigure) {
+int SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, sNatAliases **nat_aliases, bool reconfigure) {
 	int rslt = 0;
 	lock();
 	if(filter_active) {

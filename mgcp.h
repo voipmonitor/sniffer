@@ -92,7 +92,7 @@ eMgcpRequestType check_mgcp_request(char *data, unsigned long len);
 int check_mgcp_response(char *data, unsigned long len);
 bool check_mgcp(char *data, unsigned long len);
 
-void *handle_mgcp(struct packet_s_process *packetS);
+void *handle_mgcp(struct packet_s_process *packetS, bool batch_process);
 
 
 #endif

@@ -4949,21 +4949,60 @@ int Mgmt_convertchars(Mgmt_params *params) {
 
 int Mgmt_natalias(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("natalias", "natalias");
+		params->registerCommand("natalias", "natalias list|add <local_ip> <extern_ip>|remove <local_ip>|remove_all");
 		return(0);
 	}
-	extern nat_aliases_t nat_aliases;
-	string strNatAliases;
-	if(nat_aliases.size()) {
-		ostringstream outStrNatAliases;
-		for(nat_aliases_t::iterator iter = nat_aliases.begin(); iter != nat_aliases.end(); iter++) {
-			outStrNatAliases << iter->first.getString() << ':' << iter->second.getString() << ',';
-		}
-		strNatAliases = outStrNatAliases.str();
-	} else {
-		strNatAliases = "none";
+	extern cNatAliases nat_aliases_default;
+	char *args = params->buf + params->command.length();
+	while(*args == ' ') {
+		++args;
 	}
-	return(params->sendString(&strNatAliases));
+	if(!*args || !strncmp(args, "list", 4)) {
+		string rslt = nat_aliases_default.getString(";");
+		if(rslt.empty()) {
+			rslt = "none";
+		}
+		return(params->sendString(&rslt));
+	} else if(!strncmp(args, "add ", 4)) {
+		vector<string> items = split(args + 4, split(",|;", "|"), true);
+		int ok = 0;
+		for(unsigned i = 0; i < items.size(); i++) {
+			vmIP local_ip, extern_ip;
+			const char *next;
+			if(local_ip.setFromString(items[i].c_str(), &next)) {
+				while(*next == ' ' || *next == '\t' || *next == ':' || *next == '=') {
+					++next;
+				}
+				if(extern_ip.setFromString(next, NULL)) {
+					nat_aliases_default.add(local_ip, extern_ip);
+					++ok;
+				}
+			}
+		}
+		if(ok) {
+			return(params->sendString("ok"));
+		}
+		return(params->sendString("error: bad parameters, use: natalias add <local_ip> <extern_ip>[;<local_ip> <extern_ip>...]"));
+	} else if(!strncmp(args, "remove ", 7)) {
+		vector<string> items = split(args + 7, split(",|;", "|"), true);
+		int ok = 0;
+		for(unsigned i = 0; i < items.size(); i++) {
+			vmIP local_ip;
+			if(local_ip.setFromString(items[i].c_str(), NULL)) {
+				if(nat_aliases_default.remove(local_ip)) {
+					++ok;
+				}
+			}
+		}
+		if(ok) {
+			return(params->sendString("ok"));
+		}
+		return(params->sendString("error: no matching ip found"));
+	} else if(!strncmp(args, "remove_all", 10)) {
+		nat_aliases_default.remove_all();
+		return(params->sendString("ok"));
+	}
+	return(params->sendString("error: unknown subcommand, use: list|add|remove|remove_all"));
 }
 
 int Mgmt_sql_time_information(Mgmt_params *params) {

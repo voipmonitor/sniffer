@@ -542,7 +542,7 @@ protected:
 
 class cConfigItem_nat_aliases : public cConfigItem {
 public:
-	cConfigItem_nat_aliases(const char* name, nat_aliases_t *nat_aliases);
+	cConfigItem_nat_aliases(const char* name, sNatAliasesIpData *nat_aliases);
 	string getValueStr(bool configFile = false);
 	list<string> getValueListStr();
 	string normalizeStringValueForCmp(string value);
@@ -559,7 +559,7 @@ protected:
 		return("nat_aliases_list");
 	}
 protected:
-	nat_aliases_t *param_nat_aliases;
+	sNatAliasesIpData *param_nat_aliases;
 };
 
 class cConfigItem_net_map : public cConfigItem {

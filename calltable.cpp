@@ -393,6 +393,13 @@ Call_abstract::Call_abstract(int call_type, u_int64_t time_us) {
 	this->closed = false;
 }
 
+Call_abstract::~Call_abstract() {
+	alloc_flag = 0;
+	if(nat_aliases) {
+		delete nat_aliases;
+	}
+}
+	
 bool 
 Call_abstract::addNextType(int type) {
 	if(!type_next &&
@@ -15861,11 +15868,11 @@ void Call::addPrematureResponse(packet_s_process *packetS) {
 	prematureResponses->push_back(packetS_clone);
 }
 
-void Call::processPrematureResponses() {
+void Call::processPrematureResponses(bool batch_process) {
 	if(prematureResponses) {
-		extern void process_packet_sip_call(packet_s_process *packetS);
+		extern void process_packet_sip_call(packet_s_process *packetS, bool batch_process);
 		for(list<packet_s_process*>::iterator iter = prematureResponses->begin(); iter != prematureResponses->end(); iter++) {
-			process_packet_sip_call(*iter);
+			process_packet_sip_call(*iter, batch_process);
 			PACKET_S_PROCESS_DESTROY(&*iter);
 		}
 		delete prematureResponses;

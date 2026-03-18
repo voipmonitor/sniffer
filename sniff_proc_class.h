@@ -1864,7 +1864,7 @@ private:
 	void process_SIP_EXTEND(packet_s_process *packetS);
 	void process_FIND_CALL(packet_s_process *packetS);
 	void _process_FIND_CALL_push(packet_s_process *packetS);
-	void process_PROCESS_CALL(packet_s_process *packetS, int threadIndex = 0, bool callCleanupCalls = false);
+	void process_PROCESS_CALL(packet_s_process *packetS, int threadIndex = 0, bool callCleanupCalls = false, bool batch_process = false);
 	void process_REGISTER(packet_s_process *packetS);
 	void process_SIP_OTHER(packet_s_process *packetS);
 	void process_DIAMETER(packet_s_process *packetS);

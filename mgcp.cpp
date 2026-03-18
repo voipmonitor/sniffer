@@ -18,7 +18,8 @@ using namespace std;
 
 
 extern void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, int iscaller, char *from, unsigned sdplen,
-			char *callidstr, char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch);
+			char *callidstr, char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch,
+			bool batch_process);
 extern void detect_to_extern(packet_s_process *packetS, char *to, unsigned to_length, bool *detected);
 extern void detect_domain_to_extern(packet_s_process *packetS, char *domain_to, unsigned domain_to_length, bool *detected);
 extern void detect_branch_extern(packet_s_process *packetS, char *branch, unsigned branch_length, bool *detected);
@@ -110,7 +111,7 @@ bool check_mgcp(char *data, unsigned long len) {
 }
 
 
-void *handle_mgcp(packet_s_process *packetS) {
+void *handle_mgcp(packet_s_process *packetS, bool batch_process) {
 	bool is_request = false;
 	bool is_response = false;
 	eMgcpRequestType request_type = check_mgcp_request(packetS->data_(), packetS->datalen_());
@@ -191,7 +192,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 					calltable->unlock_calls_listMAP();
 				}
 				unsigned long int flags = 0;
-				nat_aliases_t *nat_aliases = NULL;
+				sNatAliases *nat_aliases = NULL;
 				set_global_flags(flags);
 				IPfilter::add_call_flags(&flags, &nat_aliases, packetS->saddr_(), packetS->daddr_());
 				if(flags & FLAG_SKIPCDR) {
@@ -304,7 +305,8 @@ void *handle_mgcp(packet_s_process *packetS) {
 			detect_domain_to_extern(packetS, domain, sizeof(domain), NULL);
 			detect_branch_extern(packetS, branch, sizeof(branch), NULL);
 			process_sdp(call, call->branch_main(), packetS, iscaller, (char*)(sdp + sdp_separator_length), 0,
-				    (char*)call->call_id.c_str(), to, NULL, domain, NULL, branch);
+				    (char*)call->call_id.c_str(), to, NULL, domain, NULL, branch,
+				    batch_process);
 		}
 		if(!call->connect_time_us && is_request) {
 			if((request_type == _mgcp_CRCX && request.parameters.connection_mode == "SENDRECV") ||
