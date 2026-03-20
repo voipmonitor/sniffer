@@ -368,7 +368,7 @@ int IPfilter::_add_call_flags(volatile unsigned long int *flags, sNatAliases **n
 	if(nat_aliases_node_mask.size()) {
 		unsigned counter = 0;
 		for(map<int, t_node*>::reverse_iterator iter = nat_aliases_node_mask.rbegin(); iter != nat_aliases_node_mask.rend(); iter++) {
-			if(!counter || iter->second->nat_aliases_inheritance) {
+			if((!counter || iter->second->nat_aliases_inheritance) && nat_aliases) {
 				if(!*nat_aliases) {
 					*nat_aliases = new FILE_LINE(0) sNatAliases;
 				}
@@ -628,7 +628,7 @@ int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, sNatAliases
 	}
 	if(found_length > 0) {
 		this->setCallFlagsFromFilterFlags(flags, found_flags, reconfigure);
-		if(found_nat_aliases) {
+		if(found_nat_aliases && nat_aliases) {
 			if(!*nat_aliases) {
 				*nat_aliases = new FILE_LINE(0) sNatAliases;
 			}
@@ -798,7 +798,7 @@ DOMAINfilter::_add_call_flags(volatile unsigned long int *flags, sNatAliases **n
 		if(((node->direction == 0 or node->direction == 2) and (domain_dst == node->domain)) ||
 			((node->direction == 0 or node->direction == 1) and (domain_src == node->domain))) {
 			this->setCallFlagsFromFilterFlags(flags, node->flags, reconfigure);
-			if(node->nat_aliases) {
+			if(node->nat_aliases && nat_aliases) {
 				if(!*nat_aliases) {
 					*nat_aliases = new FILE_LINE(0) sNatAliases;
 				}
@@ -1016,7 +1016,7 @@ int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, v
 			if(it_content != data->strict_prefix.end() &&
 			   it_content->first == content) {
 				this->setCallFlagsFromFilterFlags(flags, it_content->second->flags, reconfigure);
-				if(it_content->second->nat_aliases) {
+				if(it_content->second->nat_aliases && nat_aliases) {
 					if(!*nat_aliases) {
 						*nat_aliases = new FILE_LINE(0) sNatAliases;
 					}
@@ -1033,7 +1033,7 @@ int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, v
 			if(it_content->second->prefix &&
 			   !strncmp(it_content->first.c_str(), content.c_str(), it_content->first.length())) {
 				this->setCallFlagsFromFilterFlags(flags, it_content->second->flags, reconfigure);
-				if(it_content->second->nat_aliases) {
+				if(it_content->second->nat_aliases && nat_aliases) {
 					if(!*nat_aliases) {
 						*nat_aliases = new FILE_LINE(0) sNatAliases;
 					}
@@ -1049,7 +1049,7 @@ int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, v
 			for(map<string, item_data*>::iterator it_content = data->regexp.begin(); it_content != data->regexp.end(); it_content++) {
 				if(reg_match(content.c_str(), it_content->first.c_str(), __FILE__, __LINE__)) {
 					this->setCallFlagsFromFilterFlags(flags, it_content->second->flags, reconfigure);
-					if(it_content->second->nat_aliases) {
+					if(it_content->second->nat_aliases && nat_aliases) {
 						if(!*nat_aliases) {
 							*nat_aliases = new FILE_LINE(0) sNatAliases;
 						}
