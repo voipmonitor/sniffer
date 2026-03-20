@@ -824,7 +824,7 @@ int DOMAINfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases 
 	int rslt = 0;
 	lock();
 	if(filter_active) {
-		rslt = filter_active->_add_call_flags(flags, nat_aliases, domain_src, domain_dst);
+		rslt = filter_active->_add_call_flags(flags, nat_aliases, domain_src, domain_dst, reconfigure);
 	}
 	unlock();
 	return(rslt);
