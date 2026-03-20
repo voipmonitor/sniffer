@@ -8224,7 +8224,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					" where cdr.calldate > ('" + sqlDateTimeString(calltime_s()) + "' - interval 1 hour) and\n" +
 					"       cdr.calldate < ('" + sqlDateTimeString(calltime_s()) + "' + interval 1 hour) and\n" +
 					"       " + (!condIdSensor.empty() ? (condIdSensor + " and\n") : "") +
-					"       fbasename = '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
+					"       fbasename = BINARY '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
 				query_str += string(
 					"set @exists_rtp =\n") +
 					"if(@exists_call_id,\n" +
@@ -8265,7 +8265,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					"       " + (useSensorId > -1 ? 
 						      "id_sensor = " + intToString(useSensorId) : 
 						      "id_sensor is null") + " and\n" +
-					"       fbasename = '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
+					"       fbasename = BINARY '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
 				query_str += "if not @exists_call_id then\n";
 				query_str += "__NEXT_PASS_QUERY_END__";
 			}
@@ -10331,7 +10331,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 				     "       " + (useSensorId > -1 ? 
 						   "id_sensor = " + intToString(useSensorId) : 
 						   "id_sensor is null") + " and\n" +
-				     "       fbasename = '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
+				     "       fbasename = BINARY '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
 			query_str += "if not @exists_call_id then\n";
 			query_str += "__NEXT_PASS_QUERY_END__";
 		}
