@@ -770,13 +770,11 @@ public:
 	void checkColumns_cdr_rtp(bool log = false);
 	void checkColumns_cdr_dtmf(bool log = false);
 	void checkColumns_cdr_conference(bool log = false);
-	void checkColumns_cdr_child(bool log = false);
 	void checkColumns_cdr_stat(bool log = false);
 	void checkColumns_cdr_problems(bool log = false);
 	void checkColumns_cdr_summary(bool log = false);
 	void checkColumns_ss7(bool log = false);
 	void checkColumns_message(bool log = false);
-	void checkColumns_message_child(bool log = false);
 	void checkColumns_register(bool log = false);
 	void checkColumns_sip_msg(bool log = false);
 	void checkColumns_other(bool log = false);
@@ -1459,17 +1457,6 @@ struct sExistsColumns {
 	bool cache_number_domain_location_ua;
 };
 
-struct sTableCalldateMsIndik {
-	sTableCalldateMsIndik(bool *ms, const char *table, const char *calldate = "calldate") {
-		this->ms = ms;
-		this->table = table;
-		this->calldate = calldate;
-	}
-	bool *ms;
-	string table;
-	string calldate;
-};
-
 class cLogSensor {
 public: 
 	enum eType {
@@ -1647,6 +1634,43 @@ private:
 private:
 	list<sTable> tables;
 	map<string, list<SqlDb::sPartition> > partitions;
+};
+
+
+class cTableColumnsTimePrecision {
+public:
+	enum eTypePrecision {
+		_prec_na   = 0,
+		_prec_high = 1 << 0,
+		_prec_low  = 1 << 1
+	};
+private:	
+	enum sColumnFlags {
+		_significant = 1 << 0,
+		_not_null    = 1 << 1,
+	};
+	struct sColumn {
+		string table;
+		string column;
+		string type_high_precision;
+		unsigned flag;
+		bool *exists_columns_exists;
+		bool *exists_columns_high_prec;
+	};
+public:
+	cTableColumnsTimePrecision();
+	unsigned checkExistsPrecision(const char *onlyTable, const char *onlyColumn, bool onlySignificant,
+				      bool rsltOnlySignificant, SqlDb *sqlDb, bool alterToHighPrecisions);
+	void setPrecisionToLow(const char *onlyTable, const char *onlyColumn);
+	bool isAltered() { return(altered); }
+private:
+	void fill();
+	void addColumn(const char *table, const char *column,
+		       const char *type_high_precision, unsigned flag,
+		       bool *exists_columns_exists, bool *exists_columns_high_prec);
+private:
+	list<sColumn> columns;
+	bool altered;
 };
 
 

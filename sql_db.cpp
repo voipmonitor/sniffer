@@ -5705,6 +5705,12 @@ bool SqlDb_mysql::createSchema(int connectId) {
 	} else {
 		syslog(LOG_DEBUG, "creating and upgrading MySQL schema...");
 	}
+	
+	if(opt_time_precision_in_ms && !isSupportForDatetimeMs()) {
+		cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
+		opt_time_precision_in_ms = false;
+	}
+	
 	sql_disable_next_attempt_if_error = 1;
 	this->multi_off();
 
@@ -9283,6 +9289,12 @@ void SqlDb_mysql::createTable(const char *tableName) {
 }
 
 void SqlDb_mysql::checkSchema(int connectId, bool checkColumnsSilentLog) {
+	
+	if(opt_time_precision_in_ms && !isSupportForDatetimeMs()) {
+		cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
+		opt_time_precision_in_ms = false;
+	}
+	
 	this->clearLastError();
 	if(!(connectId == 0)) {
 		return;
@@ -9307,16 +9319,31 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumnsSilentLog) {
 	this->checkColumns_cdr_rtp(!checkColumnsSilentLog);
 	this->checkColumns_cdr_dtmf(!checkColumnsSilentLog);
 	this->checkColumns_cdr_conference(!checkColumnsSilentLog);
-	this->checkColumns_cdr_child(!checkColumnsSilentLog);
 	this->checkColumns_cdr_stat(!checkColumnsSilentLog);
 	this->checkColumns_cdr_problems(!checkColumnsSilentLog);
 	this->checkColumns_cdr_summary(!checkColumnsSilentLog);
 	this->checkColumns_ss7(!checkColumnsSilentLog);
 	this->checkColumns_message(!checkColumnsSilentLog);
-	this->checkColumns_message_child(!checkColumnsSilentLog);
 	this->checkColumns_register(!checkColumnsSilentLog);
 	this->checkColumns_sip_msg(!checkColumnsSilentLog);
 	this->checkColumns_other(!checkColumnsSilentLog);
+	cTableColumnsTimePrecision tp;
+	unsigned rslt_check_precison_significant;
+	rslt_check_precison_significant = tp.checkExistsPrecision(NULL, NULL, false, 
+								  true, this, opt_time_precision_in_ms);
+	if(tp.isAltered()) {
+		rslt_check_precison_significant = tp.checkExistsPrecision(NULL, NULL, false,
+									  true, this, false);
+	}
+	if(opt_time_precision_in_ms) {
+		if(rslt_check_precison_significant != cTableColumnsTimePrecision::_prec_high) {
+			cLogSensor::log(cLogSensor::error, "Time data accuracy in milliseconds will be enabled only after all time columns have been converted to the required formats.");
+			tp.setPrecisionToLow(NULL, NULL);
+			opt_time_precision_in_ms = false;
+		}
+	} else {
+		tp.setPrecisionToLow(NULL, NULL);
+	}
 	
 	stopExistsColumnCache();
 	
@@ -9376,60 +9403,10 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				log, &tableSize, &existsColumns.cdr_post_bye_delay,
 				"post_bye_delay", string(column_type_duration_ms_unsigned(NULL, true) + " default null").c_str(), NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	for(int pass = 0; pass < 2; pass++) {
-		vector<string> alters_ms;
-		if(!(existsColumns.cdr_calldate_ms = this->getTypeColumn("cdr", "calldate").find("(3)") != string::npos)) {
-			alters_ms.push_back("modify column calldate " + column_type_datetime_ms() + " not null");
-		}
-		if(!(existsColumns.cdr_callend_ms = this->getTypeColumn("cdr", "callend").find("(3)") != string::npos)) {
-			alters_ms.push_back("modify column callend " + column_type_datetime_ms() + " not null");
-		}
-		if(!(existsColumns.cdr_duration_ms = this->getTypeColumn("cdr", "duration").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column duration " + column_type_duration_ms_unsigned() + " default null");
-		}
-		if(!(existsColumns.cdr_connect_duration_ms = this->getTypeColumn("cdr", "connect_duration").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column connect_duration " + column_type_duration_ms_unsigned() + " default null");
-		}
-		if(!(existsColumns.cdr_progress_time_ms = this->getTypeColumn("cdr", "progress_time").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column progress_time " + column_type_duration_ms_unsigned() + " default null");
-		}
-		if(!(existsColumns.cdr_first_rtp_time_ms = this->getTypeColumn("cdr", "first_rtp_time").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column first_rtp_time " + column_type_duration_ms_unsigned() + " default null");
-		}
-		if(this->existsColumn("cdr", "post_bye_delay") &&
-		   !(existsColumns.cdr_post_bye_delay_ms = this->getTypeColumn("cdr", "post_bye_delay").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column post_bye_delay " + column_type_duration_ms_unsigned() + " default null");
-		}
-		if(this->existsColumn("cdr", "a_last_rtp_from_end") &&
-		   !(existsColumns.cdr_a_last_rtp_from_end_time_ms = this->getTypeColumn("cdr", "a_last_rtp_from_end").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column a_last_rtp_from_end " + column_type_duration_ms_signed() + " default null");
-		}
-		if(this->existsColumn("cdr", "a_last_rtp_from_end") &&
-		   !(existsColumns.cdr_b_last_rtp_from_end_time_ms = this->getTypeColumn("cdr", "b_last_rtp_from_end").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column b_last_rtp_from_end " + column_type_duration_ms_signed() + " default null");
-		}
-		if(pass == 0 && opt_time_precision_in_ms) {
-			if(alters_ms.size()) {
-				if(isSupportForDatetimeMs()) {
-					if(this->logNeedAlter("cdr",
-							      "time accuracy in milliseconds",
-							      "ALTER TABLE cdr " + implode(alters_ms, ", ") + ";",
-							      log, &tableSize, NULL)) {
-						this->removeTableFromColumnCache("cdr");
-					}
-					continue;
-				} else {
-					cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
-					opt_time_precision_in_ms = false;
-				}
-			}
-		}
-		break;
-	}
 	if(this->checkNeedAlterAdd("cdr", "store last rtp from end", opt_last_rtp_from_end,
 				   log, &tableSize, &existsColumns.cdr_last_rtp_from_end,
-				   "a_last_rtp_from_end", existsColumns.cdr_calldate_ms ? "decimal(9,3) default null" : "SMALLINT SIGNED DEFAULT NULL", NULL_CHAR_PTR,
-				   "b_last_rtp_from_end", existsColumns.cdr_calldate_ms ? "decimal(9,3) default null" : "SMALLINT SIGNED DEFAULT NULL", NULL_CHAR_PTR,
+				   "a_last_rtp_from_end", opt_time_precision_in_ms ? "decimal(9,3) default null" : "SMALLINT SIGNED DEFAULT NULL", NULL_CHAR_PTR,
+				   "b_last_rtp_from_end", opt_time_precision_in_ms ? "decimal(9,3) default null" : "SMALLINT SIGNED DEFAULT NULL", NULL_CHAR_PTR,
 				   NULL_CHAR_PTR) > 0) {
 		existsColumns.cdr_a_last_rtp_from_end_time_ms = this->getTypeColumn("cdr", "a_last_rtp_from_end").find("decimal") != string::npos;
 		existsColumns.cdr_b_last_rtp_from_end_time_ms = this->getTypeColumn("cdr", "b_last_rtp_from_end").find("decimal") != string::npos;
@@ -9513,12 +9490,10 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				"UPDATE cdr "
 				"set price_customer_mult1000000 = price_customer_mult100 * 10000 "
 				"where price_customer_mult100 <> 0;");
-			if(this->logNeedAlter("cdr",
-					      "billing feature - add extended price precision",
-					      alters,
-					      log, &tableSize, NULL)) {
-				this->removeTableFromColumnCache("cdr");
-			}
+			this->logNeedAlter("cdr",
+					   "billing feature - add extended price precision",
+					   alters,
+					   log, &tableSize, NULL);
 		}
 	}
 	existsColumns.cdr_price_operator_mult1000000 = this->existsColumn("cdr", "price_operator_mult1000000");
@@ -9671,29 +9646,6 @@ void SqlDb_mysql::checkColumns_cdr_next(bool log) {
 					log, &tableSize, &existsColumns.cdr_next_conference_referred_by_ok_time,
 					"conference_referred_by_ok_time", (column_type_datetime_ms() + " DEFAULT NULL").c_str(), NULL_CHAR_PTR,
 					NULL_CHAR_PTR);
-		for(int pass = 0; pass < 2; pass++) {
-			vector<string> alters_ms;
-			if(!(existsColumns.cdr_next_conference_referred_by_ok_time_ms = this->getTypeColumn("cdr_next", "conference_referred_by_ok_time").find("(3)") != string::npos)) {
-				alters_ms.push_back("modify column connect_time " + column_type_datetime_ms() + " not null");
-			}
-			if(pass == 0 && opt_time_precision_in_ms) {
-				if(alters_ms.size()) {
-					if(isSupportForDatetimeMs()) {
-						if(this->logNeedAlter("cdr_next",
-								      "time accuracy in milliseconds",
-								      "ALTER TABLE cdr_next " + implode(alters_ms, ", ") + ";",
-								      log, &tableSize, NULL)) {
-							this->removeTableFromColumnCache("cdr_next");
-						}
-						continue;
-					} else {
-						cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
-						opt_time_precision_in_ms = false;
-					}
-				}
-			}
-			break;
-		}
 	}
 	if(opt_mo_mt_identification_prefix.size()) {
 		this->checkNeedAlterAdd("cdr_next", "leg flag", true,
@@ -9791,108 +9743,8 @@ void SqlDb_mysql::checkColumns_cdr_dtmf(bool log) {
 
 void SqlDb_mysql::checkColumns_cdr_conference(bool log) {
 	existsColumns.cdr_conference = this->existsTable("cdr_conference");
-	if(!existsColumns.cdr_conference) {
-		return;
-	}
-	map<string, u_int64_t> tableSize;
-	for(int pass = 0; pass < 2; pass++) {
-		vector<string> alters_ms;
-		if(!(existsColumns.cdr_conference_connect_time_ms = this->getTypeColumn("cdr_conference", "connect_time").find("(3)") != string::npos)) {
-			alters_ms.push_back("modify column connect_time " + column_type_datetime_ms() + " not null");
-		}
-		if(!(existsColumns.cdr_conference_disconnect_time_ms = this->getTypeColumn("cdr_conference", "disconnect_time").find("(3)") != string::npos)) {
-			alters_ms.push_back("modify column disconnect_time " + column_type_datetime_ms() + " not null");
-		}
-		if(pass == 0 && opt_time_precision_in_ms) {
-			if(alters_ms.size()) {
-				if(isSupportForDatetimeMs()) {
-					if(this->logNeedAlter("cdr_conference",
-							      "time accuracy in milliseconds",
-							      "ALTER TABLE cdr_conference " + implode(alters_ms, ", ") + ";",
-							      log, &tableSize, NULL)) {
-						this->removeTableFromColumnCache("cdr_conference");
-					}
-					continue;
-				} else {
-					cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
-					opt_time_precision_in_ms = false;
-				}
-			}
-		}
-		break;
-	}
 }
 
-void SqlDb_mysql::checkColumns_cdr_child(bool log) {
-	existsColumns.cdr_next_calldate = this->existsColumn("cdr_next", "calldate");
-	if(existsColumns.cdr_next_branches) {
-		existsColumns.cdr_next_branches_calldate = this->existsColumn("cdr_next_branches", "calldate");
-	}
-	existsColumns.cdr_rtp_calldate = this->existsColumn("cdr_rtp", "calldate");
-	if(opt_save_energylevels) {
-		existsColumns.cdr_rtp_energylevels_calldate = this->existsColumn("cdr_rtp_energylevels", "calldate");
-	}
-	existsColumns.cdr_dtmf_calldate = this->existsColumn("cdr_dtmf", "calldate");
-	existsColumns.cdr_sipresp_calldate = this->existsColumn("cdr_sipresp", "calldate");
-	if(_save_sip_history) {
-		existsColumns.cdr_siphistory_calldate = this->existsColumn("cdr_siphistory", "calldate");
-	}
-	existsColumns.cdr_tar_part_calldate = this->existsColumn("cdr_tar_part", "calldate");
-	existsColumns.cdr_country_code_calldate = this->existsColumn("cdr_country_code", "calldate");
-	existsColumns.cdr_sdp_calldate = this->existsColumn("cdr_sdp", "calldate");
-	if(this->existsTable("cdr_conference")) {
-		existsColumns.cdr_conference_calldate = this->existsColumn("cdr_conference", "calldate");
-	}
-	existsColumns.cdr_txt_calldate = this->existsColumn("cdr_txt", "calldate");
-	map<string, u_int64_t> tableSize;
-	vector<sTableCalldateMsIndik> childTablesCalldateMsIndik;
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_next_calldate_ms, "cdr_next"));
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_proxy_calldate_ms, "cdr_proxy"));
-	if(existsColumns.cdr_next_branches) {
-		childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_next_branches_calldate_ms, "cdr_next_branches"));
-	}
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_rtp_calldate_ms, "cdr_rtp"));
-	if(opt_save_energylevels) {
-		childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_rtp_energylevels_calldate_ms, "cdr_rtp_energylevels"));
-	}
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_dtmf_calldate_ms, "cdr_dtmf"));
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_sipresp_calldate_ms, "cdr_sipresp"));
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_siphistory_calldate_ms, "cdr_siphistory"));
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_tar_part_calldate_ms, "cdr_tar_part"));
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_country_code_calldate_ms, "cdr_country_code"));
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_sdp_calldate_ms, "cdr_sdp"));
-	if(opt_conference_processing) {
-		childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_conference_calldate_ms, "cdr_conference"));
-	}
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_txt_calldate_ms, "cdr_txt"));
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_flags_calldate_ms, "cdr_flags"));
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_audio_transcribe_calldate_ms, "cdr_audio_transcribe"));
-	for(unsigned i = 0; i < childTablesCalldateMsIndik.size(); i++) {
-		for(int pass = 0; pass < 2; pass++) {
-			string alter_ms;
-			if(!(*(childTablesCalldateMsIndik[i].ms) = this->getTypeColumn(childTablesCalldateMsIndik[i].table.c_str(), childTablesCalldateMsIndik[i].calldate.c_str()).find("(3)") != string::npos)) {
-				alter_ms = "modify column " + childTablesCalldateMsIndik[i].calldate + " " + column_type_datetime_child_ms() + " not null";
-			}
-			if(pass == 0 && opt_time_precision_in_ms) {
-				if(!alter_ms.empty()) {
-					if(isSupportForDatetimeMs()) {
-						if(this->logNeedAlter(childTablesCalldateMsIndik[i].table,
-								      "time accuracy in milliseconds",
-								      "ALTER TABLE " + childTablesCalldateMsIndik[i].table + " " + alter_ms + ";",
-								      log, &tableSize, NULL)) {
-							this->removeTableFromColumnCache(childTablesCalldateMsIndik[i].table.c_str());
-						}
-						continue;
-					} else {
-						cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
-						opt_time_precision_in_ms = false;
-					}
-				}
-			}
-			break;
-		}
-	}
-}
 
 void SqlDb_mysql::checkColumns_cdr_stat(bool log) {
 	for(int src_dst = 0; src_dst < 2; src_dst++) {
@@ -9995,80 +9847,10 @@ void SqlDb_mysql::checkColumns_ss7(bool log) {
 				log, &tableSize, &existsColumns.ss7_flags,
 				"flags", "bigint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	for(int pass = 0; pass < 2; pass++) {
-		vector<string> alters_ms;
-		if(!(existsColumns.ss7_time_iam_ms = this->getTypeColumn("ss7", "time_iam").find("(3)") != string::npos)) {
-			alters_ms.push_back("modify column time_iam " + column_type_datetime_ms() + " not null");
-		}
-		if(!(existsColumns.ss7_time_acm_ms = this->getTypeColumn("ss7", "time_acm").find("(3)") != string::npos)) {
-			alters_ms.push_back("modify column time_acm " + column_type_datetime_ms());
-		}
-		if(!(existsColumns.ss7_time_cpg_ms = this->getTypeColumn("ss7", "time_cpg").find("(3)") != string::npos)) {
-			alters_ms.push_back("modify column time_cpg " + column_type_datetime_ms());
-		}
-		if(!(existsColumns.ss7_time_anm_ms = this->getTypeColumn("ss7", "time_anm").find("(3)") != string::npos)) {
-			alters_ms.push_back("modify column time_anm " + column_type_datetime_ms());
-		}
-		if(!(existsColumns.ss7_time_rel_ms = this->getTypeColumn("ss7", "time_rel").find("(3)") != string::npos)) {
-			alters_ms.push_back("modify column time_rel " + column_type_datetime_ms());
-		}
-		if(!(existsColumns.ss7_time_rlc_ms = this->getTypeColumn("ss7", "time_rlc").find("(3)") != string::npos)) {
-			alters_ms.push_back("modify column time_rlc " + column_type_datetime_ms());
-		}
-		if(!(existsColumns.ss7_duration_ms = this->getTypeColumn("ss7", "duration").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column duration " + column_type_duration_ms_unsigned());
-		}
-		if(!(existsColumns.ss7_connect_duration_ms = this->getTypeColumn("ss7", "connect_duration").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column connect_duration " + column_type_duration_ms_unsigned());
-		}
-		if(!(existsColumns.ss7_progress_time_ms = this->getTypeColumn("ss7", "progress_time").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column progress_time " + column_type_duration_ms_unsigned());
-		}
-		if(pass == 0 && opt_time_precision_in_ms) {
-			if(alters_ms.size()) {
-				if(isSupportForDatetimeMs()) {
-					if(this->logNeedAlter("ss7",
-							      "time accuracy in milliseconds",
-							      "ALTER TABLE ss7 " + implode(alters_ms, ", ") + ";",
-							      log, &tableSize, NULL)) {
-						this->removeTableFromColumnCache("ss7");
-					}
-					continue;
-				} else {
-					cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
-					opt_time_precision_in_ms = false;
-				}
-			}
-		}
-		break;
-	}
 }
 
 void SqlDb_mysql::checkColumns_message(bool log) {
 	map<string, u_int64_t> tableSize;
-	for(int pass = 0; pass < 2; pass++) {
-		string alter_ms;
-		if(!(existsColumns.message_calldate_ms = this->getTypeColumn("message", "calldate").find("(3)") != string::npos)) {
-			alter_ms = "modify column calldate " + column_type_datetime_ms() + " not null";
-		}
-		if(pass == 0 && opt_time_precision_in_ms) {
-			if(!alter_ms.empty()) {
-				if(isSupportForDatetimeMs()) {
-					if(this->logNeedAlter("message",
-							      "time accuracy in milliseconds",
-							      "ALTER TABLE message " + alter_ms + ";",
-							      log, &tableSize, NULL)) {
-						this->removeTableFromColumnCache("message");
-					}
-					continue;
-				} else {
-					cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
-					opt_time_precision_in_ms = false;
-				}
-			}
-		}
-		break;
-	}
 	existsColumns.message_content_length = this->existsColumn("message", "content_length");
 	this->checkNeedAlterAdd("message", "SIP response time", true,
 				log, &tableSize, &existsColumns.message_response_time,
@@ -10084,74 +9866,9 @@ void SqlDb_mysql::checkColumns_message(bool log) {
 				NULL_CHAR_PTR);
 }
 
-void SqlDb_mysql::checkColumns_message_child(bool log) {
-	map<string, u_int64_t> tableSize;
-	vector<sTableCalldateMsIndik> childTablesCalldateMsIndik;
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.message_child_proxy_calldate_ms, "message_proxy"));
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.message_child_country_code_calldate_ms, "message_country_code"));
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.message_child_flags_calldate_ms, "message_flags"));
-	for(unsigned i = 0; i < childTablesCalldateMsIndik.size(); i++) {
-		for(int pass = 0; pass < 2; pass++) {
-			string alter_ms;
-			if(!(*(childTablesCalldateMsIndik[i].ms) = this->getTypeColumn(childTablesCalldateMsIndik[i].table.c_str(), childTablesCalldateMsIndik[i].calldate.c_str()).find("(3)") != string::npos)) {
-				alter_ms = "modify column " + childTablesCalldateMsIndik[i].calldate + " " + column_type_datetime_child_ms() + " not null";
-			}
-			if(pass == 0 && opt_time_precision_in_ms) {
-				if(!alter_ms.empty()) {
-					if(isSupportForDatetimeMs()) {
-						if(this->logNeedAlter(childTablesCalldateMsIndik[i].table,
-								      "time accuracy in milliseconds",
-								      "ALTER TABLE " + childTablesCalldateMsIndik[i].table + " " + alter_ms + ";",
-								      log, &tableSize, NULL)) {
-							this->removeTableFromColumnCache(childTablesCalldateMsIndik[i].table.c_str());
-						}
-						continue;
-					} else {
-						cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
-						opt_time_precision_in_ms = false;
-					}
-				}
-			}
-			break;
-		}
-	}
-}
 
 void SqlDb_mysql::checkColumns_register(bool log) {
 	map<string, u_int64_t> tableSize;
-	for(int pass = 0; pass < 2; pass++) {
-		vector<dstring> alters_ms;
-		if(opt_sip_register == 2) {
-			if(!(existsColumns.register_calldate_ms = this->getTypeColumn("register", "calldate").find("(3)") != string::npos)) {
-				alters_ms.push_back(dstring("register", "modify column calldate " + column_type_datetime_ms() + " not null"));
-			}
-		}
-		if(!(existsColumns.register_state_created_at_ms = this->getTypeColumn("register_state", "created_at").find("(3)") != string::npos)) {
-			alters_ms.push_back(dstring("register_state", "modify column created_at " + column_type_datetime_ms() + " not null"));
-		}
-		if(!(existsColumns.register_failed_created_at_ms = this->getTypeColumn("register_failed", "created_at").find("(3)") != string::npos)) {
-			alters_ms.push_back(dstring("register_failed", "modify column created_at " + column_type_datetime_ms() + " not null"));
-		}
-		if(pass == 0 && opt_time_precision_in_ms) {
-			if(alters_ms.size()) {
-				if(isSupportForDatetimeMs()) {
-					for(unsigned i = 0; i < alters_ms.size(); i++) {
-						if(this->logNeedAlter(alters_ms[i][0],
-								      "time accuracy in milliseconds",
-								      "ALTER TABLE " + alters_ms[i][0] + " " + alters_ms[i][1] + ";",
-								      log, &tableSize, NULL)) {
-							this->removeTableFromColumnCache(alters_ms[i][0].c_str());
-						}
-					}
-					continue;
-				} else {
-					cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
-					opt_time_precision_in_ms = false;
-				}
-			}
-		}
-		break;
-	}
 	if(enable_register_engine) {
 		bool registerStateIdIsBig = true;
 		bool registerStateIdIsAutoIncrement = true;
@@ -10199,20 +9916,6 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 					   "CHANGE COLUMN `ID` `ID` bigint unsigned NOT NULL AUTO_INCREMENT;",
 					   log, &tableSize, NULL);
 		}
-	}
-	if(this->existsTable("register_state_eq_next")) {
-		existsColumns.register_state_eq_next_created_at = this->existsColumn("register_state_eq_next", "created_at");
-		if(existsColumns.register_state_eq_next_created_at) {
-			existsColumns.register_state_eq_next_created_at_ms = this->getTypeColumn("register_state_eq_next", "created_at").find("(3)") != string::npos;
-		}
-		existsColumns.register_state_eq_next_next_at_ms = this->getTypeColumn("register_state_eq_next", "next_at").find("(3)") != string::npos;
-	}
-	if(this->existsTable("register_failed_eq_next")) {
-		existsColumns.register_failed_eq_next_created_at = this->existsColumn("register_failed_eq_next", "created_at");
-		if(existsColumns.register_failed_eq_next_created_at) {
-			existsColumns.register_failed_eq_next_created_at_ms = this->getTypeColumn("register_failed_eq_next", "created_at").find("(3)") != string::npos;
-		}
-		existsColumns.register_failed_eq_next_next_at_ms = this->getTypeColumn("register_failed_eq_next", "next_at").find("(3)") != string::npos;
 	}
 	if(opt_sip_register_save_eq_states_time) {
 		this->checkNeedAlterAdd("register_state", "register_state counter", true,
@@ -10304,35 +10007,6 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 
 void SqlDb_mysql::checkColumns_sip_msg(bool log) {
 	map<string, u_int64_t> tableSize;
-	for(int pass = 0; pass < 2; pass++) {
-		vector<string> alters_ms;
-		if(!(existsColumns.sip_msg_time_ms = this->getTypeColumn("sip_msg", "time").find("(3)") != string::npos)) {
-			alters_ms.push_back("modify column time " + column_type_datetime_ms() + " not null");
-		}
-		if(!(existsColumns.sip_msg_request_time_ms = this->getTypeColumn("sip_msg", "request_time").find("(3)") != string::npos)) {
-			alters_ms.push_back("modify column request_time " + column_type_datetime_ms() + " not null");
-		}
-		if(!(existsColumns.sip_msg_response_time_ms = this->getTypeColumn("sip_msg", "response_time").find("(3)") != string::npos)) {
-			alters_ms.push_back("modify column response_time " + column_type_datetime_ms() + " not null");
-		}
-		if(pass == 0 && opt_time_precision_in_ms) {
-			if(alters_ms.size()) {
-				if(isSupportForDatetimeMs()) {
-					if(this->logNeedAlter("sip_msg",
-							      "time accuracy in milliseconds",
-							      "ALTER TABLE sip_msg " + implode(alters_ms, ", ") + ";",
-							      log, &tableSize, NULL)) {
-						this->removeTableFromColumnCache("sip_msg");
-					}
-					continue;
-				} else {
-					cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
-					opt_time_precision_in_ms = false;
-				}
-			}
-		}
-		break;
-	}
 	this->checkNeedAlterAdd("sip_msg", "sip_msg vlan", true,
 				log, &tableSize, &existsColumns.sip_msg_vlan,
 				"vlan", "smallint DEFAULT NULL", "`vlan` (`vlan`)",
@@ -13051,6 +12725,183 @@ bool cPartitions::dropPartition(const char *table, const char *partition, SqlDb 
 
 void cPartitions::addTable(const char *group, const char *table) {
 	tables.push_back(sTable(group, table));
+}
+
+
+cTableColumnsTimePrecision::cTableColumnsTimePrecision() {
+	altered = false;
+}
+
+unsigned cTableColumnsTimePrecision::checkExistsPrecision(const char *onlyTable, const char *onlyColumn, bool onlySignificant,
+							  bool rsltOnlySignificant, SqlDb *sqlDb, bool alterToHighPrecisions) {
+	altered = false;
+	if(columns.empty()) {
+		fill();
+	}
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
+	unsigned rslt = 0;
+	map<string, bool> tableExistsCache;
+	map<string, vector<string>> altersPerTable;
+	for(list<sColumn>::iterator iter = columns.begin(); iter != columns.end(); iter++) {
+		if(onlySignificant && !(iter->flag & _significant)) {
+			continue;
+		}
+		if(onlyTable && iter->table != onlyTable) {
+			continue;
+		}
+		if(onlyColumn && iter->column != onlyColumn) {
+			continue;
+		}
+		bool table_exists = false;
+		map<string, bool>::iterator iter_table_exists = tableExistsCache.find(iter->table);
+		if(iter_table_exists != tableExistsCache.end()) {
+			table_exists = iter_table_exists->second;
+		} else {
+			table_exists = sqlDb->existsTable(iter->table);
+			tableExistsCache[iter->table] = table_exists;
+		}
+		if(!table_exists) {
+			continue;
+		}
+		string columnType = sqlDb->getTypeColumn(iter->table, iter->column);
+		if(iter->exists_columns_exists) {
+			*iter->exists_columns_exists = !columnType.empty();
+		}
+		if(columnType.empty()) {
+			continue;
+		}
+		bool isHighPrec = strcasestr(columnType.c_str(), iter->type_high_precision.c_str()) != NULL;
+		if(iter->exists_columns_high_prec) {
+			*iter->exists_columns_high_prec = isHighPrec;
+		}
+		if(!rsltOnlySignificant || (iter->flag & _significant)) {
+			if(isHighPrec) {
+				rslt |= _prec_high;
+			} else {
+				rslt |= _prec_low;
+			}
+		}
+		if(!isHighPrec && alterToHighPrecisions) {
+			string alter = "modify column " + iter->column + " " + iter->type_high_precision;
+			if(iter->flag & _not_null) {
+				alter += " not null";
+			}
+			altersPerTable[iter->table].push_back(alter);
+		}
+	}
+	if(alterToHighPrecisions) {
+		map<string, u_int64_t> tableSize;
+		for(map<string, vector<string>>::iterator it = altersPerTable.begin(); it != altersPerTable.end(); it++) {
+			if(sqlDb->logNeedAlter(it->first,
+					       "time accuracy in milliseconds",
+					       "ALTER TABLE " + it->first + " " + implode(it->second, ", ") + ";",
+					       true, &tableSize, NULL)) {
+				altered = true;
+			}
+		}
+	}
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
+	return(rslt);
+}
+
+void cTableColumnsTimePrecision::setPrecisionToLow(const char *onlyTable, const char *onlyColumn) {
+	if(columns.empty()) {
+		fill();
+	}
+	for(list<sColumn>::iterator iter = columns.begin(); iter != columns.end(); iter++) {
+		if(onlyTable && iter->table != onlyTable) {
+			continue;
+		}
+		if(onlyColumn && iter->column != onlyColumn) {
+			continue;
+		}
+		if(iter->exists_columns_high_prec) {
+			*iter->exists_columns_high_prec = false;
+		}
+	}
+}
+
+void cTableColumnsTimePrecision::fill() {
+	const char *datetime_high_precision = "datetime(3)";
+	const char *duration_high_precision = "decimal(9,3)";
+	addColumn("cdr", "calldate", datetime_high_precision, _significant | _not_null, NULL, &existsColumns.cdr_calldate_ms);
+	addColumn("cdr", "callend", datetime_high_precision, _significant | _not_null, NULL, &existsColumns.cdr_callend_ms);
+	addColumn("cdr_next", "calldate", datetime_high_precision, _significant | _not_null, &existsColumns.cdr_next_calldate, &existsColumns.cdr_child_next_calldate_ms);
+	addColumn("cdr_proxy", "calldate", datetime_high_precision, _significant | _not_null, NULL, &existsColumns.cdr_child_proxy_calldate_ms);
+	addColumn("cdr_next_branches", "calldate", datetime_high_precision, _significant | _not_null, &existsColumns.cdr_next_branches_calldate, &existsColumns.cdr_child_next_branches_calldate_ms);
+	addColumn("cdr_rtp", "calldate", datetime_high_precision, _significant | _not_null, &existsColumns.cdr_rtp_calldate, &existsColumns.cdr_child_rtp_calldate_ms);
+	addColumn("cdr_rtp_energylevels", "calldate", datetime_high_precision, _significant | _not_null, &existsColumns.cdr_rtp_energylevels_calldate, &existsColumns.cdr_child_rtp_energylevels_calldate_ms);
+	addColumn("cdr_dtmf", "calldate", datetime_high_precision, _significant | _not_null, &existsColumns.cdr_dtmf_calldate, &existsColumns.cdr_child_dtmf_calldate_ms);
+	addColumn("cdr_sipresp", "calldate", datetime_high_precision, _significant | _not_null, &existsColumns.cdr_sipresp_calldate, &existsColumns.cdr_child_sipresp_calldate_ms);
+	addColumn("cdr_siphistory", "calldate", datetime_high_precision, _significant | _not_null, &existsColumns.cdr_siphistory_calldate, &existsColumns.cdr_child_siphistory_calldate_ms);
+	addColumn("cdr_tar_part", "calldate", datetime_high_precision, _significant | _not_null, &existsColumns.cdr_tar_part_calldate, &existsColumns.cdr_child_tar_part_calldate_ms);
+	addColumn("cdr_country_code", "calldate", datetime_high_precision, _significant | _not_null, &existsColumns.cdr_country_code_calldate, &existsColumns.cdr_child_country_code_calldate_ms);
+	addColumn("cdr_sdp", "calldate", datetime_high_precision, _significant | _not_null, &existsColumns.cdr_sdp_calldate, &existsColumns.cdr_child_sdp_calldate_ms);
+	addColumn("cdr_conference", "calldate", datetime_high_precision, _significant | _not_null, &existsColumns.cdr_conference_calldate, &existsColumns.cdr_child_conference_calldate_ms);
+	addColumn("cdr_txt", "calldate", datetime_high_precision, _significant | _not_null, &existsColumns.cdr_txt_calldate, &existsColumns.cdr_child_txt_calldate_ms);
+	addColumn("cdr_flags", "calldate", datetime_high_precision, _significant | _not_null, NULL, &existsColumns.cdr_child_flags_calldate_ms);
+	addColumn("cdr_audio_transcribe", "calldate", datetime_high_precision, _significant | _not_null, NULL, &existsColumns.cdr_audio_transcribe_calldate_ms);
+	addColumn("cdr", "duration", duration_high_precision, 0, NULL, &existsColumns.cdr_duration_ms);
+	addColumn("cdr", "connect_duration", duration_high_precision, 0, NULL, &existsColumns.cdr_connect_duration_ms);
+	addColumn("cdr", "progress_time", duration_high_precision, 0, NULL, &existsColumns.cdr_progress_time_ms);
+	addColumn("cdr", "first_rtp_time", duration_high_precision, 0, NULL, &existsColumns.cdr_first_rtp_time_ms);
+	addColumn("cdr", "post_bye_delay", duration_high_precision, 0, NULL, &existsColumns.cdr_post_bye_delay_ms);
+	addColumn("cdr", "a_last_rtp_from_end", duration_high_precision, 0, NULL, &existsColumns.cdr_a_last_rtp_from_end_time_ms);
+	addColumn("cdr", "b_last_rtp_from_end", duration_high_precision, 0, NULL, &existsColumns.cdr_b_last_rtp_from_end_time_ms);
+	addColumn("cdr_next", "conference_referred_by_ok_time", datetime_high_precision, 0, &existsColumns.cdr_next_conference_referred_by_ok_time, &existsColumns.cdr_next_conference_referred_by_ok_time_ms);
+	addColumn("cdr_conference", "connect_time", datetime_high_precision, 0, NULL, &existsColumns.cdr_conference_connect_time_ms);
+	addColumn("cdr_conference", "disconnect_time", datetime_high_precision, 0, NULL, &existsColumns.cdr_conference_disconnect_time_ms);
+	addColumn("message", "calldate", datetime_high_precision, _significant | _not_null, NULL, &existsColumns.message_calldate_ms);
+	addColumn("message_proxy", "calldate", datetime_high_precision, _significant | _not_null, NULL, &existsColumns.message_child_proxy_calldate_ms);
+	addColumn("message_country_code", "calldate", datetime_high_precision, _significant | _not_null, NULL, &existsColumns.message_child_country_code_calldate_ms);
+	addColumn("message_flags", "calldate", datetime_high_precision, _significant | _not_null, NULL, &existsColumns.message_child_flags_calldate_ms);
+	addColumn("register", "calldate", datetime_high_precision, _significant | _not_null, NULL, &existsColumns.register_calldate_ms);
+	addColumn("register_state", "created_at", datetime_high_precision, _significant | _not_null, NULL, &existsColumns.register_state_created_at_ms);
+	addColumn("register_failed", "created_at", datetime_high_precision, _significant | _not_null, NULL, &existsColumns.register_failed_created_at_ms);
+	addColumn("register_state_eq_next", "created_at", datetime_high_precision, _significant | _not_null, &existsColumns.register_state_eq_next_created_at, &existsColumns.register_state_eq_next_created_at_ms);
+	addColumn("register_state_eq_next", "next_at", datetime_high_precision, 0, NULL, &existsColumns.register_state_eq_next_next_at_ms);
+	addColumn("register_failed_eq_next", "created_at", datetime_high_precision, _significant | _not_null, &existsColumns.register_failed_eq_next_created_at, &existsColumns.register_failed_eq_next_created_at_ms);
+	addColumn("register_failed_eq_next", "next_at", datetime_high_precision, 0, NULL, &existsColumns.register_failed_eq_next_next_at_ms);
+	addColumn("sip_msg", "time", datetime_high_precision, _significant | _not_null, NULL, &existsColumns.sip_msg_time_ms);
+	addColumn("sip_msg", "request_time", datetime_high_precision, 0, NULL, &existsColumns.sip_msg_request_time_ms);
+	addColumn("sip_msg", "response_time", datetime_high_precision, 0, NULL, &existsColumns.sip_msg_response_time_ms);
+	addColumn("ss7", "time_iam", datetime_high_precision, _significant | _not_null, NULL, &existsColumns.ss7_time_iam_ms);
+	addColumn("ss7", "time_acm", datetime_high_precision, 0, NULL, &existsColumns.ss7_time_acm_ms);
+	addColumn("ss7", "time_cpg", datetime_high_precision, 0, NULL, &existsColumns.ss7_time_cpg_ms);
+	addColumn("ss7", "time_anm", datetime_high_precision, 0, NULL, &existsColumns.ss7_time_anm_ms);
+	addColumn("ss7", "time_rel", datetime_high_precision, 0, NULL, &existsColumns.ss7_time_rel_ms);
+	addColumn("ss7", "time_rlc", datetime_high_precision, 0, NULL, &existsColumns.ss7_time_rlc_ms);
+	addColumn("ss7", "duration", duration_high_precision, 0, NULL, &existsColumns.ss7_duration_ms);
+	addColumn("ss7", "connect_duration", duration_high_precision, 0, NULL, &existsColumns.ss7_connect_duration_ms);
+	addColumn("ss7", "progress_time", duration_high_precision, 0, NULL, &existsColumns.ss7_progress_time_ms);
+	CustomHeaders *custom_headers[] = { custom_headers_cdr, custom_headers_message, custom_headers_sip_msg };
+	for(unsigned i = 0; i < sizeof(custom_headers) / sizeof(custom_headers[0]); i++) {
+		if(custom_headers[i]) {
+			list<string> tables = custom_headers[i]->getAllNextTables();
+			for(list<string>::iterator it = tables.begin(); it != tables.end(); it++) {
+				addColumn(it->c_str(), custom_headers[i]->getRelTimeColumn().c_str(), datetime_high_precision,_significant | _not_null, NULL, NULL);
+			}
+		}
+	}
+}
+
+void cTableColumnsTimePrecision::addColumn(const char *table, const char *column,
+					   const char *type_high_precision, unsigned flag,
+					   bool *exists_columns_exists, bool *exists_columns_high_prec) {
+	sColumn column_data;
+	column_data.table =  table;
+	column_data.column = column;
+	column_data.type_high_precision = type_high_precision;
+	column_data.flag = flag;
+	column_data.exists_columns_exists = exists_columns_exists;
+	column_data.exists_columns_high_prec = exists_columns_high_prec;
+	columns.push_back(column_data);
 }
 
 
