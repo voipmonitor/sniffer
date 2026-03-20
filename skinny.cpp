@@ -1345,6 +1345,9 @@ Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap
 	set_global_flags(flags);
 	IPfilter::add_call_flags(&flags, &nat_aliases, saddr, daddr);
 	if(flags & FLAG_SKIPCDR) {
+		if(nat_aliases) {
+			delete nat_aliases;
+		}
 		if(verbosity > 1)
 			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
 		return NULL;

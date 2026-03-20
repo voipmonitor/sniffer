@@ -7164,11 +7164,14 @@ Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort de
 	set_global_flags(flags);
 	IPfilter::add_call_flags(&flags, &nat_aliases, saddr, daddr);
 	if(flags & FLAG_SKIPCDR) {
+		if(nat_aliases) {
+			delete nat_aliases;
+		}
 		if(verbosity > 1)
 			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
 		return NULL;
 	}
-	
+
 	// decoding RTP without SIP signaling is enabled. Check if it is port >= 1024 and if RTP version is == 2
 	char s[256];
 	RTP rtp(sensor_id, sensor_ip);

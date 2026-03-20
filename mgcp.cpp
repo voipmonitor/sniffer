@@ -196,6 +196,9 @@ void *handle_mgcp(packet_s_process *packetS, bool batch_process) {
 				set_global_flags(flags);
 				IPfilter::add_call_flags(&flags, &nat_aliases, packetS->saddr_(), packetS->daddr_());
 				if(flags & FLAG_SKIPCDR) {
+					if(nat_aliases) {
+						delete nat_aliases;
+					}
 					if(verbosity > 1)
 						syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
 					return NULL;
