@@ -147,6 +147,7 @@ public:
 	int sendConfigurationFile(const char *fileName, list<string> *hidePasswordForOptions = NULL);
 	int sendPexecOutput(const char *cmd);
 	int _send(const char *, ssize_t);
+	void flushAes(bool destroy);
 	int registerCommand(const char *cmd, const char *help, int notNeedAes = false);
 	int registerCommand(struct commandAndHelp *);
 	enum eTask {

@@ -5229,8 +5229,6 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 	case _chartType_rtcp_maxfr:
 	case _chartType_rtcp_avgrtd:
 	case _chartType_rtcp_maxrtd:
-	case _chartType_rtcp_avgrtd_w:
-	case _chartType_rtcp_maxrtd_w:
 	case _chartType_silence:
 	case _chartType_silence_caller:
 	case _chartType_silence_called:
@@ -5502,8 +5500,6 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		case _chartType_rtcp_maxfr:
 		case _chartType_rtcp_avgrtd:
 		case _chartType_rtcp_maxrtd:
-		case _chartType_rtcp_avgrtd_w:
-		case _chartType_rtcp_maxrtd_w:
 			setNull = true;
 			for(unsigned i = 0; i < 2; i++) {
 				if(rtpab[i]) {
@@ -5528,12 +5524,6 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 					case _chartType_rtcp_maxrtd:
 						_v = rtpab[i]->rtcp.rtd_rfc_count > 0 ? rtpab[i]->rtcp.rtd_rfc_max :
 						     rtpab[i]->rtcp.rtd_ws_count > 0 ? rtpab[i]->rtcp.rtd_ws_max : 0;
-						break;
-					case _chartType_rtcp_avgrtd_w:
-						_v = rtpab[i]->rtcp.rtd_ws_count > 0 ? (rtpab[i]->rtcp.rtd_ws_sum / rtpab[i]->rtcp.rtd_ws_count) : 0;
-						break;
-					case _chartType_rtcp_maxrtd_w:
-						_v = rtpab[i]->rtcp.rtd_ws_count > 0 ? rtpab[i]->rtcp.rtd_ws_max : 0;
 						break;
 					}
 					if(!_null) {
@@ -5992,18 +5982,6 @@ void Call::getChartCacheValue(cDbTablesContent *tablesContent,
 		const char *c[] = { "a_rtcp_avgrtd_mult10", "b_rtcp_maxavg_mult10", NULL };
 		v = tablesContent->getMinMaxValue(_t_cdr, c, true, true, &setNull);
 		if(!setNull && v) v /= 10;
-		}
-		break;
-	case _chartType_rtcp_maxrtd_w:
-		{
-		const char *c[] = { "a_rtcp_maxrtd_w", "b_rtcp_maxrtd_w", NULL };
-		v = tablesContent->getMinMaxValue(_t_cdr, c, false, false, &setNull);
-		}
-		break;
-	case _chartType_rtcp_avgrtd_w:
-		{
-		const char *c[] = { "a_rtcp_avgrtd_w", "b_rtcp_maxavg_w", NULL };
-		v = tablesContent->getMinMaxValue(_t_cdr, c, true, true, &setNull);
 		}
 		break;
 	case _chartType_silence:
@@ -7768,10 +7746,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 						cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.rtd_ws_sum * 10 / rtpab[i]->rtcp.rtd_ws_count), c+"_rtcp_avgrtd_mult10");
 						cdr_flags |= CDR_RTCP_RTD_USE_WS_METHOD;
 					}
-				}
-				if(existsColumns.cdr_rtcp_rtd_w && rtpab[i]->rtcp.rtd_ws_count) {
-					cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.rtd_ws_max), c+"_rtcp_maxrtd_w");
-					cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.rtd_ws_sum / rtpab[i]->rtcp.rtd_ws_count), c+"_rtcp_avgrtd_w");
 				}
 			}
 			#endif

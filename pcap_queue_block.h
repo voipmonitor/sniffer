@@ -604,7 +604,7 @@ struct packet_flags {
 	static const uint16_t MGCP_MASK           = (1 << 6);
 	static const uint16_t DTLS_HANDSHAKE_MASK = (1 << 7);
 	static const uint16_t DIAMETER_MASK       = (1 << 8);
-	static const uint16_t IPFIX_QOS_MASK       = (1 << 8);
+	static const uint16_t IPFIX_QOS_MASK      = (1 << 9);
 	
 	uint16_t flags;
 

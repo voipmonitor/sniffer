@@ -59,8 +59,6 @@ enum eChartType {
 	_chartType_rtcp_maxfr,
 	_chartType_rtcp_avgrtd,
 	_chartType_rtcp_maxrtd,
-	_chartType_rtcp_avgrtd_w,
-	_chartType_rtcp_maxrtd_w,
 	_chartType_silence,
 	_chartType_silence_caller,
 	_chartType_silence_called,

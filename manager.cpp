@@ -368,6 +368,21 @@ int Mgmt_params::_send(const char *buf, ssize_t len) {
 	return res;
 }
 
+void Mgmt_params::flushAes(bool destroy) {
+	if(aes) {
+		u_char *data_enc;
+		size_t datalen_enc;
+		if(aes->encrypt((u_char*)"", 0, &data_enc, &datalen_enc, true)) {
+			send(client.handler, data_enc, datalen_enc, 0);
+			delete [] data_enc;
+		}
+		if(destroy) {
+			delete aes;
+			aes = NULL;
+		}
+	}
+}
+
 Mgmt_params::Mgmt_params(char *ibuf, int isize, sClientInfo iclient, cClient *ic_client, cAesKey *aes_key, const char *aes_cipher, ManagerClientThread **imanagerClientThread) {
 	buf = ibuf;
 	size = isize;
@@ -387,15 +402,7 @@ Mgmt_params::Mgmt_params(char *ibuf, int isize, sClientInfo iclient, cClient *ic
 }
 
 Mgmt_params::~Mgmt_params() {
-	if(aes) {
-		u_char *data_enc;
-		size_t datalen_enc;
-		if(aes->encrypt((u_char*)"", 0, &data_enc, &datalen_enc, true)) {
-			send(client.handler, data_enc, datalen_enc, 0);
-			delete [] data_enc;
-		}
-		delete aes;
-	}
+	flushAes(true);
 }
 
 int Mgmt_help(Mgmt_params *params);
@@ -4535,6 +4542,7 @@ int Mgmt_upgrade_restart(Mgmt_params *params) {
 		__SYNC_UNLOCK(upgrade_restart_lock);
 		return(-1);
 	}
+	params->flushAes(true);
 	if(ok) {
 		restart.runRestart(params->client.handler, manager_socket_server, params->c_client);
 	}
