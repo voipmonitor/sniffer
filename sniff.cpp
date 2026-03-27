@@ -6518,7 +6518,7 @@ void process_packet_ipfix_qos(packet_s_process *packetS) {
 		return;
 	}
 	sIPFixQosStatsExt ipfix_data;
-	ipfix_data.load_from_json(packetS->data_() + 10, packetS->datalen_() - 10);
+	ipfix_data.load_from_json(packetS->data_() + IPFIX_QOS_PREFIX_LEN, packetS->datalen_() - IPFIX_QOS_PREFIX_LEN);
 	ipfix_data.getRtpStreams(&call->ipfixData, call->call_id.c_str());
 	/*
 	cout << " * IPFIX STREAMS for: " << call->call_id << endl;
@@ -6534,8 +6534,31 @@ void process_packet_ipfix_qos(packet_s_process *packetS) {
 	*/
 }
 
+void process_packet_hep_log(packet_s_process *packetS) {
+	Call *call = packetS->call ? packetS->call : NULL;
+	if(!call) {
+		return;
+	}
+	JsonItem json;
+	string data(packetS->data_() + HEP_LOG_PREFIX_LEN, packetS->datalen_() - HEP_LOG_PREFIX_LEN);
+	json.parse(data);
+	string log_text = json.getValue("log");
+	if(!log_text.empty()) {
+		u_int64_t time = packetS->getTimeUS();
+		vmIP ip_src;
+		ip_src.setFromString(json.getValue("ip_src").c_str());
+		vmIP ip_dst;
+		ip_dst.setFromString(json.getValue("ip_dst").c_str());
+		vmPort port_src;
+		port_src.setPort(atoi(json.getValue("port_src").c_str()));
+		vmPort port_dst;
+		port_dst.setPort(atoi(json.getValue("port_dst").c_str()));
+		call->addTextData(Call::_hep_log, time, ip_src, ip_dst, port_src, port_dst, log_text.c_str());
+	}
+}
+
 void process_packet_sip_register(packet_s_process *packetS) {
- 
+
 	Call *call = NULL;
 	CallBranch *c_branch = NULL;
 	char *s;
@@ -11736,6 +11759,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 	bool isMgcp = false;
 	bool isDiameter = false;
 	bool isIpfixQos = false;
+	bool isHepLog = false;
 	bool rtp = false;
 	bool other = false;
 	packetS->blockstore_addflag(11 /*pb lock flag*/);
@@ -11758,6 +11782,8 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 			isDiameter = true;
 		} else if(packetS->pflags.is_ipfix_qos()) {
 			isIpfixQos = true;
+		} else if(packetS->pflags.is_hep_log()) {
+			isHepLog = true;
 		}
 		if(packetS->pflags.get_tcp()) {
 			extern int opt_sip_tcp_reassembly_ext_quick_mod;
@@ -11848,6 +11874,8 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 			this->process_diameter(&packetS);
 		} else if(isIpfixQos) {
 			this->process_ipfix_qos(&packetS);
+		} else if(isHepLog) {
+			this->process_hep_log(&packetS);
 		} else {
 			packetS->blockstore_addflag(15 /*pb lock flag*/);
 			rtp = true;
@@ -11930,6 +11958,8 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 	} else if(packetS->typeContentIsIpFixQos()) {
 		//packetS->blockstore_addflag(102 /*pb lock flag*/);
 		preProcessPacket[ppt_pp_find_call]->push_packet(packetS);
+	} else if(packetS->typeContentIsHepLog()) {
+		preProcessPacket[ppt_pp_find_call]->push_packet(packetS);
 	} else if(packetS->typeContentIsDiameter()) {
 		preProcessPacket[ppt_pp_diameter]->push_packet(packetS);
 	} else if(!opt_t2_boost) {
@@ -11945,6 +11975,9 @@ void PreProcessPacket::process_FIND_CALL(packet_s_process *packetS) {
 	}
 	if(packetS->typeContentIsIpFixQos()) {
 		this->process_findIpfixQosCall(&packetS);
+	}
+	if(packetS->typeContentIsHepLog()) {
+		this->process_findHepLogCall(&packetS);
 	}
 	_process_FIND_CALL_push(packetS);
 }
@@ -11991,6 +12024,25 @@ void PreProcessPacket::_process_FIND_CALL_push(packet_s_process *packetS) {
 			} else {
 				if(!packetS->call->stopProcessing && !packetS->call->bad_flags_warning[0]) {
 					syslog(LOG_WARNING, "WARNING: bad flags in call: %s: alloc_flag: %i, stop_processing: %i (process_SIP_EXTEND)", 
+					       packetS->get_callid(),
+					       packetS->call->alloc_flag, packetS->call->stopProcessing);
+					packetS->call->bad_flags_warning[0] = true;
+				}
+			}
+		}
+		if(push_to_thread >= 0) {
+			preProcessPacket[push_to_thread]->push_packet(packetS);
+		} else {
+			PACKET_S_PROCESS_DESTROY(&packetS);
+		}
+	} else if(packetS->typeContentIsHepLog()) {
+		int push_to_thread = -1;
+		if(packetS->_findCall && packetS->call) {
+			if(packetS->call->isAllocFlagOK() && !packetS->call->stopProcessing) {
+				push_to_thread = ppt_pp_process_call;
+			} else {
+				if(!packetS->call->stopProcessing && !packetS->call->bad_flags_warning[0]) {
+					syslog(LOG_WARNING, "WARNING: bad flags in call: %s: alloc_flag: %i, stop_processing: %i (process_SIP_EXTEND)",
 					       packetS->get_callid(),
 					       packetS->call->alloc_flag, packetS->call->stopProcessing);
 					packetS->call->bad_flags_warning[0] = true;
@@ -12052,6 +12104,11 @@ void PreProcessPacket::process_PROCESS_CALL(packet_s_process *packetS, int threa
 		handle_mgcp(packetS, batch_process);
 	} else if(packetS->typeContentIsIpFixQos()) {
 		process_packet_ipfix_qos(packetS);
+		#if not PROCESS_PACKETS_INDIC_MOD_1
+		__SYNC_DEC(packetS->call->in_preprocess_queue_before_process_packet);
+		#endif
+	} else if(packetS->typeContentIsHepLog()) {
+		process_packet_hep_log(packetS);
 		#if not PROCESS_PACKETS_INDIC_MOD_1
 		__SYNC_DEC(packetS->call->in_preprocess_queue_before_process_packet);
 		#endif
@@ -12587,6 +12644,16 @@ void PreProcessPacket::process_ipfix_qos(packet_s_process **packetS_ref) {
 	}
 }
 
+void PreProcessPacket::process_hep_log(packet_s_process **packetS_ref) {
+	packet_s_process *packetS = *packetS_ref;
+	packetS->type_content = _pptc_hep_log;
+	if(packetS->next_action == _ppna_set) {
+		packetS->next_action = _ppna_push_to_extend;
+	} else {
+		preProcessPacket[ppt_extend]->push_packet(packetS);
+	}
+}
+
 bool PreProcessPacket::process_getCallID(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
 	bool exists_callid = false;
@@ -12663,9 +12730,21 @@ void PreProcessPacket::process_createSipCall(packet_s_process **packetS_ref, map
 void PreProcessPacket::process_findIpfixQosCall(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
 	JsonItem json;
-	string data(packetS->data_() + 10, packetS->datalen_() - 10);
+	string data(packetS->data_() + IPFIX_QOS_PREFIX_LEN, packetS->datalen_() - IPFIX_QOS_PREFIX_LEN);
 	json.parse(data);
 	string callid = json.getValue("CallID");
+	if(!callid.empty()) {
+		packetS->call = calltable->find_by_call_id((char*)callid.c_str(), 0, packetS->callid_alternative, packetS->getTime_s());
+		packetS->_findCall = true;
+	}
+}
+
+void PreProcessPacket::process_findHepLogCall(packet_s_process **packetS_ref) {
+	packet_s_process *packetS = *packetS_ref;
+	JsonItem json;
+	string data(packetS->data_() + HEP_LOG_PREFIX_LEN, packetS->datalen_() - HEP_LOG_PREFIX_LEN);
+	json.parse(data);
+	string callid = json.getValue("correlation_id");
 	if(!callid.empty()) {
 		packetS->call = calltable->find_by_call_id((char*)callid.c_str(), 0, packetS->callid_alternative, packetS->getTime_s());
 		packetS->_findCall = true;

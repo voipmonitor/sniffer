@@ -540,7 +540,7 @@ void cIPFixConnection::process_ipfix_QosStats(sIPFixHeader *header) {
 			break;
 		}
 		if(!callid->empty()) {
-			string json_data = "IPFIX_QOS:" + qos_ext.json(callid->c_str());
+			string json_data = IPFIX_QOS_PREFIX + qos_ext.json(callid->c_str());
 			createSimpleUdpDataPacket(sizeof(header_eth), &udpHeader,  &udpPacket,
 						  (u_char*)&header_eth, (u_char*)json_data.c_str(), json_data.length(), 0,
 						  src.ip, dst.ip, src.port, dst.port,

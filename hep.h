@@ -1,6 +1,8 @@
 #ifndef HEP_H
 #define HEP_H
 
+#define HEP_LOG_PREFIX "HEP_LOG:"
+#define HEP_LOG_PREFIX_LEN 8
 
 #include "cloud_router/cloud_router_base.h"
 
@@ -30,7 +32,8 @@ enum eHEP_ProtocolType {
 	_hep_prot_DIAMETER = 0x38,
 	_hep_prot_GSM_MAP = 0x39,
 	_hep_prot_RTCP_PION = 0x3a,
-	_hep_prot_CDR =	0x3c
+	_hep_prot_CDR = 0x3c,
+	_hep_prot_LOG = 0x64
 };
 
 enum eHEP_VendorType {

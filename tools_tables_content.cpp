@@ -527,5 +527,6 @@ int getDbTableEnumIndex(string *table) {
 	       !strcasecmp(table->c_str(), "cdr_siphistory") ? _t_cdr_siphistory :
 	       !strcasecmp(table->c_str(), "cdr_rtp") ? _t_cdr_rtp :
 	       !strcasecmp(table->c_str(), "cdr_sdp") ? _t_cdr_sdp :
+	       !strcasecmp(table->c_str(), "cdr_text_data") ? _t_cdr_text_data :
 	       !strcasecmp(table->c_str(), "cdr_conference") ? _t_cdr_conference : 0);
 }

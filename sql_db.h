@@ -1321,6 +1321,7 @@ struct sExistsColumns {
 	bool cdr_child_tar_part_calldate_ms;
 	bool cdr_child_country_code_calldate_ms;
 	bool cdr_child_sdp_calldate_ms;
+	bool cdr_child_text_data_calldate_ms;
 	bool cdr_child_conference_calldate_ms;
 	bool cdr_child_txt_calldate_ms;
 	bool cdr_child_flags_calldate_ms;
@@ -1394,6 +1395,7 @@ struct sExistsColumns {
 	bool cdr_country_code_calldate;
 	bool cdr_sdp_calldate;
 	bool cdr_sdp_ptime;
+	bool cdr_text_data_calldate;
 	bool cdr_txt_calldate;
 	bool cdr_ab_rtcp_loss_is_smallint_type[2];
 	bool cdr_ab_rtcp_loss_is_signed_type[2];

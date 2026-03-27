@@ -25,6 +25,7 @@ enum eDbTable {
 	_t_cdr_siphistory,
 	_t_cdr_rtp,
 	_t_cdr_sdp,
+	_t_cdr_text_data,
 	_t_cdr_conference
 };
 

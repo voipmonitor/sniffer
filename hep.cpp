@@ -106,8 +106,52 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen, vmIP ip) {
 		cout << " * HEP3 * " << endl
 		     << hepData.dump() << endl;
 	}
-	if((hepData.ip_protocol_family == PF_INET || hepData.ip_protocol_family == PF_INET6) &&
-	   (hepData.ip_protocol_id == IPPROTO_UDP || hepData.ip_protocol_id == IPPROTO_TCP || hepData.ip_protocol_id == IPPROTO_ESP)) {
+	if(hepData.protocol_type == _hep_prot_LOG) {
+		int dlink = PcapDumper::get_global_pcap_dlink_en10();
+		int pcap_handle_index = PcapDumper::get_global_handle_index_en10();
+		ether_header header_eth;
+		memset(&header_eth, 0, sizeof(header_eth));
+		header_eth.ether_type = htons(hepData.ip_protocol_family == PF_INET6 ? ETHERTYPE_IPV6 : ETHERTYPE_IP);
+		if(opt_hep_use_system_time) {
+			timespec system_time;
+			clock_gettime(CLOCK_REALTIME, &system_time);
+			hepData.timestamp_seconds = system_time.tv_sec;
+			hepData.timestamp_microseconds = system_time.tv_nsec / 1000;
+		}
+		string correlation_id;
+		if((hepData.set_flags & (1ull << _hep_chunk_internal_correlation_id)) &&
+		   hepData.internal_correlation_id.data_len() > 0) {
+			correlation_id.assign((char*)hepData.internal_correlation_id.data(),
+					      hepData.internal_correlation_id.data_len());
+		}
+		string log_text;
+		if(hepData.captured_packet_payload.data_len() > 0) {
+			log_text.assign((char*)hepData.captured_packet_payload.data(),
+					hepData.captured_packet_payload.data_len());
+		}
+		JsonExport json;
+		json.add("correlation_id", correlation_id);
+		json.add("log", log_text);
+		json.add("ip_src", hepData.ip_source_address.getString());
+		json.add("ip_dst", hepData.ip_destination_address.getString());
+		json.add("port_src", hepData.protocol_source_port.getPort());
+		json.add("port_dst", hepData.protocol_destination_port.getPort());
+		string json_data = HEP_LOG_PREFIX + json.getJson();
+		pcap_pkthdr *udpHeader;
+		u_char *udpPacket;
+		vmIP src_ip;
+		vmIP dst_ip;
+		vmPort src_port;
+		vmPort dst_port;
+		createSimpleUdpDataPacket(sizeof(header_eth), &udpHeader, &udpPacket,
+					  (u_char*)&header_eth, (u_char*)json_data.c_str(), json_data.length(), 0,
+					  src_ip, dst_ip, src_port, dst_port,
+					  hepData.timestamp_seconds, hepData.timestamp_microseconds);
+		pushPacket(&hepData, udpHeader, udpPacket, json_data.length(), false,
+			   dlink, pcap_handle_index);
+		return;
+	} else if((hepData.ip_protocol_family == PF_INET || hepData.ip_protocol_family == PF_INET6) &&
+		  (hepData.ip_protocol_id == IPPROTO_UDP || hepData.ip_protocol_id == IPPROTO_TCP || hepData.ip_protocol_id == IPPROTO_ESP)) {
 		int dlink = PcapDumper::get_global_pcap_dlink_en10();
 		int pcap_handle_index = PcapDumper::get_global_handle_index_en10();
 		ether_header header_eth;
@@ -714,7 +758,8 @@ void HEP_client_emulation(const char *pcap, vmIP client_ip, vmIP server_ip, vmIP
 				ppd.datalen = get_tcp_data_len(ppd.header_ip, ppd.header_tcp, &ppd.data, packet, caplen);
 			}
 			if(ppd.datalen) {
-				if(ppd.header_ip->get_saddr() == client_ip && ppd.header_ip->get_daddr() == server_ip) {
+				if((!client_ip.isSet() || ppd.header_ip->get_saddr() == client_ip) && 
+				   (!server_ip.isSet() || ppd.header_ip->get_daddr() == server_ip)) {
 					cout << " -> " << flush;
 					if(socket.write((u_char*)ppd.data, ppd.datalen)) {
 						cout << "ok write " << ppd.datalen << endl;

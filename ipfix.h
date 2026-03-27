@@ -1,6 +1,9 @@
 #ifndef IPFIX_H
 #define IPFIX_H
 
+#define IPFIX_QOS_PREFIX "IPFIX_QOS:"
+#define IPFIX_QOS_PREFIX_LEN 10
+
 #include <string>
 
 #include "ip.h"

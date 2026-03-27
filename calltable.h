@@ -1569,6 +1569,19 @@ public:
 		_momt_mt,
 		_momt_mo
 	};
+	enum eTextDataType {
+		_hep_log
+	};
+	struct sTextDataItem {
+		eTextDataType type;
+		u_int64_t time;
+		vmIPport src;
+		vmIPport dst;
+		string log;
+		static string getTypeStr(eTextDataType type) {
+			return(type == _hep_log ? "hep_log" : "");
+		}
+	};
 public:
 	bool is_ssl;			//!< call was decrypted
 	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
@@ -3092,6 +3105,8 @@ public:
 	void processPrematureResponses(bool batch_process);
 	void clearPrematureResponses();
 	
+	void addTextData(eTextDataType type, u_int64_t time, vmIP ip_src, vmIP ip_dst, vmPort port_src, vmPort port_dst, const char *log);
+	
 private:
 	
 	volatile int8_t callerd_confirm_rtp_by_both_sides_sdp[2];
@@ -3108,6 +3123,7 @@ private:
 	int payload_rslt;
 	map<string, bool> diameter_from_sip;
 	map<string, bool> diameter_to_sip;
+	list<sTextDataItem*> text_data;
 	list<packet_s_process*> *prematureResponses;
 public:
 	list<vmPort> sdp_ip0_ports[2];

@@ -6802,6 +6802,43 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
+	
+	if(_save_sip_history) {
+		this->query(string(
+		"CREATE TABLE IF NOT EXISTS `cdr_text_data` (\
+				" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
+				`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
+				(opt_cdr_partition ?
+					"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
+					"") + 
+				"`time` bigint unsigned DEFAULT NULL,\
+				 `saddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+				 `sport` smallint unsigned DEFAULT NULL,\
+				 `daddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+				 `dport` smallint unsigned DEFAULT NULL,\
+				 `type` char(10) DEFAULT NULL,\
+				 `text` mediumtext DEFAULT NULL,\
+			" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
+			KEY (`cdr_ID`)" + 
+			(opt_cdr_partition ? 
+				",KEY (`calldate`)" :
+				"") +
+			(opt_cdr_partition ?
+				"" :
+				",CONSTRAINT `cdr_text_data_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+		") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+		(opt_cdr_partition ?
+			(opt_cdr_partition_by_hours ?
+				string(" PARTITION BY RANGE COLUMNS(calldate)(\
+					 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+					 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+			 opt_cdr_partition_oldver ? 
+				string(" PARTITION BY RANGE (to_days(calldate))(\
+					 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+				string(" PARTITION BY RANGE COLUMNS(calldate)(\
+					 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+			""));
+	}
 
 	if(opt_conference_processing) {
 	this->query(string(
@@ -10676,6 +10713,7 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 				tables.push_back("cdr_tar_part");
 				tables.push_back("cdr_country_code");
 				tables.push_back("cdr_sdp");
+				tables.push_back("cdr_text_data");
 				if(opt_conference_processing) {
 					tables.push_back("cdr_conference");
 				}
@@ -11248,6 +11286,7 @@ void dropMysqlPartitionsCdr() {
 	_dropMysqlPartitions("cdr_tar_part", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_country_code", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_sdp", opt_cleandatabase_cdr, 0, sqlDb);
+	_dropMysqlPartitions("cdr_text_data", opt_cleandatabase_cdr, 0, sqlDb);
 	if(sqlDb->existsTable("cdr_conference")) {
 		_dropMysqlPartitions("cdr_conference", opt_cleandatabase_cdr, 0, sqlDb);
 	}
@@ -12226,6 +12265,7 @@ void cPartitions::fillTables(SqlDb *sqlDb) {
 	addTable("cdr", "cdr_tar_part");
 	addTable("cdr", "cdr_country_code");
 	addTable("cdr", "cdr_sdp");
+	addTable("cdr", "cdr_text_data");
 	if(sqlDb->existsTable("cdr_conference")) {
 		addTable("cdr", "cdr_conference");
 	}
@@ -12830,6 +12870,7 @@ void cTableColumnsTimePrecision::fill() {
 	addColumn("cdr_tar_part", "calldate", datetime_high_precision, _significant | _not_null, &existsColumns.cdr_tar_part_calldate, &existsColumns.cdr_child_tar_part_calldate_ms);
 	addColumn("cdr_country_code", "calldate", datetime_high_precision, _significant | _not_null, &existsColumns.cdr_country_code_calldate, &existsColumns.cdr_child_country_code_calldate_ms);
 	addColumn("cdr_sdp", "calldate", datetime_high_precision, _significant | _not_null, &existsColumns.cdr_sdp_calldate, &existsColumns.cdr_child_sdp_calldate_ms);
+	addColumn("cdr_text_data", "calldate", datetime_high_precision, _significant | _not_null, &existsColumns.cdr_text_data_calldate, &existsColumns.cdr_child_text_data_calldate_ms);
 	addColumn("cdr_conference", "calldate", datetime_high_precision, _significant | _not_null, &existsColumns.cdr_conference_calldate, &existsColumns.cdr_child_conference_calldate_ms);
 	addColumn("cdr_txt", "calldate", datetime_high_precision, _significant | _not_null, &existsColumns.cdr_txt_calldate, &existsColumns.cdr_child_txt_calldate_ms);
 	addColumn("cdr_flags", "calldate", datetime_high_precision, _significant | _not_null, NULL, &existsColumns.cdr_child_flags_calldate_ms);

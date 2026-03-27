@@ -605,7 +605,8 @@ struct packet_flags {
 	static const uint16_t DTLS_HANDSHAKE_MASK = (1 << 7);
 	static const uint16_t DIAMETER_MASK       = (1 << 8);
 	static const uint16_t IPFIX_QOS_MASK      = (1 << 9);
-	
+	static const uint16_t HEP_LOG_MASK        = (1 << 10);
+
 	uint16_t flags;
 
 	inline void init() { flags = 0; }
@@ -636,6 +637,9 @@ struct packet_flags {
 	
 	inline void set_ipfix_qos(bool value) { flags = (flags & ~IPFIX_QOS_MASK) | (value ? IPFIX_QOS_MASK : 0); }
 	inline bool is_ipfix_qos() { return((flags & IPFIX_QOS_MASK) != 0); }
+	
+	inline void set_hep_log(bool value) { flags = (flags & ~HEP_LOG_MASK) | (value ? HEP_LOG_MASK : 0); }
+	inline bool is_hep_log() { return((flags & HEP_LOG_MASK) != 0); }
 
 	inline bool other_processing() {
 		return(is_ss7());
