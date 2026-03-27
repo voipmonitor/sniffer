@@ -9842,7 +9842,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				intToString(useSensorId);
 				//srcmac ;
 			if (existsColumns.register_rrd_count) {
-				query = query + ", " + intToString(reg.regrrddiff) + ")";
+				query = query + ", " + intToString((int)reg.regrrddiff_ms) + ")";
 			} else {
 				query = query + ")";
 			}
@@ -9877,7 +9877,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				}
 
 				SqlDb_row rsltRow = sqlDbSaveCall->fetchRow();
-				int rrd_avg = reg.regrrddiff;
+				int rrd_avg = (int)reg.regrrddiff_ms;
 				int rrd_count = 1;
 				//char srcmac[24];
 				//snprintf(srcmac, 23, "%lu", regsrcmac);
@@ -9892,7 +9892,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					if (existsColumns.register_rrd_count) {
 						rrd_count = atoi(rsltRow["rrd_count"].c_str());
 						if (rrd_count < 10) rrd_count ++;
-						rrd_avg = (atoi(rsltRow["rrd_avg"].c_str()) * (rrd_count - 1) + reg.regrrddiff) / rrd_count;
+						rrd_avg = (int)((atoi(rsltRow["rrd_avg"].c_str()) * (rrd_count - 1) + reg.regrrddiff_ms) / rrd_count);
 					}
 
 					string query = "DELETE FROM " + (string)register_table + " WHERE ID = '" + (rsltRow["ID"]).c_str() + "'";
@@ -14114,7 +14114,7 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, vector<s
 	set_global_flags(newcall->flags);
 
 	string call_idS = call_id_len ? string(call_id, call_id_len) : string(call_id);
-	if(call_type == REGISTER) {
+	if(call_type == REGISTER || call_type == REGISTER_RESPONSE_PREMATURE) {
 		lock_registers_listMAP();
 		registers_listMAP[call_idS] = newcall;
 		newcall->registers_counter_inc();
@@ -15897,31 +15897,58 @@ void Call::moveDiameterPacketsToPcap(bool enableSave) {
 	}
 }
 
-void Call::addPrematureResponse(packet_s_process *packetS) {
+void Call::addPrematureResponse(packet_s_process *packetS, sCseq cseq) {
 	if(!prematureResponses) {
-		prematureResponses = new FILE_LINE(0) list<packet_s_process*>;
+		prematureResponses = new FILE_LINE(0) list<sPrematureResponse>;
 	}
-	packet_s_process *packetS_clone = packetS->clone();
-	packetS_clone->call = this;
-	prematureResponses->push_back(packetS_clone);
+	sPrematureResponse item;
+	item.cseq = cseq;
+	item.packet = packetS->clone();
+	item.packet->call = this;
+	prematureResponses->push_back(item);
 }
 
-void Call::processPrematureResponses(bool batch_process) {
+void Call::processPrematureResponses(bool batch_process, sCseq cseq) {
 	if(prematureResponses) {
 		extern void process_packet_sip_call(packet_s_process *packetS, bool batch_process);
-		for(list<packet_s_process*>::iterator iter = prematureResponses->begin(); iter != prematureResponses->end(); iter++) {
-			process_packet_sip_call(*iter, batch_process);
-			PACKET_S_PROCESS_DESTROY(&*iter);
+		for(list<sPrematureResponse>::iterator iter = prematureResponses->begin(); iter != prematureResponses->end(); ) {
+			if(iter->cseq == cseq) {
+				process_packet_sip_call(iter->packet, batch_process);
+				PACKET_S_PROCESS_DESTROY(&iter->packet);
+				iter = prematureResponses->erase(iter);
+			} else {
+				++iter;
+			}
 		}
-		delete prematureResponses;
-		prematureResponses = NULL;
+		if(prematureResponses->empty()) {
+			delete prematureResponses;
+			prematureResponses = NULL;
+		}
 	}
 }
 
+void Call::processPrematureRegisterResponses(sCseq cseq) {
+	if(prematureResponses) {
+		extern void process_packet_sip_register(packet_s_process *packetS);
+		for(list<sPrematureResponse>::iterator iter = prematureResponses->begin(); iter != prematureResponses->end(); ) {
+			if(iter->cseq == cseq) {
+				process_packet_sip_register(iter->packet);
+				PACKET_S_PROCESS_DESTROY(&iter->packet);
+				iter = prematureResponses->erase(iter);
+			} else {
+				++iter;
+			}
+		}
+		if(prematureResponses->empty()) {
+			delete prematureResponses;
+			prematureResponses = NULL;
+		}
+	}
+}
 void Call::clearPrematureResponses() {
 	if(prematureResponses) {
-		for(list<packet_s_process*>::iterator iter = prematureResponses->begin(); iter != prematureResponses->end(); iter++) {
-			PACKET_S_PROCESS_DESTROY(&*iter);
+		for(list<sPrematureResponse>::iterator iter = prematureResponses->begin(); iter != prematureResponses->end(); iter++) {
+			PACKET_S_PROCESS_DESTROY(&iter->packet);
 		}
 		delete prematureResponses;
 		prematureResponses = NULL;

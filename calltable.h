@@ -64,6 +64,7 @@ typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
 #define INVITE 1
 #define REINVITE 1000
 #define INVITE_RESPONSE_PREMATURE -1
+#define REGISTER_RESPONSE_PREMATURE -2
 #define BYE 2
 #define CANCEL 3
 #define RES10X 100
@@ -1464,7 +1465,7 @@ public:
 			reg200count = 0;
 			regstate = 0;
 			regresponse = false;
-			regrrddiff = -1;
+			regrrddiff_ms = -1;
 			//regsrcmac = 0;
 			reg_tcp_seq = NULL;
 			last_sip_method = 0;
@@ -1483,8 +1484,8 @@ public:
 		int regstate;
 		bool regresponse;
 		int register_expires;
-		timeval regrrdstart;		// time of first REGISTER
-		int regrrddiff;			// RRD diff time REGISTER<->OK in [ms]- RFC6076
+		map<u_int32_t, u_int64_t> regrrdstart_us;
+		double regrrddiff_ms;		// RRD diff time REGISTER<->OK - RFC6076
 		//uint64_t regsrcmac;		// mac if ether layer present in REGISTER
 		list<u_int32_t> *reg_tcp_seq;
 		int last_sip_method;
@@ -1581,6 +1582,10 @@ public:
 		static string getTypeStr(eTextDataType type) {
 			return(type == _hep_log ? "hep_log" : "");
 		}
+	};
+	struct sPrematureResponse {
+		sCseq cseq;
+		packet_s_process *packet;
 	};
 public:
 	bool is_ssl;			//!< call was decrypted
@@ -3101,8 +3106,9 @@ public:
 		return(payload_rslt);
 	}
 	
-	void addPrematureResponse(packet_s_process *packetS);
-	void processPrematureResponses(bool batch_process);
+	void addPrematureResponse(packet_s_process *packetS, sCseq cseq);
+	void processPrematureResponses(bool batch_process, sCseq cseq);
+	void processPrematureRegisterResponses(sCseq cseq);
 	void clearPrematureResponses();
 	
 	void addTextData(eTextDataType type, u_int64_t time, vmIP ip_src, vmIP ip_dst, vmPort port_src, vmPort port_dst, const char *log);
@@ -3124,7 +3130,7 @@ private:
 	map<string, bool> diameter_from_sip;
 	map<string, bool> diameter_to_sip;
 	list<sTextDataItem*> text_data;
-	list<packet_s_process*> *prematureResponses;
+	list<sPrematureResponse> *prematureResponses;
 public:
 	list<vmPort> sdp_ip0_ports[2];
 	bool error_negative_payload_length;

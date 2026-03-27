@@ -302,7 +302,7 @@ public:
 	u_int16_t vlan;
 	RegisterStates states_state;
 	RegisterStates states_failed;
-	u_int64_t rrd_sum;
+	double rrd_sum;
 	u_int32_t rrd_count;
 	string reg_call_id;
 	list<u_int32_t> reg_tcp_seq;

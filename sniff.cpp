@@ -3880,10 +3880,10 @@ inline bool init_call_branch(Call *call, CallBranch *c_branch, packet_s_process 
 			// destroy all REGISTER from memory within 30 seconds 
 			call->set_destroy_call_at(packetS->getTime_s(), opt_register_timeout);
 
-			// is it first register? set time and src mac if available
-			if (call->reg.regrrddiff == -1) {
-				call->reg.regrrdstart.tv_sec = packetS->getTime_s();
-				call->reg.regrrdstart.tv_usec = packetS->getTime_us();
+			if(packetS->cseq.is_set()) {
+				if(!call->reg.regrrdstart_us[packetS->cseq.number]) {
+					call->reg.regrrdstart_us[packetS->cseq.number] = packetS->getTimeUS();
+				}
 
 /*				//Parse ether header for src mac else 0
 				if(packetS->dlt == DLT_EN10MB) {
@@ -4000,6 +4000,23 @@ inline bool init_call_branch(Call *call, CallBranch *c_branch, packet_s_process 
 
 }
 
+inline void new_invite_register__set_fbasename(Call *call, packet_s_process *packetS, char *callidstr) {
+	if(opt_fbasename_header[0]) {
+		char *s;
+		unsigned long l;
+		s = gettag_sip(packetS, opt_fbasename_header, &l);
+		if(l && l < 255) {
+			if(l > MAX_FNAME - 1) {
+				l = MAX_FNAME - 1;
+			}
+			strncpy(call->fbasename, s, l);
+			call->fbasename[l] = 0;
+			return;
+		}
+	}
+	strcpy_null_term(call->fbasename, callidstr);
+}
+
 inline void new_invite_register__init_branch(CallBranch *c_branch, Call *call, s_detect_callerd *data_callerd) {
 	c_branch->branch_call_id = call->call_id;
 	c_branch->branch_fbasename = call->fbasename;
@@ -4086,6 +4103,18 @@ inline void new_invite_register__srvcc(CallBranch *c_branch, Call *call) {
 	}
 }
 
+inline void new_invite_register__open_register_pcap(Call *call, u_int64_t time_us) {
+	if(enable_save_register_pcap(call)) {
+		call->fname_register = time_us;
+		string pathfilename = call->get_pathfilename(tsf_reg);
+		PcapDumper *dumper = enable_pcap_split ? call->getPcapSip() : call->getPcap();
+		if(dumper->open(tsf_reg, pathfilename.c_str(), call->useHandle, call->useDlt)) {
+			if(verbosity > 3) {
+				syslog(LOG_NOTICE,"pcap_filename: [%s]\n", pathfilename.c_str());
+			}
+		}
+	}
+}
 inline void new_invite_register__open_call_pcap(Call *call) {
 	if(enable_save_sip_rtp(call) &&
 	   (enable_pcap_split ? enable_save_sip(call) : enable_save_sip_rtp(call))) {
@@ -4172,7 +4201,8 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 			delete nat_aliases;
 		}
 		if(verbosity > 1)
-			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
+			syslog(LOG_NOTICE, "%s skipped due to ip or tel capture rules\n",
+			       sip_method == REGISTER ? "register" : "call");
 		return NULL;
 	}
 
@@ -4184,27 +4214,11 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 				    packetS->getTimeUS(), packetS->saddr_(), packetS->source_(), 
 				    get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_(), ci, map_calls);
 	
-	bool use_fbasename_header = false;
-	if(opt_fbasename_header[0]) {
-		char *s;
-		unsigned long l;
-		s = gettag_sip(packetS, opt_fbasename_header, &l);
-		if(l && l < 255) {
-			if(l > MAX_FNAME - 1) {
-				l = MAX_FNAME - 1;
-			}
-			strncpy(call->fbasename, s, l);
-			call->fbasename[l] = 0;
-			use_fbasename_header = true;
-		}
-	}
-	if(!use_fbasename_header) {
-		strcpy_null_term(call->fbasename, callidstr);
-	}
-	
+	new_invite_register__set_fbasename(call, packetS, callidstr);
+
 	CallBranch *c_branch = &call->first_branch;
 	new_invite_register__init_branch(c_branch, call, &data_callerd);
-	
+
 	new_invite_register__copy_packet_flags(call, packetS);
 	
 	call->set_first_packet_time_us(packetS->getTimeUS());
@@ -4228,15 +4242,8 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	}
 
 	// opening dump file
-	if(call->typeIs(REGISTER) && enable_save_register_pcap(call)) {
-		call->fname_register = packetS->getTimeUS();
-		string pathfilename = call->get_pathfilename(tsf_reg);
-		PcapDumper *dumper = enable_pcap_split ? call->getPcapSip() : call->getPcap();
-		if(dumper->open(tsf_reg, pathfilename.c_str(), call->useHandle, call->useDlt)) {
-			if(verbosity > 3) {
-				syslog(LOG_NOTICE,"pcap_filename: [%s]\n", pathfilename.c_str());
-			}
-		}
+	if(call->typeIs(REGISTER)) {
+		new_invite_register__open_register_pcap(call, packetS->getTimeUS());
 	} else if(call->typeIs(INVITE) || call->typeIs(MESSAGE)) {
 		new_invite_register__open_call_pcap(call);
 	}
@@ -4296,13 +4303,14 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	return call;
 }
 
-inline Call *new_premature_response_call(packet_s_process *packetS, int sip_method, char *callidstr, int8_t ci = -1, map<string, Call*> *map_calls = NULL) {
+inline Call *new_premature_response_call_register(packet_s_process *packetS, int sip_method, int premature_type, char *callidstr, int8_t ci = -1, map<string, Call*> *map_calls = NULL) {
 	if(opt_callslimit != 0 and opt_callslimit < (calls_counter + registers_counter)) {
 		if(verbosity > 0) {
 			static u_int64_t lastTimeSyslog = 0;
 			u_int64_t actTime = getTimeMS();
 			if(actTime - 5 * 60000 > lastTimeSyslog) {
-				syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls_counter + registers_counter);
+				syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring %s\n", opt_callslimit, calls_counter + registers_counter,
+				       premature_type == REGISTER_RESPONSE_PREMATURE ? "register" : "call");
 				lastTimeSyslog = actTime;
 			}
 		}
@@ -4323,29 +4331,14 @@ inline Call *new_premature_response_call(packet_s_process *packetS, int sip_meth
 	}
 	if(flags & FLAG_SKIPCDR) {
 		if(verbosity > 1)
-			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
+			syslog(LOG_NOTICE, "%s skipped due to ip or tel capture rules\n",
+			       premature_type == REGISTER_RESPONSE_PREMATURE ? "register" : "call");
 		return NULL;
 	}
-	Call *call = calltable->add(INVITE_RESPONSE_PREMATURE, callidstr, min(strlen(callidstr), (size_t)MAX_FNAME), packetS->callid_alternative,
-				    packetS->getTimeUS(), packetS->saddr_(), packetS->source_(), 
+	Call *call = calltable->add(premature_type, callidstr, min(strlen(callidstr), (size_t)MAX_FNAME), packetS->callid_alternative,
+				    packetS->getTimeUS(), packetS->saddr_(), packetS->source_(),
 				    get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_(), ci, map_calls);
-	bool use_fbasename_header = false;
-	if(opt_fbasename_header[0]) {
-		char *s;
-		unsigned long l;
-		s = gettag_sip(packetS, opt_fbasename_header, &l);
-		if(l && l < 255) {
-			if(l > MAX_FNAME - 1) {
-				l = MAX_FNAME - 1;
-			}
-			strncpy(call->fbasename, s, l);
-			call->fbasename[l] = 0;
-			use_fbasename_header = true;
-		}
-	}
-	if(!use_fbasename_header) {
-		strcpy_null_term(call->fbasename, callidstr);
-	}
+	new_invite_register__set_fbasename(call, packetS, callidstr);
 	CallBranch *c_branch = &call->first_branch;
 	c_branch->branch_call_id = call->call_id;
 	c_branch->branch_fbasename = call->fbasename;
@@ -4684,7 +4677,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 	if(call->typeIs(INVITE_RESPONSE_PREMATURE) && packetS->sip_method != INVITE) {
 		save_live_packet(packetS);
 		if(packetS->sip_response) {
-			call->addPrematureResponse(packetS);
+			call->addPrematureResponse(packetS, packetS->cseq);
 		}
 		goto endsip;
 	}
@@ -6441,7 +6434,7 @@ endsip:
 	}
 	
 	if(prematureResponsesProcess && call) {
-		call->processPrematureResponses(batch_process);
+		call->processPrematureResponses(batch_process, packetS->cseq);
 	}
 }
 
@@ -6564,6 +6557,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 	char *s;
 	unsigned long l;
 	bool goto_endsip = false;
+	bool prematureRegisterResponsesProcess = false;
 	const char *logPacketSipMethodCallDescr = NULL;
 
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
@@ -6621,12 +6615,60 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		if(packetS->sip_method == REGISTER) {
 			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
 			call_created = true;
+		} else {
+			extern bool opt_enable_premature_response;
+			if(opt_enable_premature_response && packetS->cseq.method == REGISTER) {
+				call = new_premature_response_call_register(packetS, packetS->sip_method, REGISTER_RESPONSE_PREMATURE, packetS->get_callid());
+				if(call) {
+					call->addPrematureResponse(packetS, packetS->cseq);
+				}
+				goto endsip;
+			}
 		}
 		if(!call) {
 			goto endsip;
 		}
 	}
-	
+	if(call->typeIs(REGISTER_RESPONSE_PREMATURE)) {
+		if(packetS->sip_method == REGISTER) {
+			s_detect_callerd data_callerd;
+			detect_callerd(packetS, REGISTER, &data_callerd);
+			unsigned long int flags = 0;
+			sNatAliases *nat_aliases = NULL;
+			set_global_flags(flags);
+			flags = setCallFlags(flags, &nat_aliases,
+					     packetS->saddr_(), packetS->daddr_(),
+					     data_callerd.caller.c_str(), data_callerd.called().c_str(),
+					     data_callerd.caller_domain.c_str(), data_callerd.called_domain().c_str(),
+					     &packetS->parseContents);
+			if(flags & FLAG_SKIPCDR) {
+				if(nat_aliases) {
+					delete nat_aliases;
+				}
+				goto endsip;
+			}
+			call->type_base = REGISTER;
+			call->set_first_packet_time_us(packetS->getTimeUS());
+			call->flags = flags;
+			call->nat_aliases = nat_aliases;
+			c_branch = &call->first_branch;
+			new_invite_register__init_branch(c_branch, call, &data_callerd);
+			new_invite_register__copy_packet_flags(call, packetS);
+			if(!init_call_branch(call, c_branch, packetS, REGISTER, &data_callerd)) {
+				call = NULL;
+				goto endsip;
+			}
+			new_invite_register__no_record_header(call, packetS);
+			new_invite_register__fraud(call, packetS);
+			++counter_registers;
+			new_invite_register__open_register_pcap(call, packetS->getTimeUS());
+			call_created = true;
+			prematureRegisterResponsesProcess = true;
+		} else {
+			call->addPrematureResponse(packetS, packetS->cseq);
+			goto endsip;
+		}
+	}
 	c_branch = call->branch_main();
 	
 	call->updateTimeShift(packetS->getTimeUS());
@@ -6668,6 +6710,9 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			call->reg.regcount = 1;
 			if(packetS->cseq.is_set()) {
 				call->reg.registercseq = packetS->cseq;
+				if(!call->reg.regrrdstart_us[packetS->cseq.number]) {
+					call->reg.regrrdstart_us[packetS->cseq.number] = packetS->getTimeUS();
+				}
 			}
 			goto endsip_save_packet;
 		}
@@ -6683,6 +6728,9 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			call->reg.regcount = 1;
 			if(packetS->cseq.is_set()) {
 				call->reg.registercseq = packetS->cseq;
+				if(!call->reg.regrrdstart_us[packetS->cseq.number]) {
+					call->reg.regrrdstart_us[packetS->cseq.number] = packetS->getTimeUS();
+				}
 			}
 			if(logPacketSipMethodCall_enable) {
 				logPacketSipMethodCallDescr = "to much register attempts without OK or 401 responses";
@@ -6691,6 +6739,9 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		}
 		if(packetS->cseq.is_set()) {
 			call->reg.registercseq = packetS->cseq;
+			if(!call->reg.regrrdstart_us[packetS->cseq.number]) {
+				call->reg.regrrdstart_us[packetS->cseq.number] = packetS->getTimeUS();
+			}
 		}
 		if(!call_created && packetS->pflags.get_tcp()) {
 			u_int32_t seq = packetS->tcp_seq();
@@ -6721,15 +6772,18 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			fraudConnectCall(call, packetS->getTimeval());
 		}
 		if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER OK Call-ID[%s]", call->call_id.c_str());
-		if(packetS->cseq.is_set() && packetS->cseq == call->reg.registercseq) {
-			call->reg.reg200count++;
-			// registration OK 
-			call->reg.regstate = rs_OK;
-
-			// diff in ms
-			call->reg.regrrddiff = 1000 * (packetS->getTime_s() - call->reg.regrrdstart.tv_sec) + (packetS->getTime_us() - call->reg.regrrdstart.tv_usec) / 1000;
+		if(packetS->cseq.is_set()) {
+			map<u_int32_t, u_int64_t>::iterator rrd_iter = call->reg.regrrdstart_us.find(packetS->cseq.number);
+			if(rrd_iter != call->reg.regrrdstart_us.end()) {
+				call->reg.reg200count++;
+				call->reg.regstate = rs_OK;
+				u_int64_t packet_time_us = packetS->getTimeUS();
+				call->reg.regrrddiff_ms = packet_time_us > rrd_iter->second ? (double)(packet_time_us - rrd_iter->second) / 1000 : 0;
+				call->reg.regrrdstart_us.erase(rrd_iter);
+			} else {
+				call->reg.regstate = rs_UnknownMessageOK;
+			}
 		} else {
-			// OK to unknown msg close the call
 			call->reg.regstate = rs_UnknownMessageOK;
 		}
 		save_packet(call, packetS, _t_packet_sip);
@@ -6857,7 +6911,7 @@ endsip:
 				       packetS->data_(), packetS->datalen_());
 	}
 	
-	if(call && packetS->sip_method != REGISTER) {
+	if(call && c_branch && packetS->sip_method != REGISTER) {
 		s = gettag_sip(packetS, "\nUser-Agent:", &l);
 		if(s) {
 			c_branch->b_ua = string(s, l);
@@ -6866,7 +6920,6 @@ endsip:
 			}
 		}
 	}
-	
 	if(call) {
 		call->reg.last_sip_method = packetS->sip_method;
 	}
@@ -6878,11 +6931,13 @@ endsip:
 			#else
 			0
 			#endif
-			, packetS->sip_method, packetS->lastSIPresponseNum, packetS->getTimeval(), 
+			, packetS->sip_method, packetS->lastSIPresponseNum, packetS->getTimeval(),
 			packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(),
 			c_branch, logPacketSipMethodCallDescr);
 	}
-	
+	if(prematureRegisterResponsesProcess && call) {
+		call->processPrematureRegisterResponses(packetS->cseq);
+	}
 }
 
 void process_packet_sip_other_sip_msg(packet_s_process *packetS) {
@@ -10232,7 +10287,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 								if((enableCreateCallRslt = packetS->enableCreateCall()) != 0) {
 									packetS->call_created = enableCreateCallRslt == 1 ?
 												 new_invite_register(packetS, packetS->sip_method, packetS->get_callid(), -1, &next_thread_data->map_calls) :
-												 new_premature_response_call(packetS, packetS->sip_method, packetS->get_callid(), -1, &next_thread_data->map_calls);
+												 new_premature_response_call_register(packetS, packetS->sip_method, INVITE_RESPONSE_PREMATURE, packetS->get_callid(), -1, &next_thread_data->map_calls);
 									packetS->_createCall = true;
 								}
 								packetS->_findCall = true;
@@ -12722,7 +12777,7 @@ void PreProcessPacket::process_createSipCall(packet_s_process **packetS_ref, map
 	if(packetS->_findCall && (enableCreateCallRslt = packetS->enableCreateCall()) != 0) {
 		packetS->call_created = enableCreateCallRslt == 1 ?
 					 new_invite_register(packetS, packetS->sip_method, packetS->get_callid(), -1, map_calls) :
-					 new_premature_response_call(packetS, packetS->sip_method, packetS->get_callid(), -1, map_calls);
+					 new_premature_response_call_register(packetS, packetS->sip_method, INVITE_RESPONSE_PREMATURE, packetS->get_callid(), -1, map_calls);
 		packetS->_createCall = true;
 	}
 }

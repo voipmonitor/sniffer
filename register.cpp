@@ -569,6 +569,7 @@ Register::~Register() {
 void Register::update(Call *call, eRegisterState state) {
 	char *tmp_str;
 	CallBranch *c_branch = call->branch_main();
+	lock_states();
 	if(state == rs_OK) {
 		if(digest_username) {
 			REG_FREE_STR(digest_username);
@@ -626,6 +627,7 @@ void Register::update(Call *call, eRegisterState state) {
 	} else {
 		reg_tcp_seq.clear();
 	}
+	unlock_states();
 }
 
 bool Register::needSaveToDb()
@@ -634,8 +636,8 @@ bool Register::needSaveToDb()
 }
 
 void Register::addState(Call *call) {
-	flags = call->flags;
 	lock_states();
+	flags = call->flags;
 	bool notFailed = convRegisterState(call) != rs_Failed;
 	RegisterStates *states = notFailed ? &states_state : &states_failed;
 	bool exp_state = false;
@@ -661,8 +663,8 @@ void Register::addState(Call *call) {
 	}
 	if(notFailed) {
 		RegisterState *state = states->last();
-		if(state->isOK() && call->reg.regrrddiff > 0) {
-			rrd_sum += call->reg.regrrddiff;
+		if(state->isOK() && call->reg.regrrddiff_ms >= 0) {
+			rrd_sum += call->reg.regrrddiff_ms;
 			++rrd_count;
 		}
 		if(opt_enable_fraud && isFraudReady()) {
@@ -1177,7 +1179,7 @@ bool Register::stateIsOK() {
 u_int32_t Register::getStateFrom_s() {
 	lock_states();
 	RegisterState *state = getLastState();
-	u_int32_t state_from = state->state_from_us ? TIME_US_TO_S(state->state_from_us) : 0;
+	u_int32_t state_from = state && state->state_from_us ? TIME_US_TO_S(state->state_from_us) : 0;
 	unlock_states();
 	return(state_from);
 }
@@ -1382,9 +1384,9 @@ void Registers::add(Call *call) {
 	lock_registers();
 	map<RegisterId, Register*>::iterator iter = registers.find(rid);
 	if(iter == registers.end()) {
-		reg->addState(call);
 		registers[rid] = reg;
 		unlock_registers();
+		reg->addState(call);
 	} else {
 		Register *existsReg = iter->second;
 		existsReg->lock_states();
@@ -1719,7 +1721,7 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 			} else {
 				list<RecordArrayField2> *l = &dupl_map_iter->second;
 				bool exists = false;
-				for(list<RecordArrayField2>::iterator iter = l->begin(); iter != l->begin(); iter++) {
+				for(list<RecordArrayField2>::iterator iter = l->begin(); iter != l->end(); iter++) {
 					if(*iter == duplCheck) {
 						exists = true;
 						break;
