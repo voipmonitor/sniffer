@@ -12772,7 +12772,7 @@ unsigned cTableColumnsTimePrecision::checkExistsPrecision(const char *onlyTable,
 	}
 	unsigned rslt = 0;
 	map<string, bool> tableExistsCache;
-	map<string, vector<string>> altersPerTable;
+	map<string, vector<string> > altersPerTable;
 	for(list<sColumn>::iterator iter = columns.begin(); iter != columns.end(); iter++) {
 		if(onlySignificant && !(iter->flag & _significant)) {
 			continue;
@@ -12822,7 +12822,7 @@ unsigned cTableColumnsTimePrecision::checkExistsPrecision(const char *onlyTable,
 	}
 	if(alterToHighPrecisions) {
 		map<string, u_int64_t> tableSize;
-		for(map<string, vector<string>>::iterator it = altersPerTable.begin(); it != altersPerTable.end(); it++) {
+		for(map<string, vector<string> >::iterator it = altersPerTable.begin(); it != altersPerTable.end(); it++) {
 			if(sqlDb->logNeedAlter(it->first,
 					       "time accuracy in milliseconds",
 					       "ALTER TABLE " + it->first + " " + implode(it->second, ", ") + ";",
