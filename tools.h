@@ -2856,7 +2856,8 @@ string gunzipToTemp(const char *zipFilename, string *error, bool autoDeleteAtExi
 string _gunzip_s(const char *zipFilename, const char *unzipFilename);
 string __gunzip_s(FILE *zip, FILE *unzip);
 int __gunzip(FILE *zip, FILE *unzip);
-bool isGunzip(const char *zipFilename);
+bool isGzip(const char *zipFilename);
+bool isZstd(const char *zipFilename);
 
 string url_encode(const string &value);
 string json_encode(const char *str);

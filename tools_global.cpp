@@ -2396,7 +2396,7 @@ void cZstd::setStrategy(int strategy) {
 }
 
 bool cZstd::isCompress(u_char *buffer, size_t bufferLength) {
-	return(bufferLength > 4 && buffer && buffer[0] == 0x28 && buffer[1] == 0xB5 && buffer[2] == 0x2F && buffer[3] == 0xFD);
+	return(isZstd(buffer, bufferLength));
 }
 
 bool cZstd::initCompress() {

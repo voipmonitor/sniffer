@@ -1039,7 +1039,13 @@ private:
 		bool open(const char *filename, u_int64_t createAt) {
 			this->filename = filename;
 			this->createAt = createAt;
-			fileZipHandler =  new FILE_LINE(30001) FileZipHandler(8 * 1024, 0, FileZipHandler::gzip);
+			fileZipHandler =  new FILE_LINE(30001) FileZipHandler(8 * 1024, 0,
+				#ifdef HAVE_LIBZSTD
+				FileZipHandler::zstd
+				#else
+				FileZipHandler::gzip
+				#endif
+			);
 			fileZipHandler->open(tsf_na, this->filename.c_str());
 			if(fileZipHandler->_open_write()) {
 				is_open = true;

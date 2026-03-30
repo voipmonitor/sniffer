@@ -1022,6 +1022,10 @@ private:
 };
 
 
+inline bool isGzip(u_char *buffer, size_t bufferLength) {
+	return(bufferLength >= 2 && buffer && buffer[0] == 0x1F && buffer[1] == 0x8B);
+}
+
 class cGzip {
 public:
 	enum eOperation {
@@ -1069,6 +1073,18 @@ private:
 };
 #endif
 
+
+inline bool isZstdSupport() {
+	#ifdef HAVE_LIBZSTD
+	return(true);
+	#else
+	return(false);
+	#endif
+}
+
+inline bool isZstd(u_char *buffer, size_t bufferLength) {
+	return(bufferLength >= 4 && buffer && buffer[0] == 0x28 && buffer[1] == 0xB5 && buffer[2] == 0x2F && buffer[3] == 0xFD);
+}
 
 #ifdef HAVE_LIBZSTD
 class cZstd {

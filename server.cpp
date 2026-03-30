@@ -900,9 +900,14 @@ void cSnifferServerConnection::cp_query() {
 	while(!server->isTerminate() &&
 	      (query = socket->readBlock(&queryLength, cSocket::_te_aes, "", counter > 0, timeout, 1024 * 1024)) != NULL) {
 		string queryStr;
-		cGzip gzipDecompressQuery;
-		if(gzipDecompressQuery.isCompress(query, queryLength)) {
+		if(isGzip(query, queryLength)) {
+			cGzip gzipDecompressQuery;
 			queryStr = gzipDecompressQuery.decompressString(query, queryLength);
+		#ifdef HAVE_LIBZSTD
+		} else if(isZstd(query, queryLength)) {
+			cZstd zstdDecompressQuery;
+			queryStr = zstdDecompressQuery.decompressString(query, queryLength);
+		#endif
 		} else {
 			queryStr = string((char*)query, queryLength);
 		}
@@ -919,12 +924,27 @@ void cSnifferServerConnection::cp_query() {
 			if(sqlDb->query(queryStr)) {
 				string rsltQuery = useCsvRslt ? sqlDb->getCsvResult() : sqlDb->getJsonResult();
 				if(rsltQuery.length() > 100) {
-					u_char *rsltQueryGzip;
-					size_t rsltQueryGzipLength;
-					cGzip gzipCompressResult;
-					if(gzipCompressResult.compressString(rsltQuery, &rsltQueryGzip, &rsltQueryGzipLength)) {
-						socket->writeBlock(rsltQueryGzip, rsltQueryGzipLength, cSocket::_te_aes);
-						delete [] rsltQueryGzip;
+					bool okCompress = false;
+					#ifdef HAVE_LIBZSTD
+					if(snifferServerOptions.type_compress == _cs_compress_zstd) {
+						cZstd zstdCompressResult;
+						u_char *rsltQueryZstd;
+						size_t rsltQueryZstdLength;
+						if(zstdCompressResult.compressString(rsltQuery, &rsltQueryZstd, &rsltQueryZstdLength)) {
+							socket->writeBlock(rsltQueryZstd, rsltQueryZstdLength, cSocket::_te_aes);
+							delete [] rsltQueryZstd;
+							okCompress = true;
+						}
+					}
+					#endif
+					if(!okCompress) {
+						cGzip gzipCompressResult;
+						u_char *rsltQueryGzip;
+						size_t rsltQueryGzipLength;
+						if(gzipCompressResult.compressString(rsltQuery, &rsltQueryGzip, &rsltQueryGzipLength)) {
+							socket->writeBlock(rsltQueryGzip, rsltQueryGzipLength, cSocket::_te_aes);
+							delete [] rsltQueryGzip;
+						}
 					}
 				} else {
 					socket->writeBlock(rsltQuery, cSocket::_te_aes);

@@ -734,15 +734,30 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 
 SqlDb::eQueryByRemoteSocketRslt SqlDb::_queryByRemoteSocket(string query) {
 	bool okSendQuery = true;
-	if(query.length() > 100) {
-		cGzip gzipCompressQuery;
-		u_char *queryGzip;
-		size_t queryGzipLength;
-		if(gzipCompressQuery.compressString(query, &queryGzip, &queryGzipLength)) {
-			if(!this->remote_socket->writeBlock(queryGzip, queryGzipLength, cSocket::_te_aes)) {
-				okSendQuery = false;
+	extern sSnifferClientOptions snifferClientOptions;
+	if(query.length() > 100 && snifferClientOptions.type_compress != _cs_compress_na) {
+		if(snifferClientOptions.type_compress == _cs_compress_gzip) {
+			cGzip gzipCompressQuery;
+			u_char *queryGzip;
+			size_t queryGzipLength;
+			if(gzipCompressQuery.compressString(query, &queryGzip, &queryGzipLength)) {
+				if(!this->remote_socket->writeBlock(queryGzip, queryGzipLength, cSocket::_te_aes)) {
+					okSendQuery = false;
+				}
+				delete [] queryGzip;
 			}
-			delete [] queryGzip;
+		#ifdef HAVE_LIBZSTD
+		} else if(snifferClientOptions.type_compress == _cs_compress_zstd) {
+			cZstd zstdCompressQuery;
+			u_char *queryZstd;
+			size_t queryZstdLength;
+			if(zstdCompressQuery.compressString(query, &queryZstd, &queryZstdLength)) {
+				if(!this->remote_socket->writeBlock(queryZstd, queryZstdLength, cSocket::_te_aes)) {
+					okSendQuery = false;
+				}
+				delete [] queryZstd;
+			}
+		#endif
 		}
 	} else {
 		if(!this->remote_socket->writeBlock(query, cSocket::_te_aes)) {
@@ -761,13 +776,22 @@ SqlDb::eQueryByRemoteSocketRslt SqlDb::_queryByRemoteSocket(string query) {
 		return(_qbrs_failed_connect);
 	}
 	string queryResponseStr;
-	cGzip gzipDecompressResponse;
-	if(gzipDecompressResponse.isCompress(queryResponse, queryResponseLength)) {
+	if(isGzip(queryResponse, queryResponseLength)) {
+		cGzip gzipDecompressResponse;
 		queryResponseStr = gzipDecompressResponse.decompressString(queryResponse, queryResponseLength);
 		if(queryResponseStr.empty()) {
 			setLastError(0, "response is invalid (gunzip failed)", true);
 			return(_qbrs_failed_connect);
 		}
+	#ifdef HAVE_LIBZSTD
+	} else if(isZstd(queryResponse, queryResponseLength)) {
+		cZstd zstdDecompressResponse;
+		queryResponseStr = zstdDecompressResponse.decompressString(queryResponse, queryResponseLength);
+		if(queryResponseStr.empty()) {
+			setLastError(0, "response is invalid (zstd decompress failed)", true);
+			return(_qbrs_failed_connect);
+		}
+	#endif
 	} else {
 		queryResponseStr = string((char*)queryResponse, queryResponseLength);
 	}
@@ -4612,10 +4636,17 @@ bool MySqlStore::loadFromQFile(const char *filename, int id_main, bool onlyCheck
 		cout << "*** START " << (onlyCheck ? "CHECK" : "PROCESS") << " FILE " << filename
 		     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
 	}
+	if(isZstd(filename) && !isZstdSupport()) {
+		syslog(LOG_ERR, "qfile %s is compressed with zstd but zstd support is not available - deleting", filename);
+		unlink(filename);
+		return(false);
+	}
 	#if TEST_SERVER_STORE_SPEED
 	do {
 	#endif
-	FileZipHandler *fileZipHandler = new FILE_LINE(29006) FileZipHandler(8 * 1024, 0, isGunzip(filename) ? FileZipHandler::gzip : FileZipHandler::compress_na);
+	FileZipHandler *fileZipHandler = new FILE_LINE(29006) FileZipHandler(8 * 1024, 0,
+									     isZstd(filename) ? FileZipHandler::zstd :
+									     isGzip(filename) ? FileZipHandler::gzip : FileZipHandler::compress_na);
 	fileZipHandler->open(tsf_na, filename);
 	bool copyBadFileToTemp = false;
 	while(!fileZipHandler->is_eof() && fileZipHandler->is_ok_decompress() && fileZipHandler->read(8 * 1024)) {

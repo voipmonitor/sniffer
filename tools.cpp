@@ -6179,7 +6179,7 @@ AutoDeleteAtExit::~AutoDeleteAtExit() {
 }
 
 pcap_t* pcap_open_offline_zip(const char *filename, char *errbuff, string *tempFileName) {
-	if(isGunzip(filename)) {
+	if(isGzip(filename)) {
 		string error;
 		string unzip = gunzipToTemp(filename, &error, !tempFileName, tempFileName);
 		if(!unzip.empty()) {
@@ -6309,13 +6309,25 @@ int __gunzip(FILE *zip, FILE *unzip) {
 	return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
 }
 
-bool isGunzip(const char *zipFilename) {
+bool isGzip(const char *zipFilename) {
 	bool ret = false;
 	FILE *zip = fopen(zipFilename, "r");
 	if(zip) {
 		unsigned char buff[2];
 		if(fread(buff, 1, 2, zip) == 2) {
-			ret = buff[0] == 0x1F && buff[1] == 0x8B;
+			ret = isGzip(buff, 2);
+		}
+		fclose(zip);
+	}
+	return(ret);
+}
+bool isZstd(const char *zipFilename) {
+	bool ret = false;
+	FILE *zip = fopen(zipFilename, "r");
+	if(zip) {
+		unsigned char buff[4];
+		if(fread(buff, 1, 4, zip) == 4) {
+			ret = isZstd(buff, 4);
 		}
 		fclose(zip);
 	}
