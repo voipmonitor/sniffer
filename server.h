@@ -36,6 +36,15 @@ enum eServerClientTypeCompress {
 	_cs_compress_zstd
 };
 
+inline const char *serverClientTypeCompressToStr(eServerClientTypeCompress type) {
+	switch(type) {
+	case _cs_compress_gzip: return("gzip");
+	case _cs_compress_lzo: return("lzo");
+	case _cs_compress_zstd: return("zstd");
+	default: return("na");
+	}
+}
+
 struct sSnifferServerOptions {
 	sSnifferServerOptions() {
 		port = 60024;
@@ -74,12 +83,19 @@ struct sSnifferClientOptions {
 		mysql_concat_limit = 0; // set only from server due compatibility client/server with different versions
 		csv_store_format = false;
 		charts_cache_store = false;
-		type_compress = 
+		type_compress_query =
 				#ifdef HAVE_LIBZSTD
 				_cs_compress_zstd;
 				#else
 				_cs_compress_gzip;
 				#endif
+		type_compress_store =
+				#ifdef HAVE_LIBZSTD
+				_cs_compress_zstd;
+				#else
+				_cs_compress_gzip;
+				#endif
+		type_compress_confirmed = false;
 		remote_chart_server = false;
 	}
 	bool isEnable() {
@@ -112,7 +128,9 @@ struct sSnifferClientOptions {
 	bool csv_store_format;
 	bool charts_cache_store;
 	bool remote_chart_server;
-	eServerClientTypeCompress type_compress;
+	eServerClientTypeCompress type_compress_query;
+	eServerClientTypeCompress type_compress_store;
+	volatile bool type_compress_confirmed;
 };
 
 

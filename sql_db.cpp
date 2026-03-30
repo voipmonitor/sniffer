@@ -735,30 +735,40 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 SqlDb::eQueryByRemoteSocketRslt SqlDb::_queryByRemoteSocket(string query) {
 	bool okSendQuery = true;
 	extern sSnifferClientOptions snifferClientOptions;
-	if(query.length() > 100 && snifferClientOptions.type_compress != _cs_compress_na) {
-		if(snifferClientOptions.type_compress == _cs_compress_gzip) {
-			cGzip gzipCompressQuery;
-			u_char *queryGzip;
-			size_t queryGzipLength;
-			if(gzipCompressQuery.compressString(query, &queryGzip, &queryGzipLength)) {
-				if(!this->remote_socket->writeBlock(queryGzip, queryGzipLength, cSocket::_te_aes)) {
-					okSendQuery = false;
-				}
-				delete [] queryGzip;
+	if(snifferClientOptions.type_compress_query == _cs_compress_gzip || !snifferClientOptions.type_compress_confirmed) {
+		cGzip gzipCompressQuery;
+		u_char *queryGzip;
+		size_t queryGzipLength;
+		if(gzipCompressQuery.compressString(query, &queryGzip, &queryGzipLength)) {
+			if(!this->remote_socket->writeBlock(queryGzip, queryGzipLength, cSocket::_te_aes)) {
+				okSendQuery = false;
 			}
-		#ifdef HAVE_LIBZSTD
-		} else if(snifferClientOptions.type_compress == _cs_compress_zstd) {
-			cZstd zstdCompressQuery;
-			u_char *queryZstd;
-			size_t queryZstdLength;
-			if(zstdCompressQuery.compressString(query, &queryZstd, &queryZstdLength)) {
-				if(!this->remote_socket->writeBlock(queryZstd, queryZstdLength, cSocket::_te_aes)) {
-					okSendQuery = false;
-				}
-				delete [] queryZstd;
-			}
-		#endif
+			delete [] queryGzip;
 		}
+	#ifdef HAVE_LIBZSTD
+	} else if(snifferClientOptions.type_compress_query == _cs_compress_zstd) {
+		cZstd zstdCompressQuery;
+		u_char *queryZstd;
+		size_t queryZstdLength;
+		if(zstdCompressQuery.compressString(query, &queryZstd, &queryZstdLength)) {
+			if(!this->remote_socket->writeBlock(queryZstd, queryZstdLength, cSocket::_te_aes)) {
+				okSendQuery = false;
+			}
+			delete [] queryZstd;
+		}
+	#endif
+	#ifdef HAVE_LIBLZO
+	} else if(snifferClientOptions.type_compress_query == _cs_compress_lzo) {
+		cLzo lzoCompressQuery;
+		u_char *queryLzo;
+		size_t queryLzoLength;
+		if(lzoCompressQuery.compress((u_char*)query.c_str(), query.length(), &queryLzo, &queryLzoLength)) {
+			if(!this->remote_socket->writeBlock(queryLzo, queryLzoLength, cSocket::_te_aes)) {
+				okSendQuery = false;
+			}
+			delete [] queryLzo;
+		}
+	#endif
 	} else {
 		if(!this->remote_socket->writeBlock(query, cSocket::_te_aes)) {
 			okSendQuery = false;
@@ -789,6 +799,15 @@ SqlDb::eQueryByRemoteSocketRslt SqlDb::_queryByRemoteSocket(string query) {
 		queryResponseStr = zstdDecompressResponse.decompressString(queryResponse, queryResponseLength);
 		if(queryResponseStr.empty()) {
 			setLastError(0, "response is invalid (zstd decompress failed)", true);
+			return(_qbrs_failed_connect);
+		}
+	#endif
+	#ifdef HAVE_LIBLZO
+	} else if(isLzo(queryResponse, queryResponseLength)) {
+		cLzo lzoDecompressResponse;
+		queryResponseStr = lzoDecompressResponse.decompressString(queryResponse, queryResponseLength);
+		if(queryResponseStr.empty()) {
+			setLastError(0, "response is invalid (lzo decompress failed)", true);
 			return(_qbrs_failed_connect);
 		}
 	#endif
@@ -3638,42 +3657,40 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 						   (this->check_time_supported ? 'T' + sqlDateTimeString(time(NULL)) + '|' : "") +
 						   query_str;
 			bool okSendQuery = true;
-			if(query_str_with_id.length() > 100 && _snifferClientOptions->type_compress != _cs_compress_na) {
-				if(_snifferClientOptions->type_compress == _cs_compress_gzip) {
-					cGzip gzipCompressQuery;
-					u_char *queryGzip;
-					size_t queryGzipLength;
-					if(gzipCompressQuery.compressString(query_str_with_id, &queryGzip, &queryGzipLength)) {
-						if(!this->remote_socket->writeBlock(queryGzip, queryGzipLength, cSocket::_te_aes)) {
-							okSendQuery = false;
-						}
-						delete [] queryGzip;
+			if(_snifferClientOptions->type_compress_store == _cs_compress_gzip) {
+				cGzip gzipCompressQuery;
+				u_char *queryGzip;
+				size_t queryGzipLength;
+				if(gzipCompressQuery.compressString(query_str_with_id, &queryGzip, &queryGzipLength)) {
+					if(!this->remote_socket->writeBlock(queryGzip, queryGzipLength, cSocket::_te_aes)) {
+						okSendQuery = false;
 					}
-				#ifdef HAVE_LIBZSTD
-				} else if(_snifferClientOptions->type_compress == _cs_compress_zstd) {
-					cZstd zstdCompressQuery;
-					u_char *queryZstd;
-					size_t queryZstdLength;
-					if(zstdCompressQuery.compressString(query_str_with_id, &queryZstd, &queryZstdLength)) {
-						if(!this->remote_socket->writeBlock(queryZstd, queryZstdLength, cSocket::_te_aes)) {
-							okSendQuery = false;
-						}
-						delete [] queryZstd;
-					}
-				#endif
-				#ifdef HAVE_LIBLZO
-				} else if(_snifferClientOptions->type_compress == _cs_compress_lzo) {
-					cLzo lzoCompressQuery;
-					u_char *queryLzo;
-					size_t queryLzoLength;
-					if(lzoCompressQuery.compress((u_char*)query_str_with_id.c_str(), query_str_with_id.length(), &queryLzo, &queryLzoLength)) {
-						if(!this->remote_socket->writeBlock(queryLzo, queryLzoLength, cSocket::_te_aes)) {
-							okSendQuery = false;
-						}
-						delete [] queryLzo;
-					}
-				#endif
+					delete [] queryGzip;
 				}
+			#ifdef HAVE_LIBZSTD
+			} else if(_snifferClientOptions->type_compress_store == _cs_compress_zstd) {
+				cZstd zstdCompressQuery;
+				u_char *queryZstd;
+				size_t queryZstdLength;
+				if(zstdCompressQuery.compressString(query_str_with_id, &queryZstd, &queryZstdLength)) {
+					if(!this->remote_socket->writeBlock(queryZstd, queryZstdLength, cSocket::_te_aes)) {
+						okSendQuery = false;
+					}
+					delete [] queryZstd;
+				}
+			#endif
+			#ifdef HAVE_LIBLZO
+			} else if(_snifferClientOptions->type_compress_store == _cs_compress_lzo) {
+				cLzo lzoCompressQuery;
+				u_char *queryLzo;
+				size_t queryLzoLength;
+				if(lzoCompressQuery.compress((u_char*)query_str_with_id.c_str(), query_str_with_id.length(), &queryLzo, &queryLzoLength)) {
+					if(!this->remote_socket->writeBlock(queryLzo, queryLzoLength, cSocket::_te_aes)) {
+						okSendQuery = false;
+					}
+					delete [] queryLzo;
+				}
+			#endif
 			} else {
 				if(!this->remote_socket->writeBlock(query_str_with_id, cSocket::_te_aes)) {
 					okSendQuery = false;

@@ -2148,7 +2148,6 @@ void cGzip::term() {
 cLzo::cLzo() {
 	use_1_11 = true;
 	wrkmem = NULL;
-	header_string = "LZO";
 }
 
 cLzo::~cLzo() {
@@ -2156,12 +2155,10 @@ cLzo::~cLzo() {
 }
 
 bool cLzo::compress(u_char *buffer, size_t bufferLength, u_char **cbuffer, size_t *cbufferLength, bool withHeader) {
-	size_t header_string_length = 0;
 	size_t header_length = 0;
 	size_t compress_buffer_length = bufferLength + bufferLength/16 + 64 + 3;
 	if(withHeader) {
-		header_string_length = strlen(header_string);
-		header_length = header_string_length + sizeof(u_int32_t);
+		header_length = LZO_HEADER_LEN + sizeof(u_int32_t);
 		compress_buffer_length += header_length;
 	}
 	*cbuffer = new FILE_LINE(0) u_char[compress_buffer_length];
@@ -2173,8 +2170,8 @@ bool cLzo::compress(u_char *buffer, size_t bufferLength, u_char **cbuffer, size_
 	if(lzoRslt == LZO_E_OK) {
 		*cbufferLength = lzo_dst_len;
 		if(withHeader) {
-			memcpy(*cbuffer, header_string, header_string_length);
-			*(u_int32_t*)(*cbuffer + header_string_length) = bufferLength;
+			memcpy(*cbuffer, LZO_HEADER, LZO_HEADER_LEN);
+			*(u_int32_t*)(*cbuffer + LZO_HEADER_LEN) = bufferLength;
 			*cbufferLength += header_length;
 		}
 		return(true);
@@ -2185,12 +2182,11 @@ bool cLzo::compress(u_char *buffer, size_t bufferLength, u_char **cbuffer, size_
 }
 
 bool cLzo::decompress(u_char *buffer, size_t bufferLength, u_char **dbuffer, size_t *dbufferLength) {
-	size_t header_string_length = strlen(header_string);
-	size_t header_length = header_string_length + sizeof(u_int32_t);
+	size_t header_length = LZO_HEADER_LEN + sizeof(u_int32_t);
 	if(bufferLength < header_length) {
 		return(false);
 	}
-	*dbufferLength = *(u_int32_t*)(buffer + header_string_length);
+	*dbufferLength = *(u_int32_t*)(buffer + LZO_HEADER_LEN);
 	*dbuffer = new FILE_LINE(0) u_char[*dbufferLength];
 	init();
 	lzo_uint lzo_dst_len = *dbufferLength;
@@ -2230,8 +2226,7 @@ void cLzo::term() {
 }
 
 bool cLzo::isCompress(u_char *buffer, size_t bufferLength) {
-	size_t header_string_length = strlen(header_string);
-	return(bufferLength > header_string_length && !memcmp(buffer, header_string, header_string_length));
+	return(isLzo(buffer, bufferLength));
 }
 #endif
 

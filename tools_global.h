@@ -1053,6 +1053,12 @@ private:
 };
 
 
+#define LZO_HEADER "LZO"
+#define LZO_HEADER_LEN 3
+inline bool isLzo(u_char *buffer, size_t bufferLength) {
+	return(bufferLength >= LZO_HEADER_LEN && !memcmp(buffer, LZO_HEADER, LZO_HEADER_LEN));
+}
+
 #ifdef HAVE_LIBLZO
 class cLzo {
 public:
@@ -1069,7 +1075,6 @@ private:
 private:
 	bool use_1_11;
 	u_char *wrkmem;
-	const char *header_string;
 };
 #endif
 

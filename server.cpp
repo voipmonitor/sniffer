@@ -631,6 +631,8 @@ void cSnifferServerConnection::cp_service() {
 			ok_parameters.add("charts_cache_store", true);
 		}
 		ok_parameters.add("type_compress", type_compress);
+		ok_parameters.add("type_compress_query", type_compress);
+		ok_parameters.add("type_compress_store", type_compress);
 		ok_parameters.add("enable_responses_sender", true);
 		okAndParameters = ok_parameters.getJson();
 	} else {
@@ -900,13 +902,22 @@ void cSnifferServerConnection::cp_query() {
 	while(!server->isTerminate() &&
 	      (query = socket->readBlock(&queryLength, cSocket::_te_aes, "", counter > 0, timeout, 1024 * 1024)) != NULL) {
 		string queryStr;
+		eServerClientTypeCompress queryTypeCompress = _cs_compress_na;
 		if(isGzip(query, queryLength)) {
 			cGzip gzipDecompressQuery;
 			queryStr = gzipDecompressQuery.decompressString(query, queryLength);
+			queryTypeCompress = _cs_compress_gzip;
 		#ifdef HAVE_LIBZSTD
 		} else if(isZstd(query, queryLength)) {
 			cZstd zstdDecompressQuery;
 			queryStr = zstdDecompressQuery.decompressString(query, queryLength);
+			queryTypeCompress = _cs_compress_zstd;
+		#endif
+		#ifdef HAVE_LIBLZO
+		} else if(isLzo(query, queryLength)) {
+			cLzo lzoDecompressQuery;
+			queryStr = lzoDecompressQuery.decompressString(query, queryLength);
+			queryTypeCompress = _cs_compress_lzo;
 		#endif
 		} else {
 			queryStr = string((char*)query, queryLength);
@@ -923,29 +934,34 @@ void cSnifferServerConnection::cp_query() {
 			}
 			if(sqlDb->query(queryStr)) {
 				string rsltQuery = useCsvRslt ? sqlDb->getCsvResult() : sqlDb->getJsonResult();
-				if(rsltQuery.length() > 100) {
-					bool okCompress = false;
-					#ifdef HAVE_LIBZSTD
-					if(snifferServerOptions.type_compress == _cs_compress_zstd) {
-						cZstd zstdCompressResult;
-						u_char *rsltQueryZstd;
-						size_t rsltQueryZstdLength;
-						if(zstdCompressResult.compressString(rsltQuery, &rsltQueryZstd, &rsltQueryZstdLength)) {
-							socket->writeBlock(rsltQueryZstd, rsltQueryZstdLength, cSocket::_te_aes);
-							delete [] rsltQueryZstd;
-							okCompress = true;
-						}
+				if(queryTypeCompress == _cs_compress_gzip) {
+					cGzip gzipCompressResult;
+					u_char *rsltQueryGzip;
+					size_t rsltQueryGzipLength;
+					if(gzipCompressResult.compressString(rsltQuery, &rsltQueryGzip, &rsltQueryGzipLength)) {
+						socket->writeBlock(rsltQueryGzip, rsltQueryGzipLength, cSocket::_te_aes);
+						delete [] rsltQueryGzip;
 					}
-					#endif
-					if(!okCompress) {
-						cGzip gzipCompressResult;
-						u_char *rsltQueryGzip;
-						size_t rsltQueryGzipLength;
-						if(gzipCompressResult.compressString(rsltQuery, &rsltQueryGzip, &rsltQueryGzipLength)) {
-							socket->writeBlock(rsltQueryGzip, rsltQueryGzipLength, cSocket::_te_aes);
-							delete [] rsltQueryGzip;
-						}
+				#ifdef HAVE_LIBZSTD
+				} else if(queryTypeCompress == _cs_compress_zstd) {
+					cZstd zstdCompressResult;
+					u_char *rsltQueryZstd;
+					size_t rsltQueryZstdLength;
+					if(zstdCompressResult.compressString(rsltQuery, &rsltQueryZstd, &rsltQueryZstdLength)) {
+						socket->writeBlock(rsltQueryZstd, rsltQueryZstdLength, cSocket::_te_aes);
+						delete [] rsltQueryZstd;
 					}
+				#endif
+				#ifdef HAVE_LIBLZO
+				} else if(queryTypeCompress == _cs_compress_lzo) {
+					cLzo lzoCompressResult;
+					u_char *rsltQueryLzo;
+					size_t rsltQueryLzoLength;
+					if(lzoCompressResult.compress((u_char*)rsltQuery.c_str(), rsltQuery.length(), &rsltQueryLzo, &rsltQueryLzoLength)) {
+						socket->writeBlock(rsltQueryLzo, rsltQueryLzoLength, cSocket::_te_aes);
+						delete [] rsltQueryLzo;
+					}
+				#endif
 				} else {
 					socket->writeBlock(rsltQuery, cSocket::_te_aes);
 				}
@@ -1525,9 +1541,21 @@ int cSnifferClientService::receive_process_loop_begin() {
 										   atoi(rsltConnectData_json.getValue("csv_store_format").c_str());
 						client_options->charts_cache_store = !rsltConnectData_json.getValue("charts_cache_store").empty() &&
 										     atoi(rsltConnectData_json.getValue("charts_cache_store").c_str());
+						eServerClientTypeCompress _type_compress = _cs_compress_gzip;
 						if(!rsltConnectData_json.getValue("type_compress").empty()) {
-							client_options->type_compress = (eServerClientTypeCompress)atoi(rsltConnectData_json.getValue("type_compress").c_str());
+							_type_compress = (eServerClientTypeCompress)atoi(rsltConnectData_json.getValue("type_compress").c_str());
 						}
+						if(!rsltConnectData_json.getValue("type_compress_query").empty()) {
+							client_options->type_compress_query = (eServerClientTypeCompress)atoi(rsltConnectData_json.getValue("type_compress_query").c_str());
+						} else {
+							client_options->type_compress_query = _cs_compress_gzip;
+						}
+						if(!rsltConnectData_json.getValue("type_compress_store").empty()) {
+							client_options->type_compress_store = (eServerClientTypeCompress)atoi(rsltConnectData_json.getValue("type_compress_store").c_str());
+						} else {
+							client_options->type_compress_store = _type_compress;
+						}
+						client_options->type_compress_confirmed = true;
 					}
 					opt_enable_responses_sender = !rsltConnectData_json.getValue("enable_responses_sender").empty();
 				} else {
@@ -1571,6 +1599,8 @@ int cSnifferClientService::receive_process_loop_begin() {
 		if(client_options->charts_cache_store) {
 			params.push_back("charts_cache_store(s): yes");
 		}
+		params.push_back(string("type_compress_query: ") + serverClientTypeCompressToStr(client_options->type_compress_query));
+		params.push_back(string("type_compress_store: ") + serverClientTypeCompressToStr(client_options->type_compress_store));
 		if(params.size()) {
 			verbstr << ' ' << implode(params, ", ");
 		}
