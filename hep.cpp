@@ -430,29 +430,10 @@ void cHEP_ProcessData::processChunk(u_char *data, size_t dataLen, sHEP_Data *hep
 
 void cHEP_ProcessData::pushPacket(sHEP_Data *hepData, pcap_pkthdr *header, u_char *packet, unsigned payload_len, bool tcp,
 				  int dlink, int pcap_handle_index) {
-	extern int opt_id_sensor;
-	extern int opt_hep_id_sensor_from;
-	int sensor_id = opt_id_sensor;
-	if(opt_hep_id_sensor_from == 1) { // capture_node_id
-		if(hepData->set_flags & (1ull << _hep_chunk_capture_agent_id)) {
-			sensor_id = (int)hepData->capture_agent_id;
-		}
-	} else if(opt_hep_id_sensor_from == 2) { // correlation_id
-		if((hepData->set_flags & (1ull << _hep_chunk_internal_correlation_id)) &&
-		   hepData->internal_correlation_id.data_len() > 0) {
-			u_char *cid = hepData->internal_correlation_id.data();
-			unsigned cid_len = hepData->internal_correlation_id.data_len();
-			u_char orig = cid[cid_len];
-			cid[cid_len] = '\0';
-			sensor_id = atoi((char*)cid);
-			cid[cid_len] = orig;
-		}
-	}
 	if(opt_t2_boost && opt_hep_via_pb) {
 		block_store_lock();
 		if(!block_store) {
 			block_store = new FILE_LINE(0) pcap_block_store;
-			block_store->sensor_id = sensor_id;
 		}
 		pcap_pkthdr_plus header_plus;
 		header_plus.convertFromStdHeader(header);
@@ -464,7 +445,6 @@ void cHEP_ProcessData::pushPacket(sHEP_Data *hepData, pcap_pkthdr *header, u_cha
 			extern PcapQueue_readFromFifo *pcapQueueQ;
 			pcapQueueQ->addBlockStoreToPcapStoreQueue_ext(block_store);
 			block_store = new FILE_LINE(0) pcap_block_store;
-			block_store->sensor_id = sensor_id;
 			block_store->add_hp_ext(&header_plus, packet);
 		}
 		delete header;
@@ -472,7 +452,7 @@ void cHEP_ProcessData::pushPacket(sHEP_Data *hepData, pcap_pkthdr *header, u_cha
 		block_store_unlock();
 	} else {
 		unsigned iphdrSize = ((iphdr2*)(packet + sizeof(ether_header)))->get_hdr_size();
-		unsigned dataOffset = sizeof(ether_header) + iphdrSize +
+		unsigned dataOffset = sizeof(ether_header) + iphdrSize + 
 				      (tcp ?
 					((tcphdr2*)(packet + sizeof(ether_header) + iphdrSize))->doff * 4 :
 					sizeof(udphdr2));
@@ -483,10 +463,11 @@ void cHEP_ProcessData::pushPacket(sHEP_Data *hepData, pcap_pkthdr *header, u_cha
 		}
 		sPacketInfoData pid;
 		pid.clear();
+		extern int opt_id_sensor;
 		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 		if(opt_t2_boost_direct_rtp) {
 			sHeaderPacketPQout hp(header, packet,
-					      dlink, sensor_id, vmIP());
+					      dlink, opt_id_sensor, vmIP());
 			preProcessPacket[PreProcessPacket::ppt_detach_x]->push_packet(
 				sizeof(ether_header), 0xFFFF,
 				dataOffset, payload_len,
@@ -497,13 +478,13 @@ void cHEP_ProcessData::pushPacket(sHEP_Data *hepData, pcap_pkthdr *header, u_cha
 		} else {
 			preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
 				#if USE_PACKET_NUMBER
-				0,
+				0, 
 				#endif
-				hepData->ip_source_address, hepData->protocol_source_port, hepData->ip_destination_address, hepData->protocol_destination_port,
+				hepData->ip_source_address, hepData->protocol_source_port, hepData->ip_destination_address, hepData->protocol_destination_port, 
 				payload_len, dataOffset,
-				pcap_handle_index, header, packet, _t_packet_alloc_header_std,
+				pcap_handle_index, header, packet, _t_packet_alloc_header_std, 
 				pflags, (iphdr2*)(packet + sizeof(ether_header)), (iphdr2*)(packet + sizeof(ether_header)),
-				NULL, 0, dlink, sensor_id, vmIP(), pid,
+				NULL, 0, dlink, opt_id_sensor, vmIP(), pid,
 				false);
 		}
 	}
