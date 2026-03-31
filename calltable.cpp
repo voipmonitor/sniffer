@@ -7994,6 +7994,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				    c_branch->caller_domain.c_str(), get_called_domain(c_branch),
 				    c_branch->digest_username.c_str(),
 				    &operator_price, &customer_price,
+				    NULL, NULL,
 				    &operator_currency_id, &customer_currency_id,
 				    &operator_id, &customer_id)) {
 			if(existsColumns.cdr_price_operator_mult1000000) {

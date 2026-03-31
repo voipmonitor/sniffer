@@ -215,6 +215,7 @@ private:
 	cPeakDefinition peak_definition;
 	double price;
 	double price_peak;
+	bool toll_free;
 	unsigned t1;
 	unsigned t2;
 	eNumberFormat use_for_number_format;
@@ -231,7 +232,7 @@ public:
 	void freeNumbers();
 	double billing(time_t time, unsigned duration, const char *number, const char *number_normalized,
 		       bool isLocalNumber, cStateHolidays *holidays, const char *timezone,
-		       vector<string> *debug = NULL);
+		       bool *price_set, vector<string> *debug = NULL);
 private:
 	unsigned id;
 	string name;
@@ -345,6 +346,7 @@ public:
 		     const char *domain_src, const char *domain_dst,
 		     const char *digest_username,
 		     double *operator_price, double *customer_price,
+		     bool *operator_price_set, bool *customer_price_set,
 		     unsigned *operator_currency_id, unsigned *customer_currency_id,
 		     unsigned *operator_id, unsigned *customer_id,
 		     unsigned force_operator_id = 0, unsigned force_customer_id = 0,

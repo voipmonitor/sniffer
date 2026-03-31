@@ -650,6 +650,13 @@ bool cPeakDefinition::peakCheck(tm &time, cStateHolidays *holidays, tm *toTime, 
 
 
 cBillingRuleNumber::cBillingRuleNumber() {
+	price = 0;
+	price_peak = 0;
+	toll_free = false;
+	t1 = 0;
+	t2 = 0;
+	use_for_number_format = _number_format_na;
+	use_for_number_type = _number_type_na;
 	regexp = NULL;
 }
 
@@ -668,6 +675,7 @@ void cBillingRuleNumber::load(SqlDb_row *row) {
 	peak_definition.load(row);
 	price = atof((*row)["price"].c_str());
 	price_peak = atof((*row)["price_peak"].c_str());
+	toll_free = atoi((*row)["toll_free"].c_str());
 	t1 = atoi((*row)["t1"].c_str());
 	t2 = atoi((*row)["t2"].c_str());
 	use_for_number_format = numberFormatEnum((*row)["use_for_number_format"].c_str());
@@ -775,13 +783,14 @@ void cBillingRule::freeNumbers() {
 
 double cBillingRule::billing(time_t time, unsigned duration, const char *number, const char *number_normalized,
 			     bool isLocalNumber, cStateHolidays *holidays, const char *timezone,
-			     vector<string> *debug) {
+			     bool *price_set, vector<string> *debug) {
 	tm time_tm = time_r(&time, timezone_name.length() ? timezone_name.c_str() : timezone);
 	if(!duration) {
 		duration = 1;
 	}
 	double price = this->price;
 	double price_peak = this->price_peak;
+	bool toll_free = false;
 	unsigned t1 = this->t1;
 	unsigned t2 = this->t2;
 	cBillingRuleNumber::eNumberFormat number_format_default = this->use_for_number_format == cBillingRuleNumber::_number_format_na ?
@@ -920,11 +929,17 @@ double cBillingRule::billing(time_t time, unsigned duration, const char *number,
 					break;
 				}
 				if(ok) {
-					if((*iter)->price) {
-						price = (*iter)->price;
-					}
-					if((*iter)->price_peak) {
-						price_peak = (*iter)->price_peak;
+					if((*iter)->toll_free) {
+						price = 0;
+						price_peak = 0;
+						toll_free = true;
+					} else {
+						if((*iter)->price) {
+							price = (*iter)->price;
+						}
+						if((*iter)->price_peak) {
+							price_peak = (*iter)->price_peak;
+						}
 					}
 					if((*iter)->t1) {
 						t1 = (*iter)->t1;
@@ -957,11 +972,6 @@ double cBillingRule::billing(time_t time, unsigned duration, const char *number,
 			}
 		}
 	}
-	if(!t1 || !t2 ||
-	   !price ||
-	   (peak_definition.enable && !price_peak)) {
-		return(0);
-	}
 	if(findNumber) {
 		if(debug && !findNumberDebugStr.empty()) {
 			debug->push_back(findNumberDebugStr);
@@ -975,12 +985,29 @@ double cBillingRule::billing(time_t time, unsigned duration, const char *number,
 					 " - using default price which is set in table '" + name + "'");
 		}
 	}
+	if(toll_free) {
+		if(debug) {
+			debug->push_back("selected tarification: Toll-Free");
+		}
+		if(price_set) {
+			*price_set = true;
+		}
+		return(0);
+	}
 	if(debug) {
 		debug->push_back("selected tarification: " + 
 				 (peak_definition.enable ?
 				   "peak price = " + floatToString(price_peak, 6, true) + ", offpeak price = " + floatToString(price, 6, true) :
 				   "price = " + floatToString(price, 6, true)) + ", " + 
 				 "t1 = " + intToString(t1) + ", t2 = " + intToString(t2));
+	}
+	if(!t1 || !t2 ||
+	   !price ||
+	   (peak_definition.enable && !price_peak)) {
+		if(price_set) {
+			*price_set = false;
+		}
+		return(0);
 	}
 	double rslt_price = 0;
 	int duration_rest = duration;
@@ -1016,6 +1043,9 @@ double cBillingRule::billing(time_t time, unsigned duration, const char *number,
 					 "price: " + floatToString(price_iter, 6, true)); 
 		}
 		++count_iter;
+	}
+	if(price_set) {
+		*price_set = true;
 	}
 	return(rslt_price);
 }
@@ -1261,6 +1291,7 @@ bool cBilling::billing(time_t time, unsigned duration,
 		       const char *domain_src, const char *domain_dst,
 		       const char *digest_username,
 		       double *operator_price, double *customer_price,
+		       bool *operator_price_set, bool *customer_price_set,
 		       unsigned *operator_currency_id, unsigned *customer_currency_id,
 		       unsigned *operator_id, unsigned *customer_id,
 		       unsigned force_operator_id, unsigned force_customer_id,
@@ -1269,6 +1300,8 @@ bool cBilling::billing(time_t time, unsigned duration,
 	bool rslt = false;
 	*operator_price = 0;
 	*customer_price = 0;
+	if(operator_price_set) *operator_price_set = false;
+	if(customer_price_set) *customer_price_set = false;
 	*operator_currency_id = 0;
 	*customer_currency_id = 0;
 	*operator_id = 0;
@@ -1439,7 +1472,7 @@ bool cBilling::billing(time_t time, unsigned duration,
 			}
 			*operator_price = rules->rules[*operator_id]->billing(time, duration, number_dst, number_dst_normalized_billing.c_str(),
 									      isLocalNumber, holidays, gui_timezone.c_str(),
-									      operator_debug);
+									      operator_price_set, operator_debug);
 			*operator_currency_id = rules->rules[*operator_id]->currency_id;
 		}
 		if(*customer_id) {
@@ -1466,7 +1499,7 @@ bool cBilling::billing(time_t time, unsigned duration,
 			}
 			*customer_price = rules->rules[*customer_id]->billing(time, duration, number_dst, number_dst_normalized_billing.c_str(),
 									      isLocalNumber, holidays, gui_timezone.c_str(),
-									      customer_debug);
+									      customer_price_set, customer_debug);
 			*customer_currency_id = rules->rules[*customer_id]->currency_id;
 		}
 	}
@@ -1709,8 +1742,10 @@ string cBilling::test(const char *id, const char *time, const char *duration,
 		      const char *sensor_id,
 		      const char *verify_operator_price, const char *verify_customer_price,
 		      bool json_rslt) {
-	double operator_price; 
+	double operator_price;
 	double customer_price;
+	bool operator_price_set;
+	bool customer_price_set;
 	unsigned operator_currency_id;
 	unsigned customer_currency_id;
 	unsigned operator_id;
@@ -1722,6 +1757,7 @@ string cBilling::test(const char *id, const char *time, const char *duration,
 		 domain_src, domain_dst,
 		 digest_username,
 		 &operator_price, &customer_price,
+		 &operator_price_set, &customer_price_set,
 		 &operator_currency_id, &customer_currency_id,
 		 &operator_id, &customer_id, 
 		 0, 0,
@@ -1745,10 +1781,12 @@ string cBilling::test(const char *id, const char *time, const char *duration,
 			call.add("domain_dst", domain_dst);
 		}
 		call.add("operator_price", floatToString(operator_price, 6, true), JsonExport::_number);
+		call.add("operator_price_set", operator_price_set);
 		call.add("operator_currency_id", operator_currency_id);
 		call.add("operator_currency_code", getCurrencyCode(operator_currency_id));
 		call.add("operator_id", operator_id);
 		call.add("customer_price", floatToString(customer_price, 6, true), JsonExport::_number);
+		call.add("customer_price_set", customer_price_set);
 		call.add("customer_currency_id", customer_currency_id);
 		call.add("customer_currency_code", getCurrencyCode(customer_currency_id));
 		call.add("customer_id", customer_id);
@@ -1877,6 +1915,7 @@ void cBilling::revaluationBilling(SqlDb_row &row, SqlDb *sqlDb,
 		   domain_src.c_str(), domain_dst.c_str(),
 		   digest_username.c_str(),
 		   &operator_price, &customer_price,
+		   NULL, NULL,
 		   &operator_currency_id, &customer_currency_id,
 		   &operator_id, &customer_id,
 		   force_operator_id, force_customer_id,
