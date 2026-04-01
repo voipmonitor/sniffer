@@ -315,7 +315,7 @@ string SqlDb_row::implodeFieldsToCsv() {
 	return(implodeFields(",", "\""));
 }
 
-string SqlDb_row::implodeContent(string separator, string border, bool enableSqlString, bool escapeAll) {
+string SqlDb_row::implodeContent(string separator, string border, bool enableSqlString, bool escapeAll, bool escapeAllBinary) {
 	string rslt;
 	rslt.reserve(this->row.size() * 100);
 	for(size_t i = 0; i < this->row.size(); i++) {
@@ -332,7 +332,8 @@ string SqlDb_row::implodeContent(string separator, string border, bool enableSql
 			rslt += fieldContent;
 		} else {
 			rslt += border;
-			rslt += escapeAll ? sqlEscapeString(this->row[i].content) : this->row[i].content;
+			rslt += escapeAllBinary ? sqlEscapeString(this->row[i].content.c_str(), this->row[i].content.length()) :
+				escapeAll ? sqlEscapeString(this->row[i].content) : this->row[i].content;
 			rslt += border;
 		}
 	}
@@ -1115,19 +1116,23 @@ string SqlDb::insertOrUpdateQuery(string table, SqlDb_row row, SqlDb_row row_on_
 	return(insertQuery(table, row, enableSqlStringInContent, escapeAll, insertIgnore, &row_on_duplicate));
 }
 
-string SqlDb::insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlStringInContent, bool escapeAll, bool insertIgnore) {
+string SqlDb::insertQuery(string table, vector<SqlDb_row> *rows, int insertParams) {
 	if(!rows->size()) {
 		return("");
 	}
+	bool enableSqlStringInContent = insertParams & _insert_param_enableSqlStringInContent;
+	bool escapeAll = insertParams & _insert_param_escapeAll;
+	bool escapeAllBinary = (insertParams & _insert_param_escapeAllBinary) == _insert_param_escapeAllBinary;
+	bool insertIgnore = insertParams & _insert_param_insertIgnore;
 	string values = "";
 	for(size_t i = 0; i < rows->size(); i++) {
-		values += "( " + (*rows)[i].implodeContent(this->getContentSeparator(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll) + " )";
+		values += "( " + (*rows)[i].implodeContent(this->getContentSeparator(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll, escapeAllBinary) + " )";
 		if(i < rows->size() - 1) {
 			values += ",";
 		}
 	}
-	string query = 
-		string("INSERT ") + (insertIgnore ? "IGNORE " : "") + "INTO " + escapeTableName(table) + " ( " + (*rows)[0].implodeFields(this->getFieldSeparator(), this->getFieldBorder()) + 
+	string query =
+		string("INSERT ") + (insertIgnore ? "IGNORE " : "") + "INTO " + escapeTableName(table) + " ( " + (*rows)[0].implodeFields(this->getFieldSeparator(), this->getFieldBorder()) +
 		" ) VALUES " + values;
 	return(query);
 }
@@ -10425,8 +10430,8 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 				}
 				rows.push_back(row);
 				if(rows.size() >= 100) {
-					string insertQuery = this->insertQuery(tableName, &rows, false, true, true);
-					sqlStore->query(insertQuery.c_str(), 
+					string insertQuery = this->insertQuery(tableName, &rows, _insert_param_escapeAllBinary | _insert_param_insertIgnore);
+					sqlStore->query(insertQuery.c_str(),
 							insertThreads > 1 ? ((counterInsert++ % insertThreads) + 1) : 1, 0);
 					rows.clear();
 				}
@@ -10435,7 +10440,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 				}
 			}
 			if(is_terminating() < 2 && rows.size()) {
-				string insertQuery = this->insertQuery(tableName, &rows, false, true, true);
+				string insertQuery = this->insertQuery(tableName, &rows, _insert_param_escapeAllBinary | _insert_param_insertIgnore);
 				sqlStore->query(insertQuery.c_str(), 
 						insertThreads > 1 ? ((counterInsert++ % insertThreads) + 1) : 1, 0);
 				rows.clear();
@@ -10687,8 +10692,8 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 			}
 			rowsMasterId.push_back(row);
 			if(rows.size() >= 100) {
-				string insertQuery = this->insertQuery(slaveTableName, &rows, false, true, true);
-				sqlStore->query(insertQuery.c_str(), 
+				string insertQuery = this->insertQuery(slaveTableName, &rows, _insert_param_escapeAllBinary | _insert_param_insertIgnore);
+				sqlStore->query(insertQuery.c_str(),
 						insertThreads > 1 ? ((counterInsert++ % insertThreads) + 1) : 1, 0);
 				rows.clear();
 			}
@@ -10703,7 +10708,7 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 				}
 			}
 			if(rows.size()) {
-				string insertQuery = this->insertQuery(slaveTableName, &rows, false, true, true);
+				string insertQuery = this->insertQuery(slaveTableName, &rows, _insert_param_escapeAllBinary | _insert_param_insertIgnore);
 				sqlStore->query(insertQuery.c_str(), 
 						insertThreads > 1 ? ((counterInsert++ % insertThreads) + 1) : 1, 0);
 				rows.clear();

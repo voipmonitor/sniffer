@@ -293,7 +293,7 @@ public:
 	}
 	string implodeFields(string separator = ",", string border = "");
 	string implodeFieldsToCsv();
-	string implodeContent(string separator = ",", string border = "'", bool enableSqlString = false, bool escapeAll = false);
+	string implodeContent(string separator = ",", string border = "'", bool enableSqlString = false, bool escapeAll = false, bool escapeAllBinary = false);
 	string implodeFieldContent(string separator = ",", string fieldBorder = "`", string contentBorder = "'", bool enableSqlString = false, bool escapeAll = false);
 	string implodeContentTypeToCsv(bool enableSqlString = false);
 	string keyvalList(string separator);
@@ -349,6 +349,13 @@ public:
 		_qbrs_mysql_error,
 		_qbrs_mysql_error_disable_next_attempt,
 		_qbrs_failed_connect
+	};
+	enum eInsertParams {
+		_insert_param_na = 0,
+		_insert_param_enableSqlStringInContent = (1 << 0),
+		_insert_param_escapeAll = (1 << 1),
+		_insert_param_escapeAllBinary = (1 << 1) | (1 << 2),
+		_insert_param_insertIgnore = (1 << 3)
 	};
 	struct sPartition {
 		sPartition() {
@@ -408,7 +415,7 @@ public:
 	virtual string selectQuery(string table, const char *field, const char *condField = NULL, const char *condValue = NULL, unsigned limit = 0, bool forceLatin1 = false);
 	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false, SqlDb_row *row_on_duplicate = NULL);
 	virtual string insertOrUpdateQuery(string table, SqlDb_row row, SqlDb_row row_on_duplicate, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
-	virtual string insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
+	virtual string insertQuery(string table, vector<SqlDb_row> *rows, int insertParams = 0);
 	virtual string insertQueryWithLimitMultiInsert(string table, vector<SqlDb_row> *rows, unsigned limitMultiInsert, const char *queriesSeparator = NULL, const char *queriesSeparatorSubst = NULL,
 						       bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string updateQuery(string table, SqlDb_row row, const char *whereCond, bool enableSqlStringInContent = false, bool escapeAll = false);
