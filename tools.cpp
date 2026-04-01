@@ -5239,7 +5239,9 @@ void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
 			break;
 		}
 	}
-	tarQueue[this->tar - 1]->add(&this->tar_data, this->tarBuffer, this->time);
+	if(tarQueue[this->tar - 1]) {
+		tarQueue[this->tar - 1]->add(&this->tar_data, this->tarBuffer, this->time);
+	}
 	#if DEBUG_ASYNC_TAR_WRITE
 	if(call) {
 		call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_init_tar_buffer_end);
