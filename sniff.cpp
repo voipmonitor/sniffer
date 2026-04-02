@@ -1076,6 +1076,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 			case _t_packet_skinny:
 			case _t_packet_mgcp:
 			case _t_packet_diameter:
+			case _t_packet_bfcp:
 				if(!call->getPcapSip()->isOpen() && enable_save_sip(call)) {
 					string pathfilename = call->get_pathfilename(tsf_sip);
 					if(call->getPcapSip()->open(tsf_sip, pathfilename.c_str(), call->useHandle, call->useDlt)) {
@@ -1164,6 +1165,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 			case _t_packet_rtp:
 			case _t_packet_dtls:
 			case _t_packet_mrcp:
+			case _t_packet_bfcp:
 				call->save_rtp_pcap = true;
 				break;
 			case _t_packet_rtp_payload:
@@ -2836,7 +2838,10 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 					 { "UDP/TLS/RTP/SAVPF", sdp_proto_srtp }, // RFC 5764
 					 { "msrp/tcp", sdp_proto_msrp }, // Not in IANA, where is this from?
 					 { "UDPSPRT", sdp_proto_sprt }, // Not in IANA, but draft-rajeshkumar-avt-v150-registration-00
-					 { "TCP/MRCPv2", sdp_proto_tcp_mrcpv2 }
+					 { "TCP/MRCPv2", sdp_proto_tcp_mrcpv2 },
+					 { "TCP/BFCP",           sdp_proto_bfcp },
+					 { "UDP/BFCP",           sdp_proto_bfcp },
+          			 { "TCP/TLS/BFCP",       sdp_proto_bfcp }
 				};
 				for(unsigned i = 0; i < sizeof(sdp_protocols) / sizeof(sdp_protocols[0]); i++) {
 					if(!strncasecmp(pointToBeginProtocol, sdp_protocols[i].protocol_str, lengthProtocol) &&
@@ -2846,12 +2851,14 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 				}
 			}
 		}
-		
-		if(sdp_media_type[sdp_media_i] == sdp_media_type_application && 
-		   !(sdp_protocol == sdp_proto_tcp_mrcpv2 && cFilters::saveMrcp())) {
-			continue;
+
+		if(sdp_media_type[sdp_media_i] == sdp_media_type_application &&
+			!((sdp_protocol == sdp_proto_tcp_mrcpv2 && cFilters::saveMrcp()) ||
+			  (sdp_protocol == sdp_proto_bfcp && cFilters::saveBfcp()
+		))) {
+				continue;
 		}
-					       
+
 		s_sdp_media_data *sdp_media_data_item; 
 		if(sdp_media_counter == 0) {
 			sdp_media_data_item = sdp_media_data;

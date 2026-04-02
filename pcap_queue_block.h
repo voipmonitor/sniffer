@@ -605,7 +605,8 @@ struct packet_flags {
 	static const uint16_t DTLS_HANDSHAKE_MASK = (1 << 7);
 	static const uint16_t DIAMETER_MASK       = (1 << 8);
 	static const uint16_t IPFIX_QOS_MASK       = (1 << 8);
-	
+	static const uint16_t BFCP_MASK           = (1 << 9);
+
 	uint16_t flags;
 
 	inline void init() { flags = 0; }
@@ -618,6 +619,10 @@ struct packet_flags {
 	
 	inline void set_mrcp(bool value) { flags = (flags & ~MRCP_MASK) | (value ? MRCP_MASK : 0); }
 	inline bool is_mrcp() { return((flags & MRCP_MASK) != 0); }
+	
+	inline void set_bfcp(bool value) { flags = (flags & ~BFCP_MASK) | (value ? BFCP_MASK : 0); }
+	inline bool is_bfcp() { return((flags & BFCP_MASK) != 0); }
+
 
 	inline void set_ssl(bool value) { flags = (flags & ~SSL_MASK) | (value ? SSL_MASK : 0); }
 	inline bool is_ssl() { return((flags & SSL_MASK) != 0); }

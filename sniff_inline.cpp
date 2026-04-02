@@ -803,6 +803,9 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				ppd->datalen = get_udp_data_len(ppd->header_ip, ppd->header_udp, &ppd->data, packet, caplen);
 				ppd->flags.init();
 				ppd->flags.set_ss7(opt_enable_ss7 && (ss7_rudp_portmatrix[ppd->header_udp->get_source()] || ss7_rudp_portmatrix[ppd->header_udp->get_dest()]));
+				if(IS_BFCP(ppd->data, ppd->datalen)) {
+					ppd->flags.set_bfcp(true);
+				}
 			} else if (protocol == IPPROTO_TCP) {
 				ppd->flags.init();
 				ppd->flags.set_tcp(1);
@@ -826,7 +829,10 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					ppd->flags.set_ss7(true);
 				} else if(cFilters::saveMrcp() && IS_MRCP(ppd->data, ppd->datalen)) {
 					ppd->flags.set_mrcp(true);
-				} else {
+				}else if(IS_BFCP(ppd->data, ppd->datalen)) {
+					ppd->flags.set_bfcp(true);
+				}
+				else {
 					// not interested in TCP packet other than SIP port
 					if(!opt_ipaccount && !DEBUG_ALL_PACKETS && (ppf & ppf_returnZeroInCheckData)) {
 						//cout << "pcapProcess exit 005" << endl;

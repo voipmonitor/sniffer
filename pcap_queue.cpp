@@ -10138,6 +10138,9 @@ bool PcapQueue_readFromFifo::processPacket_analysis(sHeaderPacketPQout* hp) {
 			sport = header_udp->get_source();
 			dport = header_udp->get_dest();
 			pflags.set_ss7(opt_enable_ss7 && (ss7_rudp_portmatrix[sport] || ss7_rudp_portmatrix[dport]));
+			if (IS_BFCP(data, datalen)){
+				pflags.set_bfcp(true);
+			}
 		} else if(header_ip_protocol == IPPROTO_TCP) {
 			tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
 			datalen = get_tcp_data_len(header_ip, header_tcp, &data, hp->packet, header->caplen);
@@ -10148,6 +10151,8 @@ bool PcapQueue_readFromFifo::processPacket_analysis(sHeaderPacketPQout* hp) {
 				pflags.set_ss7(true);
 			} else if(cFilters::saveMrcp() && IS_MRCP(data, datalen)) {
 				pflags.set_mrcp(true);
+			} else if(IS_BFCP(data, datalen)){
+				pflags.set_bfcp(true);
 			}
 		} else if(opt_enable_ss7 && header_ip_protocol == IPPROTO_SCTP) {
 			pflags.set_ss7(true);

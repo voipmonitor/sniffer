@@ -2028,6 +2028,9 @@ bool Call::read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscal
 			save_packet(this, packetS, _t_packet_mrcp, 0, 0, __FILE__, __LINE__);
 		}
 		return(true);
+	}else if(packetS->pflags.is_bfcp()) {
+		save_packet(this, packetS, _t_packet_bfcp, 0, 0, __FILE__, __LINE__);
+		return(true);
 	}
 	extern bool opt_null_rtppayload;
 	if(opt_null_rtppayload) {
