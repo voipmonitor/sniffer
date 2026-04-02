@@ -100,7 +100,8 @@ struct sll2_header {
 #define IS_DTLS(data, datalen) ((datalen) >= 1 && *(u_char*)(data) >= 0x14 && *(u_char*)(data) <= 0x19)
 #define IS_DTLS_HANDSHAKE(data, datalen) ((datalen) >= 1 && *(u_char*)(data) == 0x16)
 #define IS_MRCP(data, datalen) ((datalen) >= 4 && ((char*)(data))[0] == 'M' && ((char*)(data))[1] == 'R' && ((char*)(data))[2] == 'C' && ((char*)(data))[3] == 'P')
-
+#define IS_BFCP(data, datalen) ((data) != NULL && (datalen) >= 12 && ((((const uint8_t *)(data))[0] >> 5) == 0x01 || (((const uint8_t *)(data))[0] >> 5) == 0x02) && \
+								(((const uint8_t *)(data))[1] >= 0x01 && ((const uint8_t *)(data))[1] <= 0x11))
 
 #define if_likely(x) __builtin_expect(!!(x), 1)
 #define if_unlikely(x) __builtin_expect(!!(x), 0)
@@ -115,7 +116,8 @@ enum e_packet_type {
 	_t_packet_mrcp,
 	_t_packet_skinny,
 	_t_packet_mgcp,
-	_t_packet_diameter
+	_t_packet_diameter,
+	_t_packet_bfcp
 };
 
 enum e_packet_s_type {

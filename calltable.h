@@ -303,7 +303,8 @@ enum e_sdp_protocol {
 	sdp_proto_t38,
 	sdp_proto_msrp,
 	sdp_proto_sprt,
-	sdp_proto_tcp_mrcpv2
+	sdp_proto_tcp_mrcpv2,
+	sdp_proto_bfcp
 };
 
 struct s_sdp_flags : public s_sdp_flags_base {

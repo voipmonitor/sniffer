@@ -428,6 +428,10 @@ public:
 		return(opt_saveMRCP ||
 		       (getGlobalFlags() & _gf_mrcp));
 	}
+	static inline bool saveBfcp() {
+		extern int opt_saveBFCP;
+		return opt_saveBFCP;
+	}
 public:
 	static u_int32_t global_flags;
 	static u_int32_t reload_global_flags;

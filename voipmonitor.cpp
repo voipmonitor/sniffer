@@ -230,6 +230,7 @@ int opt_saveRTPvideo_only_header = 0;
 int opt_processingRTPvideo = 0;
 int opt_saveMRCP = 0;
 int opt_saveRTCP = 0;		// save RTCP packets to pcap file?
+int opt_saveBFCP = 0;
 bool opt_null_rtppayload = false;
 bool opt_srtp_rtp_decrypt = false;
 bool opt_srtp_rtp_dtls_decrypt = true;
@@ -6851,6 +6852,7 @@ void cConfig::addConfigItems() {
 				->addValues("header:-1|h:-1|cdr_only:-2|c:-2")
 				->setDefaultValueStr("no"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("savemrcp", &opt_saveMRCP));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save_bfcp", &opt_saveBFCP));
 			addConfigItem(new FILE_LINE(42210) cConfigItem_yesno("savertcp", &opt_saveRTCP));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignorertcpjitter", &opt_ignoreRTCPjitter));
 			addConfigItem(new FILE_LINE(42211) cConfigItem_yesno("saveudptl", &opt_saveudptl));
@@ -7999,6 +8001,12 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 				opt_gzip_audiograph = FileZipHandler::gzip;
 			}
 			break;
+		}
+	}
+	if(configItem->config_name == "save_bfcp") {
+		switch(configItem->getValueInt()) {
+		case 1:
+			opt_saveBFCP = 1;
 		}
 	}
 	if(configItem->config_name == "packetbuffer_compress_method") {
