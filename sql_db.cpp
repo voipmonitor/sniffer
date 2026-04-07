@@ -330,6 +330,8 @@ string SqlDb_row::implodeContent(string separator, string border, bool enableSql
 			string nameValue = dbData->getCbNameForType((cSqlDbCodebook::eTypeCodebook)this->row[i].ifv.cb_type) + ";" + this->row[i].content;
 			string fieldContent = MYSQL_CODEBOOK_ID_PREFIX + intToString(nameValue.length()) + ":" + nameValue;
 			rslt += fieldContent;
+		} else if(escapeAllBinary && (this->row[i].flags & 128)) {
+			rslt += "UNHEX('" + hexencode((unsigned char*)this->row[i].content.c_str(), this->row[i].content.length()) + "')";
 		} else {
 			rslt += border;
 			rslt += escapeAllBinary ? _sqlEscapeString(this->row[i].content.c_str(), this->row[i].content.length(), NULL) :
@@ -1544,6 +1546,7 @@ void SqlDb::setSilentConnect() {
 void SqlDb::cleanFields() {
 	this->fields.clear();
 	this->fields_type.clear();
+	this->fields_flags.clear();
 }
 
 bool SqlDb::logNeedAlter(string table, string reason, string alter,
@@ -2495,6 +2498,7 @@ SqlDb_row SqlDb_mysql::fetchRow() {
 				for(int i = 0; (field = mysql_fetch_field(this->hMysqlRes)); i++) {
 					this->fields.push_back(field->name);
 					this->fields_type.push_back(field->type);
+					this->fields_flags.push_back(field->flags);
 				}
 			} else {
 				this->checkLastError("fetch row error in function mysql_use_result", true);
@@ -2506,7 +2510,8 @@ SqlDb_row SqlDb_mysql::fetchRow() {
 				unsigned int numFields = mysql_num_fields(this->hMysqlRes);
 				unsigned long *lengths = mysql_fetch_lengths(this->hMysqlRes);
 				for(unsigned int i = 0; i < numFields; i++) {
-					row.add(mysqlRow[i], this->fields[i], this->fields_type[i], lengths[i]);
+					row.add(mysqlRow[i], this->fields[i], this->fields_type[i], lengths[i])
+					    ->setFlags(this->fields_flags[i]);
 				}
 			} else {
 				this->checkLastError("fetch row error", true);

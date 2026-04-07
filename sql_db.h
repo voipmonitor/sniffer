@@ -71,6 +71,7 @@ public:
 			this->fieldName = fieldName;
 			this->null = !content;
 			this->type = type;
+			this->flags = 0;
 			this->ifv.type = ift | (!content ? _ift_null : 0);
 			this->length = length;
 		}
@@ -79,14 +80,19 @@ public:
 			this->fieldName = fieldName;
 			this->null = null;
 			this->type = type;
+			this->flags = 0;
 			this->ifv.type = ift | (null ? _ift_null : 0);
 			this->length = length;
+		}
+		void setFlags(int flags) {
+			this->flags = flags;
 		}
 		string getContentForCsv();
 		string content;
 		string fieldName;
 		bool null;
 		int type;
+		int flags;
 		sInternalFieldValue ifv;
 		unsigned long length;
 	};
@@ -644,6 +650,7 @@ protected:
 	list<unsigned int> ignoreErrorCodes;
 	vector<string> fields;
 	vector<int> fields_type;
+	vector<int> fields_flags;
 	bool enableSqlStringInContent;
 	bool disableNextAttemptIfError;
 	bool disableLogError;
