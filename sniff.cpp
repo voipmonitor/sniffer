@@ -229,6 +229,7 @@ extern TcpReassembly *tcpReassemblySsl;
 extern TcpReassembly *tcpReassemblyDiameter;
 extern char ifname[1024];
 extern int opt_sdp_reverse_ipport;
+extern bool opt_sdp_use_candidate_srflx;
 extern bool opt_sdp_check_direction_ext;
 extern vector<vmIPport> opt_sdp_ignore_ip_port;
 extern vector<vmIP> opt_sdp_ignore_ip;
@@ -2969,7 +2970,38 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 		if(l > 0) {
 			sdp_media_data_item->ptime =  atoi(s);
 		}
-		
+		if(opt_sdp_use_candidate_srflx) {
+			s = _gettag(sdp_media_text, sdp_media_text_len, "a=candidate:", &l);
+			while(l > 0 && sdp_media_data_item->sdp_srflx_addr_count < sizeof(sdp_media_data_item->sdp_srflx_addr) / sizeof(sdp_media_data_item->sdp_srflx_addr[0])) {
+				if(strncasestr(s, "typ srflx", l)) {
+					char *pointer = s;
+					char *end = s + l;
+					char *fields[5];
+					unsigned fields_count = 0;
+					while(pointer < end && fields_count < 5) {
+						fields[fields_count++] = pointer;
+						char *separator = strnchr(pointer, ' ', end - pointer);
+						pointer = separator ? separator + 1 : end;
+					}
+					if(fields_count >= 5 && !strncasecmp(fields[2], "udp", 3)) {
+						char *ip_begin = fields[4];
+						char *ip_separator = strnchr(ip_begin, ' ', end - ip_begin);
+						unsigned ip_length = ip_separator ? ip_separator - ip_begin : end - ip_begin;
+						char ip_str[64];
+						if(ip_length > 0 && ip_length < sizeof(ip_str)) {
+							memcpy(ip_str, ip_begin, ip_length);
+							ip_str[ip_length] = 0;
+							vmIP candidate_ip;
+							if(candidate_ip.setFromString(ip_str) &&
+							   candidate_ip != sdp_media_data_item->ip) {
+								sdp_media_data_item->sdp_srflx_addr[sdp_media_data_item->sdp_srflx_addr_count++] = candidate_ip;
+							}
+						}
+					}
+				}
+				s = _gettag(s, sdp_media_text_len - (s - sdp_media_text), "a=candidate:", &l);
+			}
+		}
 		if(sdp_media_type[sdp_media_i] != sdp_media_type_application) {
 			get_rtpmap_from_sdp(sdp_media_text, sdp_media_text_len, sdp_media_type[sdp_media_i] == sdp_media_type_video, sdp_media_data_item->rtpmap, &sdp_media_data_item->exists_payload_televent);
 		}
@@ -4450,11 +4482,23 @@ void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, in
 									       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags, sdp_media_data_item->ptime);
 						}
 						if(opt_sdp_reverse_ipport) {
-							call->add_ip_port_hash(c_branch, packetS->saddr_(), packetS->saddr_(), ip_port_call_info::_ta_sdp_reverse_ipport, sdp_media_data_item->port, packetS->getTimeval_pt(), 
-									       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, 
+							call->add_ip_port_hash(c_branch, packetS->saddr_(), packetS->saddr_(), ip_port_call_info::_ta_sdp_reverse_ipport, sdp_media_data_item->port, packetS->getTimeval_pt(),
+									       sessid, sdp_media_data_item->label, sdp_media_data_count > 1,
 									       sdp_media_data_item->srtp_crypto_config_list, sdp_media_data_item->srtp_fingerprint,
 									       to, to_uri, domain_to, domain_to_uri, branch,
 									       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags, sdp_media_data_item->ptime);
+						}
+						for(unsigned srflx_i = 0; srflx_i < sdp_media_data_item->sdp_srflx_addr_count; srflx_i++) {
+							for(int port_i = 0; port_i < c_branch->ipport_n; port_i++) {
+								if(c_branch->ip_port[port_i].iscaller != iscaller &&
+								   c_branch->ip_port[port_i].addr != sdp_media_data_item->sdp_srflx_addr[srflx_i]) {
+									call->add_ip_port_hash(c_branch, packetS->saddr_(), sdp_media_data_item->sdp_srflx_addr[srflx_i], ip_port_call_info::_ta_sdp_candidate, c_branch->ip_port[port_i].port, packetS->getTimeval_pt(),
+											       sessid, sdp_media_data_item->label, sdp_media_data_count > 1,
+											       sdp_media_data_item->srtp_crypto_config_list, sdp_media_data_item->srtp_fingerprint,
+											       to, to_uri, domain_to, domain_to_uri, branch,
+											       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags, sdp_media_data_item->ptime);
+								}
+							}
 						}
 					}
 				}
@@ -7424,21 +7468,21 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 			n_call = calltable->hashfind_by_ip_port(packetS->saddr_(), packetS->source_(), false);
 			packetS->blockstore_addflag(26 /*pb lock flag*/);
 		}
-		#if (NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST) || HASH_RTP_FIND__LIST || NEW_RTP_FIND__MAP_LIST
-		if(n_call && !n_call->empty()) {
-		#else
+		if(!n_call && opt_sdp_use_candidate_srflx) {
+			n_call = calltable->hashfind_by_ip_port(packetS->saddr_(), packetS->dest_(), false, ip_port_call_info::_ta_sdp_candidate);
+			if(!n_call) {
+				n_call = calltable->hashfind_by_ip_port(packetS->daddr_(), packetS->source_(), false, ip_port_call_info::_ta_sdp_candidate);
+				if(n_call) {
+					call_info->find_by_dest = true;
+				}
+			}
+		}
 		if(n_call) {
-		#endif
 			unsigned counter_rtp_only_packets = 0;
 			bool use_dtls_queue = false;
 			++counter_rtp_packets[0];
-			#if (NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST) || HASH_RTP_FIND__LIST || NEW_RTP_FIND__MAP_LIST
-			for(list<call_rtp*>::iterator iter = n_call->begin(); iter != n_call->end(); iter++) {
-				call_rtp *call_rtp = *iter;
-			#else
 			for (; n_call != NULL; n_call = n_call->next) {
 				call_rtp *call_rtp = n_call;
-			#endif
 				CallBranch *c_branch = call_rtp->c_branch;
 				Call *call = c_branch->call;
 				if(call_confirmation_for_rtp_processing(call, call_rtp, c_branch, call_info, packetS)) {
@@ -13537,22 +13581,22 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, unsigned *counters
 			packetS->blockstore_addflag(33 /*pb lock flag*/);
 		}
 	}
+	if(!n_call && opt_sdp_use_candidate_srflx) {
+		n_call = calltable->hashfind_by_ip_port(packetS->saddr_(), packetS->dest_(), false, ip_port_call_info::_ta_sdp_candidate);
+		if(!n_call) {
+			n_call = calltable->hashfind_by_ip_port(packetS->daddr_(), packetS->source_(), false, ip_port_call_info::_ta_sdp_candidate);
+			if(n_call) {
+				packetS->call_info.find_by_dest = true;
+			}
+		}
+	}
 	packetS->call_info.length = 0;
-	#if (NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST) || HASH_RTP_FIND__LIST || NEW_RTP_FIND__MAP_LIST
-	if(n_call && !n_call->empty()) {
-	#else
 	if(n_call) {
-	#endif
 		unsigned counter_rtp_only_packets = 0;
 		bool use_dtls_queue = false;
 		++counters[0];
-		#if (NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST) || HASH_RTP_FIND__LIST || NEW_RTP_FIND__MAP_LIST
-		for(list<call_rtp*>::iterator iter = n_call->begin(); iter != n_call->end(); iter++) {
-			call_rtp *call_rtp = *iter;
-		#else
 		for (; n_call != NULL; n_call = n_call->next) {
 			call_rtp *call_rtp = n_call;
-		#endif
 			CallBranch *c_branch = call_rtp->c_branch;
 			Call *call = c_branch->call;
 			if(call->isAllocFlagOK() && !call->stopProcessing) {

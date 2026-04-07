@@ -1333,6 +1333,7 @@ bool ssl_client_random_keep = true;
 bool ssl_client_random_use = false;
 
 int opt_sdp_reverse_ipport = 0;
+bool opt_sdp_use_candidate_srflx = false;
 bool opt_sdp_check_direction_ext = true;
 bool opt_rtp_count_all_sequencegap_as_loss = false;
 
@@ -7365,6 +7366,7 @@ void cConfig::addConfigItems() {
 		subgroup("NAT");
 			addConfigItem(new FILE_LINE(42328) cConfigItem_nat_aliases("natalias", &nat_aliases_default.ip_data.ip_data));
 			addConfigItem(new FILE_LINE(42329) cConfigItem_yesno("sdp_reverse_ipport", &opt_sdp_reverse_ipport));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sdp_use_candidate_srflx", &opt_sdp_use_candidate_srflx));
 		subgroup("MOS");
 			addConfigItem(new FILE_LINE(42330) cConfigItem_yesno("mos_g729", &opt_mos_g729));
 			addConfigItem(new FILE_LINE(42331) cConfigItem_yesno("mos_lqo", &opt_mos_lqo));
