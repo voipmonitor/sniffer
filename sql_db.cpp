@@ -332,7 +332,7 @@ string SqlDb_row::implodeContent(string separator, string border, bool enableSql
 			rslt += fieldContent;
 		} else {
 			rslt += border;
-			rslt += escapeAllBinary ? sqlEscapeString(this->row[i].content.c_str(), this->row[i].content.length()) :
+			rslt += escapeAllBinary ? _sqlEscapeString(this->row[i].content.c_str(), this->row[i].content.length(), NULL) :
 				escapeAll ? sqlEscapeString(this->row[i].content) : this->row[i].content;
 			rslt += border;
 		}
