@@ -692,12 +692,14 @@ public:
 		}
 		bool _lock = false;
 		packet_s *packetS;
+		int _outThreadState = 0;
 		if(typePreProcessThread == ppt_detach) {
 			if(this->needLockPush) {
 				this->lock_push();
 				_lock = true;
 			}
-			if(this->outThreadState == 2) {
+			_outThreadState = this->outThreadState;
+			if(_outThreadState == 2) {
 				packetS = push_packet_detach__get_pointer();
 			} else {
 				static packet_s _packetS;
@@ -752,7 +754,7 @@ public:
 			packetS->blockstore_setlock();
 		}
 		if(typePreProcessThread == ppt_detach) {
-			if(this->outThreadState == 2) {
+			if(_outThreadState == 2) {
 				push_packet_detach__finish(packetS);
 			} else {
 				push_packet_detach(packetS);
