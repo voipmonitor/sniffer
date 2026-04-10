@@ -504,6 +504,9 @@ public:
 	void init_problems(sProblemId &src, sProblemId &dst);
 	void init_summary(sSummaryId &sum_id, sSummaryId &sum_nc_id);
 	void clear();
+public:
+	void lock_interval() { __SYNC_LOCK(sync_interval); }
+	void unlock_interval() { __SYNC_UNLOCK(sync_interval); }
 private:
 	eChartTypeUse typeUse;
 	u_int32_t timeFrom;
@@ -534,6 +537,7 @@ private:
 	u_int32_t last_store_at;
 	u_int32_t last_store_at_real;
 	volatile u_int32_t counter_add;
+	volatile int sync_interval;
 friend class cChartDataPool;
 friend class cChartIntervalSeriesData;
 friend class cCharts;

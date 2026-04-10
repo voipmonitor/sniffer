@@ -1212,6 +1212,7 @@ cChartInterval::cChartInterval(eChartTypeUse typeUse) {
 	last_store_at = 0;
 	last_store_at_real = real_time;
 	counter_add = 0;
+	sync_interval = 0;
 	switch(typeUse) {
 	case _chartTypeUse_chartCache:
 		memset(&chart, 0, sizeof(chart));
@@ -1289,39 +1290,48 @@ void cChartInterval::add_stat(sChartsCallData *call, unsigned call_interval, boo
 	bool update = false;
 	for(int src_dst = 0; src_dst < 2; src_dst++) {
 		sStatId *stat_id = src_dst == 0 ? &src : &dst;
+		if(!(cCdrStat::enableBySrcDst(src_dst) && stat_id->ip.isSet())) {
+			continue;
+		}
+		sSeriesDataCdrStat *statData = NULL;
 		map<sStatId, sSeriesDataCdrStat*> *seriesDataCdrStat = src_dst == 0 ? stat.src : stat.dst;
-		if(cCdrStat::enableBySrcDst(src_dst) && stat_id->ip.isSet() && seriesDataCdrStat) {
+		if(seriesDataCdrStat) {
+			lock_interval();
 			map<sStatId, sSeriesDataCdrStat*>::iterator iter_stat = seriesDataCdrStat->find(*stat_id);
 			if(iter_stat != seriesDataCdrStat->end()) {
-				if(beginInInterval && firstInterval) {
-					++iter_stat->second->count;
-					if(call->type == sChartsCallData::_call) {
-						if(call->call()->connect_time_us) {
-							++iter_stat->second->count_connected;
-						}
-						int lsr = call->branch_main()->lastSIPresponseNum;
-						if(lsr / 100 >= 3 && lsr / 100 <= 6) {
-							++iter_stat->second->count_lsr_3_6[lsr / 100 - 3];
-						}
-					} else {
-						bool connect_duration_null;
-						call->tables_content()->getValue_int(_t_cdr, "connect_duration", false, &connect_duration_null);
-						if(!connect_duration_null) {
-							++iter_stat->second->count_connected;
-						}
-						int lsr = call->tables_content()->getValue_int(_t_cdr, "lastSIPresponseNum");
-						if(lsr / 100 >= 3 && lsr / 100 <= 6) {
-							++iter_stat->second->count_lsr_3_6[lsr / 100 - 3];
-						}
+				statData = iter_stat->second;
+			}
+			unlock_interval();
+		}
+		if(statData) {
+			if(beginInInterval && firstInterval) {
+				++statData->count;
+				if(call->type == sChartsCallData::_call) {
+					if(call->call()->connect_time_us) {
+						++statData->count_connected;
+					}
+					int lsr = call->branch_main()->lastSIPresponseNum;
+					if(lsr / 100 >= 3 && lsr / 100 <= 6) {
+						++statData->count_lsr_3_6[lsr / 100 - 3];
+					}
+				} else {
+					bool connect_duration_null;
+					call->tables_content()->getValue_int(_t_cdr, "connect_duration", false, &connect_duration_null);
+					if(!connect_duration_null) {
+						++statData->count_connected;
+					}
+					int lsr = call->tables_content()->getValue_int(_t_cdr, "lastSIPresponseNum");
+					if(lsr / 100 >= 3 && lsr / 100 <= 6) {
+						++statData->count_lsr_3_6[lsr / 100 - 3];
 					}
 				}
-				for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_stat->second->data.begin(); iter_series != iter_stat->second->data.end(); iter_series++) {
-					iter_series->second->add_us(call, call_interval, firstInterval, lastInterval, beginInInterval, 
-								    calldate_from_us, calldate_to_us);
-				}
-				update = true;
-				++iter_stat->second->counter_add;
 			}
+			for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = statData->data.begin(); iter_series != statData->data.end(); iter_series++) {
+				iter_series->second->add_us(call, call_interval, firstInterval, lastInterval, beginInInterval,
+							    calldate_from_us, calldate_to_us);
+			}
+			update = true;
+			++statData->counter_add;
 		}
 	}
 	if(update) {
@@ -1339,43 +1349,39 @@ void cChartInterval::add_problems(sChartsCallData *call, sProblemId &src, sProbl
 	for(int by_type = 0; by_type < 3; by_type++) {
 		if(cCdrProblems::enableBySrcDst(src_dst) && cCdrProblems::enableByType(by_type)) {
 			sProblemId problem_id = src_dst == 0 ? src : dst;
-			map<sProblemId, sCdrProblems*> *cdrProblems;
-			bool ok_add = false;
+			sCdrProblems *problemsData = NULL;
+			map<sProblemId, sCdrProblems*> *cdrProblems = NULL;
 			switch(by_type) {
 			case 0:
 				if(problem_id.ip.isSet()) {
 					problem_id.str.clear();
 					cdrProblems = src_dst == 0 ? problems.ip_src : problems.ip_dst;
-					if(cdrProblems) {
-						ok_add = true;
-					}
 				}
 				break;
 			case 1:
 				if(!problem_id.str.empty()) {
 					problem_id.ip.clear();
 					cdrProblems = src_dst == 0 ? problems.number_src : problems.number_dst;
-					if(cdrProblems) {
-						ok_add = true;
-					}
 				}
 				break;
 			case 2:
 				if(problem_id.ip.isSet()) {
 					cdrProblems = src_dst == 0 ? problems.comb_src : problems.comb_dst;
-					if(cdrProblems) {
-						ok_add = true;
-					}
 				}
 				break;
 			}
-			if(ok_add) {
+			if(cdrProblems) {
+				lock_interval();
 				map<sProblemId, sCdrProblems*>::iterator iter = cdrProblems->find(problem_id);
 				if(iter != cdrProblems->end()) {
-					iter->second->add(call, src_dst);
-					update = true;
-					++iter->second->counter_add;
+					problemsData = iter->second;
 				}
+				unlock_interval();
+			}
+			if(problemsData) {
+				problemsData->add(call, src_dst);
+				update = true;
+				++problemsData->counter_add;
 			}
 		}
 	}}
@@ -1395,24 +1401,32 @@ void cChartInterval::add_summary(sChartsCallData *call, unsigned call_interval, 
 	for(int si = 0; si < 2; si++) {
 		if(si == 0 || opt_cdr_summary_number_complete) {
 			sSummaryId *_sum_id = si == 0 ? &sum_id : &sum_nc_id;
+			sSeriesDataCdrSummary *sumData = NULL;
 			map<sSummaryId, sSeriesDataCdrSummary*> *summaryData = si == 0 ? summary.sum : summary.sum_nc;
-			map<sSummaryId, sSeriesDataCdrSummary*>::iterator iter_sum = summaryData->find(*_sum_id);
-			if(iter_sum != summaryData->end()) {
+			if(summaryData) {
+				lock_interval();
+				map<sSummaryId, sSeriesDataCdrSummary*>::iterator iter_sum = summaryData->find(*_sum_id);
+				if(iter_sum != summaryData->end()) {
+					sumData = iter_sum->second;
+				}
+				unlock_interval();
+			}
+			if(sumData) {
 				if(beginInInterval && firstInterval) {
-					++iter_sum->second->count;
+					++sumData->count;
 					if(call->type == sChartsCallData::_call) {
 						if(call->call()->connect_time_us) {
-							++iter_sum->second->count_connected;
+							++sumData->count_connected;
 						}
 						if((call->call()->rtpab[0] && call->call()->rtpab[0]->saddr.isSet()) ||
 						   (call->call()->rtpab[1] && call->call()->rtpab[1]->saddr.isSet())) {
-							++iter_sum->second->count_exists_rtp;
+							++sumData->count_exists_rtp;
 						}
 					} else {
 						bool connect_duration_null;
 						call->tables_content()->getValue_int(_t_cdr, "connect_duration", false, &connect_duration_null);
 						if(!connect_duration_null) {
-							++iter_sum->second->count_connected;
+							++sumData->count_connected;
 						}
 						bool a_saddr_null = true;
 						bool b_saddr_null = true;
@@ -1420,16 +1434,16 @@ void cChartInterval::add_summary(sChartsCallData *call, unsigned call_interval, 
 						string b_saddr_str = call->tables_content()->getValue_string(_t_cdr, "b_saddr", &b_saddr_null);
 						if((!a_saddr_str.empty() && !a_saddr_null) ||
 						   (!b_saddr_str.empty() && !b_saddr_null)) {
-							++iter_sum->second->count_exists_rtp;
+							++sumData->count_exists_rtp;
 						}
 					}
 				}
-				for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_sum->second->data.begin(); iter_series != iter_sum->second->data.end(); iter_series++) {
+				for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = sumData->data.begin(); iter_series != sumData->data.end(); iter_series++) {
 					iter_series->second->add_us(call, call_interval, firstInterval, lastInterval, beginInInterval,
 								    calldate_from, calldate_to);
 				}
 				update = true;
-				++iter_sum->second->counter_add;
+				++sumData->counter_add;
 			}
 		}
 	}
@@ -1694,6 +1708,7 @@ void cChartInterval::init_stat(sStatId &src, sStatId &dst) {
 				if(!*seriesDataCdrStat) {
 					*seriesDataCdrStat = new map<sStatId, sSeriesDataCdrStat*>;
 				}
+				lock_interval();
 				map<sStatId, sSeriesDataCdrStat*>::iterator iter = (*seriesDataCdrStat)->find(*stat_id);
 				if(iter == (*seriesDataCdrStat)->end()) {
 					sSeriesDataCdrStat *seriesDataItem = new FILE_LINE(0) sSeriesDataCdrStat;
@@ -1704,6 +1719,7 @@ void cChartInterval::init_stat(sStatId &src, sStatId &dst) {
 						seriesDataItem->data[series_i]->prepareData();
 					}
 				}
+				unlock_interval();
 			}
 		}
 	}
@@ -1743,11 +1759,13 @@ void cChartInterval::init_problems(sProblemId &src, sProblemId &dst) {
 					if(!*cdrProblems) {
 						*cdrProblems = new map<sProblemId, sCdrProblems*>;
 					}
+					lock_interval();
 					map<sProblemId, sCdrProblems*>::iterator iter = (*cdrProblems)->find(problem_id);
 					if(iter == (*cdrProblems)->end()) {
 						sCdrProblems *cdrProblemsItem = new FILE_LINE(0) sCdrProblems;
 						(**cdrProblems)[problem_id] = cdrProblemsItem;
 					}
+					unlock_interval();
 				}
 			}
 		}}
@@ -1763,6 +1781,7 @@ void cChartInterval::init_summary(sSummaryId &sum_id, sSummaryId &sum_nc_id) {
 				if(!*summaryData) {
 					*summaryData = new map<sSummaryId, sSeriesDataCdrSummary*>;
 				}
+				lock_interval();
 				map<sSummaryId, sSeriesDataCdrSummary*>::iterator iter = (*summaryData)->find(*_sum_id);
 				if(iter == (*summaryData)->end()) {
 					sSeriesDataCdrSummary *seriesDataItem = new FILE_LINE(0) sSeriesDataCdrSummary;
@@ -1772,6 +1791,7 @@ void cChartInterval::init_summary(sSummaryId &sum_id, sSummaryId &sum_nc_id) {
 						seriesDataItem->data[series_i]->prepareData();
 					}
 				}
+				unlock_interval();
 			}
 		}
 	}
