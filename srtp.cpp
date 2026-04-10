@@ -290,7 +290,9 @@ bool RTPsecure::is_dtls() {
 
 bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len, u_int64_t time_us,
 			    vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, RTP *stream) {
+	#if not EXPERIMENTAL_LITE_RTP_MOD
 	unsigned failed_log_limit = 20;
+	#endif
 	setCryptoConfig(time_us);
 	if(!cryptoConfigVector.size()) {
 		#if not EXPERIMENTAL_LITE_RTP_MOD

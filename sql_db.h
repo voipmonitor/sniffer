@@ -1369,6 +1369,7 @@ struct sExistsColumns {
 	bool cdr_mos_xr;
 	bool cdr_mos_silence;
 	bool cdr_dscp;
+	bool cdr_ttl;
 	bool cdr_mos_lqo;
 	bool cdr_max_retransmission_invite;
 	bool cdr_flags;
@@ -1405,6 +1406,7 @@ struct sExistsColumns {
 	bool cdr_rtp_sdp_ptime;
 	bool cdr_rtp_flags;
 	bool cdr_rtp_duration;
+	bool cdr_rtp_ttl;
 	bool cdr_rtcp_fraclost_pktcount;
 	bool cdr_rtcp_rtd;
 	bool cdr_dtmf_calldate;

@@ -460,7 +460,12 @@ public:
 	bool confirm_both_sides_by_sdp;
 	bool stopped_jb_due_to_high_ooo;
 	bool changing_codec;
-
+	
+	int16_t ttl_min;
+	int16_t ttl_max;
+	u_int64_t ttl_sum;
+	u_int32_t ttl_count;
+	
 	/* RTCP data */
 	struct rtcp_t {
 		int loss;

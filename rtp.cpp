@@ -429,6 +429,11 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	confirm_both_sides_by_sdp = false;
 	stopped_jb_due_to_high_ooo = false;
 	changing_codec = false;
+	
+	ttl_min = -1;
+	ttl_max = -1;
+	ttl_sum = 0;
+	ttl_count = 0;
 
 	change_packetization_iterator = 0;
 	srtp_decrypt = NULL;
@@ -1215,12 +1220,22 @@ bool RTP::read(CallBranch *c_branch,
 	this->sport = sport;
 	this->ignore = 0;
 	resetgraph = 0;
-
+	
 	if(codec != -1 and codec != 13 and codec != 19 and codec != PAYLOAD_TELEVENT and !is_video()) {
 		had_audio = true;
 	}
 
 	if(sverb.ssrc and getSSRC() != sverb.ssrc) return(false);
+	
+	u_int8_t ttl = header_ip->get_ttl();
+	if(ttl_min < 0 || ttl < ttl_min) {
+		ttl_min = ttl;
+	}
+	if(ttl_max < 0 || ttl > ttl_max) {
+		ttl_max = ttl;
+	}
+	ttl_sum += ttl;
+	++ttl_count;
 	
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 	if(sverb.read_rtp) {
@@ -2967,6 +2982,7 @@ void sStreamAnalysisData::exportCsvHeader() {
 	     << "energylevel"
 	     << endl;
 }
+#endif // not EXPERIMENTAL_LITE_RTP_MOD
 
 void sStreamAnalysisData::exportCsvRow(sStreamAnalysisRow *row, sStreamAnalysisRowMos *row_mos) {
 	cout << fixed << setprecision(3);
@@ -3028,6 +3044,7 @@ void sStreamAnalysisData::clear() {
 	mos.clear();
 }
 
+#if not EXPERIMENTAL_LITE_RTP_MOD
 double RTP::mos_min_from_avg(bool *null, bool prefer_f2) {
 	double mos_min = 0;
 	if(this->mosf1_avg > 0 && this->mosf1_avg != (uint8_t)-1) {

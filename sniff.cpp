@@ -5152,6 +5152,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 	if(detectCallerd) {
 		call->handle_dscp(packetS->header_ip_(), iscaller > 0);
 	}
+	call->handle_ttl(packetS->header_ip_());
 	
 	if(opt_norecord_header) {
 		s = gettag_sip(packetS, "\nX-VoipMonitor-norecord:", &l);
@@ -8805,8 +8806,10 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 	
 	extern string extract_payload;
 	extern string extract_rtp_payload;
+	#if not EXPERIMENTAL_LITE_RTP_MOD
 	bool _extract_payload = extract_payload.length();
 	bool _extract_rtp_payload = extract_rtp_payload.length();
+	#endif
 	map<string, FILE*> payload_dump;
 			 
 	while(!is_terminating()) {

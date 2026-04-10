@@ -791,7 +791,7 @@ struct iphdr2 {
 			return(_ttl);
 		#if VM_IPV6
 		} else {
-			return(0);
+			return(((ip6hdr2*)this)->hlim);
 		}
 		#endif
 	}

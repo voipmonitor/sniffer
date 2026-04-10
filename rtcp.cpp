@@ -478,7 +478,9 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_br
 		return pkt;
 	}
 
+	#if not EXPERIMENTAL_LITE_RTP_MOD
 	u_int32_t cur_lsr = ((senderinfo.timestamp_MSW & 0xffff) << 16) | ((senderinfo.timestamp_LSW & 0xffff0000) >> 16);
+	#endif
 
 	if(sverb.debug_rtcp) {
 		cout << " * dump_rtcp_sr SSRC: " << hex << senderinfo.sender_ssrc << dec
@@ -528,7 +530,6 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_br
 					rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < reportblock.jitter) ? reportblock.jitter : rtp->rtcp.maxjitter;
 					rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.jitt_counter - 1) + reportblock.jitter) / rtp->rtcp.jitt_counter;
 				}
-				#endif
 				int rtd = c_branch->rtcp_rtd.getRtd(senderinfo.sender_ssrc, cur_lsr, &reportblock, ts, cRtcpRtd::_rtd_tc_rfc);
 				if(rtd > 0) {
 					rtp->rtcp.rtd_rfc_count++;
@@ -545,6 +546,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_br
 						rtp->rtcp.rtd_ws_max = rtd_ws;
 					}
 				}
+				#endif
 				if(sverb.debug_rtcp) {
 					cout << "sSSRC: " << hex << reportblock.ssrc << dec
 					     << " " << ip_src.getString() << "->" << ip_dst.getString() << " (" <<  rtp_find_type << ")"
@@ -555,7 +557,9 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_br
 					     << " Jitter: " << reportblock.jitter
 					     << " Last SR: " << reportblock.lsr
 					     << " Delay since last SR: " <<reportblock.delay_since_lsr
+					     #if not EXPERIMENTAL_LITE_RTP_MOD
 					     << " RTD: " << rtd << " / ws " << rtd_ws
+					     #endif
 					     << endl;
 				}
 			} else {
@@ -661,7 +665,6 @@ char *dump_rtcp_rr(char *data, int datalen, int count, CallBranch *c_branch, str
 					rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < reportblock.jitter) ? reportblock.jitter : rtp->rtcp.maxjitter;
 					rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.jitt_counter - 1) + reportblock.jitter) / rtp->rtcp.jitt_counter;
 				}
-				#endif
 				int rtd_ws = c_branch->rtcp_rtd.getRtd(ssrc, 0, &reportblock, ts, cRtcpRtd::_rtd_tc_ws);
 				if(rtd_ws > 0) {
 					rtp->rtcp.rtd_ws_count++;
@@ -670,6 +673,7 @@ char *dump_rtcp_rr(char *data, int datalen, int count, CallBranch *c_branch, str
 						rtp->rtcp.rtd_ws_max = rtd_ws;
 					}
 				}
+				#endif
 				if(sverb.debug_rtcp) {
 					cout << "rSSRC: " << hex << reportblock.ssrc << dec
 					     << " " << ip_src.getString() << "->" << ip_dst.getString() << " (" <<  rtp_find_type << ")"
@@ -680,7 +684,9 @@ char *dump_rtcp_rr(char *data, int datalen, int count, CallBranch *c_branch, str
 					     << " Jitter: " << reportblock.jitter
 					     << " Last SR: " << reportblock.lsr
 					     << " Delay since last SR: " <<reportblock.delay_since_lsr
+					     #if not EXPERIMENTAL_LITE_RTP_MOD
 					     << " RTD: - / ws " << rtd_ws
+					     #endif
 					     << endl;
 				}
 			} else {

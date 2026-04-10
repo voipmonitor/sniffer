@@ -6237,6 +6237,15 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		       "`response_time_100` smallint unsigned DEFAULT NULL,\
 			`response_time_xxx` smallint unsigned DEFAULT NULL,\
 			`max_retransmission_invite` tinyint unsigned DEFAULT NULL,\
+			`ttl_min` tinyint unsigned DEFAULT NULL,\
+			`ttl_max` tinyint unsigned DEFAULT NULL,\
+			`ttl_avg_mult10` smallint unsigned DEFAULT NULL,\
+			`a_ttl_min` tinyint unsigned DEFAULT NULL,\
+			`a_ttl_max` tinyint unsigned DEFAULT NULL,\
+			`a_ttl_avg_mult10` smallint unsigned DEFAULT NULL,\
+			`b_ttl_min` tinyint unsigned DEFAULT NULL,\
+			`b_ttl_max` tinyint unsigned DEFAULT NULL,\
+			`b_ttl_avg_mult10` smallint unsigned DEFAULT NULL,\
 			`flags` bigint unsigned DEFAULT NULL,\
 			`vlan` smallint DEFAULT NULL,\
 			`id_sensor` smallint unsigned DEFAULT NULL," +
@@ -6606,6 +6615,9 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`rtp_ptime` tinyint unsigned DEFAULT NULL,\
 			`flags` bigint unsigned DEFAULT NULL,\
 			`duration` " + column_type_duration_ms_unsigned("float") + " DEFAULT NULL,\
+			`ttl_min` tinyint unsigned DEFAULT NULL,\
+			`ttl_max` tinyint unsigned DEFAULT NULL,\
+			`ttl_avg_mult10` smallint unsigned DEFAULT NULL,\
 		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
@@ -9539,6 +9551,18 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				log, &tableSize, &existsColumns.cdr_dscp,
 				"dscp", "int unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("cdr", "ttl", true,
+				log, &tableSize, &existsColumns.cdr_ttl,
+				"ttl_min", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"ttl_max", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"ttl_avg_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"a_ttl_min", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"a_ttl_max", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"a_ttl_avg_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"b_ttl_min", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"b_ttl_max", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"b_ttl_avg_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("cdr", "mos lqo", opt_mos_lqo,
 				log, &tableSize, &existsColumns.cdr_mos_lqo,
 				"a_mos_lqo_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
@@ -9811,6 +9835,12 @@ void SqlDb_mysql::checkColumns_cdr_rtp(bool log) {
 	this->checkNeedAlterAdd("cdr_rtp", "rtp duration", true,
 				log, &tableSize, &existsColumns.cdr_rtp_duration,
 				"duration", string(column_type_duration_ms_unsigned("float") + " DEFAULT NULL").c_str(), NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("cdr_rtp", "ttl", true,
+				log, &tableSize, &existsColumns.cdr_rtp_ttl,
+				"ttl_min", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"ttl_max", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"ttl_avg_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 }
 

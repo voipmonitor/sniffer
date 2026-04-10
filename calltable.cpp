@@ -951,6 +951,11 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	conference_legs_sync = 0;
 	srvcc_flag = _srvcc_na;
 	
+	ttl_min = -1;
+	ttl_max = -1;
+	ttl_sum = 0;
+	ttl_count = 0;
+	
 	cdr.setIgnoreCheckExistsField();
 	cdr_next.setIgnoreCheckExistsField();
 	for(int i = 0; i < CDR_NEXT_MAX; i++) {
@@ -7069,6 +7074,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 	}
 	
+	#if not EXPERIMENTAL_LITE_RTP_MOD
 	bool rtp_dupl_seq = false;
 	for(int i = 0; i < rtp_size(); i++) {
 		RTP *rtp_i = rtp_stream_by_index(i);
@@ -7088,6 +7094,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(rtp_dupl_seq) {
 		cdr_flags |= CDR_RTP_DUPL_SEQ;
 	}
+	#endif
+	
 	if(stopped_jb_due_to_high_ooo) {
 		cdr_flags |= CDR_STOPPED_JB_DUE_TO_HIGH_OOO;
 	}
@@ -7579,11 +7587,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr.add(LIMIT_MEDIUMINT_UNSIGNED(lost[i]), c+"_lost");
 			packet_loss_perc_mult1000[i] = (int)round((double)rtpab[i]->lost_() / 
 									(rtpab[i]->received_() + 2 + rtpab[i]->lost_()) * 100 * 1000);
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			if(existsColumns.cdr_reordered) {
 				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(rtpab[i]->stats.reordered), c+"_reordered");
 			}
-			
-			#if not EXPERIMENTAL_LITE_RTP_MOD
 			if(!opt_disable_cdr_fields_rtp) {
 				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(packet_loss_perc_mult1000[i]), c+"_packet_loss_perc_mult1000");
 				jitter_mult10[i] = ceil(rtpab[i]->stats.avgjitter * 10);
@@ -7747,6 +7754,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 						cdr_flags |= CDR_RTCP_RTD_USE_WS_METHOD;
 					}
 				}
+			}
+			if(existsColumns.cdr_ttl && rtpab[i]->ttl_count > 0) {
+				cdr.add(rtpab[i]->ttl_min, c+"_ttl_min");
+				cdr.add(rtpab[i]->ttl_max, c+"_ttl_max");
+				cdr.add((int)round((double)rtpab[i]->ttl_sum / rtpab[i]->ttl_count * 10), c+"_ttl_avg_mult10");
 			}
 			#endif
 
@@ -7959,7 +7971,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(opt_dscp && existsColumns.cdr_dscp) {
 		cdr.add((dscp_a << 24) + (dscp_b << 16) + (dscp_c << 8) + dscp_d, "dscp");
 	}
-	
+	if(existsColumns.cdr_ttl && ttl_count > 0) {
+		cdr.add(ttl_min, "ttl_min");
+		cdr.add(ttl_max, "ttl_max");
+		cdr.add((int)round((double)ttl_sum / ttl_count * 10), "ttl_avg_mult10");
+	}
+
 	rslt_save_cdr_flags = cdr_flags;
 	if(cdr_flags && existsColumns.cdr_flags) {
 		cdr.add(cdr_flags, "flags");
@@ -8442,10 +8459,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(existsColumns.cdr_rtp_index) {
 					rtps.add(i + 1, "index");
 				}
+				#if not EXPERIMENTAL_LITE_RTP_MOD
 				if(existsColumns.cdr_rtp_sdp_ptime) {
 					rtps.add(LIMIT_TINYINT_UNSIGNED(rtp_i->sdp_ptime), "sdp_ptime", !rtp_i->sdp_ptime);
 					rtps.add(LIMIT_TINYINT_UNSIGNED(round(rtp_i->avg_ptime)), "rtp_ptime", round(rtp_i->avg_ptime) == 0);
 				}
+				#endif
 				if(existsColumns.cdr_rtp_flags) {
 					u_int64_t flags = 0;
 					#if not EXPERIMENTAL_LITE_RTP_MOD
@@ -8458,6 +8477,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 						flags |= CDR_RTP_STREAM_IS_AB;
 					}
 					flags |= rtp_i->iscaller ? CDR_RTP_STREAM_IS_CALLER : CDR_RTP_STREAM_IS_CALLED;
+					#if not EXPERIMENTAL_LITE_RTP_MOD
 					if (rtp_i->srtp_decrypt) {
 						flags |=  CDR_RTP_STREAM_IS_SRTP;
 					}
@@ -8467,6 +8487,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					if(rtp_i->changing_codec) {
 						flags |=  CDR_RTP_CHANGING_CODEC;
 					}
+					#endif
 					rtps.add(flags, "flags", !flags);
 				}
 				if(existsColumns.cdr_rtp_duration) {
@@ -8474,6 +8495,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					double duration = ltime - rtime;
 					rtps.add(duration, "duration");
 				}
+				#if not EXPERIMENTAL_LITE_RTP_MOD
+				if(existsColumns.cdr_rtp_ttl) {
+					rtps.add(rtp_i->ttl_count > 0 ? rtp_i->ttl_min : 0, "ttl_min", rtp_i->ttl_count == 0);
+					rtps.add(rtp_i->ttl_count > 0 ? rtp_i->ttl_max : 0, "ttl_max", rtp_i->ttl_count == 0);
+					rtps.add(rtp_i->ttl_count > 0 ? (int)round((double)rtp_i->ttl_sum / rtp_i->ttl_count * 10) : 0, "ttl_avg_mult10", rtp_i->ttl_count == 0);
+				}
+				#endif
 				if(existsColumns.cdr_rtp_calldate) {
 					rtps.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_rtp_calldate_ms);
 				}
@@ -8489,7 +8517,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				double stime = TIME_US_TO_SF(this->first_packet_time_us);
 				double rtime = TIME_US_TO_SF(ipfixData[stream_i].BeginTimeUS);
 				double diff = TIME_DIFF_FIX_OVERFLOW(rtime, stime);
-				int ticks_bycodec = get_ticks_bycodec(ipfixData[stream_i].CodecType);
 				SqlDb_row rtps;
 				rtps.setIgnoreCheckExistsField();
 				rtps.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
@@ -8515,6 +8542,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					rtps.add(0, "loss", true);
 				}
 				#if not EXPERIMENTAL_LITE_RTP_MOD
+				int ticks_bycodec = get_ticks_bycodec(ipfixData[stream_i].CodecType);
 				if(opt_ipfix_qos_fill_jitter) {
 					rtps.add(LIMIT_SMALLINT_UNSIGNED(round((double)ipfixData[stream_i].RtpMaxJitter / ticks_bycodec) * 10), "maxjitter_mult10");
 				} else {
@@ -9175,10 +9203,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			if(existsColumns.cdr_rtp_index) {
 				rtps.add(i + 1, "index");
 			}
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			if(existsColumns.cdr_rtp_sdp_ptime) {
 				rtps.add(LIMIT_TINYINT_UNSIGNED(rtp_i->sdp_ptime), "sdp_ptime", !rtp_i->sdp_ptime);
 				rtps.add(LIMIT_TINYINT_UNSIGNED(round(rtp_i->avg_ptime)), "rtp_ptime", round(rtp_i->avg_ptime) == 0);
 			}
+			#endif
 			if(existsColumns.cdr_rtp_flags) {
 				u_int64_t flags = 0;
 				#if not EXPERIMENTAL_LITE_RTP_MOD
@@ -9191,6 +9221,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					flags |= CDR_RTP_STREAM_IS_AB;
 				}
 				flags |= rtp_i->iscaller ? CDR_RTP_STREAM_IS_CALLER : CDR_RTP_STREAM_IS_CALLED;
+				#if not EXPERIMENTAL_LITE_RTP_MOD
 				if (rtp_i->srtp_decrypt) {
 					flags |=  CDR_RTP_STREAM_IS_SRTP;
 				}
@@ -9200,6 +9231,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(rtp_i->changing_codec) {
 					flags |=  CDR_RTP_CHANGING_CODEC;
 				}
+				#endif
 				if(flags) {
 					rtps.add(flags, "flags");
 				}
@@ -9209,6 +9241,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				double duration = ltime - rtime;
 				rtps.add(duration, "duration");
 			}
+			#if not EXPERIMENTAL_LITE_RTP_MOD
+			if(existsColumns.cdr_rtp_ttl) {
+				rtps.add(rtp_i->ttl_count > 0 ? rtp_i->ttl_min : 0, "ttl_min", rtp_i->ttl_count == 0);
+				rtps.add(rtp_i->ttl_count > 0 ? rtp_i->ttl_max : 0, "ttl_max", rtp_i->ttl_count == 0);
+				rtps.add(rtp_i->ttl_count > 0 ? (int)round((double)rtp_i->ttl_sum / rtp_i->ttl_count * 10) : 0, "ttl_avg_mult10", rtp_i->ttl_count == 0);
+			}
+			#endif
 			if(existsColumns.cdr_rtp_calldate) {
 				rtps.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_rtp_calldate_ms);
 			}
@@ -14527,6 +14566,19 @@ Call::handle_dscp(struct iphdr2 *header_ip, bool iscaller) {
 	}
 }
 
+void
+Call::handle_ttl(struct iphdr2 *header_ip) {
+	u_int8_t ttl = header_ip->get_ttl();
+	if(ttl_min < 0 || ttl < ttl_min) {
+		ttl_min = ttl;
+	}
+	if(ttl_max < 0 || ttl > ttl_max) {
+		ttl_max = ttl;
+	}
+	ttl_sum += ttl;
+	++ttl_count;
+}
+
 bool Call::check_is_caller_called(CallBranch *c_branch,
 				  const char *call_id, int sip_method, int cseq_method,
 				  vmIP saddr, vmIP daddr, 
@@ -14805,6 +14857,7 @@ void Call::srvcc_check_pre(CallBranch *c_branch) {
 
 string Call::get_rtp_streams_info_json() {
 	string rslt = "[";
+	#if not EXPERIMENTAL_LITE_RTP_MOD
 	unsigned counter = 0;
 	for(int i = 0; i < min(ssrc_n, MAX_SSRC_PER_CALL_FIX); i++) {
 		RTP *rtp = rtp_fix[i];
@@ -14816,6 +14869,7 @@ string Call::get_rtp_streams_info_json() {
 			++counter;
 		}
 	}
+	#endif
 	rslt += "]";
 	return(rslt);
 }

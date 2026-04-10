@@ -1881,6 +1881,11 @@ public:
 	eSrvccFlag srvcc_flag;
 	string srvcc_call_id;
 	
+	int16_t ttl_min;
+	int16_t ttl_max;
+	u_int64_t ttl_sum;
+	u_int32_t ttl_count;
+	
 	/**
 	 * constructor
 	 *
@@ -2197,6 +2202,7 @@ public:
 	void handle_dtmf(char dtmf, double dtmf_time, vmIP saddr, vmIP daddr, s_dtmf::e_type dtmf_type);
 	
 	void handle_dscp(struct iphdr2 *header_ip, bool iscaller);
+	void handle_ttl(struct iphdr2 *header_ip);
 	
 	bool check_is_caller_called(CallBranch *c_branch,
 				    const char *call_id, int sip_method, int cseq_method,
