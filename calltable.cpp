@@ -7927,7 +7927,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr.add(ipfix_qos_streams_ab[i]->SrcIP, c+"_saddr", false, sqlDbSaveCall, sql_cdr_table);
 			cdr.add(LIMIT_MEDIUMINT_UNSIGNED(ipfix_qos_streams_ab[i]->RtpPackets), c+"_received");
 			cdr.add(LIMIT_MEDIUMINT_UNSIGNED(ipfix_qos_streams_ab[i]->RtpLostPackets), c+"_lost");
-			cdr.add(LIMIT_TINYINT_UNSIGNED((int)round((double)ipfix_qos_streams_ab[i]->Mos/10)), c+"_mos_f2_mult10");
+			if(ipfix_qos_streams_ab[i]->Mos > 0) {
+				cdr.add(LIMIT_TINYINT_UNSIGNED((int)round((double)ipfix_qos_streams_ab[i]->Mos/10)), c+"_mos_f2_mult10");
+			}
 			int ticks_bycodec;
 			if(opt_ipfix_qos_fill_jitter) {
 				ticks_bycodec = get_ticks_bycodec(ipfix_qos_streams_ab[i]->CodecType);
@@ -7936,9 +7938,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				cdr.add(LIMIT_SMALLINT_UNSIGNED(round((double)ipfix_qos_streams_ab[i]->RtcpMaxJitter / ticks_bycodec)), c+"_rtcp_maxjitter");
 				cdr.add(LIMIT_SMALLINT_UNSIGNED(round((double)ipfix_qos_streams_ab[i]->RtcpAvgJitter / ticks_bycodec) * 10), c+"_rtcp_avgjitter_mult10");
 			}
-			int _mos_mult_10 = (int)round((double)ipfix_qos_streams_ab[i]->Mos/10);
-			if(mos_mult10_min < 0 || _mos_mult_10 < mos_mult10_min) {
-				mos_mult10_min = _mos_mult_10;
+			if(ipfix_qos_streams_ab[i]->Mos > 0) {
+				int _mos_mult_10 = (int)round((double)ipfix_qos_streams_ab[i]->Mos/10);
+				if(mos_mult10_min < 0 || _mos_mult_10 < mos_mult10_min) {
+					mos_mult10_min = _mos_mult_10;
+				}
 			}
 			u_int32_t total_packets = ipfix_qos_streams_ab[i]->RtpPackets + ipfix_qos_streams_ab[i]->RtpLostPackets;
 			if(total_packets > 0) {
