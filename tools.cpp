@@ -4275,6 +4275,7 @@ void ParsePacket::ppNode::debugData(ppContentsX *contents, ParsePacket *parsePac
 ParsePacket::ParsePacket() {
 	root = NULL;
 	rootCheckSip = NULL;
+	skipFreeOnTermination = false;
 	timeSync_SIP_HEADERfilter = 0;
 	timeSync_custom_headers_cdr = 0;
 	timeSync_custom_headers_message = 0;
@@ -4657,6 +4658,9 @@ u_int32_t ParsePacket::parseData(char *data, unsigned long datalen, ppContentsX 
 }
 
 void ParsePacket::free() {
+	if(skipFreeOnTermination) {
+		return;
+	}
 	if(root) {
 		delete root;
 		root = NULL;

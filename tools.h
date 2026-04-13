@@ -2652,6 +2652,7 @@ private:
 	std::vector<string> nodesCustom_prepare;
 	ppNode *root;
 	ppNode *rootCheckSip;
+	bool skipFreeOnTermination;
 	unsigned long timeSync_SIP_HEADERfilter;
 	unsigned long timeSync_custom_headers_cdr;
 	unsigned long timeSync_custom_headers_message;

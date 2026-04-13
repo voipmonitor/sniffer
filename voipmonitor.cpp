@@ -4625,8 +4625,12 @@ int main(int argc, char *argv[]) {
 	}
 	// END RELOAD LOOP
 	
-	_parse_packet_global_process_packet.free();
-	
+	if(opt_fork && !sverb.memory_stat) {
+		_parse_packet_global_process_packet.skipFreeOnTermination = true;
+	} else {
+		_parse_packet_global_process_packet.free();
+	}
+
 	delete [] sipportmatrix;
 	delete [] httpportmatrix;
 	delete [] webrtcportmatrix;
