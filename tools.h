@@ -2645,6 +2645,7 @@ public:
 	void free();
 	void debugData(ppContentsX *contents);
 	void refreshIfNeed();
+	void setSkipFreeOnTermination() { skipFreeOnTermination = true; }
 private:
 	std::vector<string> nodesStd;
 	std::vector<string> nodesCheckSip;

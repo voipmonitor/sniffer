@@ -4626,7 +4626,7 @@ int main(int argc, char *argv[]) {
 	// END RELOAD LOOP
 	
 	if(opt_fork && !sverb.memory_stat) {
-		_parse_packet_global_process_packet.skipFreeOnTermination = true;
+		_parse_packet_global_process_packet.setSkipFreeOnTermination();
 	} else {
 		_parse_packet_global_process_packet.free();
 	}
