@@ -1,3 +1,32 @@
+2026.04.0 14.04.2026
+====================
+- Add ZSTD compression support for qfiles (query cache) and remote SQL query protocol (client/server) [VS-1503]
+- Add TTL min/max/avg tracking for SIP and RTP streams into cdr and cdr_rtp tables [VS-1832]
+- Add sdp_use_candidate_srflx option: use srflx candidate IPs from SDP for RTP hash matching via cross-match to track streams that switch from TURN relay to direct path [VS-1581]
+- Add support for HEP log packets [VS-1694]
+- Extend natalias manager command with add/remove/remove_all subcommands, wrap nat_aliases in thread-safe class with batch-level locking [VS-1823]
+- Extended traffic dumper capabilities: multiple independent dumpers with different filters, IP filtering based on first/last IP headers, option to filter only fragmented packets, option to enable directly via manager
+- Modification of RTCP RTD calculations - optimization with separate queues by SSRC instead of shared queue [VS-1825]
+- Adjustment of lost packets calculation, addition of reordered packets calculation
+- IP defrag revision: add dst IP to frag key and thread split hash, caplen safety, hdr_size validation, inner IP bounds check, cleanup timeout 2s to 5s
+- Apply enable_premature_response option to registrations, add cseq check for calls [VS-1828]
+- Add support for filtering by country for listregisters management command [VS-1815]
+- Centralize time column precision management into cTableColumnsTimePrecision class [VG-3100]
+- Apply Tool-Free checkbox in billing [VG-3108]
+- Activate pcap timestamp validation (previously behind EXPERIMENTAL_CHECK_PCAP_TIME)
+- Add option sip_thread_log_ext to monitor attempts to add next threads for 's' thread
+- Suppress storage of MOS value 0 from IPFIX QoS data [VS-1811]
+- Fix database backup (migration) truncating IP addresses with zero octet [VS-1830]
+- Fix infinite retry loop on ER_DUP_FIELDNAME (1060) [VS-1827]
+- Fix illegal mix of collations (latin1/utf8) error in CDR duplicate check queries [VS-1826]
+- Fix apply parameter reconfigure in DOMAINfilter::add_call_flags
+- Fix potential crash on termination when heap is corrupted - skip ParsePacket tree deallocation during daemon termination
+- Fix potential race condition in concurrent access to cChartInterval data
+- Fix potential race condition with call_id_alternative
+- Fix potential memory leak
+- Revert allow to override id_sensor from HEP header fields [VS-1703]
+
+
 2026.03.1 11.03.2026
 ====================
 - Fix crash when both save_sip_history and enable_premature_response are enabled
