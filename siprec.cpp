@@ -1611,10 +1611,17 @@ void cSipRecPacketSender::pushPacket(pcap_pkthdr *header, u_char *packet, unsign
 }
 
 void cSipRecPacketSender::evTimer(u_int32_t /*time_s*/, int /*typeTimer*/, void */*data*/) {
+	if(is_terminating()) {
+		return;
+	}
 	block_store_lock();
 	if(block_store && block_store->isFull_checkTimeout_ext(100)) {
 		extern PcapQueue_readFromFifo *pcapQueueQ;
-		pcapQueueQ->addBlockStoreToPcapStoreQueue_ext(block_store);
+		if(pcapQueueQ) {
+			pcapQueueQ->addBlockStoreToPcapStoreQueue_ext(block_store);
+		} else {
+			delete block_store;
+		}
 		block_store = NULL;
 	}
 	block_store_unlock();
