@@ -1344,6 +1344,8 @@ u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string 
 			readLength = blockHeaderOK ?
 				      min(maxReadLength, readBuffer.lengthBlockHeader(true) - readBuffer.length) :
 				      min(maxReadLength, sizeof(sBlockHeader) - readBuffer.length);
+		} else {
+			readBlockError = _sbe_read_failed;
 		}
 	} while(rsltRead);
 	if(rsltRead) {
@@ -1545,6 +1547,7 @@ const char *cSocketBlock::getSocketBlockErrorStr(eSocketBlockError error) {
 	case _sbe_failed_private_decrypt: return("failed private decrypt");
 	case _sbe_failed_aes_decrypt: return("failed aes decrypt");
 	case _sbe_bad_checksum: return("bad checksum");
+	case _sbe_read_failed: return("read failed");
 	case _sbe_na: return("na");
 	}
 	return("na");

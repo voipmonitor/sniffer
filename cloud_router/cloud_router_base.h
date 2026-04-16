@@ -515,6 +515,7 @@ class cSocketBlock : public cSocket {
 public:
 	enum eSocketBlockError {
 		_sbe_na,
+		_sbe_read_failed,
 		_sbe_bad_block_header,
 		_sbe_failed_private_decrypt,
 		_sbe_failed_aes_decrypt,

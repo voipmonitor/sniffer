@@ -1249,13 +1249,22 @@ void cClientRandomConnection::connection_process() {
 		delete this;
 		return;
 	}
+	unsigned timeoutCounter = 0;
 	while(!is_terminating() && !socket->isError()) {
 		u_char *data;
 		size_t dataLen;
-		data = socket->readBlock(&dataLen, cSocket::_te_aes);
+		data = socket->readBlock(&dataLen, cSocket::_te_aes, "", false, 30);
 		if(data) {
 			evData(data, dataLen);
+			timeoutCounter = 0;
 		} else {
+			if(socket->getReadBlockError() == cSocketBlock::_sbe_timeout) {
+				if(++timeoutCounter >= 3) {
+					break;
+				}
+			} else if(socket->getReadBlockError() != cSocketBlock::_sbe_na) {
+				break;
+			}
 			USLEEP(1000);
 		}
 	}
