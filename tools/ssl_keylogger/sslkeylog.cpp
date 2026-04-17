@@ -277,19 +277,29 @@ static void keylog_tcp_socket_close() {
 }
 
 static void keylog_tcp_socket_write(u_char *data, size_t datalen) {
-	if(!keylog_tcp_socket)
+	if(!(keylog_tcp_dest_host[0] && keylog_tcp_dest_port)) {
 		return;
+	}
+	bool ok = false;
 	unsigned pass = 0;
-	while(pass < 3) {
-		if(keylog_tcp_socket->writeBlock(data, datalen, cSocket::_te_aes)) {
-			return;
+	unsigned max_pass = 10;
+	while(pass < max_pass) {
+		if(!keylog_tcp_socket) {
+			keylog_tcp_socket_open();
+		}
+		if(keylog_tcp_socket && keylog_tcp_socket->writeBlock(data, datalen, cSocket::_te_aes)) {
+			ok = true;
+			break;
 		} else {
 			keylog_tcp_socket_close();
-			if(!keylog_tcp_socket_open()) {
-				break;
+			if(pass + 1 < max_pass) {
+				usleep(100000 * pass);
 			}
 		}
 		++pass;
+	}
+	if(!ok) {
+		debug_printf("failed sent key: %s", string((char*)data, datalen).c_str());
 	}
 }
 #endif
@@ -333,26 +343,38 @@ static void keylog_udp_socket_close() {
 }
 
 static void keylog_udp_socket_write(u_char *data, size_t datalen) {
-	if(keylog_socket_handle < 0)
+	if(!(keylog_socket_ipn && keylog_socket_port)) {
 		return;
+	}
+	bool ok = false;
 	size_t datalenSent = 0;
 	unsigned pass = 0;
-	while(datalenSent < datalen) {
-		ssize_t _datalenSent = send(keylog_socket_handle, (u_char*)data + datalenSent, datalen - datalenSent, 0);
+	unsigned max_pass = 10;
+	while(pass < max_pass) {
+		if(keylog_socket_handle < 0) {
+			keylog_udp_socket_open();
+		}
+		ssize_t _datalenSent = -1;
+		if(keylog_socket_handle >= 0) {
+			_datalenSent = send(keylog_socket_handle, (u_char*)data + datalenSent, datalen - datalenSent, 0);
+		}
 		debug_printf("sent %i bytes", _datalenSent);
-		if(_datalenSent == -1) {
-			if(pass > 10)
+		if(_datalenSent > 0) {
+			datalenSent += _datalenSent;
+			if(datalenSent >= datalen) {
+				ok = true;
 				break;
-			if(pass > 2) {
-				keylog_udp_socket_close();
-				if(!keylog_udp_socket_open()) {
-					break;
-				}
 			}
 		} else {
-			datalenSent += _datalenSent;
+			keylog_udp_socket_close();
+			if(pass + 1 < max_pass) {
+				usleep(100000 * pass);
+			}
+			++pass;
 		}
-		++pass;
+	}
+	if(!ok) {
+		debug_printf("failed sent key: %s", string((char*)data, datalen).c_str());
 	}
 }
 
@@ -514,29 +536,19 @@ static void write_keylog(const SSL *ssl, const char *key) {
 }
 
 static void write_keylog_to_dest(const char *key) {
-	if(
-	   #ifdef SSLKEYLOG_TCP
-	   !keylog_tcp_socket && 
-	   #endif
-	   keylog_socket_handle < 0 && keylog_file_fd < 0) {
-		#ifdef SSLKEYLOG_TCP
-		keylog_tcp_socket_open();
-		#endif
-		keylog_udp_socket_open();
-		keylog_file_open();
-	}
 	debug_printf("send key : %s (size: %i)", key, strlen(key));
 	#ifdef SSLKEYLOG_TCP
-	if(keylog_tcp_socket) {
-		keylog_tcp_socket_write((u_char*)key, strlen(key));
-	}
+	keylog_tcp_socket_write((u_char*)key, strlen(key));
 	#endif
-	if(keylog_socket_handle >= 0) {
-		keylog_udp_socket_write((u_char*)key, strlen(key));
-	}
-	if(keylog_file_fd >= 0) {
-		write(keylog_file_fd, key, strlen(key));
-		write(keylog_file_fd, "\n", 1);
+	keylog_udp_socket_write((u_char*)key, strlen(key));
+	if(keylog_filename[0]) {
+		if(keylog_file_fd < 0) {
+			keylog_file_open();
+		}
+		if(keylog_file_fd >= 0) {
+			write(keylog_file_fd, key, strlen(key));
+			write(keylog_file_fd, "\n", 1);
+		}
 	}
 }
 
