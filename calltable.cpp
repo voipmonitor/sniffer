@@ -15881,7 +15881,9 @@ void CustomHeaders::checkTableColumns(const char *tableName, int tableIndex, Sql
 	map<string, u_int64_t> tableSize;
 	for(int pass = 0; pass < 2; pass++) {
 		string alter_ms;
-		if(!(calldate_ms[tableIndex] = sqlDb->getTypeColumn(tableName, this->relTimeColumn).find("(3)") != string::npos)) {
+		bool col_is_high_prec = sqlDb->getTypeColumn(tableName, this->relTimeColumn).find("(3)") != string::npos;
+		calldate_ms[tableIndex] = col_is_high_prec && opt_time_precision_in_ms;
+		if(!col_is_high_prec) {
 			alter_ms = "modify column " + this->relTimeColumn + " " + sqlDb_mysql->column_type_datetime_ms() + " not null";
 		}
 		if(pass == 0 && opt_time_precision_in_ms) {
