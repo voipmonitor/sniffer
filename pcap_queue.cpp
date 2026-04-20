@@ -1630,7 +1630,6 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 
 	extern int opt_cpu_limit_warning_t0;
 	extern int opt_cpu_limit_new_thread;
-	extern int opt_cpu_limit_new_thread_if_heap_grows;
 	extern int opt_cpu_limit_new_thread_high;
 	extern int opt_cpu_limit_delete_thread;
 	extern int opt_cpu_limit_delete_t2sip_thread;
@@ -2367,9 +2366,9 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				   opt_pcap_queue_dequeu_window_length > 0) {
 					static int do_decrease_dequeu_window_counter = 0;
 					static int do_increase_dequeu_window_counter = 0;
-					if((heap_pb_used_perc > opt_heap_limit_new_thread && 
-					    t2cpu > opt_cpu_limit_new_thread_if_heap_grows) ||
-					   t2cpu > opt_cpu_limit_new_thread) {
+					if((t2cpu > opt_cpu_limit_new_thread &&
+					    heap_pb_used_perc > opt_heap_limit_new_thread) ||
+					   t2cpu > opt_cpu_limit_new_thread_high) {
 						if((++do_decrease_dequeu_window_counter) >= 2) {
 							if(opt_pcap_queue_dequeu_window_length_div < 100) {
 								if(!opt_pcap_queue_dequeu_window_length_div) {
@@ -2620,15 +2619,19 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 								       << "; t2cpu_preprocess_packet_thread_max: " << t2cpu_preprocess_packet_thread_max
 								       << "; t2cpu_preprocess_packet_next_threads_sum: " << t2cpu_preprocess_packet_next_threads_sum
 								       << "; opt_cpu_limit_new_thread: " << opt_cpu_limit_new_thread
+								       << "; opt_cpu_limit_new_thread_high: " << opt_cpu_limit_new_thread_high
 								       << "; heap_pb_used_perc: " << heap_pb_used_perc
 								       << "; opt_heap_limit_new_thread: " << opt_heap_limit_new_thread
 								       << "; do_add_thread_counter: " << do_add_thread_counter[i]
 								       << "; do_remove_thread_counter: " << do_remove_thread_counter[i];
 							}
-							if((t2cpu_preprocess_packet_next_threads_count < 2 ?
-							     t2cpu_preprocess_packet_thread_max > opt_cpu_limit_new_thread :
-							     t2cpu_preprocess_packet_next_threads_sum / t2cpu_preprocess_packet_next_threads_count > opt_cpu_limit_new_thread) &&
-							   heap_pb_used_perc > opt_heap_limit_new_thread) {
+							if(((t2cpu_preprocess_packet_next_threads_count < 2 ?
+							      t2cpu_preprocess_packet_thread_max > opt_cpu_limit_new_thread :
+							      t2cpu_preprocess_packet_next_threads_sum / t2cpu_preprocess_packet_next_threads_count > opt_cpu_limit_new_thread) &&
+							    heap_pb_used_perc > opt_heap_limit_new_thread) ||
+							   (t2cpu_preprocess_packet_next_threads_count < 2 ?
+							     t2cpu_preprocess_packet_thread_max > opt_cpu_limit_new_thread_high :
+							     t2cpu_preprocess_packet_next_threads_sum / t2cpu_preprocess_packet_next_threads_count > opt_cpu_limit_new_thread_high)) {
 								if(preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip &&
 								   opt_sip_thread_log_ext) {
 									outStr << "; +cond";
