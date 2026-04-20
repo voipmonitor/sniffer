@@ -38,6 +38,7 @@ typedef WOLFSSL_SESSION SSL_SESSION;
 #include <errno.h>
 #include <syslog.h>
 #include <pthread.h>
+#include <string>
 
 #ifdef SSLKEYLOG_TCP
 #include "cloud_router_base.h"
@@ -374,7 +375,7 @@ static void keylog_udp_socket_write(u_char *data, size_t datalen) {
 		}
 	}
 	if(!ok) {
-		debug_printf("failed sent key: %s", string((char*)data, datalen).c_str());
+		debug_printf("failed sent key: %s", std::string((char*)data, datalen).c_str());
 	}
 }
 
