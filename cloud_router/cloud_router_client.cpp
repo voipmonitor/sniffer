@@ -11,9 +11,10 @@ extern sCloudRouterVerbose& CR_VERBOSE();
 extern void CR_SET_TERMINATE();
 
 
-cCR_Receiver_service::cCR_Receiver_service(const char *token, int32_t sensor_id, const char *sensor_string, unsigned sensor_version) {
+cCR_Receiver_service::cCR_Receiver_service(const char *token, int32_t sensor_id, const char *sensor_name, const char *sensor_string, unsigned sensor_version) {
 	this->token = token;
 	this->sensor_id = sensor_id;
+	this->sensor_name = sensor_name ? sensor_name : "";
 	this->sensor_string = sensor_string ? sensor_string : "";
 	this->sensor_version = sensor_version;
 	enableTermninateIfConnectFailed = false;
@@ -78,6 +79,9 @@ int cCR_Receiver_service::receive_process_loop_begin() {
 	JsonExport json_keys;
 	json_keys.add("token", token);
 	json_keys.add("sensor_id", sensor_id);
+	if(!sensor_name.empty()) {
+		json_keys.add("sensor_name", sensor_name);
+	}
 	if(!sensor_string.empty()) {
 		json_keys.add("sensor_string", sensor_string);
 	}

@@ -9,7 +9,7 @@
 
 class cCR_Receiver_service : public cReceiver {
 public:
-	cCR_Receiver_service(const char *token, int32_t sensor_id, const char *sensor_string, unsigned sensor_version);
+	cCR_Receiver_service(const char *token, int32_t sensor_id, const char *sensor_name, const char *sensor_string, unsigned sensor_version);
 	void setEnableTermninateIfConnectFailed(bool enableTermninateIfConnectFailed = true);
 	void setResponseSender(class cCR_ResponseSender *response_sender);
 	bool start(string host, u_int16_t port);
@@ -24,6 +24,7 @@ public:
 protected:
 	string token;
 	int32_t sensor_id;
+	string sensor_name;
 	string sensor_string;
 	unsigned sensor_version;
 	bool enableTermninateIfConnectFailed;

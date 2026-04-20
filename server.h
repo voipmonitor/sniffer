@@ -208,6 +208,7 @@ struct sSnifferServerService {
 	vmIP connect_ip;
 	u_int16_t connect_port;
 	int32_t sensor_id;
+	string sensor_name;
 	string sensor_string;
 	class cSnifferServerConnection *service_connection;
 	string aes_ckey;
@@ -336,7 +337,7 @@ protected:
 private:
 	bool rsaAesInit(bool writeRsltOK = true);
 	eTypeConnection convTypeConnection(string typeConnection);
-	void updateSensorState(int32_t sensor_id);
+	void updateSensorState(int32_t sensor_id, const char *sensor_name);
 	void lock_tasks() {
 		__SYNC_LOCK_USLEEP(_sync_tasks,  SYNC_LOCK_USLEEP);
 	}
@@ -358,7 +359,7 @@ private:
 
 class cSnifferClientService : public cReceiver {
 public:
-	cSnifferClientService(int32_t sensor_id, const char *sensor_string, unsigned sensor_version);
+	cSnifferClientService(int32_t sensor_id, const char *sensor_name, const char *sensor_string, unsigned sensor_version);
 	~cSnifferClientService();
 	void setClientOptions(sSnifferClientOptions *client_options);
 	void createResponseSender();
@@ -370,6 +371,7 @@ public:
 	virtual void evData(u_char *data, size_t dataLen);
 protected:
 	int32_t sensor_id;
+	string sensor_name;
 	string sensor_string;
 	unsigned sensor_version;
 	sHosts hosts;

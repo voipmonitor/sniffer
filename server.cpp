@@ -185,6 +185,12 @@ string sSnifferServerServices::listJsonServices() {
 		expSer->add("ip", service->connect_ip.getString());
 		expSer->add("port", service->connect_port);
 		expSer->add("sensor_id", service->sensor_id);
+		if(!service->sensor_name.empty()) {
+			expSer->add("sensor_name", service->sensor_name);
+		}
+		if(!service->sensor_string.empty()) {
+			expSer->add("sensor_string", service->sensor_string);
+		}
 	}
 	unlock();
 	return(expServices.getJson());
@@ -552,6 +558,7 @@ void cSnifferServerConnection::cp_service() {
 	jsonPasswordAesKeys.parse(rsltPasswordAesKeys);
 	string password = jsonPasswordAesKeys.getValue("password");
 	int32_t sensor_id = atol(jsonPasswordAesKeys.getValue("sensor_id").c_str());
+	string sensor_name = jsonPasswordAesKeys.getValue("sensor_name");
 	string sensor_string = jsonPasswordAesKeys.getValue("sensor_string");
 	string aes_ckey = jsonPasswordAesKeys.getValue("aes_ckey");
 	string aes_ivec = jsonPasswordAesKeys.getValue("aes_ivec");
@@ -647,18 +654,22 @@ void cSnifferServerConnection::cp_service() {
 		ostringstream verbstr;
 		verbstr << "SERVER SERVICE START: "
 			<< "sensor_id: " << sensor_id;
+		if(!sensor_name.empty()) {
+			verbstr << ", " << "sensor_name: " << sensor_name;
+		}
 		if(!sensor_string.empty()) {
 			verbstr << ", " << "sensor_string: " << sensor_string;
 		}
 		syslog(LOG_INFO, "%s", verbstr.str().c_str());
 	}
 	if(!is_read_from_file_simple() && !is_load_pcap_via_client(sensor_string.c_str())) {
-		updateSensorState(sensor_id);
+		updateSensorState(sensor_id, sensor_name.c_str());
 	}
 	sSnifferServerService service;
 	service.connect_ip = socket->getIPL();
 	service.connect_port = socket->getPort();
 	service.sensor_id = sensor_id;
+	service.sensor_name = sensor_name;
 	service.sensor_string = sensor_string;
 	service.service_connection = this;
 	service.aes_ckey = aes_ckey;
@@ -676,6 +687,9 @@ void cSnifferServerConnection::cp_service() {
 				ostringstream verbstr;
 				verbstr << "SNIFFER SERVICE STOP: "
 					<< "sensor_id: " << sensor_id;
+				if(!sensor_name.empty()) {
+					verbstr << ", " << "sensor_name: " << sensor_name;
+				}
 				if(!sensor_string.empty()) {
 					verbstr << ", " << "sensor_string: " << sensor_string;
 				}
@@ -687,6 +701,9 @@ void cSnifferServerConnection::cp_service() {
 			ostringstream verbstr;
 			verbstr << "SNIFFER SERVICE STOP (because too many errors): "
 				<< "sensor_id: " << sensor_id;
+			if(!sensor_name.empty()) {
+				verbstr << ", " << "sensor_name: " << sensor_name;
+			}
 			if(!sensor_string.empty()) {
 				verbstr << ", " << "sensor_string: " << sensor_string;
 			}
@@ -785,6 +802,9 @@ void cSnifferServerConnection::cp_service() {
 						ostringstream verbstr;
 						verbstr << "SNIFFER SERVICE " << (pingResponse == "stop" ? "STOPPED" : "DISCONNECT") << ": "
 							<< "sensor_id: " << sensor_id;
+						if(!sensor_name.empty()) {
+							verbstr << ", " << "sensor_name: " << sensor_name;
+						}
 						if(!sensor_string.empty()) {
 							verbstr << ", " << "sensor_string: " << sensor_string;
 						}
@@ -1314,14 +1334,17 @@ cSnifferServerConnection::eTypeConnection cSnifferServerConnection::convTypeConn
 	}
 }
 
-void cSnifferServerConnection::updateSensorState(int32_t sensor_id) {
+void cSnifferServerConnection::updateSensorState(int32_t sensor_id, const char *sensor_name) {
 	SqlDb *sqlDb = createSqlObject();
 	if(sqlDb->existsIndex("sensors", "id_sensor", 1)) {
 		SqlDb_row rowI;
 		rowI.add(sensor_id, "id_sensor");
-		rowI.add("auto insert id " + intToString(sensor_id), "name");
+		rowI.add(sensor_name && *sensor_name ? sensor_name : "auto insert id " + intToString(sensor_id), "name");
 		rowI.add(socket->getIP(), "host");
 		SqlDb_row rowU;
+		if(sensor_name && *sensor_name) {
+			rowU.add(sensor_name, "name");
+		}
 		rowU.add(socket->getIP(), "host");
 		sqlDb->query(sqlDb->insertOrUpdateQuery("sensors", rowI, rowU));
 	} else {
@@ -1329,12 +1352,15 @@ void cSnifferServerConnection::updateSensorState(int32_t sensor_id) {
 		bool existsRowSensor = sqlDb->fetchRow();
 		if(existsRowSensor) {
 			SqlDb_row rowU;
+			if(sensor_name && *sensor_name) {
+				rowU.add(sensor_name, "name");
+			}
 			rowU.add(socket->getIP(), "host");
 			sqlDb->update("sensors", rowU, ("id_sensor=" + intToString(sensor_id)).c_str());
 		} else {
 			SqlDb_row rowI;
 			rowI.add(sensor_id, "id_sensor");
-			rowI.add("auto insert id " + intToString(sensor_id), "name");
+			rowI.add(sensor_name && *sensor_name ? sensor_name : "auto insert id " + intToString(sensor_id), "name");
 			rowI.add(socket->getIP(), "host");
 			sqlDb->insert("sensors", rowI);
 		}
@@ -1359,8 +1385,9 @@ string cSnifferServerConnection::getTypeConnectionStr() {
 }
 
 
-cSnifferClientService::cSnifferClientService(int32_t sensor_id, const char *sensor_string, unsigned sensor_version) {
+cSnifferClientService::cSnifferClientService(int32_t sensor_id, const char *sensor_name, const char *sensor_string, unsigned sensor_version) {
 	this->sensor_id = sensor_id;
+	this->sensor_name = sensor_name ? sensor_name : "";
 	this->sensor_string = sensor_string ? sensor_string : "";
 	this->sensor_version = sensor_version;
 	port = 0;
@@ -1440,6 +1467,9 @@ int cSnifferClientService::receive_process_loop_begin() {
 	receive_socket->generate_aes_keys();
 	JsonExport json_keys;
 	json_keys.add("sensor_id", sensor_id);
+	if(!sensor_name.empty()) {
+		json_keys.add("sensor_name", sensor_name);
+	}
 	if(!sensor_string.empty()) {
 		json_keys.add("sensor_string", sensor_string);
 	}
@@ -1937,8 +1967,10 @@ cSnifferClientService *snifferClientStart(sSnifferClientOptions *clientOptions,
 	if(snifferClientServiceOld) {
 		snifferClientStop(snifferClientServiceOld);
 	}
+	extern char opt_name_sensor[256];
 	extern char opt_sensor_string[128];
 	cSnifferClientService *snifferClientService = new FILE_LINE(0) cSnifferClientService(opt_id_sensor > 0 ? opt_id_sensor : 0, 
+											     opt_name_sensor,
 											     sensorString ? sensorString : opt_sensor_string, 
 											     RTPSENSOR_VERSION_INT());
 	snifferClientService->setClientOptions(clientOptions);

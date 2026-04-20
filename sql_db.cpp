@@ -38,6 +38,7 @@ extern int opt_mysql_port;
 extern char opt_match_header[128];
 extern int opt_ipaccount;
 extern int opt_id_sensor;
+extern char opt_name_sensor[256];
 extern bool opt_cdr_partition;
 extern bool opt_cdr_partition_by_hours;
 extern bool opt_cdr_force_primary_index_in_all_tables;
@@ -9475,6 +9476,9 @@ void SqlDb_mysql::updateSensorState() {
 		bool existsColumnCloudRouter = this->existsColumn("sensors", "cloud_router");
 		if(existsRowSensor) {
 			SqlDb_row rowU;
+			if(*opt_name_sensor) {
+				rowU.add(opt_name_sensor, "name");
+			}
 			if(existsColumnCloudRouter) {
 				rowU.add(true, "cloud_router");
 			}
@@ -9486,7 +9490,7 @@ void SqlDb_mysql::updateSensorState() {
 		} else {
 			SqlDb_row rowI;
 			rowI.add(opt_id_sensor, "id_sensor");
-			rowI.add("auto insert id " + intToString(opt_id_sensor), "name");
+			rowI.add(*opt_name_sensor ? opt_name_sensor : "auto insert id " + intToString(opt_id_sensor), "name");
 			if(existsColumnCloudRouter) {
 				rowI.add(true, "cloud_router");
 			}
