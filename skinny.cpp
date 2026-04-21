@@ -704,6 +704,12 @@ struct close_receive_channel_message {
 	uint32_t space[2];
 };
 
+#define CONNECTION_STATISTICS_REQ_MESSAGE 0x0107
+struct connection_statistics_req_message {
+	char directoryNumber[24];
+	char space[12];
+};
+
 #define SOFT_KEY_TEMPLATE_RES_MESSAGE 0x0108
 
 struct soft_key_template_definition {
@@ -1132,6 +1138,7 @@ union skinny_data {
 	struct open_receive_channel_ack_message_ip4 openreceivechannelack_ip4;
 	struct open_receive_channel_ack_message_ip6 openreceivechannelack_ip6;
 	struct close_receive_channel_message closereceivechannel;
+	struct connection_statistics_req_message connstatsreq;
 	struct display_notify_message displaynotify;
 	struct dialed_number_message dialednumber;
 	struct soft_key_event_message softkeyeventmessage;
@@ -1706,6 +1713,20 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 		break;
 	case CLOSE_RECEIVE_CHANNEL_MESSAGE:
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received CLOSE_RECEIVE_CHANNEL_MESSAGE from %s\n", "d->name");
+		break;
+	case CONNECTION_STATISTICS_REQ_MESSAGE:
+		{
+		char directoryNum[sizeof(req.data.connstatsreq.directoryNumber) + 1];
+		memcpy(directoryNum, req.data.connstatsreq.directoryNumber, sizeof(req.data.connstatsreq.directoryNumber));
+		directoryNum[sizeof(req.data.connstatsreq.directoryNumber)] = 0;
+		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received CONNECTION_STATISTICS_REQ_MESSAGE dn '%s'\n", directoryNum);
+		if(directoryNum[0] and (call = calltable->find_by_skinny_ipTuples(saddr, daddr))) {
+			CallBranch *c_branch = call->branch_main();
+			if(strcmp(c_branch->caller.c_str(), directoryNum) != 0) {
+				c_branch->called_final = directoryNum;
+			}
+		}
+		}
 		break;
 	case OPEN_RECEIVE_CHANNEL_MESSAGE:
 		{
