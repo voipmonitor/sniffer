@@ -3657,6 +3657,8 @@ cFilterCacheItem::cFilterCacheItem(unsigned limit) {
 	this->limit = limit;
 }
 
+#if CHARTS_FAST_CACHE
+
 int cFilterCacheItem::get(sFilterCache_call_ipv4_comb *ip_comb) {
 	ipv4_map_t::iterator iter = ipv4_comb_map.find(*ip_comb);
 	if(iter != ipv4_comb_map.end()) {
@@ -3709,20 +3711,72 @@ void cFilterCacheItem::add(sFilterCache_call_ipv6_comb *ip_comb, bool set) {
 }
 #endif
 
+#else
+
+int cFilterCacheItem::get(sFilterCache_call_ipv4_comb *ip_comb) {
+	map<sFilterCache_call_ipv4_comb, bool>::iterator iter = ipv4_comb_map.find(*ip_comb);
+	if(iter != ipv4_comb_map.end()) {
+		return(iter->second);
+	}
+	return(-1);
+}
+
+void cFilterCacheItem::add(sFilterCache_call_ipv4_comb *ip_comb, bool set) {
+	while(ipv4_comb_queue.size() >= limit) {
+		sFilterCache_call_ipv4_comb e_ip_comb = ipv4_comb_queue.front();
+		ipv4_comb_queue.pop();
+		ipv4_comb_map.erase(e_ip_comb);
+	}
+	ipv4_comb_queue.push(*ip_comb);
+	ipv4_comb_map[*ip_comb] = set;
+}
+
+#if VM_IPV6
+int cFilterCacheItem::get(sFilterCache_call_ipv6_comb *ip_comb) {
+	map<sFilterCache_call_ipv6_comb, bool>::iterator iter = ipv6_comb_map.find(*ip_comb);
+	if(iter != ipv6_comb_map.end()) {
+		return(iter->second);
+	}
+	return(-1);
+}
+
+void cFilterCacheItem::add(sFilterCache_call_ipv6_comb *ip_comb, bool set) {
+	while(ipv6_comb_queue.size() >= limit) {
+		sFilterCache_call_ipv6_comb e_ip_comb = ipv6_comb_queue.front();
+		ipv6_comb_queue.pop();
+		ipv6_comb_map.erase(e_ip_comb);
+	}
+	ipv6_comb_queue.push(*ip_comb);
+	ipv6_comb_map[*ip_comb] = set;
+}
+#endif
+
+#endif
+
 cFiltersCache::cFiltersCache(unsigned limit, unsigned limit2) {
 	this->limit = limit;
 	this->limit2 = limit2;
 }
 
 cFiltersCache::~cFiltersCache() {
+	#if CHARTS_FAST_CACHE
 	for(unordered_map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.begin(); iter != cache_map.end(); iter++) {
 		delete iter->second;
 	}
+	#else
+	for(map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.begin(); iter != cache_map.end(); iter++) {
+		delete iter->second;
+	}
+	#endif
 }
 
 int cFiltersCache::get(cChartFilter *filter, sFilterCache_call_ipv4_comb *ip_comb) {
 	cFilterCacheItem *cache_item;
+	#if CHARTS_FAST_CACHE
 	unordered_map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.find(filter);
+	#else
+	map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.find(filter);
+	#endif
 	if(iter != cache_map.end()) {
 		cache_item = iter->second;
 	} else {
@@ -3734,7 +3788,11 @@ int cFiltersCache::get(cChartFilter *filter, sFilterCache_call_ipv4_comb *ip_com
 
 void cFiltersCache::add(cChartFilter *filter, sFilterCache_call_ipv4_comb *ip_comb, bool set) {
 	cFilterCacheItem *cache_item;
+	#if CHARTS_FAST_CACHE
 	unordered_map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.find(filter);
+	#else
+	map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.find(filter);
+	#endif
 	if(iter != cache_map.end()) {
 		cache_item = iter->second;
 	} else {
@@ -3747,7 +3805,11 @@ void cFiltersCache::add(cChartFilter *filter, sFilterCache_call_ipv4_comb *ip_co
 #if VM_IPV6
 int cFiltersCache::get(cChartFilter *filter, sFilterCache_call_ipv6_comb *ip_comb) {
 	cFilterCacheItem *cache_item;
+	#if CHARTS_FAST_CACHE
 	unordered_map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.find(filter);
+	#else
+	map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.find(filter);
+	#endif
 	if(iter != cache_map.end()) {
 		cache_item = iter->second;
 	} else {
@@ -3759,7 +3821,11 @@ int cFiltersCache::get(cChartFilter *filter, sFilterCache_call_ipv6_comb *ip_com
 
 void cFiltersCache::add(cChartFilter *filter, sFilterCache_call_ipv6_comb *ip_comb, bool set) {
 	cFilterCacheItem *cache_item;
+	#if CHARTS_FAST_CACHE
 	unordered_map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.find(filter);
+	#else
+	map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.find(filter);
+	#endif
 	if(iter != cache_map.end()) {
 		cache_item = iter->second;
 	} else {

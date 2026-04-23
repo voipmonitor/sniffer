@@ -5,8 +5,14 @@
 #include <vector>
 #include <queue>
 #include <map>
-#include <list>
-#include <unordered_map>
+
+#if __cplusplus >= 201103L
+	#define CHARTS_FAST_CACHE 1
+	#include <list>
+	#include <unordered_map>
+#else
+	#define CHARTS_FAST_CACHE 0
+#endif
 
 #include "config.h"
 #include "sql_db.h"
@@ -923,7 +929,8 @@ struct sFilterCache_call_ipv4_comb {
 	} u;
 	inline void set(sChartsCallData *call);
 	inline size_t hash() const {
-		return((size_t)(u.a[0] ^ (u.a[1] * 0x9E3779B97F4A7C15ULL)));
+		u_int64_t k = ((u_int64_t)0x9E3779B9 << 32) | (u_int64_t)0x7F4A7C15;
+		return((size_t)(u.a[0] ^ (u.a[1] * k)));
 	}
 	friend inline const bool operator == (const sFilterCache_call_ipv4_comb &d1, const sFilterCache_call_ipv4_comb &d2) {
 		return(d1.u.a[0] == d2.u.a[0] &&
@@ -947,10 +954,13 @@ struct sFilterCache_call_ipv6_comb {
 	vmIP proxy[2];
 	inline void set(sChartsCallData *call);
 	inline size_t hash() const {
+		u_int64_t k1 = ((u_int64_t)0x9E3779B9 << 32) | (u_int64_t)0x7F4A7C15;
+		u_int64_t k2 = ((u_int64_t)0xBF58476D << 32) | (u_int64_t)0x1CE4E5B9;
+		u_int64_t k3 = ((u_int64_t)0x94D049BB << 32) | (u_int64_t)0x133111EB;
 		return(_hash_vmIP(src) ^
-		       (_hash_vmIP(dst) * 0x9E3779B97F4A7C15ULL) ^
-		       (_hash_vmIP(proxy[0]) * 0xBF58476D1CE4E5B9ULL) ^
-		       (_hash_vmIP(proxy[1]) * 0x94D049BB133111EBULL));
+		       (_hash_vmIP(dst) * k1) ^
+		       (_hash_vmIP(proxy[0]) * k2) ^
+		       (_hash_vmIP(proxy[1]) * k3));
 	}
 	static inline u_int64_t _hash_vmIP(const vmIP &ip) {
 		if(ip.v6) {
@@ -989,18 +999,29 @@ public:
 	inline void add(sFilterCache_call_ipv6_comb *ip_comb, bool set);
 	#endif
 private:
+	#if CHARTS_FAST_CACHE
 	typedef list<sFilterCache_call_ipv4_comb> ipv4_lru_list_t;
 	typedef unordered_map<sFilterCache_call_ipv4_comb, pair<ipv4_lru_list_t::iterator, bool>, sFilterCache_call_ipv4_comb_hasher> ipv4_map_t;
 	#if VM_IPV6
 	typedef list<sFilterCache_call_ipv6_comb> ipv6_lru_list_t;
 	typedef unordered_map<sFilterCache_call_ipv6_comb, pair<ipv6_lru_list_t::iterator, bool>, sFilterCache_call_ipv6_comb_hasher> ipv6_map_t;
 	#endif
+	#endif
 	unsigned limit;
+	#if CHARTS_FAST_CACHE
 	ipv4_lru_list_t ipv4_lru_list;
 	ipv4_map_t ipv4_comb_map;
 	#if VM_IPV6
 	ipv6_lru_list_t ipv6_lru_list;
 	ipv6_map_t ipv6_comb_map;
+	#endif
+	#else
+	queue<sFilterCache_call_ipv4_comb> ipv4_comb_queue;
+	map<sFilterCache_call_ipv4_comb, bool> ipv4_comb_map;
+	#if VM_IPV6
+	queue<sFilterCache_call_ipv6_comb> ipv6_comb_queue;
+	map<sFilterCache_call_ipv6_comb, bool> ipv6_comb_map;
+	#endif
 	#endif
 };
 
@@ -1016,7 +1037,11 @@ public:
 	#endif
 private:
 	unsigned limit, limit2;
+	#if CHARTS_FAST_CACHE
 	unordered_map<cChartFilter*, cFilterCacheItem*> cache_map;
+	#else
+	map<cChartFilter*, cFilterCacheItem*> cache_map;
+	#endif
 };
 
 
