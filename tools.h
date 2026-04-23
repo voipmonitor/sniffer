@@ -181,23 +181,45 @@ struct item_count
 	u_int32_t count;
 };
 
-template <class type_item>
-void conv_item_map_count_to_item_count(map<type_item, u_int32_t> *src_map, list<item_count<type_item> > *dst_list, bool sort) {
-	for(typename map<type_item, u_int32_t>::iterator iter = src_map->begin(); iter != src_map->end(); iter++) {
-		dst_list->push_back(item_count<type_item>(iter->first, iter->second));
+struct item_sip_states
+{
+	item_sip_states() {
+		total = 0;
+		for(int i = 0; i < 7; i++) sip_code[i] = 0;
 	}
-	if(sort) {
-		dst_list->sort();
+	void inc(int sipClass) {
+		++total;
+		if(sipClass >= 0 && sipClass <= 6) {
+			++sip_code[sipClass];
+		}
 	}
-}
+	u_int32_t total;
+	u_int32_t sip_code[7];
+};
 
 template <class type_item>
-void conv_item_map_count_to_json_export(map<type_item, u_int32_t> *src_map, JsonExport *json_export, unsigned top_n) {
+void conv_item_map_sip_states_to_json_export(map<type_item, item_sip_states> *src_map, JsonExport *json_count, JsonExport *json_sip_states, unsigned top_n) {
 	list<item_count<type_item> > dst_list;
-	conv_item_map_count_to_item_count<type_item>(src_map, &dst_list, true);
+	for(typename map<type_item, item_sip_states>::iterator iter = src_map->begin(); iter != src_map->end(); iter++) {
+		dst_list.push_back(item_count<type_item>(iter->first, iter->second.total));
+	}
+	dst_list.sort();
+	static const char *sip_state_keys[] = {"000", "100", "200", "300", "400", "500", "600"};
 	unsigned counter = 0;
 	for(typename list<item_count<type_item> >::reverse_iterator iter = dst_list.rbegin(); iter != dst_list.rend(); iter++) {
-		json_export->add(((string)iter->item).c_str(), iter->count);
+		string key = (string)iter->item;
+		if(json_count) {
+			json_count->add(key.c_str(), iter->count);
+		}
+		if(json_sip_states) {
+			JsonExport *json_entry = json_sip_states->addObject(key.c_str());
+			typename map<type_item, item_sip_states>::iterator src_iter = src_map->find(iter->item);
+			if(src_iter != src_map->end()) {
+				for(int i = 0; i <= 6; i++) {
+					json_entry->add(sip_state_keys[i], src_iter->second.sip_code[i]);
+				}
+			}
+		}
 		++counter;
 		if(top_n && counter >= top_n) {
 			break;
