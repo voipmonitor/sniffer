@@ -12806,6 +12806,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 	bool sortDesc = true;
 	bool needSensorMap = false;
 	bool needIpMap = false;
+	bool needMapSipResponses = false;
 	if(params && *params) {
 		JsonItem jsonParams;
 		jsonParams.parse(params);
@@ -12843,6 +12844,11 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 			string ip_map = jsonParams.getValue("ip_map");
 			std::transform(ip_map.begin(), ip_map.end(), ip_map.begin(), ::tolower);
 			needIpMap = ip_map == "yes";
+		}
+		if(jsonParams.getItem("map_sip_responses")) {
+			string map_sip_responses = jsonParams.getValue("map_sip_responses");
+			std::transform(map_sip_responses.begin(), map_sip_responses.end(), map_sip_responses.begin(), ::tolower);
+			needMapSipResponses = map_sip_responses == "yes";
 		}
 		string filter = jsonParams.getValue("filter");
 		if(!filter.empty()) {
@@ -12998,18 +13004,20 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 	list<RecordArray> records;
 	u_int32_t counter = 0;
 	map<int32_t, u_int32_t> sensor_map;
-	map<vmIP, u_int32_t> ip_src_map;
-	map<vmIP, u_int32_t> ip_dst_map;
-	map<vmIP, u_int32_t> rtp_ip_src_map;
-	map<vmIP, u_int32_t> rtp_ip_dst_map;
-	map<string, u_int32_t> caller_map;
-	map<string, u_int32_t> called_map;
+	map<vmIP, item_sip_states> ip_src_map;
+	map<vmIP, item_sip_states> ip_dst_map;
+	map<vmIP, item_sip_states> rtp_ip_src_map;
+	map<vmIP, item_sip_states> rtp_ip_dst_map;
+	map<string, item_sip_states> caller_map;
+	map<string, item_sip_states> called_map;
+	u_int32_t sip_code[7] = {0};
 	int ip_src_index = -1;
 	int ip_dst_index = -1;
 	int rtp_ip_src_index = -1;
 	int rtp_ip_dst_index = -1;
 	int caller_index = -1;
 	int called_index = -1;
+	int lastSIPresponseNum_index = -1;
 	if(needIpMap) {
 		ip_src_index = convCallFieldToFieldIndex(cf_callerip);
 		ip_dst_index = convCallFieldToFieldIndex(cf_calledip);
@@ -13017,6 +13025,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 		rtp_ip_dst_index = convCallFieldToFieldIndex(cf_rtp_dst);
 		caller_index = convCallFieldToFieldIndex(cf_caller);
 		called_index = convCallFieldToFieldIndex(cf_called);
+		lastSIPresponseNum_index = convCallFieldToFieldIndex(cf_lastSIPresponseNum);
 	}
 	for(unsigned i = 0; i < active_calls_count; i++) {	
 		Call *call = active_calls[i];
@@ -13036,6 +13045,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 			vmIP rtp_ip_dst;
 			string caller;
 			string called;
+			int sipResp = 0;
 			CallBranch *c_branch = NULL;
 			set<vmIP> proxies;
 			if(needIpMap) {
@@ -13054,6 +13064,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 					rtp_ip_dst = rec.fields[rtp_ip_dst_index].get_ip();
 					caller = rec.fields[caller_index].get_string();
 					called = rec.fields[called_index].get_string();
+					sipResp = (int)rec.fields[lastSIPresponseNum_index].get_int();
 				}
 			} else {
 				++counter;
@@ -13069,6 +13080,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 					}
 					caller = c_branch->caller;
 					called = call->get_called(c_branch);
+					sipResp = c_branch->lastSIPresponseNum;
 				}
 			}
 			if(needSensorMap) {
@@ -13082,56 +13094,32 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				if(limit != 0) {
 					call->getSipcalledip(c_branch, true, true, NULL, &proxies);
 				}
+				int sipClass = sipResp / 100;
 				if(ip_src.isSet()) {
-					if(ip_src_map.find(ip_src) == ip_src_map.end()) {
-						ip_src_map[ip_src] = 1;
-					} else {
-						++ip_src_map[ip_src];
-					}
+					ip_src_map[ip_src].inc(sipClass);
 				}
 				if(ip_dst.isSet()) {
-					if(ip_dst_map.find(ip_dst) == ip_dst_map.end()) {
-						ip_dst_map[ip_dst] = 1;
-					} else {
-						++ip_dst_map[ip_dst];
-					}
+					ip_dst_map[ip_dst].inc(sipClass);
 				}
 				if(proxies.size()) {
 					for(set<vmIP>::iterator iter = proxies.begin(); iter != proxies.end(); ++iter) {
-						if(ip_dst_map.find(*iter) == ip_dst_map.end()) {
-							ip_dst_map[*iter] = 1;
-						} else {
-							++ip_dst_map[*iter];
-						}
+						ip_dst_map[*iter].inc(sipClass);
 					}
 				}
 				if(rtp_ip_src.isSet()) {
-					if(rtp_ip_src_map.find(rtp_ip_src) == rtp_ip_src_map.end()) {
-						rtp_ip_src_map[rtp_ip_src] = 1;
-					} else {
-						++rtp_ip_src_map[rtp_ip_src];
-					}
+					rtp_ip_src_map[rtp_ip_src].inc(sipClass);
 				}
 				if(rtp_ip_dst.isSet()) {
-					if(rtp_ip_dst_map.find(rtp_ip_dst) == rtp_ip_dst_map.end()) {
-						rtp_ip_dst_map[rtp_ip_dst] = 1;
-					} else {
-						++rtp_ip_dst_map[rtp_ip_dst];
-					}
+					rtp_ip_dst_map[rtp_ip_dst].inc(sipClass);
 				}
 				if(!caller.empty()) {
-					if(caller_map.find(caller) == caller_map.end()) {
-						caller_map[caller] = 1;
-					} else {
-						++caller_map[caller];
-					}
+					caller_map[caller].inc(sipClass);
 				}
 				if(!called.empty()) {
-					if(called_map.find(called) == called_map.end()) {
-						called_map[called] = 1;
-					} else {
-						++called_map[called];
-					}
+					called_map[called].inc(sipClass);
+				}
+				if(sipClass >= 0 && sipClass <= 6) {
+					++sip_code[sipClass];
 				}
 			}
 		}
@@ -13153,18 +13141,38 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 		}
 	}
 	if(needIpMap) {
-		JsonExport *jsonExport_ip_src_map = jsonExport.addObject("ip_src");
-		conv_item_map_count_to_json_export<vmIP>(&ip_src_map, jsonExport_ip_src_map, 100);
-		JsonExport *jsonExport_ip_dst_map = jsonExport.addObject("ip_dst");
-		conv_item_map_count_to_json_export<vmIP>(&ip_dst_map, jsonExport_ip_dst_map, 100);
-		JsonExport *jsonExport_rtp_ip_src_map = jsonExport.addObject("rtp_ip_src");
-		conv_item_map_count_to_json_export<vmIP>(&rtp_ip_src_map, jsonExport_rtp_ip_src_map, 100);
-		JsonExport *jsonExport_rtp_ip_dst_map = jsonExport.addObject("rtp_ip_dst");
-		conv_item_map_count_to_json_export<vmIP>(&rtp_ip_dst_map, jsonExport_rtp_ip_dst_map, 100);
-		JsonExport *jsonExport_caller_map = jsonExport.addObject("caller_numbers");
-		conv_item_map_count_to_json_export<string>(&caller_map, jsonExport_caller_map, 100);
-		JsonExport *jsonExport_called_map = jsonExport.addObject("called_numbers");
-		conv_item_map_count_to_json_export<string>(&called_map, jsonExport_called_map, 100);
+		if(needMapSipResponses) {
+			JsonExport *jsonExport_ip_src_sip_states = jsonExport.addObject("ip_src_sip_states_map");
+			conv_item_map_sip_states_to_json_export<vmIP>(&ip_src_map, NULL, jsonExport_ip_src_sip_states, 100);
+			JsonExport *jsonExport_ip_dst_sip_states = jsonExport.addObject("ip_dst_sip_states_map");
+			conv_item_map_sip_states_to_json_export<vmIP>(&ip_dst_map, NULL, jsonExport_ip_dst_sip_states, 100);
+			JsonExport *jsonExport_rtp_ip_src_sip_states = jsonExport.addObject("rtp_ip_src_sip_states_map");
+			conv_item_map_sip_states_to_json_export<vmIP>(&rtp_ip_src_map, NULL, jsonExport_rtp_ip_src_sip_states, 100);
+			JsonExport *jsonExport_rtp_ip_dst_sip_states = jsonExport.addObject("rtp_ip_dst_sip_states_map");
+			conv_item_map_sip_states_to_json_export<vmIP>(&rtp_ip_dst_map, NULL, jsonExport_rtp_ip_dst_sip_states, 100);
+			JsonExport *jsonExport_caller_sip_states = jsonExport.addObject("caller_numbers_sip_states_map");
+			conv_item_map_sip_states_to_json_export<string>(&caller_map, NULL, jsonExport_caller_sip_states, 100);
+			JsonExport *jsonExport_called_sip_states = jsonExport.addObject("called_numbers_sip_states_map");
+			conv_item_map_sip_states_to_json_export<string>(&called_map, NULL, jsonExport_called_sip_states, 100);
+		} else {
+			JsonExport *jsonExport_ip_src_map = jsonExport.addObject("ip_src");
+			conv_item_map_sip_states_to_json_export<vmIP>(&ip_src_map, jsonExport_ip_src_map, NULL, 100);
+			JsonExport *jsonExport_ip_dst_map = jsonExport.addObject("ip_dst");
+			conv_item_map_sip_states_to_json_export<vmIP>(&ip_dst_map, jsonExport_ip_dst_map, NULL, 100);
+			JsonExport *jsonExport_rtp_ip_src_map = jsonExport.addObject("rtp_ip_src");
+			conv_item_map_sip_states_to_json_export<vmIP>(&rtp_ip_src_map, jsonExport_rtp_ip_src_map, NULL, 100);
+			JsonExport *jsonExport_rtp_ip_dst_map = jsonExport.addObject("rtp_ip_dst");
+			conv_item_map_sip_states_to_json_export<vmIP>(&rtp_ip_dst_map, jsonExport_rtp_ip_dst_map, NULL, 100);
+			JsonExport *jsonExport_caller_map = jsonExport.addObject("caller_numbers");
+			conv_item_map_sip_states_to_json_export<string>(&caller_map, jsonExport_caller_map, NULL, 100);
+			JsonExport *jsonExport_called_map = jsonExport.addObject("called_numbers");
+			conv_item_map_sip_states_to_json_export<string>(&called_map, jsonExport_called_map, NULL, 100);
+		}
+		JsonExport *jsonExport_sip_states = jsonExport.addObject("sip_states");
+		static const char *sip_state_keys[] = {"000", "100", "200", "300", "400", "500", "600"};
+		for(int i = 0; i <= 6; i++) {
+			jsonExport_sip_states->add(sip_state_keys[i], sip_code[i]);
+		}
 	}
 	string total = jsonExport.getJson();
 	if(limit != 0) {
