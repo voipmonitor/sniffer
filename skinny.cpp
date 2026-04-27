@@ -14,6 +14,7 @@
 #include <syslog.h>
 #include <sys/param.h>
 #include <string.h>
+#include <map>
 
 #include "codecs.h"
 #include "calltable.h"
@@ -1415,7 +1416,7 @@ Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap
 	return call;
 }
 
-void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPort source, vmIP daddr, vmPort dest, char *data, int datalen, int dataoffset,
+Call *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPort source, vmIP daddr, vmPort dest, char *data, int datalen, int dataoffset,
 		     pcap_t *handle, int dlt, int sensor_id, vmIP sensor_ip);
 
 
@@ -1423,16 +1424,20 @@ u_int64_t _handle_skinny_counter_all;
 u_int64_t _handle_skinny_counter_next_iterate;
 void *handle_skinny(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPort source, vmIP daddr, vmPort dest, char *data, int datalen, int dataoffset,
 		    pcap_t *handle, int dlt, int sensor_id, vmIP sensor_ip) {
-	
 	++_handle_skinny_counter_all;
 	int remain = datalen;
 	int counter = 0;
+	int orig_datalen = datalen;
+	map<Call*, bool> save_calls;
 	while(remain > 8) {
 		if(counter == 1) {
 			++_handle_skinny_counter_next_iterate;
 		}
 		//cycle through all PDUs in one message
-		handle_skinny2(header, packet, saddr, source, daddr, dest, data, datalen, dataoffset, handle, dlt, sensor_id, sensor_ip);
+		Call *call = handle_skinny2(header, packet, saddr, source, daddr, dest, data, datalen, dataoffset, handle, dlt, sensor_id, sensor_ip);
+		if(call) {
+			save_calls[call] = true;
+		}
 		unsigned int plen = (unsigned int)letohl(*(uint32_t*)data); // first 4 bytes is length of skinny data
 		if(plen == 0 or plen > (unsigned)remain) {
 			break;
@@ -1448,10 +1453,15 @@ void *handle_skinny(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPor
 			break;
 		}
 	}
+	for(map<Call*, bool>::iterator it = save_calls.begin(); it != save_calls.end(); ++it) {
+		Call *call = it->first;
+		save_packet(call, header, packet, saddr, source, daddr, dest, 1, NULL, NULL, orig_datalen, dataoffset, _t_packet_skinny,
+			    dlt, sensor_id, sensor_ip);
+	}
 	return NULL;
 }
 
-void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPort source, vmIP daddr, vmPort dest, char *data, int datalen, int dataoffset,
+Call *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPort source, vmIP daddr, vmPort dest, char *data, int datalen, int dataoffset,
 		     pcap_t *handle, int dlt, int sensor_id, vmIP sensor_ip) {
 
 	// printf("counter[%lu]\n", _handle_skinny_counter_all);
@@ -1720,7 +1730,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 		memcpy(directoryNum, req.data.connstatsreq.directoryNumber, sizeof(req.data.connstatsreq.directoryNumber));
 		directoryNum[sizeof(req.data.connstatsreq.directoryNumber)] = 0;
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received CONNECTION_STATISTICS_REQ_MESSAGE dn '%s'\n", directoryNum);
-		if(directoryNum[0] and (call = calltable->find_by_skinny_ipTuples(saddr, daddr))) {
+		if((call = calltable->find_by_skinny_ipTuples(saddr, daddr)) and directoryNum[0]) {
 			CallBranch *c_branch = call->branch_main();
 			if(strcmp(c_branch->caller.c_str(), directoryNum) != 0) {
 				c_branch->called_final = directoryNum;
@@ -2065,14 +2075,13 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received UNKNOWN_MESSAGE(%x) from %s\n", letohl(req.e), "d->name");
 		break;
 	}
-	
+	if(!call) {
+		call = calltable->find_by_skinny_ipTuples(saddr, daddr);
+	}
 	if(call) {
-		save_packet(call, header, packet, saddr, source, daddr, dest, 1, NULL, data, datalen, dataoffset, _t_packet_skinny, 
-			    dlt, sensor_id, sensor_ip);
 		call->set_last_signal_packet_time_us(getTimeUS(header));
 	}
-	
-	return NULL;
+	return(call);
 //	return res;
 }
 
