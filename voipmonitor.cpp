@@ -8295,6 +8295,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"check_bad_ether_type", 1, 0, _param_check_bad_ether_type},
 	    {"manager_enable_unencrypted", 0, 0, _param_manager_enable_unencrypted},
 	    {"sipgen", 2, 0, _param_sipgen},
+	    {"version", 0, 0, _param_version},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -9143,6 +9144,10 @@ void get_command_line_arguments() {
 				sg(optarg);
 				exit(0);
 				}
+				break;
+			case _param_version:
+				printf("voipmonitor version %s\n", getVersionWithBuild().c_str());
+				exit(0);
 				break;
 		}
 		if(optarg) {
