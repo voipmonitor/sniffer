@@ -1550,17 +1550,12 @@ void SqlDb::cleanFields() {
 	this->fields_flags.clear();
 }
 
-bool SqlDb::logNeedAlter(string table, string reason, string alter,
-			 bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag) {
-	vector<string> alters;
-	alters.push_back(alter);
-	return(logNeedAlter(table, reason, alters,
-			    log, tableSize, existsColumnFlag));
-}
-
-int SqlDb::checkNeedAlterAdd(string table, string reason, bool tryAlter,
-			     bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag,
+int SqlDb::checkExistsColumn(string table, string reason, bool enableAlter,
+			     map<string, u_int64_t> *tableSize, bool *existsColumnFlag,
 			     ...) {
+	if(!existsTable(table)) {
+		return(-1);
+	}
 	if(existsColumnFlag) {
 		*existsColumnFlag = false;
 	}
@@ -1597,7 +1592,7 @@ int SqlDb::checkNeedAlterAdd(string table, string reason, bool tryAlter,
 				*existsColumnFlag = true;
 			}
 			return(okAlter ? true: -1);
-		} else if(!tryAlter) {
+		} else if(!enableAlter) {
 			return(-1);
 		}
 		if(pass == 0 && !exists) {
@@ -1611,8 +1606,8 @@ int SqlDb::checkNeedAlterAdd(string table, string reason, bool tryAlter,
 			if(alter_add_columns.size()) {
 				vector<string> alters;
 				alters.push_back("ALTER TABLE " + table + " " + implode(alter_add_columns, ", ") + ";");
-				if(logNeedAlter(table, reason, alters,
-						log, tableSize, existsColumnFlag)) {
+				if(tryAlterAndLog(table, reason, alters,
+						  tableSize, existsColumnFlag)) {
 					okAlter = true;
 				} else {
 					break;
@@ -1623,8 +1618,8 @@ int SqlDb::checkNeedAlterAdd(string table, string reason, bool tryAlter,
 	return(false);
 }
 
-bool SqlDb::logNeedAlter(string table, string reason, vector<string> alters,
-			 bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag) {
+bool SqlDb::tryAlterAndLog(string table, string reason, vector<string> alters,
+			   map<string, u_int64_t> *tableSize, bool *existsColumnFlag) {
 	bool okAlter = false;
 	if(tableSize) {
 		map<string, u_int64_t>::iterator iter = tableSize->find(table);
@@ -1692,8 +1687,8 @@ bool SqlDb::logNeedAlter(string table, string reason, vector<string> alters,
 			}
 		}
 	}
-	if(log && !okAlter) {
-		string msg = 
+	if(!okAlter) {
+		string msg =
 			"!!! New feature was added. If you want to use it then you need to alter " + table +
 			" database table and add new columns to support " + reason + ". "
 			"This operation can take hours based on ammount of data, CPU and I/O speed of your server. "
@@ -1707,6 +1702,14 @@ bool SqlDb::logNeedAlter(string table, string reason, vector<string> alters,
 		this->removeTableFromColumnCache(table.c_str());
 	}
 	return(okAlter);
+}
+
+bool SqlDb::tryAlterAndLog(string table, string reason, string alter,
+			   map<string, u_int64_t> *tableSize, bool *existsColumnFlag) {
+	vector<string> alters;
+	alters.push_back(alter);
+	return(tryAlterAndLog(table, reason, alters,
+			      tableSize, existsColumnFlag));
 }
 
 volatile u_int64_t SqlDb::delayQuery_sum_ms[3] = { 0, 0, 0 };
@@ -9390,21 +9393,17 @@ void SqlDb_mysql::createTable(const char *tableName) {
 	}
 }
 
-void SqlDb_mysql::checkSchema(int connectId, bool checkColumnsSilentLog) {
-	
+void SqlDb_mysql::checkSchema(int connectId, bool enableAlter) {
 	if(opt_time_precision_in_ms && !isSupportForDatetimeMs()) {
 		cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
 		opt_time_precision_in_ms = false;
 	}
-	
 	this->clearLastError();
 	if(!(connectId == 0)) {
 		return;
 	}
-	
 	sql_disable_next_attempt_if_error = 1;
 	startExistsColumnCache();
-	
 	if(!opt_cdr_partition &&
 	   (isCloud() ||
 	    this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500)) {
@@ -9413,29 +9412,31 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumnsSilentLog) {
 			opt_cdr_partition = true;
 		}
 	}
-	
-	this->checkColumns_cdr(!checkColumnsSilentLog);
-	this->checkColumns_cdr_next(!checkColumnsSilentLog);
-	this->checkColumns_cdr_next_branches(!checkColumnsSilentLog);
-	this->checkColumns_cdr_sdp(!checkColumnsSilentLog);
-	this->checkColumns_cdr_rtp(!checkColumnsSilentLog);
-	this->checkColumns_cdr_dtmf(!checkColumnsSilentLog);
-	this->checkColumns_cdr_conference(!checkColumnsSilentLog);
-	this->checkColumns_cdr_stat(!checkColumnsSilentLog);
-	this->checkColumns_cdr_problems(!checkColumnsSilentLog);
-	this->checkColumns_cdr_summary(!checkColumnsSilentLog);
-	this->checkColumns_ss7(!checkColumnsSilentLog);
-	this->checkColumns_message(!checkColumnsSilentLog);
-	this->checkColumns_register(!checkColumnsSilentLog);
-	this->checkColumns_sip_msg(!checkColumnsSilentLog);
-	this->checkColumns_other(!checkColumnsSilentLog);
+	this->checkColumns_cdr(enableAlter);
+	this->checkColumns_cdr_next(enableAlter);
+	this->checkColumns_cdr_next_branches(enableAlter);
+	this->checkColumns_cdr_sdp(enableAlter);
+	this->checkColumns_cdr_rtp(enableAlter);
+	this->checkColumns_cdr_dtmf(enableAlter);
+	this->checkColumns_cdr_conference(enableAlter);
+	this->checkColumns_cdr_stat(enableAlter);
+	this->checkColumns_cdr_problems(enableAlter);
+	this->checkColumns_cdr_summary(enableAlter);
+	this->checkColumns_ss7(enableAlter);
+	this->checkColumns_message(enableAlter);
+	this->checkColumns_register(enableAlter);
+	this->checkColumns_sip_msg(enableAlter);
+	this->checkColumns_other(enableAlter);
+	this->checkColumns_other_force_alter();
 	cTableColumnsTimePrecision tp;
 	unsigned rslt_check_precison_significant;
-	rslt_check_precison_significant = tp.checkExistsPrecision(NULL, NULL, false, 
-								  true, this, opt_time_precision_in_ms);
+	rslt_check_precison_significant = tp.checkExistsPrecision(NULL, NULL, false,
+								  true, this,
+								  opt_time_precision_in_ms && enableAlter);
 	if(tp.isAltered()) {
 		rslt_check_precison_significant = tp.checkExistsPrecision(NULL, NULL, false,
-									  true, this, false);
+									  true, this,
+									  false);
 	}
 	if(opt_time_precision_in_ms) {
 		if(rslt_check_precison_significant != cTableColumnsTimePrecision::_prec_high) {
@@ -9502,29 +9503,29 @@ void SqlDb_mysql::updateSensorState() {
 	}
 }
 
-void SqlDb_mysql::checkColumns_cdr(bool log) {
+void SqlDb_mysql::checkColumns_cdr(bool enableAlter) {
 	map<string, u_int64_t> tableSize;
-	this->checkNeedAlterAdd("cdr", "store post bye delay", true,
-				log, &tableSize, &existsColumns.cdr_post_bye_delay,
+	this->checkExistsColumn("cdr", "store post bye delay", enableAlter,
+				&tableSize, &existsColumns.cdr_post_bye_delay,
 				"post_bye_delay", string(column_type_duration_ms_unsigned(NULL, true) + " default null").c_str(), NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	if(this->checkNeedAlterAdd("cdr", "store last rtp from end", opt_last_rtp_from_end,
-				   log, &tableSize, &existsColumns.cdr_last_rtp_from_end,
+	if(this->checkExistsColumn("cdr", "store last rtp from end", opt_last_rtp_from_end && enableAlter,
+				   &tableSize, &existsColumns.cdr_last_rtp_from_end,
 				   "a_last_rtp_from_end", opt_time_precision_in_ms ? "decimal(9,3) default null" : "SMALLINT SIGNED DEFAULT NULL", NULL_CHAR_PTR,
 				   "b_last_rtp_from_end", opt_time_precision_in_ms ? "decimal(9,3) default null" : "SMALLINT SIGNED DEFAULT NULL", NULL_CHAR_PTR,
 				   NULL_CHAR_PTR) > 0) {
 		existsColumns.cdr_a_last_rtp_from_end_time_ms = this->getTypeColumn("cdr", "a_last_rtp_from_end").find("decimal") != string::npos;
 		existsColumns.cdr_b_last_rtp_from_end_time_ms = this->getTypeColumn("cdr", "b_last_rtp_from_end").find("decimal") != string::npos;
 	}
-	this->checkNeedAlterAdd("cdr", "store sip ports", opt_cdr_sipport,
-				log, &tableSize, &existsColumns.cdr_sipport,
+	this->checkExistsColumn("cdr", "store sip ports", opt_cdr_sipport && enableAlter,
+				&tableSize, &existsColumns.cdr_sipport,
 				"sipcallerport", "smallint unsigned DEFAULT NULL AFTER `sipcallerip`", NULL_CHAR_PTR,
 				"sipcalledport", "smallint unsigned DEFAULT NULL AFTER `sipcalledip`", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 	if(!opt_disable_cdr_fields_rtp) {
 		extern int opt_silencedetect;
-		this->checkNeedAlterAdd("cdr", "silencedetect", opt_silencedetect,
-					log, &tableSize, &existsColumns.cdr_silencedetect,
+		this->checkExistsColumn("cdr", "silencedetect", opt_silencedetect && enableAlter,
+					&tableSize, &existsColumns.cdr_silencedetect,
 					"caller_silence", "tinyint unsigned default NULL", NULL_CHAR_PTR,
 					"called_silence", "tinyint unsigned default NULL", NULL_CHAR_PTR,
 					"caller_silence_end", "smallint default NULL", NULL_CHAR_PTR,
@@ -9533,30 +9534,30 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	}
 	if(!opt_disable_cdr_fields_rtp) {
 		extern int opt_clippingdetect;
-		this->checkNeedAlterAdd("cdr", "clippingdetect", opt_clippingdetect,
-					log, &tableSize, &existsColumns.cdr_clippingdetect,
+		this->checkExistsColumn("cdr", "clippingdetect", opt_clippingdetect && enableAlter,
+					&tableSize, &existsColumns.cdr_clippingdetect,
 					"caller_clipping_div3", "smallint unsigned default NULL", NULL_CHAR_PTR,
 					"called_clipping_div3", "smallint unsigned default NULL", NULL_CHAR_PTR,
 					NULL_CHAR_PTR);
 	}
 	if(!opt_disable_cdr_fields_rtp) {
-		this->checkNeedAlterAdd("cdr", "rctp_fraclost_pktcount", true,
-					log, &tableSize, &existsColumns.cdr_rtcp_fraclost_pktcount,
+		this->checkExistsColumn("cdr", "rctp_fraclost_pktcount", enableAlter,
+					&tableSize, &existsColumns.cdr_rtcp_fraclost_pktcount,
 					"a_rtcp_fraclost_pktcount", "int unsigned default NULL", NULL_CHAR_PTR,
 					"b_rtcp_fraclost_pktcount", "int unsigned default NULL", NULL_CHAR_PTR,
 					NULL_CHAR_PTR);
 	}
-	this->checkNeedAlterAdd("cdr", "rtp ptime", true,
-				log, &tableSize, &existsColumns.cdr_rtp_ptime,
+	this->checkExistsColumn("cdr", "rtp ptime", enableAlter,
+				&tableSize, &existsColumns.cdr_rtp_ptime,
 				"a_rtp_ptime", "tinyint unsigned default NULL", NULL_CHAR_PTR,
 				"b_rtp_ptime", "tinyint unsigned default NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr", "dscp", opt_dscp,
-				log, &tableSize, &existsColumns.cdr_dscp,
+	this->checkExistsColumn("cdr", "dscp", opt_dscp && enableAlter,
+				&tableSize, &existsColumns.cdr_dscp,
 				"dscp", "int unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr", "ttl", true,
-				log, &tableSize, &existsColumns.cdr_ttl,
+	this->checkExistsColumn("cdr", "ttl", enableAlter,
+				&tableSize, &existsColumns.cdr_ttl,
 				"ttl_min", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"ttl_max", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"ttl_avg_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
@@ -9567,33 +9568,34 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				"b_ttl_max", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"b_ttl_avg_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr", "mos lqo", opt_mos_lqo,
-				log, &tableSize, &existsColumns.cdr_mos_lqo,
+	this->checkExistsColumn("cdr", "mos lqo", opt_mos_lqo && enableAlter,
+				&tableSize, &existsColumns.cdr_mos_lqo,
 				"a_mos_lqo_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"b_mos_lqo_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr", "flags", true,
-				log, &tableSize, &existsColumns.cdr_flags,
+	this->checkExistsColumn("cdr", "flags", enableAlter,
+				&tableSize, &existsColumns.cdr_flags,
 				"flags", "bigint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr", "maximum retransmissions invite", true,
-				log, &tableSize, &existsColumns.cdr_max_retransmission_invite,
+	this->checkExistsColumn("cdr", "maximum retransmissions invite", enableAlter,
+				&tableSize, &existsColumns.cdr_max_retransmission_invite,
 				"max_retransmission_invite", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 
 	if(this->existsTable("billing")) {
 		if(!this->existsColumn("cdr", "price_operator_mult100") &&
 		   !this->existsColumn("cdr", "price_operator_mult1000000")) {
-			this->checkNeedAlterAdd("cdr", "billing feature", true,
-						log, &tableSize, NULL,
+			this->checkExistsColumn("cdr", "billing feature", enableAlter,
+						&tableSize, NULL,
 						"price_operator_mult1000000", "BIGINT UNSIGNED", NULL_CHAR_PTR,
 						"price_operator_currency_id", "TINYINT UNSIGNED", NULL_CHAR_PTR,
 						"price_customer_mult1000000", "BIGINT UNSIGNED", NULL_CHAR_PTR,
 						"price_customer_currency_id", "TINYINT UNSIGNED", NULL_CHAR_PTR,
 						NULL_CHAR_PTR);
-		} else if(this->existsExtPrecissionBilling() &&
-			  this->existsColumn("cdr", "price_operator_mult100") &&
-			  !this->existsColumn("cdr", "price_operator_mult1000000")) {
+		} else if((this->existsExtPrecissionBilling() &&
+			   this->existsColumn("cdr", "price_operator_mult100") &&
+			   !this->existsColumn("cdr", "price_operator_mult1000000")) &&
+			  enableAlter) {
 			vector<string> alters;
 			alters.push_back(
 				"ALTER TABLE cdr "
@@ -9607,10 +9609,10 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				"UPDATE cdr "
 				"set price_customer_mult1000000 = price_customer_mult100 * 10000 "
 				"where price_customer_mult100 <> 0;");
-			this->logNeedAlter("cdr",
-					   "billing feature - add extended price precision",
-					   alters,
-					   log, &tableSize, NULL);
+			this->tryAlterAndLog("cdr",
+					     "billing feature - add extended price precision",
+					     alters,
+					     &tableSize, NULL);
 		}
 	}
 	existsColumns.cdr_price_operator_mult1000000 = this->existsColumn("cdr", "price_operator_mult1000000");
@@ -9620,15 +9622,15 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	existsColumns.cdr_price_customer_mult100 = this->existsColumn("cdr", "price_customer_mult100");
 	existsColumns.cdr_price_customer_currency_id = this->existsColumn("cdr", "price_customer_currency_id");
 	
-	this->checkNeedAlterAdd("cdr", "SIP header 'reason'", true,
-				log, &tableSize, &existsColumns.cdr_reason,
+	this->checkExistsColumn("cdr", "SIP header 'reason'", enableAlter,
+				&tableSize, &existsColumns.cdr_reason,
 				"reason_sip_cause", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"reason_sip_text_id", "mediumint unsigned DEFAULT NULL", "reason_sip_text_id (reason_sip_text_id)",
 				"reason_q850_cause", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"reason_q850_text_id", "mediumint unsigned DEFAULT NULL", "reason_q850_text_id (reason_q850_text_id)",
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr", "SIP response time", true,
-				log, &tableSize, &existsColumns.cdr_response_time_100,
+	this->checkExistsColumn("cdr", "SIP response time", enableAlter,
+				&tableSize, &existsColumns.cdr_response_time_100,
 				"response_time_100", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"response_time_xxx", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
@@ -9636,8 +9638,8 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	existsColumns.cdr_response_time_xxx = this->existsColumn("cdr", "response_time_xxx");
 	//14.0
 	if(!opt_disable_cdr_fields_rtp) {
-		this->checkNeedAlterAdd("cdr", "MOS min", true,
-					log, &tableSize, &existsColumns.cdr_mos_min,
+		this->checkExistsColumn("cdr", "MOS min", enableAlter,
+					&tableSize, &existsColumns.cdr_mos_min,
 					"a_mos_f1_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					"a_mos_f2_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					"a_mos_adapt_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
@@ -9648,15 +9650,15 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	}
 	//14.3
 	if(!opt_disable_cdr_fields_rtp) {
-		this->checkNeedAlterAdd("cdr", "MOS RTCP XR", true,
-					log, &tableSize, &existsColumns.cdr_mos_xr,
+		this->checkExistsColumn("cdr", "MOS RTCP XR", enableAlter,
+					&tableSize, &existsColumns.cdr_mos_xr,
 					"a_mos_xr_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					"b_mos_xr_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					"a_mos_xr_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					"b_mos_xr_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					NULL_CHAR_PTR);
-		this->checkNeedAlterAdd("cdr", "RTCP Roundtrip Delay", true,
-					log, &tableSize, &existsColumns.cdr_rtcp_rtd,
+		this->checkExistsColumn("cdr", "RTCP Roundtrip Delay", enableAlter,
+					&tableSize, &existsColumns.cdr_rtcp_rtd,
 					"a_rtcp_avgrtd_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					"b_rtcp_avgrtd_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					"a_rtcp_maxrtd_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
@@ -9665,21 +9667,21 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	}
 	//23.7
 	if(!opt_disable_cdr_fields_rtp) {
-		this->checkNeedAlterAdd("cdr", "Columns MOS Silence", true,
-					log, &tableSize, &existsColumns.cdr_mos_silence,
+		this->checkExistsColumn("cdr", "Columns MOS Silence", enableAlter,
+					&tableSize, &existsColumns.cdr_mos_silence,
 					"a_mos_silence_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					"b_mos_silence_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					"a_mos_silence_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					"b_mos_silence_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					NULL_CHAR_PTR);
 	}
-	this->checkNeedAlterAdd("cdr", "Vlan", true,
-				log, &tableSize, &existsColumns.cdr_vlan,
+	this->checkExistsColumn("cdr", "Vlan", enableAlter,
+				&tableSize, &existsColumns.cdr_vlan,
 				"vlan", "smallint DEFAULT NULL", "`vlan` (`vlan`)", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 	//27.3
-	this->checkNeedAlterAdd("cdr", "SIP IP from first IP header", opt_save_ip_from_encaps_ipheader,
-				log, &tableSize, &existsColumns.cdr_sipcallerdip_encaps,
+	this->checkExistsColumn("cdr", "SIP IP from first IP header", opt_save_ip_from_encaps_ipheader && enableAlter,
+				&tableSize, &existsColumns.cdr_sipcallerdip_encaps,
 				"sipcallerip_encaps", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcallerip_encaps` (`sipcallerip_encaps`)",
 				"sipcalledip_encaps", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcalledip_encaps` (`sipcalledip_encaps`)",
 				"sipcallerip_encaps_prot", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
@@ -9695,8 +9697,8 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	existsColumns.cdr_b_last_rtp_from_end_unsigned = this->getTypeColumn("cdr", "b_last_rtp_from_end").find("unsigned") != string::npos;
 	
 	if(opt_separate_storage_ipv6_ipv4_address) {
-		this->checkNeedAlterAdd("cdr", "separate storage IPv4 and IPv6 sip address", opt_separate_storage_ipv6_ipv4_address,
-					log, &tableSize, &existsColumns.cdr_sipcallerdip_v6,
+		this->checkExistsColumn("cdr", "separate storage IPv4 and IPv6 sip address", opt_separate_storage_ipv6_ipv4_address && enableAlter,
+					&tableSize, &existsColumns.cdr_sipcallerdip_v6,
 					"sipcallerip_v4", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcallerip_v4` (`sipcallerip_v4`)",
 					"sipcallerport_v4", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					"sipcalledip_v4", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcalledip_v4` (`sipcalledip_v4`)",
@@ -9707,92 +9709,78 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 					"sipcalledport_v6", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					NULL_CHAR_PTR);
 	}
-	
-	if(!this->existsIndex("sensors", "id_sensor", 1)) {
-		bool dupl = false;
-		if(this->query("select count(*) as cnt from sensors \
-				group by id_sensor order by cnt desc limit 1")) {
-			SqlDb_row row = this->fetchRow();
-			if(row && atoi(row["cnt"].c_str()) > 1) {
-				dupl = true;
-			}
-		}
-		if(!dupl) {
-			this->query("alter table sensors add unique(id_sensor)");
-		}
-	}
-	
-	this->checkNeedAlterAdd("cdr", "Columns reordered", true,
-				log, &tableSize, &existsColumns.cdr_reordered,
+
+	this->checkExistsColumn("cdr", "Columns reordered", enableAlter,
+				&tableSize, &existsColumns.cdr_reordered,
 				"a_reordered", "mediumint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"b_reordered", "mediumint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 }
 
-void SqlDb_mysql::checkColumns_cdr_next(bool log) {
+void SqlDb_mysql::checkColumns_cdr_next(bool enableAlter) {
 	map<string, u_int64_t> tableSize;
-	this->checkNeedAlterAdd("cdr_next", "cdr digest username (can be used by custom header)", true,
-				log, &tableSize, &existsColumns.cdr_next_digest_username,
+	this->checkExistsColumn("cdr_next", "cdr digest username (can be used by custom header)", enableAlter,
+				&tableSize, &existsColumns.cdr_next_digest_username,
 				"digest_username", "varchar(255) DEFAULT NULL", "digest_username (digest_username)",
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr_next", "cdr spool index", true,
-				log, &tableSize, &existsColumns.cdr_next_spool_index,
+	this->checkExistsColumn("cdr_next", "cdr spool index", enableAlter,
+				&tableSize, &existsColumns.cdr_next_spool_index,
 				"spool_index", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr_next", "cdr hold", true,
-				log, &tableSize, &existsColumns.cdr_next_hold,
+	this->checkExistsColumn("cdr_next", "cdr hold", enableAlter,
+				&tableSize, &existsColumns.cdr_next_hold,
 				"hold", "varchar(1024) DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 	if(opt_conference_processing) {
-		this->checkNeedAlterAdd("cdr_next", "conference flag", true,
-					log, &tableSize, &existsColumns.cdr_next_conference_flag,
+		this->checkExistsColumn("cdr_next", "conference flag", enableAlter,
+					&tableSize, &existsColumns.cdr_next_conference_flag,
 					"conference_flag", "enum('main','leg') DEFAULT NULL", NULL_CHAR_PTR,
 					NULL_CHAR_PTR);
-		this->checkNeedAlterAdd("cdr_next", "conference referred_by", true,
-					log, &tableSize, &existsColumns.cdr_next_conference_referred_by,
+		this->checkExistsColumn("cdr_next", "conference referred_by", enableAlter,
+					&tableSize, &existsColumns.cdr_next_conference_referred_by,
 					"conference_referred_by", "varchar(1024) DEFAULT NULL", "`conference_referred_by` (`conference_referred_by`)",
 					NULL_CHAR_PTR);
-		this->checkNeedAlterAdd("cdr_next", "conference referred_by ok_time", true,
-					log, &tableSize, &existsColumns.cdr_next_conference_referred_by_ok_time,
+		this->checkExistsColumn("cdr_next", "conference referred_by ok_time", enableAlter,
+					&tableSize, &existsColumns.cdr_next_conference_referred_by_ok_time,
 					"conference_referred_by_ok_time", (column_type_datetime_ms() + " DEFAULT NULL").c_str(), NULL_CHAR_PTR,
 					NULL_CHAR_PTR);
 	}
 	if(opt_mo_mt_identification_prefix.size()) {
-		this->checkNeedAlterAdd("cdr_next", "leg flag", true,
-					log, &tableSize, &existsColumns.cdr_next_leg_flag,
+		this->checkExistsColumn("cdr_next", "leg flag", enableAlter,
+					&tableSize, &existsColumns.cdr_next_leg_flag,
 					"srvcc_call_id", "enum('mo','mt') DEFAULT NULL", NULL_CHAR_PTR,
 					NULL_CHAR_PTR);
 	}
 	if(srvcc_set) {
-		this->checkNeedAlterAdd("cdr_next", "srvcc call id", true,
-					log, &tableSize, &existsColumns.cdr_next_srvcc_call_id,
+		this->checkExistsColumn("cdr_next", "srvcc call id", enableAlter,
+					&tableSize, &existsColumns.cdr_next_srvcc_call_id,
 					"srvcc_call_id", "varchar(255) DEFAULT NULL", "srvcc_call_id (srvcc_call_id)",
 					NULL_CHAR_PTR);
-		this->checkNeedAlterAdd("cdr_next", "srvcc flag", true,
-					log, &tableSize, &existsColumns.cdr_next_srvcc_flag,
+		this->checkExistsColumn("cdr_next", "srvcc flag", enableAlter,
+					&tableSize, &existsColumns.cdr_next_srvcc_flag,
 					"srvcc_flag", "enum('post_srvcc','pre_srvcc') DEFAULT NULL", "srvcc_flag (srvcc_flag)",
 					NULL_CHAR_PTR);
 	}
 }
 
-void SqlDb_mysql::checkColumns_cdr_next_branches(bool log) {
+void SqlDb_mysql::checkColumns_cdr_next_branches(bool enableAlter) {
 	map<string, u_int64_t> tableSize;
 	existsColumns.cdr_next_branches = this->existsTable("cdr_next_branches");
-	this->checkNeedAlterAdd("cdr_next_branches", "store sip ports (next branches)", opt_cdr_sipport,
-				log, &tableSize, &existsColumns.cdr_next_branches_sipport,
+	this->checkExistsColumn("cdr_next_branches", "store sip ports (next branches)", opt_cdr_sipport && enableAlter,
+				&tableSize, &existsColumns.cdr_next_branches_sipport,
 				"sipcallerport", "smallint unsigned DEFAULT NULL AFTER `sipcallerip`", NULL_CHAR_PTR,
 				"sipcalledport", "smallint unsigned DEFAULT NULL AFTER `sipcalledip`", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr_next_branches", "SIP IP from first IP header (next branches)", opt_save_ip_from_encaps_ipheader,
-				log, &tableSize, &existsColumns.cdr_next_branches_sipcallerdip_encaps,
+	this->checkExistsColumn("cdr_next_branches", "SIP IP from first IP header (next branches)", opt_save_ip_from_encaps_ipheader && enableAlter,
+				&tableSize, &existsColumns.cdr_next_branches_sipcallerdip_encaps,
 				"sipcallerip_encaps", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcallerip_encaps` (`sipcallerip_encaps`)",
 				"sipcalledip_encaps", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcalledip_encaps` (`sipcalledip_encaps`)",
 				"sipcallerip_encaps_prot", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"sipcalledip_encaps_prot", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 	if(opt_separate_storage_ipv6_ipv4_address) {
-		this->checkNeedAlterAdd("cdr_next_branches", "separate storage IPv4 and IPv6 sip address (next branches)", opt_separate_storage_ipv6_ipv4_address,
-					log, &tableSize, &existsColumns.cdr_next_branches_sipcallerdip_v6,
+		this->checkExistsColumn("cdr_next_branches", "separate storage IPv4 and IPv6 sip address (next branches)", opt_separate_storage_ipv6_ipv4_address && enableAlter,
+					&tableSize, &existsColumns.cdr_next_branches_sipcallerdip_v6,
 					"sipcallerip_v4", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcallerip_v4` (`sipcallerip_v4`)",
 					"sipcallerport_v4", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					"sipcalledip_v4", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcalledip_v4` (`sipcalledip_v4`)",
@@ -9805,64 +9793,64 @@ void SqlDb_mysql::checkColumns_cdr_next_branches(bool log) {
 	}
 }
 
-void SqlDb_mysql::checkColumns_cdr_sdp(bool log) {
+void SqlDb_mysql::checkColumns_cdr_sdp(bool enableAlter) {
 	map<string, u_int64_t> tableSize;
-	this->checkNeedAlterAdd("cdr_sdp", "sdp ptime", true,
-				log, &tableSize, &existsColumns.cdr_sdp_ptime,
+	this->checkExistsColumn("cdr_sdp", "sdp ptime", enableAlter,
+				&tableSize, &existsColumns.cdr_sdp_ptime,
 				"ptime", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 }
- 
-void SqlDb_mysql::checkColumns_cdr_rtp(bool log) {
+
+void SqlDb_mysql::checkColumns_cdr_rtp(bool enableAlter) {
 	map<string, u_int64_t> tableSize;
-	this->checkNeedAlterAdd("cdr_rtp", "rtp destination port", opt_cdr_rtpport,
-				log, &tableSize, &existsColumns.cdr_rtp_dport,
+	this->checkExistsColumn("cdr_rtp", "rtp destination port", opt_cdr_rtpport && enableAlter,
+				&tableSize, &existsColumns.cdr_rtp_dport,
 				"dport", "smallint unsigned DEFAULT NULL AFTER `daddr`", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr_rtp", "rtp source port", opt_cdr_rtpsrcport,
-				log, &tableSize, &existsColumns.cdr_rtp_sport,
+	this->checkExistsColumn("cdr_rtp", "rtp source port", opt_cdr_rtpsrcport && enableAlter,
+				&tableSize, &existsColumns.cdr_rtp_sport,
 				"sport", "smallint unsigned DEFAULT NULL AFTER `saddr`", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr_rtp", "rtp index of stream", true,
-				log, &tableSize, &existsColumns.cdr_rtp_index,
+	this->checkExistsColumn("cdr_rtp", "rtp index of stream", enableAlter,
+				&tableSize, &existsColumns.cdr_rtp_index,
 				"index", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr_rtp", "rtp & sdp ptime", true,
-				log, &tableSize, &existsColumns.cdr_rtp_sdp_ptime,
+	this->checkExistsColumn("cdr_rtp", "rtp & sdp ptime", enableAlter,
+				&tableSize, &existsColumns.cdr_rtp_sdp_ptime,
 				"sdp_ptime", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"rtp_ptime", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr_rtp", "flags", true,
-				log, &tableSize, &existsColumns.cdr_rtp_flags,
+	this->checkExistsColumn("cdr_rtp", "flags", enableAlter,
+				&tableSize, &existsColumns.cdr_rtp_flags,
 				"flags", "bigint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr_rtp", "rtp duration", true,
-				log, &tableSize, &existsColumns.cdr_rtp_duration,
+	this->checkExistsColumn("cdr_rtp", "rtp duration", enableAlter,
+				&tableSize, &existsColumns.cdr_rtp_duration,
 				"duration", string(column_type_duration_ms_unsigned("float") + " DEFAULT NULL").c_str(), NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr_rtp", "ttl", true,
-				log, &tableSize, &existsColumns.cdr_rtp_ttl,
+	this->checkExistsColumn("cdr_rtp", "ttl", enableAlter,
+				&tableSize, &existsColumns.cdr_rtp_ttl,
 				"ttl_min", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"ttl_max", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"ttl_avg_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 }
 
-void SqlDb_mysql::checkColumns_cdr_dtmf(bool log) {
+void SqlDb_mysql::checkColumns_cdr_dtmf(bool enableAlter) {
 	extern int opt_dbdtmf;
 	map<string, u_int64_t> tableSize;
-	this->checkNeedAlterAdd("cdr_dtmf", "type", opt_dbdtmf,
-				log, &tableSize, &existsColumns.cdr_dtmf_type,
+	this->checkExistsColumn("cdr_dtmf", "type", opt_dbdtmf && enableAlter,
+				&tableSize, &existsColumns.cdr_dtmf_type,
 				"type", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 }
 
-void SqlDb_mysql::checkColumns_cdr_conference(bool log) {
+void SqlDb_mysql::checkColumns_cdr_conference(bool enableAlter) {
 	existsColumns.cdr_conference = this->existsTable("cdr_conference");
 }
 
 
-void SqlDb_mysql::checkColumns_cdr_stat(bool log) {
+void SqlDb_mysql::checkColumns_cdr_stat(bool enableAlter) {
 	for(int src_dst = 0; src_dst < 2; src_dst++) {
 		cCdrStat::exists_columns_clear(src_dst);
 	}
@@ -9876,8 +9864,8 @@ void SqlDb_mysql::checkColumns_cdr_stat(bool log) {
 			map<string, u_int64_t> tableSize;
 			for(unsigned i = 0; i < cdr_stat_fields.size(); i++) {
 				bool existsColumn = false;
-				this->checkNeedAlterAdd("cdr_stat_values" + cCdrStat::tableNameSuffix(src_dst), "field " + cdr_stat_fields[i].str[0], true,
-							log, &tableSize, &existsColumn,
+				this->checkExistsColumn("cdr_stat_values" + cCdrStat::tableNameSuffix(src_dst), "field " + cdr_stat_fields[i].str[0], enableAlter,
+							&tableSize, &existsColumn,
 							cdr_stat_fields[i].str[0].c_str(), cdr_stat_fields[i].str[1].c_str(), NULL_CHAR_PTR,
 							NULL_CHAR_PTR);
 				if(existsColumn) {
@@ -9888,7 +9876,7 @@ void SqlDb_mysql::checkColumns_cdr_stat(bool log) {
 	}
 }
 
-void SqlDb_mysql::checkColumns_cdr_problems(bool log) {
+void SqlDb_mysql::checkColumns_cdr_problems(bool enableAlter) {
 	for(int by_type = 0; by_type < 3; by_type++) {
 		cCdrProblems::exists_columns_clear(by_type);
 	}
@@ -9909,8 +9897,8 @@ void SqlDb_mysql::checkColumns_cdr_problems(bool log) {
 			map<string, u_int64_t> tableSize;
 			for(unsigned i = 0; i < cdr_problems_fields.size(); i++) {
 				bool existsColumn = false;
-				this->checkNeedAlterAdd("cdr_problems" + cCdrProblems::tableNameSuffix(by_type), "field " + cdr_problems_fields[i].str[0], true,
-							log, &tableSize, &existsColumn,
+				this->checkExistsColumn("cdr_problems" + cCdrProblems::tableNameSuffix(by_type), "field " + cdr_problems_fields[i].str[0], enableAlter,
+							&tableSize, &existsColumn,
 							cdr_problems_fields[i].str[0].c_str(), cdr_problems_fields[i].str[1].c_str(), NULL_CHAR_PTR,
 							NULL_CHAR_PTR);
 				if(existsColumn) {
@@ -9921,7 +9909,7 @@ void SqlDb_mysql::checkColumns_cdr_problems(bool log) {
 	}
 }
 
-void SqlDb_mysql::checkColumns_cdr_summary(bool log) {
+void SqlDb_mysql::checkColumns_cdr_summary(bool enableAlter) {
 	for(int si = 0; si < 2; si++) {
 		cCdrSummary::exists_columns_clear(si);
 	}
@@ -9942,8 +9930,8 @@ void SqlDb_mysql::checkColumns_cdr_summary(bool log) {
 			map<string, u_int64_t> tableSize;
 			for(unsigned i = 0; i < cdr_summary_fields.size(); i++) {
 				bool existsColumn = false;
-				this->checkNeedAlterAdd(si == 0 ? "cdr_summary" : "cdr_summary_nc", "field " + cdr_summary_fields[i].str[0], true,
-							log, &tableSize, &existsColumn,
+				this->checkExistsColumn(si == 0 ? "cdr_summary" : "cdr_summary_nc", "field " + cdr_summary_fields[i].str[0], enableAlter,
+							&tableSize, &existsColumn,
 							cdr_summary_fields[i].str[0].c_str(), cdr_summary_fields[i].str[1].c_str(), NULL_CHAR_PTR,
 							NULL_CHAR_PTR);
 				if(existsColumn) {
@@ -9954,36 +9942,36 @@ void SqlDb_mysql::checkColumns_cdr_summary(bool log) {
 	}
 }
 
-void SqlDb_mysql::checkColumns_ss7(bool log) {
+void SqlDb_mysql::checkColumns_ss7(bool enableAlter) {
 	if(!this->existsTable("ss7")) {
 		return;
 	}
 	map<string, u_int64_t> tableSize;
-	this->checkNeedAlterAdd("ss7", "flags", true,
-				log, &tableSize, &existsColumns.ss7_flags,
+	this->checkExistsColumn("ss7", "flags", enableAlter,
+				&tableSize, &existsColumns.ss7_flags,
 				"flags", "bigint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 }
 
-void SqlDb_mysql::checkColumns_message(bool log) {
+void SqlDb_mysql::checkColumns_message(bool enableAlter) {
 	map<string, u_int64_t> tableSize;
 	existsColumns.message_content_length = this->existsColumn("message", "content_length");
-	this->checkNeedAlterAdd("message", "SIP response time", true,
-				log, &tableSize, &existsColumns.message_response_time,
+	this->checkExistsColumn("message", "SIP response time", enableAlter,
+				&tableSize, &existsColumns.message_response_time,
 				"response_time", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("message", "message spool index", true,
-				log, &tableSize, &existsColumns.message_spool_index,
+	this->checkExistsColumn("message", "message spool index", enableAlter,
+				&tableSize, &existsColumns.message_spool_index,
 				"spool_index", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("message", "Vlan", true,
-				log, &tableSize, &existsColumns.message_vlan,
+	this->checkExistsColumn("message", "Vlan", enableAlter,
+				&tableSize, &existsColumns.message_vlan,
 				"vlan", "smallint DEFAULT NULL", "`vlan` (`vlan`)",
 				NULL_CHAR_PTR);
 }
 
 
-void SqlDb_mysql::checkColumns_register(bool log) {
+void SqlDb_mysql::checkColumns_register(bool enableAlter) {
 	map<string, u_int64_t> tableSize;
 	if(enable_register_engine) {
 		bool registerStateIdIsBig = true;
@@ -10002,12 +9990,12 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 				registerStateIdIsAutoIncrement = false;
 			}
 		}
-		if(!registerStateIdIsBig || !registerStateIdIsAutoIncrement) {
-			this->logNeedAlter("register_state",
-					   "register state",
-					   "ALTER TABLE register_state "
-					   "CHANGE COLUMN `ID` `ID` bigint unsigned NOT NULL AUTO_INCREMENT;",
-					   log, &tableSize, NULL);
+		if((!registerStateIdIsBig || !registerStateIdIsAutoIncrement) && enableAlter) {
+			this->tryAlterAndLog("register_state",
+					     "register state",
+					     "ALTER TABLE register_state "
+					     "CHANGE COLUMN `ID` `ID` bigint unsigned NOT NULL AUTO_INCREMENT;",
+					     &tableSize, NULL);
 		}
 		bool registerFailedIdIsBig = true;
 		bool registerFailedIdIsAutoIncrement = true;
@@ -10025,92 +10013,92 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 				registerFailedIdIsAutoIncrement = false;
 			}
 		}
-		if(!registerFailedIdIsBig || !registerFailedIdIsAutoIncrement) {
-			this->logNeedAlter("register_failed",
-					   "register failed",
-					   "ALTER TABLE register_failed "
-					   "CHANGE COLUMN `ID` `ID` bigint unsigned NOT NULL AUTO_INCREMENT;",
-					   log, &tableSize, NULL);
+		if((!registerFailedIdIsBig || !registerFailedIdIsAutoIncrement) && enableAlter) {
+			this->tryAlterAndLog("register_failed",
+					     "register failed",
+					     "ALTER TABLE register_failed "
+					     "CHANGE COLUMN `ID` `ID` bigint unsigned NOT NULL AUTO_INCREMENT;",
+					     &tableSize, NULL);
 		}
 	}
 	if(opt_sip_register_save_eq_states_time) {
-		this->checkNeedAlterAdd("register_state", "register_state counter", true,
-					log, &tableSize, &existsColumns.register_state_counter,
+		this->checkExistsColumn("register_state", "register_state counter", enableAlter,
+					&tableSize, &existsColumns.register_state_counter,
 					"counter", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					NULL_CHAR_PTR);
 	}
-	this->checkNeedAlterAdd("register_state", "register_state spool index", true,
-				log, &tableSize, &existsColumns.register_state_spool_index,
+	this->checkExistsColumn("register_state", "register_state spool index", enableAlter,
+				&tableSize, &existsColumns.register_state_spool_index,
 				"spool_index", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("register_state", "register_state flags", true,
-				log, &tableSize, &existsColumns.register_state_flags,
+	this->checkExistsColumn("register_state", "register_state flags", enableAlter,
+				&tableSize, &existsColumns.register_state_flags,
 				"flags", "bigint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("register_state", "register_state vlan", true,
-				log, &tableSize, &existsColumns.register_state_vlan,
+	this->checkExistsColumn("register_state", "register_state vlan", enableAlter,
+				&tableSize, &existsColumns.register_state_vlan,
 				"vlan", "smallint DEFAULT NULL", "`vlan` (`vlan`)",
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("register_state", "register_state digestrealm", true,
-				log, &tableSize, &existsColumns.register_state_digestrealm,
+	this->checkExistsColumn("register_state", "register_state digestrealm", enableAlter,
+				&tableSize, &existsColumns.register_state_digestrealm,
 				"digestrealm", "varchar(255) DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("register_state", "register_state sipcallerport", true,
-				log, &tableSize, &existsColumns.register_state_sipcallerport,
+	this->checkExistsColumn("register_state", "register_state sipcallerport", enableAlter,
+				&tableSize, &existsColumns.register_state_sipcallerport,
 				"sipcallerport", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("register_state", "register_state sipcalledport", true,
-				log, &tableSize, &existsColumns.register_state_sipcalledport,
+	this->checkExistsColumn("register_state", "register_state sipcalledport", enableAlter,
+				&tableSize, &existsColumns.register_state_sipcalledport,
 				"sipcalledport", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("register_failed", "register_failed sipcallerport", true,
-				log, &tableSize, &existsColumns.register_failed_sipcallerport,
+	this->checkExistsColumn("register_failed", "register_failed sipcallerport", enableAlter,
+				&tableSize, &existsColumns.register_failed_sipcallerport,
 				"sipcallerport", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("register_failed", "register_failed sipcalledport", true,
-				log, &tableSize, &existsColumns.register_failed_sipcalledport,
+	this->checkExistsColumn("register_failed", "register_failed sipcalledport", enableAlter,
+				&tableSize, &existsColumns.register_failed_sipcalledport,
 				"sipcalledport", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("register_failed", "register_failed spool index", true,
-				log, &tableSize, &existsColumns.register_failed_spool_index,
+	this->checkExistsColumn("register_failed", "register_failed spool index", enableAlter,
+				&tableSize, &existsColumns.register_failed_spool_index,
 				"spool_index", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("register_failed", "register_failed flags", true,
-				log, &tableSize, &existsColumns.register_failed_flags,
+	this->checkExistsColumn("register_failed", "register_failed flags", enableAlter,
+				&tableSize, &existsColumns.register_failed_flags,
 				"flags", "bigint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("register_failed", "register_failed vlan", true,
-				log, &tableSize, &existsColumns.register_failed_vlan,
+	this->checkExistsColumn("register_failed", "register_failed vlan", enableAlter,
+				&tableSize, &existsColumns.register_failed_vlan,
 				"vlan", "smallint DEFAULT NULL", "`vlan` (`vlan`)",
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("register_failed", "register_failed digestrealm", true,
-				log, &tableSize, &existsColumns.register_failed_digestrealm,
+	this->checkExistsColumn("register_failed", "register_failed digestrealm", enableAlter,
+				&tableSize, &existsColumns.register_failed_digestrealm,
 				"digestrealm", "varchar(255) DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 	//27.3
-	this->checkNeedAlterAdd("register_state", "SIP IP from first IP header", opt_save_ip_from_encaps_ipheader,
-				log, &tableSize, &existsColumns.register_state_sipcallerdip_encaps,
+	this->checkExistsColumn("register_state", "SIP IP from first IP header", opt_save_ip_from_encaps_ipheader && enableAlter,
+				&tableSize, &existsColumns.register_state_sipcallerdip_encaps,
 				"sipcallerip_encaps", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcallerip_encaps` (`sipcallerip_encaps`)",
 				"sipcalledip_encaps", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), NULL_CHAR_PTR,
 				"sipcallerip_encaps_prot", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"sipcalledip_encaps_prot", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("register_failed", "SIP IP from first IP header", opt_save_ip_from_encaps_ipheader,
-				log, &tableSize, &existsColumns.register_failed_sipcallerdip_encaps,
+	this->checkExistsColumn("register_failed", "SIP IP from first IP header", opt_save_ip_from_encaps_ipheader && enableAlter,
+				&tableSize, &existsColumns.register_failed_sipcallerdip_encaps,
 				"sipcallerip_encaps", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcallerip_encaps` (`sipcallerip_encaps`)",
 				"sipcalledip_encaps", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), NULL_CHAR_PTR,
 				"sipcallerip_encaps_prot", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"sipcalledip_encaps_prot", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("register_state", "register_state country_code", opt_register_country_code,
-				log, &tableSize, &existsColumns.register_state_country_code,
+	this->checkExistsColumn("register_state", "register_state country_code", opt_register_country_code && enableAlter,
+				&tableSize, &existsColumns.register_state_country_code,
 				"sipcallerip_country_code", (opt_register_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), "`sipcallerip_country_code` (`sipcallerip_country_code`)",
 				"sipcalledip_country_code", (opt_register_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), "`sipcalledip_country_code` (`sipcalledip_country_code`)",
 				"from_num_country_code", (opt_register_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), NULL_CHAR_PTR,
 				"to_num_country_code", (opt_register_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("register_failed", "register_failed country_code", opt_register_country_code,
-				log, &tableSize, &existsColumns.register_failed_country_code,
+	this->checkExistsColumn("register_failed", "register_failed country_code", opt_register_country_code && enableAlter,
+				&tableSize, &existsColumns.register_failed_country_code,
 				"sipcallerip_country_code", (opt_register_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), "`sipcallerip_country_code` (`sipcallerip_country_code`)",
 				"sipcalledip_country_code", (opt_register_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), "`sipcalledip_country_code` (`sipcalledip_country_code`)",
 				"from_num_country_code", (opt_register_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), NULL_CHAR_PTR,
@@ -10121,61 +10109,56 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 	}
 }
 
-void SqlDb_mysql::checkColumns_sip_msg(bool log) {
+void SqlDb_mysql::checkColumns_sip_msg(bool enableAlter) {
 	map<string, u_int64_t> tableSize;
-	this->checkNeedAlterAdd("sip_msg", "sip_msg vlan", true,
-				log, &tableSize, &existsColumns.sip_msg_vlan,
+	this->checkExistsColumn("sip_msg", "sip_msg vlan", enableAlter,
+				&tableSize, &existsColumns.sip_msg_vlan,
 				"vlan", "smallint DEFAULT NULL", "`vlan` (`vlan`)",
 				NULL_CHAR_PTR);
 }
 
-void SqlDb_mysql::checkColumns_other(bool log) {
-	if(!this->existsColumn("files", "spool_index")) {
-		this->query(
-			"ALTER TABLE `files`\
-			 ADD COLUMN `spool_index` INT NOT NULL AFTER `id_sensor`,\
-			 DROP PRIMARY KEY,\
-			 ADD PRIMARY KEY (`datehour`, `id_sensor`, `spool_index`)");
+void SqlDb_mysql::checkColumns_other(bool enableAlter) {
+	if(enableAlter && !this->existsIndex("sensors", "id_sensor", 1)) {
+		bool dupl = false;
+		if(this->query("select count(*) as cnt from sensors \
+				group by id_sensor order by cnt desc limit 1")) {
+			SqlDb_row row = this->fetchRow();
+			if(row && atoi(row["cnt"].c_str()) > 1) {
+				dupl = true;
+			}
+		}
+		if(!dupl) {
+			this->query("alter table sensors add unique(id_sensor)");
+		}
 	}
-	if(!this->existsColumn("files", "skinnysize")) {
-		this->query(
-			"ALTER TABLE `files`\
-			 ADD COLUMN `skinnysize` bigint unsigned DEFAULT 0");
-	}
-	if(!this->existsColumn("files", "mgcpsize")) {
-		this->query(
-			"ALTER TABLE `files`\
-			 ADD COLUMN `mgcpsize` bigint unsigned DEFAULT 0");
-	}
-	if(!this->existsColumn("files", "ss7size")) {
-		this->query(
-			"ALTER TABLE `files`\
-			 ADD COLUMN `ss7size` bigint unsigned DEFAULT 0");
-	}
-	if(!this->existsColumn("files", "audiographsize")) {
-		this->query(
-			"ALTER TABLE `files`\
-			 ADD COLUMN `audiographsize` bigint unsigned DEFAULT 0");
-	}
-	if(!this->existsColumn("filter_ip", "enabled")) {
-		this->query(
-			"ALTER TABLE `filter_ip`\
-			ADD COLUMN `enabled` tinyint DEFAULT 1");
-	}
-	if(!this->existsColumn("filter_telnum", "enabled")) {
-		this->query(
-			"ALTER TABLE `filter_telnum`\
-			ADD COLUMN `enabled` tinyint DEFAULT 1");
-	}
-	if(!this->existsColumn("filter_domain", "enabled")) {
-		this->query(
-			"ALTER TABLE `filter_domain`\
-			ADD COLUMN `enabled` tinyint DEFAULT 1");
-	}
-	if(!this->existsColumn("filter_sip_header", "enabled")) {
-		this->query(
-			"ALTER TABLE `filter_sip_header`\
-			ADD COLUMN `enabled` tinyint DEFAULT 1");
+	if(enableAlter && this->existsTable("files")) {
+		if(!this->existsColumn("files", "spool_index")) {
+			this->query(
+				"ALTER TABLE `files`\
+				 ADD COLUMN `spool_index` INT NOT NULL AFTER `id_sensor`,\
+				 DROP PRIMARY KEY,\
+				 ADD PRIMARY KEY (`datehour`, `id_sensor`, `spool_index`)");
+		}
+		if(!this->existsColumn("files", "skinnysize")) {
+			this->query(
+				"ALTER TABLE `files`\
+				 ADD COLUMN `skinnysize` bigint unsigned DEFAULT 0");
+		}
+		if(!this->existsColumn("files", "mgcpsize")) {
+			this->query(
+				"ALTER TABLE `files`\
+				 ADD COLUMN `mgcpsize` bigint unsigned DEFAULT 0");
+		}
+		if(!this->existsColumn("files", "ss7size")) {
+			this->query(
+				"ALTER TABLE `files`\
+				 ADD COLUMN `ss7size` bigint unsigned DEFAULT 0");
+		}
+		if(!this->existsColumn("files", "audiographsize")) {
+			this->query(
+				"ALTER TABLE `files`\
+				 ADD COLUMN `audiographsize` bigint unsigned DEFAULT 0");
+		}
 	}
 	if(opt_ssl_store_sessions) {
 		string ssl_sessions_table = opt_ssl_store_sessions == 1 ? "ssl_sessions_mem" : "ssl_sessions";
@@ -10184,16 +10167,39 @@ void SqlDb_mysql::checkColumns_other(bool log) {
 	}
 	if(opt_enable_fraud) {
 		map<string, u_int64_t> tableSize;
-		this->checkNeedAlterAdd("cache_number_location", "ua column", true,
-					log, &tableSize, &existsColumns.cache_number_location_ua,
+		this->checkExistsColumn("cache_number_location", "ua column", enableAlter,
+					&tableSize, &existsColumns.cache_number_location_ua,
 					"ua", "varchar(512)", NULL_CHAR_PTR,
 					"old_ua", "varchar(512)", NULL_CHAR_PTR,
 					NULL_CHAR_PTR);
-		this->checkNeedAlterAdd("cache_number_domain_location", "ua column", true,
-					log, &tableSize, &existsColumns.cache_number_domain_location_ua,
+		this->checkExistsColumn("cache_number_domain_location", "ua column", enableAlter,
+					&tableSize, &existsColumns.cache_number_domain_location_ua,
 					"ua", "varchar(512)", NULL_CHAR_PTR,
 					"old_ua", "varchar(512)", NULL_CHAR_PTR,
 					NULL_CHAR_PTR);
+	}
+}
+
+void SqlDb_mysql::checkColumns_other_force_alter() {
+	if(this->existsTable("filter_ip") && !this->existsColumn("filter_ip", "enabled")) {
+		this->query(
+			"ALTER TABLE `filter_ip`\
+			ADD COLUMN `enabled` tinyint DEFAULT 1");
+	}
+	if(this->existsTable("filter_telnum") && !this->existsColumn("filter_telnum", "enabled")) {
+		this->query(
+			"ALTER TABLE `filter_telnum`\
+			ADD COLUMN `enabled` tinyint DEFAULT 1");
+	}
+	if(this->existsTable("filter_domain") && !this->existsColumn("filter_domain", "enabled")) {
+		this->query(
+			"ALTER TABLE `filter_domain`\
+			ADD COLUMN `enabled` tinyint DEFAULT 1");
+	}
+	if(this->existsTable("filter_sip_header") && !this->existsColumn("filter_sip_header", "enabled")) {
+		this->query(
+			"ALTER TABLE `filter_sip_header`\
+			ADD COLUMN `enabled` tinyint DEFAULT 1");
 	}
 }
 
@@ -10982,7 +10988,7 @@ void SqlDb_odbc::createTable(const char */*tableName*/) {
 void SqlDb_odbc::checkDbMode() {
 }
 
-void SqlDb_odbc::checkSchema(int /*connectId*/, bool /*checkColumnsSilentLog*/) {
+void SqlDb_odbc::checkSchema(int /*connectId*/, bool /*enableAlter*/) {
 }
 
 void SqlDb_odbc::updateSensorState() {
@@ -12852,7 +12858,8 @@ cTableColumnsTimePrecision::cTableColumnsTimePrecision() {
 }
 
 unsigned cTableColumnsTimePrecision::checkExistsPrecision(const char *onlyTable, const char *onlyColumn, bool onlySignificant,
-							  bool rsltOnlySignificant, SqlDb *sqlDb, bool alterToHighPrecisions) {
+							  bool rsltOnlySignificant, SqlDb *sqlDb,
+							  bool enableAlterToHighPrecisions) {
 	altered = false;
 	if(columns.empty()) {
 		fill();
@@ -12904,7 +12911,7 @@ unsigned cTableColumnsTimePrecision::checkExistsPrecision(const char *onlyTable,
 				rslt |= _prec_low;
 			}
 		}
-		if(!isHighPrec && alterToHighPrecisions) {
+		if(!isHighPrec && enableAlterToHighPrecisions) {
 			string alter = "modify column " + iter->column + " " + iter->type_high_precision;
 			if(iter->flag & _not_null) {
 				alter += " not null";
@@ -12912,13 +12919,13 @@ unsigned cTableColumnsTimePrecision::checkExistsPrecision(const char *onlyTable,
 			altersPerTable[iter->table].push_back(alter);
 		}
 	}
-	if(alterToHighPrecisions) {
+	if(enableAlterToHighPrecisions) {
 		map<string, u_int64_t> tableSize;
 		for(map<string, vector<string> >::iterator it = altersPerTable.begin(); it != altersPerTable.end(); it++) {
-			if(sqlDb->logNeedAlter(it->first,
-					       "time accuracy in milliseconds",
-					       "ALTER TABLE " + it->first + " " + implode(it->second, ", ") + ";",
-					       true, &tableSize, NULL)) {
+			if(sqlDb->tryAlterAndLog(it->first,
+						 "time accuracy in milliseconds",
+						 "ALTER TABLE " + it->first + " " + implode(it->second, ", ") + ";",
+						 &tableSize, NULL)) {
 				altered = true;
 			}
 		}

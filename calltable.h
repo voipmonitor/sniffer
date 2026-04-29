@@ -4261,8 +4261,8 @@ public:
 	string getQueryForSaveUseInfo(u_int64_t time_us, sCH_Content *ch_content);
 	void createTablesIfNotExists(SqlDb *sqlDb = NULL, bool enableOldPartition = false);
 	void createTableIfNotExists(const char *tableName, SqlDb *sqlDb = NULL, bool enableOldPartition = false);
-	void checkTablesColumns(SqlDb *sqlDb = NULL, bool checkColumnsSilentLog = false);
-	void checkTableColumns(const char *tableName, int tableIndex, SqlDb *sqlDb = NULL, bool checkColumnsSilentLog = false);
+	void checkTablesColumns(SqlDb *sqlDb = NULL, bool enableAlter = true);
+	void checkTableColumns(const char *tableName, int tableIndex, SqlDb *sqlDb, bool enableAlter);
 	void createColumnsForFixedHeaders(SqlDb *sqlDb = NULL);
 	bool getPosForDbId(unsigned db_id, d_u_int32_t *pos);
 	static sCH_Content *getCustomHeadersCallContent(Call *call, int type);

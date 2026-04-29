@@ -15455,7 +15455,8 @@ void CustomHeaders::refresh(SqlDb *sqlDb, bool enableCreatePartitions) {
 	lock_custom_headers();
 	clear(false);
 	load(sqlDb, enableCreatePartitions, false);
-	checkTablesColumns(sqlDb);
+	extern int opt_disable_dbupgradecheck;
+	checkTablesColumns(sqlDb, !opt_disable_dbupgradecheck);
 	unlock_custom_headers();
 }
 
@@ -15871,15 +15872,15 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 	}
 }
 
-void CustomHeaders::checkTablesColumns(SqlDb *sqlDb, bool checkColumnsSilentLog) {
+void CustomHeaders::checkTablesColumns(SqlDb *sqlDb, bool enableAlter) {
 	list<string> tables = getAllNextTables();
 	unsigned tableIndex = 0;
 	for(list<string>::iterator it = tables.begin(); it != tables.end(); it++) {
-		checkTableColumns(it->c_str(), tableIndex++, sqlDb, checkColumnsSilentLog);
+		checkTableColumns(it->c_str(), tableIndex++, sqlDb, enableAlter);
 	}
 }
 
-void CustomHeaders::checkTableColumns(const char *tableName, int tableIndex, SqlDb *sqlDb, bool checkColumnsSilentLog) {
+void CustomHeaders::checkTableColumns(const char *tableName, int tableIndex, SqlDb *sqlDb, bool enableAlter) {
 	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
@@ -15887,30 +15888,26 @@ void CustomHeaders::checkTableColumns(const char *tableName, int tableIndex, Sql
 	}
 	SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
 	map<string, u_int64_t> tableSize;
-	for(int pass = 0; pass < 2; pass++) {
+	for(int pass = 0; pass < (enableAlter ? 2 : 1); pass++) {
 		string alter_ms;
 		bool col_is_high_prec = sqlDb->getTypeColumn(tableName, this->relTimeColumn).find("(3)") != string::npos;
 		calldate_ms[tableIndex] = col_is_high_prec && opt_time_precision_in_ms;
-		if(!col_is_high_prec) {
+		if(opt_time_precision_in_ms && !col_is_high_prec && pass == 0 && enableAlter) {
 			alter_ms = "modify column " + this->relTimeColumn + " " + sqlDb_mysql->column_type_datetime_ms() + " not null";
-		}
-		if(pass == 0 && opt_time_precision_in_ms) {
-			if(!alter_ms.empty()) {
-				if(sqlDb_mysql->isSupportForDatetimeMs()) {
-					sqlDb->logNeedAlter(tableName,
-							    "time accuracy in milliseconds",
-							    string("ALTER TABLE ") + tableName + " " + alter_ms + ";",
-							    !checkColumnsSilentLog, &tableSize, NULL);
-					continue;
-				} else {
-					cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
-					opt_time_precision_in_ms = false;
-				}
+			if(sqlDb_mysql->isSupportForDatetimeMs()) {
+				sqlDb->tryAlterAndLog(tableName,
+						      "time accuracy in milliseconds",
+						      string("ALTER TABLE ") + tableName + " " + alter_ms + ";",
+						      &tableSize, NULL);
+				continue;
+			} else {
+				cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
+				opt_time_precision_in_ms = false;
 			}
 		}
 		break;
 	}
-	if(opt_custom_headers_max_size) {
+	if(opt_custom_headers_max_size && enableAlter) {
 		vector<string> alters_ch;
 		for(int ch_i = 0; ch_i < 10; ch_i++) {
 			string type = sqlDb->getTypeColumn(tableName, ("custom_header_" + intToString(ch_i + 1)).c_str());
@@ -15923,10 +15920,10 @@ void CustomHeaders::checkTableColumns(const char *tableName, int tableIndex, Sql
 			}
 		}
 		if(alters_ch.size()) {
-			sqlDb->logNeedAlter(tableName,
-					    "extended columns size for custom headers",
-					    string("ALTER TABLE ") + tableName + " " + implode(alters_ch, ", ") + ";",
-					    !checkColumnsSilentLog, &tableSize, NULL);
+			sqlDb->tryAlterAndLog(tableName,
+					      "extended columns size for custom headers",
+					      string("ALTER TABLE ") + tableName + " " + implode(alters_ch, ", ") + ";",
+					      &tableSize, NULL);
 		}
 	}
 	if(_createSqlObject) {

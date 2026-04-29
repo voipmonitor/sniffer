@@ -547,7 +547,7 @@ public:
 	virtual bool createSchema(int connectId = 0) = 0;
 	virtual void createTable(const char *tableName) = 0;
 	virtual void checkDbMode() = 0;
-	virtual void checkSchema(int connectId = 0, bool checkColumnsSilentLog = false) = 0;
+	virtual void checkSchema(int connectId = 0, bool enableAlter = true) = 0;
 	virtual void updateSensorState() = 0;
 	virtual string getTypeDb() = 0;
 	virtual string getSubtypeDb() = 0;
@@ -620,13 +620,13 @@ public:
 	inline static void resetCountInsert() {
 		insert_count = 0;
 	}
-	bool logNeedAlter(string table, string reason, string alter,
-			  bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag);
-	int checkNeedAlterAdd(string table, string reason, bool tryAlter,
-			      bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag,
+	int checkExistsColumn(string table, string reason, bool enableAlter,
+			      map<string, u_int64_t> *tableSize, bool *existsColumnFlag,
 			      ...);
-	bool logNeedAlter(string table, string reason, vector<string> alters,
-			  bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag);
+	bool tryAlterAndLog(string table, string reason, vector<string> alters,
+			    map<string, u_int64_t> *tableSize, bool *existsColumnFlag);
+	bool tryAlterAndLog(string table, string reason, string alter,
+			    map<string, u_int64_t> *tableSize, bool *existsColumnFlag);
 protected:
 	string conn_server;
 	string conn_user;
@@ -775,23 +775,24 @@ public:
 	void saveTimezoneInformation();
 	void createTable(const char *tableName);
 	void checkDbMode();
-	void checkSchema(int connectId = 0, bool checkColumnsSilentLog = false);
+	void checkSchema(int connectId = 0, bool enableAlter = true);
 	void updateSensorState();
-	void checkColumns_cdr(bool log = false);
-	void checkColumns_cdr_next(bool log = false);
-	void checkColumns_cdr_next_branches(bool log = false);
-	void checkColumns_cdr_sdp(bool log = false);
-	void checkColumns_cdr_rtp(bool log = false);
-	void checkColumns_cdr_dtmf(bool log = false);
-	void checkColumns_cdr_conference(bool log = false);
-	void checkColumns_cdr_stat(bool log = false);
-	void checkColumns_cdr_problems(bool log = false);
-	void checkColumns_cdr_summary(bool log = false);
-	void checkColumns_ss7(bool log = false);
-	void checkColumns_message(bool log = false);
-	void checkColumns_register(bool log = false);
-	void checkColumns_sip_msg(bool log = false);
-	void checkColumns_other(bool log = false);
+	void checkColumns_cdr(bool enableAlter);
+	void checkColumns_cdr_next(bool enableAlter);
+	void checkColumns_cdr_next_branches(bool enableAlter);
+	void checkColumns_cdr_sdp(bool enableAlter);
+	void checkColumns_cdr_rtp(bool enableAlter);
+	void checkColumns_cdr_dtmf(bool enableAlter);
+	void checkColumns_cdr_conference(bool enableAlter);
+	void checkColumns_cdr_stat(bool enableAlter);
+	void checkColumns_cdr_problems(bool enableAlter);
+	void checkColumns_cdr_summary(bool enableAlter);
+	void checkColumns_ss7(bool enableAlter);
+	void checkColumns_message(bool enableAlter);
+	void checkColumns_register(bool enableAlter);
+	void checkColumns_sip_msg(bool enableAlter);
+	void checkColumns_other(bool enableAlter);
+	void checkColumns_other_force_alter();
 	bool existsExtPrecissionBilling();
 	string column_type_datetime_ms();
 	string column_type_datetime_child_ms();
@@ -943,7 +944,7 @@ public:
 	bool createSchema(int connectId = 0);
 	void createTable(const char *tableName);
 	void checkDbMode();
-	void checkSchema(int connectId = 0, bool checkColumnsSilentLog = false);
+	void checkSchema(int connectId = 0, bool enableAlter = true);
 	void updateSensorState();
 	string getTypeDb() {
 		return("odbc");
@@ -1683,7 +1684,8 @@ private:
 public:
 	cTableColumnsTimePrecision();
 	unsigned checkExistsPrecision(const char *onlyTable, const char *onlyColumn, bool onlySignificant,
-				      bool rsltOnlySignificant, SqlDb *sqlDb, bool alterToHighPrecisions);
+				      bool rsltOnlySignificant, SqlDb *sqlDb,
+				      bool enableAlterToHighPrecisions);
 	void setPrecisionToLow(const char *onlyTable, const char *onlyColumn);
 	bool isAltered() { return(altered); }
 private:

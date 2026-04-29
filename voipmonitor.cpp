@@ -2160,7 +2160,7 @@ int SqlInitSchema(string *rsltConnectErrorString = NULL) {
 							connectErrorString = sqlDb->getLastErrorString();
 						}
 					} else {
-						sqlDb->checkSchema(connectId, true);
+						sqlDb->checkSchema(connectId, false);
 						if(is_read_from_file_simple()) {
 							SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
 							if(sqlDb_mysql) {
@@ -4877,13 +4877,13 @@ int main_init_read() {
 	if(!opt_nocdr && !is_sender() && !is_client_packetbuffer_sender()) {
 		custom_headers_cdr = new FILE_LINE(42014) CustomHeaders(CustomHeaders::cdr, sqlDbInit);
 		custom_headers_cdr->createTablesIfNotExists(sqlDbInit);
-		custom_headers_cdr->checkTablesColumns(sqlDbInit, opt_disable_dbupgradecheck);
+		custom_headers_cdr->checkTablesColumns(sqlDbInit, !opt_disable_dbupgradecheck);
 		custom_headers_message = new FILE_LINE(42015) CustomHeaders(CustomHeaders::message, sqlDbInit);
 		custom_headers_message->createTablesIfNotExists(sqlDbInit);
-		custom_headers_message->checkTablesColumns(sqlDbInit, opt_disable_dbupgradecheck);
+		custom_headers_message->checkTablesColumns(sqlDbInit, !opt_disable_dbupgradecheck);
 		custom_headers_sip_msg = new FILE_LINE(0) CustomHeaders(CustomHeaders::sip_msg, sqlDbInit);
 		custom_headers_sip_msg->createTablesIfNotExists(sqlDbInit);
-		custom_headers_sip_msg->checkTablesColumns(sqlDbInit, opt_disable_dbupgradecheck);
+		custom_headers_sip_msg->checkTablesColumns(sqlDbInit, !opt_disable_dbupgradecheck);
 		no_hash_message_rules = new FILE_LINE(42016) NoHashMessageRules(sqlDbInit);
 	}
 
