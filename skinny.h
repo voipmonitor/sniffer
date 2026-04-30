@@ -70,6 +70,21 @@
 #define SKINNY_PAYLOAD_V150_LC_SSE              0x0012e /* data */
 #define SKINNY_PAYLOAD_MAX                      0x0012f /* data */
 
+#define SKINNY_OFFHOOK 1
+#define SKINNY_ONHOOK 2
+#define SKINNY_RINGOUT 3
+#define SKINNY_RINGIN 4
+#define SKINNY_CONNECTED 5
+#define SKINNY_BUSY 6
+#define SKINNY_CONGESTION 7
+#define SKINNY_HOLD 8
+#define SKINNY_CALLWAIT 9
+#define SKINNY_TRANSFER 10
+#define SKINNY_PARK 11
+#define SKINNY_PROGRESS 12
+#define SKINNY_CALLREMOTEMULTILINE 13
+#define SKINNY_INVALID 14
+
 
 void *handle_skinny(pcap_pkthdr *, const u_char *, vmIP, vmPort, vmIP, vmPort, char *, int, int,
 		    pcap_t *handle, int dlt, int sensor_id, vmIP sensor_ip);

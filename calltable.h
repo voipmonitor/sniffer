@@ -29,6 +29,7 @@
 
 #include "mgcp.h"
 #include "rtp.h"
+#include "skinny.h"
 #include "tools.h"
 #include "sql_db.h"
 #include "voipmonitor.h"
@@ -1783,6 +1784,7 @@ public:
 	sAudioBufferData audioBufferData[2];
 
 	unsigned int skinny_partyid;
+	map<d_item<vmIP>, int> skinny_last_callstate_by_ip;
 
 	int *listening_worker_run;
 	pthread_mutex_t listening_worker_run_lock;
@@ -3852,6 +3854,49 @@ public:
 		unlock_skinny_maps();
 		unlock_calls_listMAP();
 		return(rslt_call);
+	}
+	void add_to_skinny_ipTuples(vmIP saddr, vmIP daddr, Call *call, bool overwrite = false) {
+		d_item<vmIP> ip2;
+		ip2.items[0] = min(saddr, daddr);
+		ip2.items[1] = max(saddr, daddr);
+		lock_skinny_maps();
+		if(overwrite || skinny_ipTuples.find(ip2) == skinny_ipTuples.end()) {
+			skinny_ipTuples[ip2] = call;
+		}
+		unlock_skinny_maps();
+	}
+	void set_skinny_last_callstate(Call *call, vmIP saddr, vmIP daddr, int state) {
+		d_item<vmIP> ip2;
+		ip2.items[0] = min(saddr, daddr);
+		ip2.items[1] = max(saddr, daddr);
+		lock_skinny_maps();
+		call->skinny_last_callstate_by_ip[ip2] = state;
+		unlock_skinny_maps();
+	}
+	int get_skinny_last_callstate(Call *call, vmIP saddr, vmIP daddr) {
+		d_item<vmIP> ip2;
+		ip2.items[0] = min(saddr, daddr);
+		ip2.items[1] = max(saddr, daddr);
+		int state = 0;
+		lock_skinny_maps();
+		map<d_item<vmIP>, int>::iterator it = call->skinny_last_callstate_by_ip.find(ip2);
+		if(it != call->skinny_last_callstate_by_ip.end()) {
+			state = it->second;
+		}
+		unlock_skinny_maps();
+		return(state);
+	}
+	bool any_skinny_callstate_active(Call *call) {
+		bool active = false;
+		lock_skinny_maps();
+		for(map<d_item<vmIP>, int>::iterator it = call->skinny_last_callstate_by_ip.begin(); it != call->skinny_last_callstate_by_ip.end(); ++it) {
+			if(it->second == SKINNY_OFFHOOK || it->second == SKINNY_CONNECTED) {
+				active = true;
+				break;
+			}
+		}
+		unlock_skinny_maps();
+		return(active);
 	}
 	Call *find_by_skinny_ipTuples(vmIP saddr, vmIP daddr) {
 		Call *rslt_call = NULL;
