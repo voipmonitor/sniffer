@@ -111,6 +111,9 @@ private:
 				     (iphdr2*)((HPP(*header_packet)) + header_ip_offset) :
 				     (iphdr2*)(header_packet_pqout->packet + header_ip_offset);
 
+		u_int16_t hdr_size = header_ip->get_hdr_size();
+		if(hdr_size == (u_int16_t)-1 || hdr_size >= len) return(-1);
+
 		u_int16_t frag_data = header_ip->get_frag_data();
 		unsigned int offset_d = header_ip->get_frag_offset(frag_data);
 
@@ -137,15 +140,10 @@ private:
 				*(sHeaderPacketPQout*)frag->header_packet_pqout = *header_packet_pqout;
 				((sHeaderPacketPQout*)frag->header_packet_pqout)->alloc_and_copy_blockstore();
 			}
-			
+
 			frag->header_ip_offset = header_ip_offset;
 			frag->len = len;
 			frag->offset = offset_d;
-			u_int16_t hdr_size = header_ip->get_hdr_size();
-			if(hdr_size == (u_int16_t)-1 || hdr_size >= len) {
-				frag->destroy(pushToStack_queue_index);
-				return(-1);
-			}
 			frag->iphdr_len = hdr_size -
 					  (header_ip->_get_protocol() == IPPROTO_ESP ? IPPROTO_ESP_HEADER_SIZE : 0);
 
