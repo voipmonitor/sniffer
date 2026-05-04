@@ -229,6 +229,7 @@ int opt_saveRTPvideo = 0;
 int opt_saveRTPvideo_only_header = 0;
 int opt_processingRTPvideo = 0;
 int opt_saveMRCP = 0;
+int opt_saveBFCP = 0;
 int opt_saveRTCP = 0;		// save RTCP packets to pcap file?
 bool opt_null_rtppayload = false;
 bool opt_srtp_rtp_decrypt = false;
@@ -6859,6 +6860,7 @@ void cConfig::addConfigItems() {
 				->addValues("header:-1|h:-1|cdr_only:-2|c:-2")
 				->setDefaultValueStr("no"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("savemrcp", &opt_saveMRCP));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("savebfcp", &opt_saveBFCP));
 			addConfigItem(new FILE_LINE(42210) cConfigItem_yesno("savertcp", &opt_saveRTCP));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignorertcpjitter", &opt_ignoreRTCPjitter));
 			addConfigItem(new FILE_LINE(42211) cConfigItem_yesno("saveudptl", &opt_saveudptl));

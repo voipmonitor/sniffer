@@ -46,6 +46,7 @@ void filter_base::_loadBaseDataRow(SqlDb_row *sqlRow, map<string, string> *row, 
 	baseRow->rtp = _value_is_null(sqlRow, row, "rtp") ? -1 : _value(sqlRow, row, "rtp");
 	baseRow->rtp_video = _value_is_null(sqlRow, row, "rtp_video") ? -1 : _value(sqlRow, row, "rtp_video");
 	baseRow->mrcp = _value_is_null(sqlRow, row, "mrcp") ? -1 : _value(sqlRow, row, "mrcp");
+	baseRow->bfcp = _value_is_null(sqlRow, row, "bfcp") ? -1 : _value(sqlRow, row, "bfcp");
 	baseRow->rtcp = _value_is_null(sqlRow, row, "rtcp") ? -1 : _value(sqlRow, row, "rtcp");
 	baseRow->sip = _value_is_null(sqlRow, row, "sip") ? -1 : _value(sqlRow, row, "sip");
 	baseRow->reg = _value_is_null(sqlRow, row, "register") ? -1 : _value(sqlRow, row, "register");
@@ -88,6 +89,9 @@ u_int64_t filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow, u_int32
 	
 	if(baseRow->mrcp == 1)			{ flags |= CAPT_FLAG(_CAPT_BIT_MRCP); *global_flags |= cFilters::_gf_mrcp; }
 	else if(baseRow->mrcp == 0)		flags |= CAPT_FLAG(_CAPT_BIT_NOMRCP);
+	
+	if(baseRow->bfcp == 1)			{ flags |= CAPT_FLAG(_CAPT_BIT_BFCP); *global_flags |= cFilters::_gf_bfcp; }
+	else if(baseRow->bfcp == 0)		flags |= CAPT_FLAG(_CAPT_BIT_NOBFCP);
 	
 	if(baseRow->rtcp == 1)			flags |= CAPT_FLAG(_CAPT_BIT_RTCP);
 	else if(baseRow->rtcp == 0)		flags |= CAPT_FLAG(_CAPT_BIT_NORTCP);
@@ -199,6 +203,9 @@ void filter_base::setCallFlagsFromFilterFlags(volatile unsigned long int *callFl
 	
 	if(filterFlags & CAPT_FLAG(_CAPT_BIT_MRCP))			*callFlags |= FLAG_SAVEMRCP;
 	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NOMRCP))			*callFlags &= ~FLAG_SAVEMRCP;
+	
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_BFCP))			*callFlags |= FLAG_SAVEBFCP;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NOBFCP))			*callFlags &= ~FLAG_SAVEBFCP;
 	
 	if(filterFlags & CAPT_FLAG(_CAPT_BIT_RTCP))			*callFlags |= FLAG_SAVERTCP;
 	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NORTCP))			*callFlags &= ~FLAG_SAVERTCP;

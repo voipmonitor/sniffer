@@ -10187,6 +10187,8 @@ bool PcapQueue_readFromFifo::processPacket_analysis(sHeaderPacketPQout* hp) {
 				pflags.set_ss7(true);
 			} else if(cFilters::saveMrcp() && IS_MRCP(data, datalen)) {
 				pflags.set_mrcp(true);
+			} else if(cFilters::saveBfcp() && IS_BFCP(data, datalen)) {
+				pflags.set_bfcp_tcp(true);
 			}
 		} else if(opt_enable_ss7 && header_ip_protocol == IPPROTO_SCTP) {
 			pflags.set_ss7(true);

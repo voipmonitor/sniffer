@@ -791,7 +791,7 @@ public:
 	void addEnergyLevel(void *data, int datalen, int codec);
 	
 	bool is_video() {
-		return(sdp_flags.is_video());
+		return(sdp_flags.is_mt_video());
 	}
 	bool allowed_for_ab() {
 		return(!is_video());

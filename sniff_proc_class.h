@@ -612,37 +612,8 @@ public:
 				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
 				int blockstore_lock = 1) {
 		extern int opt_t2_boost;
-		extern int opt_skinny;
-		extern bool opt_enable_diameter;
 		extern char *sipportmatrix;
-		extern char *skinnyportmatrix;
-		extern char *diameter_tcp_portmatrix;
-		extern char *diameter_udp_portmatrix;
-		extern int opt_mgcp;
-		extern char *mgcp_gateway_tcp_portmatrix;
-		extern char *mgcp_gateway_udp_portmatrix;
-		extern char *mgcp_callagent_tcp_portmatrix;
-		extern char *mgcp_callagent_udp_portmatrix;
-		extern bool opt_ipfix;
-		extern bool opt_hep;
-		pflags.set_skinny(opt_skinny && pflags.get_tcp() && (skinnyportmatrix[source] || skinnyportmatrix[dest]));
-		pflags.set_mgcp(opt_mgcp && 
-				(pflags.get_tcp() ?
-				  (mgcp_gateway_tcp_portmatrix[source] || mgcp_gateway_tcp_portmatrix[dest] ||
-				   mgcp_callagent_tcp_portmatrix[source] || mgcp_callagent_tcp_portmatrix[dest]) :
-				  (mgcp_gateway_udp_portmatrix[source] || mgcp_gateway_udp_portmatrix[dest] ||
-				   mgcp_callagent_udp_portmatrix[source] || mgcp_callagent_udp_portmatrix[dest])));
-		pflags.set_dtls_handshake(!pflags.get_tcp() && IS_DTLS_HANDSHAKE(packet + dataoffset, datalen));
-		pflags.set_diameter(opt_enable_diameter && 
-				    (pflags.get_tcp() ?
-				      diameter_tcp_portmatrix[source] || diameter_tcp_portmatrix[dest] :
-				      diameter_udp_portmatrix[source] || diameter_udp_portmatrix[dest]));
-		pflags.set_ipfix_qos(opt_ipfix &&
-				     !saddr.isSet() && !daddr.isSet() && !source.isSet() && !dest.isSet() &&
-				     datalen > IPFIX_QOS_PREFIX_LEN && !memcmp(packet + dataoffset, IPFIX_QOS_PREFIX, IPFIX_QOS_PREFIX_LEN));
-		pflags.set_hep_log(opt_hep &&
-				   !saddr.isSet() && !daddr.isSet() && !source.isSet() && !dest.isSet() &&
-				   datalen > HEP_LOG_PREFIX_LEN && !memcmp(packet + dataoffset, HEP_LOG_PREFIX, HEP_LOG_PREFIX_LEN));
+		setProtocolPflags(pflags, packet + dataoffset, datalen, saddr, daddr, source, dest);
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 		extern bool opt_audiocodes;
 		sAudiocodes *audiocodes = NULL;
@@ -1641,19 +1612,7 @@ public:
 private:
 	inline void process_DETACH_X_1(pcap_queue_packet_data *packet_data, packet_s_plus_pointer *packetS_detach) {
 		extern int opt_t2_boost;
-		extern int opt_skinny;
-		extern bool opt_enable_diameter;
 		extern char *sipportmatrix;
-		extern char *skinnyportmatrix;
-		extern char *diameter_tcp_portmatrix;
-		extern char *diameter_udp_portmatrix;
-		extern int opt_mgcp;
-		extern char *mgcp_gateway_tcp_portmatrix;
-		extern char *mgcp_gateway_udp_portmatrix;
-		extern char *mgcp_callagent_tcp_portmatrix;
-		extern char *mgcp_callagent_udp_portmatrix;
-		extern bool opt_ipfix;
-		extern bool opt_hep;
 		pcap_pkthdr *header = packet_data->hp.header->_getStdHeader();
 		u_char *packet = packet_data->hp.packet;
 		#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
@@ -1661,24 +1620,8 @@ private:
 		vmIP daddr = ((iphdr2*)(packet + packet_data->header_ip_offset))->get_daddr();
 		#endif
 		int blockstore_lock = packet_data->hp.block_store_locked ? 2 : 1;
-		packet_data->pflags.set_skinny(opt_skinny && packet_data->pflags.get_tcp() && (skinnyportmatrix[packet_data->source] || skinnyportmatrix[packet_data->dest]));
-		packet_data->pflags.set_mgcp(opt_mgcp && 
-					     (packet_data->pflags.get_tcp() ?
-					       (mgcp_gateway_tcp_portmatrix[packet_data->source] || mgcp_gateway_tcp_portmatrix[packet_data->dest] ||
-						mgcp_callagent_tcp_portmatrix[packet_data->source] || mgcp_callagent_tcp_portmatrix[packet_data->dest]) :
-					       (mgcp_gateway_udp_portmatrix[packet_data->source] || mgcp_gateway_udp_portmatrix[packet_data->dest] ||
-						mgcp_callagent_udp_portmatrix[packet_data->source] || mgcp_callagent_udp_portmatrix[packet_data->dest])));
-		packet_data->pflags.set_dtls_handshake(!packet_data->pflags.get_tcp() && IS_DTLS_HANDSHAKE(packet + packet_data->data_offset, packet_data->datalen));
-		packet_data->pflags.set_diameter(opt_enable_diameter && 
-						 (packet_data->pflags.get_tcp() ?
-						   diameter_tcp_portmatrix[packet_data->source] || diameter_tcp_portmatrix[packet_data->dest] :
-						   diameter_udp_portmatrix[packet_data->source] || diameter_udp_portmatrix[packet_data->dest]));
-		packet_data->pflags.set_ipfix_qos(opt_ipfix &&
-						  !saddr.isSet() && !daddr.isSet() && !packet_data->source && !packet_data->dest &&
-						  packet_data->datalen > IPFIX_QOS_PREFIX_LEN && !memcmp(packet + packet_data->data_offset, IPFIX_QOS_PREFIX, IPFIX_QOS_PREFIX_LEN));
-		packet_data->pflags.set_hep_log(opt_hep &&
-						!saddr.isSet() && !daddr.isSet() && !packet_data->source && !packet_data->dest &&
-						packet_data->datalen > HEP_LOG_PREFIX_LEN && !memcmp(packet + packet_data->data_offset, HEP_LOG_PREFIX, HEP_LOG_PREFIX_LEN));
+		setProtocolPflags(packet_data->pflags, packet + packet_data->data_offset, packet_data->datalen,
+				  saddr, daddr, packet_data->source, packet_data->dest);
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 		extern bool opt_audiocodes;
 		sAudiocodes *audiocodes = NULL;
@@ -1714,7 +1657,8 @@ private:
 			       (!packet_data->pflags.call_signalling() &&
 				packet_data->datalen > 2 &&
 				(IS_RTP(packet + packet_data->data_offset, packet_data->datalen) || 
-				 IS_DTLS(packet + packet_data->data_offset, packet_data->datalen))) :
+				 IS_DTLS(packet + packet_data->data_offset, packet_data->datalen) ||
+				 packet_data->pflags.other_rtp_processing())) :
 			       false;
 		if(need_sip_process && is_rtp && opt_t2_boost_direct_rtp) {
 			extern bool check_sip_method(u_char *data, unsigned long len);
@@ -1871,6 +1815,59 @@ private:
 		#endif
 		if(push) {
 			preProcessPacket[ppt_sip]->push_packet(packetS);
+		}
+	}
+	inline __attribute__((always_inline))
+	void setProtocolPflags(packet_flags &pflags,
+			       const u_char *data, int datalen,
+			       vmIP saddr, vmIP daddr,
+			       vmPort source, vmPort dest) {
+		extern int opt_skinny;
+		extern int opt_mgcp;
+		extern bool opt_enable_diameter;
+		extern bool opt_ipfix;
+		extern bool opt_hep;
+		extern char *skinnyportmatrix;
+		extern char *mgcp_gateway_tcp_portmatrix;
+		extern char *mgcp_gateway_udp_portmatrix;
+		extern char *mgcp_callagent_tcp_portmatrix;
+		extern char *mgcp_callagent_udp_portmatrix;
+		extern char *diameter_tcp_portmatrix;
+		extern char *diameter_udp_portmatrix;
+		if(pflags.get_tcp()) {
+			if(opt_skinny) {
+				pflags.set_skinny(skinnyportmatrix[source] || skinnyportmatrix[dest]);
+			}
+			if(opt_mgcp) {
+				pflags.set_mgcp(mgcp_gateway_tcp_portmatrix[source] || mgcp_gateway_tcp_portmatrix[dest] ||
+						mgcp_callagent_tcp_portmatrix[source] || mgcp_callagent_tcp_portmatrix[dest]);
+			}
+			if(opt_enable_diameter) {
+				pflags.set_diameter(diameter_tcp_portmatrix[source] || diameter_tcp_portmatrix[dest]);
+			}
+		} else {
+			if(if_unlikely(!IS_RTP(data, datalen))) {
+				pflags.set_bfcp_udp(IS_BFCP(data, datalen));
+				pflags.set_dtls_handshake(IS_DTLS_HANDSHAKE(data, datalen));
+			}
+			if(opt_mgcp) {
+				pflags.set_mgcp(mgcp_gateway_udp_portmatrix[source] || mgcp_gateway_udp_portmatrix[dest] ||
+						mgcp_callagent_udp_portmatrix[source] || mgcp_callagent_udp_portmatrix[dest]);
+			}
+			if(opt_enable_diameter) {
+				pflags.set_diameter(diameter_udp_portmatrix[source] || diameter_udp_portmatrix[dest]);
+			}
+		}
+		if(if_unlikely((opt_ipfix || opt_hep) &&
+			       !saddr.isSet() && !daddr.isSet() && !source.isSet() && !dest.isSet())) {
+			if(opt_ipfix) {
+				pflags.set_ipfix_qos(datalen > IPFIX_QOS_PREFIX_LEN &&
+						     !memcmp(data, IPFIX_QOS_PREFIX, IPFIX_QOS_PREFIX_LEN));
+			}
+			if(opt_hep) {
+				pflags.set_hep_log(datalen > HEP_LOG_PREFIX_LEN &&
+						   !memcmp(data, HEP_LOG_PREFIX, HEP_LOG_PREFIX_LEN));
+			}
 		}
 	}
 	void process_SIP(packet_s_process *packetS, bool parallel_threads = false);

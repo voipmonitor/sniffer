@@ -7,7 +7,9 @@ enum e_sdp_media_type {
 	sdp_media_type_audio = (1<<0),
 	sdp_media_type_image = (1<<1),
 	sdp_media_type_video = (1<<2),
-	sdp_media_type_application = (1<<3)
+	sdp_media_type_application = (1<<3),
+	sdp_media_type_mrcp = (1<<3)|(1<<4),
+	sdp_media_type_bfcp = (1<<3)|(1<<5)
 };
 
 struct s_sdp_flags_base {
@@ -23,19 +25,25 @@ struct s_sdp_flags_base {
 		return(media_type != other.media_type ||
 		       rtcp_mux != other.rtcp_mux);
 	}
-	inline bool is_audio() {
+	inline bool is_mt_audio() {
 		return(media_type & sdp_media_type_audio);
 	}
-	inline bool is_image() {
+	inline bool is_mt_image() {
 		return(media_type & sdp_media_type_image);
 	}
-	inline bool is_video() {
+	inline bool is_mt_video() {
 		return(media_type & sdp_media_type_video);
 	}
-	inline bool is_application() {
+	inline bool is_mt_application() {
 		return(media_type & sdp_media_type_application);
 	}
-	u_int8_t media_type : 4;
+	inline bool is_mt_mrcp() {
+		return(media_type == sdp_media_type_mrcp);
+	}
+	inline bool is_mt_bfcp() {
+		return(media_type == sdp_media_type_bfcp);
+	}
+	u_int8_t media_type : 6;
 	u_int8_t rtcp_mux : 1;
 };
 

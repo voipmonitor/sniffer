@@ -5908,21 +5908,6 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`id` int NOT NULL AUTO_INCREMENT,\
 			`ip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`mask` int DEFAULT NULL,\
-			`direction` tinyint DEFAULT NULL,\
-			`rtp` tinyint DEFAULT NULL,\
-			`rtcp` tinyint default NULL,\
-			`sip` tinyint DEFAULT NULL,\
-			`register` tinyint DEFAULT NULL,\
-			`dtmf` tinyint DEFAULT NULL,\
-			`graph` tinyint DEFAULT NULL,\
-			`wav` tinyint DEFAULT NULL,\
-			`skip` tinyint DEFAULT NULL,\
-			`script` tinyint DEFAULT NULL,\
-			`mos_lqo` tinyint DEFAULT NULL,\
-			`hide_message` tinyint DEFAULT NULL,\
-			`note` text,\
-			`remove_at` date default NULL,\
-			`disable_at` date default NULL,\
 			`enabled` tinyint default 1,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
@@ -5932,21 +5917,6 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`id` int NOT NULL AUTO_INCREMENT,\
 			`prefix` varchar(32) DEFAULT NULL,\
 			`fixed_len` int unsigned DEFAULT '0',\
-			`direction` tinyint DEFAULT NULL,\
-			`rtp` tinyint DEFAULT NULL,\
-			`rtcp` tinyint default NULL,\
-			`sip` tinyint DEFAULT NULL,\
-			`register` tinyint DEFAULT NULL,\
-			`dtmf` tinyint DEFAULT NULL,\
-			`graph` tinyint DEFAULT NULL,\
-			`wav` tinyint DEFAULT NULL,\
-			`skip` tinyint DEFAULT NULL,\
-			`script` tinyint DEFAULT NULL,\
-			`mos_lqo` tinyint DEFAULT NULL,\
-			`hide_message` tinyint DEFAULT NULL,\
-			`note` text,\
-			`remove_at` date default NULL,\
-			`disable_at` date default NULL,\
 			`enabled` tinyint default 1,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
@@ -5955,21 +5925,6 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	"CREATE TABLE IF NOT EXISTS `filter_domain` (\
 			`id` int NOT NULL AUTO_INCREMENT,\
 			`domain` char(128) DEFAULT NULL,\
-			`direction` tinyint DEFAULT NULL,\
-			`rtp` tinyint DEFAULT NULL,\
-			`rtcp` tinyint default NULL,\
-			`sip` tinyint DEFAULT NULL,\
-			`register` tinyint DEFAULT NULL,\
-			`dtmf` tinyint DEFAULT NULL,\
-			`graph` tinyint DEFAULT NULL,\
-			`wav` tinyint DEFAULT NULL,\
-			`skip` tinyint DEFAULT NULL,\
-			`script` tinyint DEFAULT NULL,\
-			`mos_lqo` tinyint DEFAULT NULL,\
-			`hide_message` tinyint DEFAULT NULL,\
-			`note` text,\
-			`remove_at` date default NULL,\
-			`disable_at` date default NULL,\
 			`enabled` tinyint default 1,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
@@ -5980,21 +5935,6 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`header` char(128) default NULL,\
 			`content` char(128) default NULL,\
 			`content_type` enum('strict', 'prefix', 'regexp') default NULL,\
-			`direction` tinyint DEFAULT NULL,\
-			`rtp` tinyint DEFAULT NULL,\
-			`rtcp` tinyint default NULL,\
-			`sip` tinyint DEFAULT NULL,\
-			`register` tinyint DEFAULT NULL,\
-			`dtmf` tinyint DEFAULT NULL,\
-			`graph` tinyint DEFAULT NULL,\
-			`wav` tinyint DEFAULT NULL,\
-			`skip` tinyint DEFAULT NULL,\
-			`script` tinyint DEFAULT NULL,\
-			`mos_lqo` tinyint DEFAULT NULL,\
-			`hide_message` tinyint DEFAULT NULL,\
-			`note` text,\
-			`remove_at` date default NULL,\
-			`disable_at` date default NULL,\
 			`enabled` tinyint default 1,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");

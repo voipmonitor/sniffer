@@ -24,6 +24,8 @@ enum eCaptBitFlag {
 	_CAPT_BIT_NORTP_VIDEO,
 	_CAPT_BIT_MRCP,
 	_CAPT_BIT_NOMRCP,
+	_CAPT_BIT_BFCP,
+	_CAPT_BIT_NOBFCP,
 	_CAPT_BIT_RTCP,
 	_CAPT_BIT_NORTCP,
 	_CAPT_BIT_SIP,
@@ -83,6 +85,7 @@ struct filter_db_row_base {
 		rtp = 0;
 		rtp_video = 0;
 		mrcp = 0;
+		bfcp = 0;
 		rtcp = 0;
 		sip = 0;
 		reg = 0;
@@ -104,6 +107,7 @@ struct filter_db_row_base {
 	int rtp;
 	int rtp_video;
 	int mrcp;
+	int bfcp;
 	int rtcp;
 	int sip;
 	int reg;
@@ -407,7 +411,8 @@ private:
 class cFilters {
 public:
 	enum eGlobalFlags {
-		_gf_mrcp = 1 << 0
+		_gf_mrcp = 1 << 0,
+		_gf_bfcp = 1 << 1
 	};
 public:
 	static void loadActive(SqlDb *sqlDb = NULL);
@@ -428,6 +433,11 @@ public:
 		return(opt_saveMRCP ||
 		       (getGlobalFlags() & _gf_mrcp));
 	}
+	static inline bool saveBfcp() {
+		extern int opt_saveBFCP;
+		return(opt_saveBFCP ||
+		       (getGlobalFlags() & _gf_bfcp));
+	}
 public:
 	static u_int32_t global_flags;
 	static u_int32_t reload_global_flags;
@@ -443,6 +453,7 @@ inline void set_global_flags(volatile unsigned long int &flags) {
 	extern int opt_saveRTPvideo_only_header;
 	extern int opt_processingRTPvideo;
 	extern int opt_saveMRCP;
+	extern int opt_saveBFCP;
 	extern int opt_saveRTCP;
 	extern int opt_saveWAV;
 	extern int opt_save_audiograph;
@@ -483,6 +494,9 @@ inline void set_global_flags(volatile unsigned long int &flags) {
 	}
 	if(opt_saveMRCP) {
 		flags |= FLAG_SAVEMRCP;
+	}
+	if(opt_saveBFCP) {
+		flags |= FLAG_SAVEBFCP;
 	}
 	if(opt_saveRTCP) {
 		flags |= FLAG_SAVERTCP;

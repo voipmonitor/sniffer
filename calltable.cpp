@@ -1564,7 +1564,7 @@ bool Call::refresh_data_ip_port(CallBranch *c_branch,
 			}
 			forcemark_unlock();
 			if(sdp_flags != c_branch->ip_port[i].sdp_flags) {
-				if(c_branch->ip_port[i].sdp_flags.is_image()) {
+				if(c_branch->ip_port[i].sdp_flags.is_mt_image()) {
 					sdp_flags.media_type |= sdp_media_type_image;
 				}
 				c_branch->ip_port[i].sdp_flags = sdp_flags;
@@ -1619,7 +1619,7 @@ void Call::add_ip_port_hash(CallBranch *c_branch,
 				((Calltable*)calltable)->hashAdd(addr, port, getTimeUS(ts), c_branch, iscaller, 0, sdp_flags, type_addr);
 				if(opt_rtcp) {
 					((Calltable*)calltable)->hashRemove(c_branch, c_branch->ip_port[sessidIndex].addr, c_branch->ip_port[sessidIndex].port.inc(), true);
-					if(!sdp_flags.rtcp_mux && !sdp_flags.is_application()) {
+					if(!sdp_flags.rtcp_mux && !sdp_flags.is_mt_application()) {
 						((Calltable*)calltable)->hashAdd(addr, port.inc(), getTimeUS(ts), c_branch, iscaller, 1, sdp_flags, type_addr);
 					}
 				}
@@ -2030,9 +2030,14 @@ bool Call::read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscal
 			save_packet(this, packetS, _t_packet_dtls, 0, 0, __FILE__, __LINE__);
 		}
 		return(true);
-	} else if(packetS->pflags.is_mrcp()) {
+	} else if(sdp_flags.is_mt_mrcp() && packetS->pflags.is_mrcp()) {
 		if(enable_save_packet) {
 			save_packet(this, packetS, _t_packet_mrcp, 0, 0, __FILE__, __LINE__);
+		}
+		return(true);
+	} else if(sdp_flags.is_mt_bfcp() && packetS->pflags.is_bfcp()) {
+		if(enable_save_packet) {
+			save_packet(this, packetS, _t_packet_bfcp, 0, 0, __FILE__, __LINE__);
 		}
 		return(true);
 	}
@@ -2145,7 +2150,7 @@ bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 					return(false);
 				}
 			}
-			curpayload = sdp_flags.is_video() ? PAYLOAD_VIDEO : RTP::getPayload(data);
+			curpayload = sdp_flags.is_mt_video() ? PAYLOAD_VIDEO : RTP::getPayload(data);
 		} else {
 			return(false);
 		}
@@ -2696,7 +2701,7 @@ Call::_save_rtp(packet_s_process_0 *packetS, s_sdp_flags_base sdp_flags, char en
 	extern int opt_fax_create_udptl_streams;
 	extern int opt_fax_dup_seq_check;
 	if(opt_fax_create_udptl_streams) {
-		if(sdp_flags.is_image() && packetS->okDataLenForUdptl()) {
+		if(sdp_flags.is_mt_image() && packetS->okDataLenForUdptl()) {
 			sUdptlDumper *udptlDumper;
 			sStreamId streamId(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_());
 			map<sStreamId, sUdptlDumper*>::iterator iter = udptlDumpers.find(streamId);
@@ -2765,7 +2770,7 @@ Call::_save_rtp(packet_s_process_0 *packetS, s_sdp_flags_base sdp_flags, char en
 			}
 		}
 	} else if(opt_fax_dup_seq_check) {
-		if(sdp_flags.is_image() && packetS->isUdptlOkDataLen()) {
+		if(sdp_flags.is_mt_image() && packetS->isUdptlOkDataLen()) {
 			UDPTLFixedHeader *udptl = (UDPTLFixedHeader*)packetS->data_();
 			if(udptl->data_field) {
 				unsigned seq = htons(udptl->sequence);
@@ -2777,7 +2782,7 @@ Call::_save_rtp(packet_s_process_0 *packetS, s_sdp_flags_base sdp_flags, char en
 			}
 		}
 	} else {
-		if(sdp_flags.is_image() && packetS->isUdptlOkDataLen()) {
+		if(sdp_flags.is_mt_image() && packetS->isUdptlOkDataLen()) {
 			UDPTLFixedHeader *udptl = (UDPTLFixedHeader*)packetS->data_();
 			if(udptl->data_field) {
 				this->exists_udptl_data = true;
@@ -2785,7 +2790,7 @@ Call::_save_rtp(packet_s_process_0 *packetS, s_sdp_flags_base sdp_flags, char en
 		}
 	}
 	if(enable_save_packet) {
-		if((this->silencerecording || (this->flags & (sdp_flags.is_video() ? FLAG_SAVERTP_VIDEO_HEADER : FLAG_SAVERTPHEADER))) && 
+		if((this->silencerecording || (this->flags & (sdp_flags.is_mt_video() ? FLAG_SAVERTP_VIDEO_HEADER : FLAG_SAVERTPHEADER))) && 
 		   !(this->is_fax() && this->is_fax_packet(packetS)) && 
 		   !record_dtmf) {
 			if(packetS->isStun()) {
@@ -2803,7 +2808,7 @@ Call::_save_rtp(packet_s_process_0 *packetS, s_sdp_flags_base sdp_flags, char en
 					save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp, 0, __FILE__, __LINE__);
 				}
 			}
-		} else if((this->flags & (sdp_flags.is_video() ? FLAG_SAVERTP_VIDEO : FLAG_SAVERTP)) || 
+		} else if((this->flags & (sdp_flags.is_mt_video() ? FLAG_SAVERTP_VIDEO : FLAG_SAVERTP)) || 
 			  (this->is_fax() && this->is_fax_packet(packetS)) || 
 			  record_dtmf) {
 			save_packet(this, packetS, _t_packet_rtp_payload, forceVirtualUdp, 0, __FILE__, __LINE__);
@@ -16557,6 +16562,8 @@ string printCallFlags(unsigned long int flags) {
 	if(flags & FLAG_SAVERTP)			outStr << "savertp ";
 	if(flags & FLAG_SAVERTP_VIDEO)			outStr << "savertp_video ";
 	if(flags & FLAG_SAVERTCP)			outStr << "savertcp ";
+	if(flags & FLAG_SAVEMRCP)			outStr << "savemrcp ";
+	if(flags & FLAG_SAVEBFCP)			outStr << "savebfcp ";
 	if(flags & FLAG_SAVESIP)			outStr << "savesip ";
 	if(flags & FLAG_SAVEREGISTERPCAP)		outStr << "saveregisterpcap ";
 	if(flags & FLAG_SAVEREGISTERDB)			outStr << "saveregisterdb ";

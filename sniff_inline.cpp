@@ -841,6 +841,8 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					ppd->flags.set_ss7(true);
 				} else if(cFilters::saveMrcp() && IS_MRCP(ppd->data, ppd->datalen)) {
 					ppd->flags.set_mrcp(true);
+				} else if(cFilters::saveBfcp() && IS_BFCP(ppd->data, ppd->datalen)) {
+					ppd->flags.set_bfcp_tcp(true);
 				} else {
 					// not interested in TCP packet other than SIP port
 					if(!opt_ipaccount && !DEBUG_ALL_PACKETS && (ppf & ppf_returnZeroInCheckData)) {

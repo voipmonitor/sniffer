@@ -599,13 +599,15 @@ struct packet_flags {
 	static const uint16_t TCP_MASK            = ((1 << 0) | (1 << 1));
 	static const uint16_t SS7_MASK            = (1 << 2);
 	static const uint16_t MRCP_MASK           = (1 << 3);
-	static const uint16_t SSL_MASK            = (1 << 4);
-	static const uint16_t SKINNY_MASK         = (1 << 5);
-	static const uint16_t MGCP_MASK           = (1 << 6);
-	static const uint16_t DTLS_HANDSHAKE_MASK = (1 << 7);
-	static const uint16_t DIAMETER_MASK       = (1 << 8);
-	static const uint16_t IPFIX_QOS_MASK      = (1 << 9);
-	static const uint16_t HEP_LOG_MASK        = (1 << 10);
+	static const uint16_t BFCP_TCP_MASK       = (1 << 4);
+	static const uint16_t BFCP_UDP_MASK       = (1 << 5);
+	static const uint16_t SSL_MASK            = (1 << 6);
+	static const uint16_t SKINNY_MASK         = (1 << 7);
+	static const uint16_t MGCP_MASK           = (1 << 8);
+	static const uint16_t DTLS_HANDSHAKE_MASK = (1 << 9);
+	static const uint16_t DIAMETER_MASK       = (1 << 10);
+	static const uint16_t IPFIX_QOS_MASK      = (1 << 11);
+	static const uint16_t HEP_LOG_MASK        = (1 << 12);
 
 	uint16_t flags;
 
@@ -620,6 +622,12 @@ struct packet_flags {
 	inline void set_mrcp(bool value) { flags = (flags & ~MRCP_MASK) | (value ? MRCP_MASK : 0); }
 	inline bool is_mrcp() { return((flags & MRCP_MASK) != 0); }
 
+	inline void set_bfcp_tcp(bool value) { flags = (flags & ~BFCP_TCP_MASK) | (value ? BFCP_TCP_MASK : 0); }
+	inline bool is_bfcp_tcp() { return((flags & BFCP_TCP_MASK) != 0); }
+	inline void set_bfcp_udp(bool value) { flags = (flags & ~BFCP_UDP_MASK) | (value ? BFCP_UDP_MASK : 0); }
+	inline bool is_bfcp_udp() { return((flags & BFCP_UDP_MASK) != 0); }
+	inline bool is_bfcp() { return((flags & (BFCP_TCP_MASK | BFCP_UDP_MASK)) != 0); }
+	
 	inline void set_ssl(bool value) { flags = (flags & ~SSL_MASK) | (value ? SSL_MASK : 0); }
 	inline bool is_ssl() { return((flags & SSL_MASK) != 0); }
 
@@ -644,11 +652,12 @@ struct packet_flags {
 	inline bool other_processing() {
 		return(is_ss7());
 	}
-	inline bool rtp_processing() {
-		return(is_mrcp());
+	inline bool other_rtp_processing() {
+		return((flags & (MRCP_MASK | BFCP_TCP_MASK | BFCP_UDP_MASK)) != 0);
 	}
 	inline bool call_signalling() {
-		return((flags & (TCP_MASK | SS7_MASK | SSL_MASK | SKINNY_MASK | MGCP_MASK)) != 0);
+		return((flags & (TCP_MASK | SS7_MASK | SSL_MASK | SKINNY_MASK | MGCP_MASK)) != 0 &&
+		       !(flags & (MRCP_MASK | BFCP_TCP_MASK)));
 	}
 };
 

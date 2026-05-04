@@ -210,6 +210,7 @@ struct sll2_header {
 #define IS_DTLS(data, datalen) ((datalen) >= 1 && *(u_char*)(data) >= 0x14 && *(u_char*)(data) <= 0x19)
 #define IS_DTLS_HANDSHAKE(data, datalen) ((datalen) >= 1 && *(u_char*)(data) == 0x16)
 #define IS_MRCP(data, datalen) ((datalen) >= 4 && ((char*)(data))[0] == 'M' && ((char*)(data))[1] == 'R' && ((char*)(data))[2] == 'C' && ((char*)(data))[3] == 'P')
+#define IS_BFCP(data, datalen) ((datalen) >= 12 && (((u_char*)(data))[0] == 0x20 || (((u_char*)(data))[0] & 0xE7) == 0x40) && ((u_char*)(data))[1] >= 1 && ((u_char*)(data))[1] <= 17)
 
 
 #define if_likely(x) __builtin_expect(!!(x), 1)
@@ -223,6 +224,7 @@ enum e_packet_type {
 	_t_packet_rtcp,
 	_t_packet_dtls,
 	_t_packet_mrcp,
+	_t_packet_bfcp,
 	_t_packet_skinny,
 	_t_packet_mgcp,
 	_t_packet_diameter
@@ -639,10 +641,13 @@ struct packet_s {
 		return(pflags.is_dtls_handshake());
 	}
 	inline bool isMrcp() {
-		return(IS_MRCP(data_(), datalen_()));
+		return(pflags.is_mrcp());
+	}
+	inline bool isBfcp() {
+		return(pflags.is_bfcp());
 	}
 	inline bool isUdptl() {
-		return(!pflags.get_tcp() && !isRtp() && !isStun() && !isDtls() && !isMrcp());
+		return(!pflags.get_tcp() && !isRtp() && !isStun() && !isDtls() && !isMrcp() && !isBfcp());
 	}
 	inline bool okDataLenForRtp() {
 		return(datalen_() > 12);
@@ -1675,21 +1680,25 @@ struct gre_hdr {
 #define enable_save_register_db(call)	(call->flags & FLAG_SAVEREGISTERDB)
 #define enable_register_engine		(opt_sip_register & 1)
 #define enable_save_rtcp(call)		((call->flags & FLAG_SAVERTCP) || (opt_saveudptl && call->is_fax()))
-#define enable_save_mrcp(call)		((call->flags & FLAG_SAVEMRCP) || (opt_saveudptl && call->is_fax()))
-#define enable_save_application(call)	(enable_save_mrcp(call))
+#define enable_save_mrcp(call)		(call->flags & FLAG_SAVEMRCP)
+#define enable_save_bfcp(call)		(call->flags & FLAG_SAVEBFCP)
 #define enable_save_rtp_audio(call)	((call->flags & (FLAG_SAVERTP | FLAG_SAVERTPHEADER)) || (opt_saveudptl && call->is_fax()) || opt_saverfc2833)
 #define enable_save_rtp_video(call)	(call->flags & (FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER))
 #define enable_save_rtp_image(call, packetS) \
 					((call->flags & FLAG_SAVERTP) || (opt_saveudptl && (call->is_fax() || (packetS && packetS->isUdptlOkDataLen()))))
 #define enable_save_rtp_av(call)	(enable_save_rtp_audio(call) || enable_save_rtp_video(call))
-#define enable_save_rtp(call)		(enable_save_rtp_audio(call) || enable_save_rtp_video(call) || enable_save_application(call))
+#define enable_save_rtp(call)		(enable_save_rtp_audio(call) || enable_save_rtp_video(call) || enable_save_mrcp(call) || enable_save_bfcp(call))
 #define enable_save_rtp_media(call, flags, packetS) \
-					(flags.is_audio() ? enable_save_rtp_audio(call) : \
-					(flags.is_video() ? enable_save_rtp_video(call) : \
-					(flags.is_image() ? enable_save_rtp_image(call, packetS) : \
-					(flags.is_application() ? enable_save_application(call) : enable_save_rtp_audio(call)))))
+					(flags.is_mt_audio() ? enable_save_rtp_audio(call) : \
+					(flags.is_mt_video() ? enable_save_rtp_video(call) : \
+					(flags.is_mt_image() ? enable_save_rtp_image(call, packetS) : \
+					(flags.is_mt_mrcp() ? enable_save_mrcp(call) : \
+					(flags.is_mt_bfcp() ? enable_save_bfcp(call) : \
+					 enable_save_rtp_audio(call))))))
 #define enable_save_rtp_packet(call, type) \
-					(type == _t_packet_mrcp ? enable_save_mrcp(call) : enable_save_rtp_av(call))
+					(type == _t_packet_mrcp ? enable_save_mrcp(call) : \
+					(type == _t_packet_bfcp ? enable_save_bfcp(call) : \
+					 enable_save_rtp_av(call)))
 #define enable_save_sip_rtp(call)	(enable_save_sip(call) || enable_save_rtp(call))
 #define processing_rtp_video(call)	(call->flags & (FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER | FLAG_PROCESSING_RTP_VIDEO))
 #define enable_save_packet(call)	(enable_save_sip(call) || enable_save_register_pcap(call) || enable_save_rtp(call))

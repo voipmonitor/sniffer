@@ -1092,6 +1092,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 			case _t_packet_rtp_payload:
 			case _t_packet_dtls:
 			case _t_packet_mrcp:
+			case _t_packet_bfcp:
 			case _t_packet_rtcp:
 				if(call->getPcapRtp()->isOpen()){
 					save_ok = call->getPcapRtp()->dump(header, packet, packetS->dlt, false,
@@ -1154,6 +1155,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 			case _t_packet_rtp:
 			case _t_packet_dtls:
 			case _t_packet_mrcp:
+			case _t_packet_bfcp:
 				call->save_rtp_pcap = true;
 				break;
 			case _t_packet_rtp_payload:
@@ -2826,7 +2828,9 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 					 { "UDP/TLS/RTP/SAVPF", sdp_proto_srtp }, // RFC 5764
 					 { "msrp/tcp", sdp_proto_msrp }, // Not in IANA, where is this from?
 					 { "UDPSPRT", sdp_proto_sprt }, // Not in IANA, but draft-rajeshkumar-avt-v150-registration-00
-					 { "TCP/MRCPv2", sdp_proto_tcp_mrcpv2 }
+					 { "TCP/MRCPv2", sdp_proto_tcp_mrcpv2 },
+					 { "UDP/BFCP", sdp_proto_bfcp }, // RFC 8855
+					 { "TCP/BFCP", sdp_proto_bfcp } // RFC 8856
 				};
 				for(unsigned i = 0; i < sizeof(sdp_protocols) / sizeof(sdp_protocols[0]); i++) {
 					if(!strncasecmp(pointToBeginProtocol, sdp_protocols[i].protocol_str, lengthProtocol) &&
@@ -2837,9 +2841,14 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 			}
 		}
 		
-		if(sdp_media_type[sdp_media_i] == sdp_media_type_application && 
-		   !(sdp_protocol == sdp_proto_tcp_mrcpv2 && cFilters::saveMrcp())) {
-			continue;
+		if(sdp_media_type[sdp_media_i] == sdp_media_type_application) {
+			if(sdp_protocol == sdp_proto_tcp_mrcpv2 && cFilters::saveMrcp()) {
+				sdp_media_type[sdp_media_i] = sdp_media_type_mrcp;
+			} else if(sdp_protocol == sdp_proto_bfcp && cFilters::saveBfcp()) {
+				sdp_media_type[sdp_media_i] = sdp_media_type_bfcp;
+			} else {
+				continue;
+			}
 		}
 					       
 		s_sdp_media_data *sdp_media_data_item; 
@@ -3002,7 +3011,7 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 				s = _gettag(s, sdp_media_text_len - (s - sdp_media_text), "a=candidate:", &l);
 			}
 		}
-		if(sdp_media_type[sdp_media_i] != sdp_media_type_application) {
+		if(!(sdp_media_type[sdp_media_i] & sdp_media_type_application)) {
 			get_rtpmap_from_sdp(sdp_media_text, sdp_media_text_len, sdp_media_type[sdp_media_i] == sdp_media_type_video, sdp_media_data_item->rtpmap, &sdp_media_data_item->exists_payload_televent);
 		}
 
@@ -4445,7 +4454,7 @@ void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, in
 					ok_ip_port = false;
 				}
 				if(ok_ip_port) {
-					if(sdp_media_data_item->sdp_flags.is_image()) { 
+					if(sdp_media_data_item->sdp_flags.is_mt_image()) { 
 						if(verbosity >= 2){
 							syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
 						}
@@ -7092,7 +7101,7 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 		iscaller = call_info->calls[call_info_index].iscaller;
 		sdp_flags = call_info->calls[call_info_index].sdp_flags;
 		is_rtcp = call_info->calls[call_info_index].is_rtcp || 
-			  ((sdp_flags.is_audio() || sdp_flags.is_video()) && packetS->datalen_() > 1 && RTP::isRTCP_enforce(packetS->data_()));
+			  ((sdp_flags.is_mt_audio() || sdp_flags.is_mt_video()) && packetS->datalen_() > 1 && RTP::isRTCP_enforce(packetS->data_()));
 		stream_in_multiple_calls = call_info->calls[call_info_index].multiple_calls;
 		
 		if(!call_info->find_by_dest && iscaller_is_set(iscaller)) {
@@ -7125,7 +7134,7 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 			call->pcap_drop = pcap_drop_flag;
 		}
 
-		if(!is_rtcp && (sdp_flags.is_audio() || sdp_flags.is_video()) &&
+		if(!is_rtcp && (sdp_flags.is_mt_audio() || sdp_flags.is_mt_video()) &&
 		   (packetS->datalen_() < RTP_FIXED_HEADERLEN ||
 		    packetS->header_pt->caplen <= (unsigned)(packetS->datalen_() - RTP_FIXED_HEADERLEN))) {
 			break;
@@ -7135,7 +7144,7 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
 
-		if(sdp_flags.is_image()) {
+		if(sdp_flags.is_mt_image()) {
 			call->seenudptl = 1;
 		}
 		
@@ -11982,7 +11991,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 			packetS->blockstore_addflag(15 /*pb lock flag*/);
 			rtp = true;
 		}
-	} else if(packetS->pflags.is_mrcp()) {
+	} else if(packetS->pflags.is_mrcp() || packetS->pflags.is_bfcp_tcp()) {
 	 
 		#if DEBUG_PACKET_COUNT
 		__SYNC_INC(__xc_nosip);
