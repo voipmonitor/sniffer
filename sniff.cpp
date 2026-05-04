@@ -9938,6 +9938,8 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 	extern bool opt_ipfix_via_pb;
 	extern bool opt_hep_via_pb;
 	extern bool opt_ribbonsbc_via_pb;
+	extern string opt_siprec_bind_ip;
+	extern bool opt_siprec_via_pb;
 	this->typePreProcessThread = typePreProcessThread;
 	this->needLockPush = false;
 	switch(typePreProcessThread) {
@@ -9945,18 +9947,20 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 		extern bool opt_ssl_enable_redirection_unencrypted_sip_content;
 		if(opt_t2_boost_direct_rtp &&
 		   ((opt_enable_ssl && opt_ssl_enable_redirection_unencrypted_sip_content) || 
-		    (opt_ipfix && !(opt_t2_boost && opt_ipfix_via_pb)) ||
-		    (opt_hep && !(opt_t2_boost && opt_hep_via_pb)) ||
-		    (opt_ribbonsbc_listen && !(opt_t2_boost && opt_ribbonsbc_via_pb)))) {
+		    (opt_ipfix && !opt_ipfix_via_pb) ||
+		    (opt_hep && !opt_hep_via_pb) ||
+		    (opt_ribbonsbc_listen && !opt_ribbonsbc_via_pb) ||
+		    (!opt_siprec_bind_ip.empty() && !opt_siprec_via_pb))) {
 			this->needLockPush = true;
 		}
 		break;
 	case ppt_detach:
 		if(!opt_t2_boost_direct_rtp &&
 		   (opt_enable_ssl ||
-		    (opt_ipfix && !(opt_t2_boost && opt_ipfix_via_pb)) ||
-		    (opt_hep && !(opt_t2_boost && opt_hep_via_pb)) ||
-		    (opt_ribbonsbc_listen && !(opt_t2_boost && opt_ribbonsbc_via_pb)))) {
+		    (opt_ipfix && !opt_ipfix_via_pb) ||
+		    (opt_hep && !opt_hep_via_pb) ||
+		    (opt_ribbonsbc_listen && !opt_ribbonsbc_via_pb) ||
+		    (!opt_siprec_bind_ip.empty() && !opt_siprec_via_pb))) {
 			this->needLockPush = true;
 		}
 		break;

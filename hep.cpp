@@ -13,7 +13,6 @@ extern bool opt_hep_kamailio_protocol_id_fix;
 extern bool opt_hep_counter_log;
 extern bool opt_hep_via_pb;
 extern bool opt_hep_use_system_time;
-extern int opt_t2_boost;
 
 cHepCounter hep_counter;
 
@@ -24,7 +23,7 @@ cHEP_ProcessData::cHEP_ProcessData()
  : cTimer(NULL) {
 	block_store = NULL;
 	block_store_sync = 0;
-	if(opt_t2_boost && opt_hep_via_pb) {
+	if(opt_hep_via_pb) {
 		setEveryMS(100);
 		start();
 	}
@@ -435,7 +434,7 @@ void cHEP_ProcessData::pushPacket(sHEP_Data *hepData, pcap_pkthdr *header, u_cha
 		delete [] packet;
 		return;
 	}
-	if(opt_t2_boost && opt_hep_via_pb) {
+	if(opt_hep_via_pb) {
 		block_store_lock();
 		if(!block_store) {
 			block_store = new FILE_LINE(0) pcap_block_store;

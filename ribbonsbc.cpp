@@ -15,7 +15,6 @@ extern bool opt_ribbonsbc_counter_log;
 extern bool opt_ribbonsbc_via_pb;
 extern bool opt_ribbonsbc_size_header;
 extern bool opt_ribbonsbc_strict_check;
-extern int opt_t2_boost;
 
 cRibbonSbcCounter ribbonsbc_counter;
 
@@ -27,7 +26,7 @@ cRibbonSbc_ProcessData::cRibbonSbc_ProcessData()
 	data_buffer_add_counter = 0;
 	block_store = NULL;
 	block_store_sync = 0;
-	if(opt_t2_boost && opt_ribbonsbc_via_pb) {
+	if(opt_ribbonsbc_via_pb) {
 		setEveryMS(100);
 		start();
 	}
@@ -143,7 +142,7 @@ void cRibbonSbc_ProcessData::pushPacket(pcap_pkthdr *header, u_char *packet, uns
 		delete [] packet;
 		return;
 	}
-	if(opt_t2_boost && opt_ribbonsbc_via_pb) {
+	if(opt_ribbonsbc_via_pb) {
 		block_store_lock();
 		if(!block_store) {
 			block_store = new FILE_LINE(0) pcap_block_store;

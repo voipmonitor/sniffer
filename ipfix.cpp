@@ -16,7 +16,6 @@
 extern bool opt_ipfix_counter_log;
 extern bool opt_ipfix_via_pb;
 extern bool opt_ipfix_use_system_time;
-extern int opt_t2_boost;
 
 cIpFixCounter ipfix_counter;
 
@@ -379,7 +378,7 @@ cIPFixConnection::cIPFixConnection(cSocket *socket)
 : cServerConnection(socket), cTimer(NULL) {
 	block_store = NULL;
 	block_store_sync = 0;
-	if(opt_t2_boost && opt_ipfix_via_pb) {
+	if(opt_ipfix_via_pb) {
 		setEveryMS(100);
 		start();
 	}
@@ -695,7 +694,7 @@ void cIPFixConnection::push_packet(vmIPport src, vmIPport dst,
 		delete [] packet;
 		return;
 	}
-	if(opt_t2_boost && opt_ipfix_via_pb) {
+	if(opt_ipfix_via_pb) {
 		block_store_lock();
 		if(!block_store) {
 			block_store = new FILE_LINE(0) pcap_block_store;

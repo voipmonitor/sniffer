@@ -14,7 +14,7 @@
 #include "sniff_proc_class.h"
 
 
-extern int opt_t2_boost;
+extern bool opt_siprec_via_pb;
 
 static cSipRec *sip_rec;
 
@@ -1511,7 +1511,7 @@ cSipRecPacketSender::cSipRecPacketSender()
  : cTimer(NULL) {
 	block_store = NULL;
 	block_store_sync = 0;
-	if(opt_t2_boost) {
+	if(opt_siprec_via_pb) {
 		setEveryMS(100);
 		start();
 	}
@@ -1553,7 +1553,7 @@ void cSipRecPacketSender::pushPacket(pcap_pkthdr *header, u_char *packet, unsign
 		delete [] packet;
 		return;
 	}
-	if(opt_t2_boost) {
+	if(opt_siprec_via_pb) {
 		block_store_lock();
 		if(!block_store) {
 			block_store = new FILE_LINE(0) pcap_block_store(pcap_block_store::plus2);

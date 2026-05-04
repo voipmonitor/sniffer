@@ -1236,6 +1236,7 @@ int opt_siprec_rtp_max = 20000;
 int opt_siprec_rtp_stream_timeout_s = 300;
 int opt_siprec_rtp_streams_max_threads = 2;
 int opt_siprec_rtp_streams_max_per_thread = 100;
+bool opt_siprec_via_pb = true;
 
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
 int storing_cdr_tid;
@@ -5329,7 +5330,11 @@ int main_init_read() {
 				if(opt_dup_check_type != _dedup_na && 
 				   (is_receiver() || is_server() ?
 				     !opt_receiver_check_id_sensor :
-				     (getCountInterfaces() > 1 || (opt_hep && opt_hep_via_pb) || (opt_ipfix && opt_ipfix_via_pb) || (opt_ribbonsbc_listen && opt_ribbonsbc_via_pb)))) {
+				     (getCountInterfaces() > 1 || 
+				      (opt_hep && opt_hep_via_pb) ||
+				      (opt_ipfix && opt_ipfix_via_pb) ||
+				      (opt_ribbonsbc_listen && opt_ribbonsbc_via_pb) ||
+				      (!opt_siprec_bind_ip.empty() && opt_siprec_via_pb)))) {
 					if(pass == 0) {
 						pcapQueueQ_outThread_dedup = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::dedup, pcapQueueQ);
 					} else {
@@ -7665,6 +7670,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_rtp_stream_timeout_s", &opt_siprec_rtp_stream_timeout_s));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_rtp_streams_max_threads", &opt_siprec_rtp_streams_max_threads));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_rtp_streams_max_per_thread", &opt_siprec_rtp_streams_max_per_thread));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("siprec_via_pb",  &opt_siprec_via_pb));
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("vmcodecs_path", opt_vmcodecs_path, sizeof(opt_vmcodecs_path)));
@@ -9789,6 +9795,11 @@ void set_context_config() {
 	if(opt_ribbonsbc_listen && ((is_client_packetbuffer_sender() && !opt_ribbonsbc_via_pb) || is_sender())) {
 		opt_ribbonsbc_listen = false;
 		syslog(LOG_ERR, "the ribbonsbc option is not supported on a client with packet buffer sending or in mirror sender mode");
+	}
+	
+	if(!opt_siprec_bind_ip.empty() && ((is_client_packetbuffer_sender() && !opt_siprec_via_pb) || is_sender())) {
+		opt_siprec_bind_ip.clear();
+		syslog(LOG_ERR, "the siprec option is not supported on a client with packet buffer sending or in mirror sender mode");
 	}
 	
 	opt_is_client_packetbuffer_sender = is_client_packetbuffer_sender();
