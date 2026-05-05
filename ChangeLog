@@ -1,3 +1,23 @@
+2026.05.0 05.05.2026
+====================
+- Add BFCP (Binary Floor Control Protocol) detection and capture support [VS-1831]
+- Add --version command line option
+- Add info about SIP states into listcalls command [VG-154]
+- Add ssl_enable_redirection_unencrypted_sip_content to config reference
+- Skinny: add support for CONNECTION_STATISTICS_REQ_MESSAGE (0x0107), improve CONNECTION_STATISTICS_REQ matching and CALL_STATE handling, fix duplicate packet saving when TCP segment contains multiple PDUs [VG-3120]
+- Propagate sensor_name to sensors table in client/server and cloud mode [VS-1812]
+- Remove opt_t2_boost dependency from HEP/IPFIX/RibbonSBC/SipRec [VS-1838]
+- Modification to addition of next threads for t2 - addNextThread now has emergency fallback: add thread on cpu > high even without check heap [VS-1817]
+- Charts calculation on the sniffer side - performance optimization
+- SSL keylogger: retry tcp/udp sends with backoff, reduce readBlock timeout [VG-3115]
+- Fix opt_disable_dbupgradecheck (option disable_dbupgradecheck) to actually block schema ALTERs [VS-1837]
+- Fix handling of ms precision in custom headers correctly [VS-1833]
+- Fix potential double-free in IP defragmentation when rejecting malformed fragments
+- Fix potential race on termination when evTimer accesses already destroyed pcapQueueQ
+- Fix potential race on termination
+- Fix build ssl keylogger without tcp
+
+
 2026.04.0 14.04.2026
 ====================
 - Add ZSTD compression support for qfiles (query cache) and remote SQL query protocol (client/server) [VS-1503]
