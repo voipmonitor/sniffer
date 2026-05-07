@@ -6655,60 +6655,12 @@ void SocketSimpleBufferWrite::flushData() {
 }
 
 
-BogusDumper::BogusDumper(const char *path) {
-	this->path = path;
-	this->_sync = 0;
-	time = getActDateTimeF(true);
-}
-
-BogusDumper::~BogusDumper() {
-	map<string, PcapDumper*>::iterator iter;
-	for(iter = dumpers.begin(); iter != dumpers.end(); iter++) {
-		iter->second->close();
-		delete iter->second;
-	}
-}
-
-void BogusDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char *interfaceName) {
-	this->lock();
-	if(!strncmp(interfaceName, "interface", 9)) {
-		interfaceName += 9;
-	}
-	while(*interfaceName == ' ') {
-		++interfaceName;
-	}
-	PcapDumper *dumper;
-	map<string, PcapDumper*>::iterator iter = dumpers.find(interfaceName);
-	if(iter != dumpers.end()) {
-		dumper = dumpers[interfaceName];
-	} else {
-		dumper = new FILE_LINE(38027) PcapDumper(PcapDumper::na, NULL);
-		dumper->setEnableAsyncWrite(false);
-		dumper->setTypeCompress(FileZipHandler::compress_na);
-		string dumpFileName = path + "/bogus_" + 
-				      find_and_replace(find_and_replace(interfaceName, " ", "").c_str(), "/", "|") + 
-				      "_" + time + ".pcap";
-		if(dumper->open(tsf_na, dumpFileName.c_str(), dlt)) {
-			dumpers[interfaceName] = dumper;
-		} else {
-			delete dumper;
-			dumper = NULL;
-		}
-	}
-	if(dumper) {
-		dumper->dump(header, packet, dlt, true);
-		dumper->flush();
-	}
-	this->unlock();
-}
-
-
 TrafficDumper::sDumperDef::~sDumperDef() {
-	for(map<int, PcapDumper*>::iterator iter = dumpers_by_dlt.begin(); iter != dumpers_by_dlt.end(); iter++) {
+	for(map<sDumperKeyByDlt, PcapDumper*>::iterator iter = dumpers_by_dlt.begin(); iter != dumpers_by_dlt.end(); iter++) {
 		iter->second->close();
 		delete iter->second;
 	}
-	for(map<string, PcapDumper*>::iterator iter = dumpers_by_interface.begin(); iter != dumpers_by_interface.end(); iter++) {
+	for(map<sDumperKeyByInterface, PcapDumper*>::iterator iter = dumpers_by_interface.begin(); iter != dumpers_by_interface.end(); iter++) {
 		iter->second->close();
 		delete iter->second;
 	}
@@ -6808,13 +6760,13 @@ void TrafficDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const cha
 	}
 	this->lock();
 	if(default_dumper_is_defined &&
-	   default_dumper.enabled &&
+	   default_dumper.enabled && !default_dumper.malformed &&
 	   (!default_dumper.hasFilter() || passFilter(&default_dumper, saddr, daddr, saddr_encaps, daddr_encaps, sport, dport, is_frag, has_ports))) {
 		dump(&default_dumper, header, packet, dlt, interfaceName);
 	}
 	for(map<string, sDumperDef*>::iterator iter = dumpers.begin(); iter != dumpers.end(); iter++) {
 		sDumperDef *dumper = iter->second;
-		if(!dumper->enabled) {
+		if(!dumper->enabled || dumper->malformed) {
 			continue;
 		}
 		if(dumper->hasFilter()) {
@@ -6823,6 +6775,25 @@ void TrafficDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const cha
 			}
 		}
 		dump(dumper, header, packet, dlt, interfaceName);
+	}
+	this->unlock();
+}
+
+void TrafficDumper::dumpMalformed(pcap_pkthdr* header, u_char* packet, int dlt, const char *interfaceName, eMalformedSource source) {
+	if(!is_enabled) {
+		return;
+	}
+	this->lock();
+	if(default_dumper_is_defined &&
+	   default_dumper.enabled && default_dumper.malformed) {
+		dump(&default_dumper, header, packet, dlt, interfaceName, source);
+	}
+	for(map<string, sDumperDef*>::iterator iter = dumpers.begin(); iter != dumpers.end(); iter++) {
+		sDumperDef *dumper = iter->second;
+		if(!dumper->enabled || !dumper->malformed) {
+			continue;
+		}
+		dump(dumper, header, packet, dlt, interfaceName, source);
 	}
 	this->unlock();
 }
@@ -6861,7 +6832,7 @@ bool TrafficDumper::addFilterSrcIP(const char *ip_str, const char *prefix, unsig
 	this->lock();
 	sDumperDef *dumper = findDumper(prefix);
 	bool rslt = false;
-	if(dumper) {
+	if(dumper && !dumper->malformed) {
 		rslt = _addFilterIP(ip_str, &dumper->src_ips, &dumper->src_nets, net_to_ip_bits_limit);
 	}
 	this->unlock();
@@ -6872,7 +6843,7 @@ bool TrafficDumper::addFilterDstIP(const char *ip_str, const char *prefix, unsig
 	this->lock();
 	sDumperDef *dumper = findDumper(prefix);
 	bool rslt = false;
-	if(dumper) {
+	if(dumper && !dumper->malformed) {
 		rslt = _addFilterIP(ip_str, &dumper->dst_ips, &dumper->dst_nets, net_to_ip_bits_limit);
 	}
 	this->unlock();
@@ -6883,7 +6854,7 @@ bool TrafficDumper::addFilterIP(const char *ip_str, const char *prefix, unsigned
 	this->lock();
 	sDumperDef *dumper = findDumper(prefix);
 	bool rslt = false;
-	if(dumper) {
+	if(dumper && !dumper->malformed) {
 		rslt = _addFilterIP(ip_str, &dumper->ips, &dumper->nets, net_to_ip_bits_limit);
 	}
 	this->unlock();
@@ -6894,7 +6865,7 @@ bool TrafficDumper::addFilterSrcPort(const char *port_str, const char *prefix) {
 	this->lock();
 	sDumperDef *dumper = findDumper(prefix);
 	bool rslt = false;
-	if(dumper) {
+	if(dumper && !dumper->malformed) {
 		rslt = _addFilterPort(port_str, &dumper->src_ports);
 	}
 	this->unlock();
@@ -6905,7 +6876,7 @@ bool TrafficDumper::addFilterDstPort(const char *port_str, const char *prefix) {
 	this->lock();
 	sDumperDef *dumper = findDumper(prefix);
 	bool rslt = false;
-	if(dumper) {
+	if(dumper && !dumper->malformed) {
 		rslt = _addFilterPort(port_str, &dumper->dst_ports);
 	}
 	this->unlock();
@@ -6916,7 +6887,7 @@ bool TrafficDumper::addFilterPort(const char *port_str, const char *prefix) {
 	this->lock();
 	sDumperDef *dumper = findDumper(prefix);
 	bool rslt = false;
-	if(dumper) {
+	if(dumper && !dumper->malformed) {
 		rslt = _addFilterPort(port_str, &dumper->ports);
 	}
 	this->unlock();
@@ -6926,7 +6897,7 @@ bool TrafficDumper::addFilterPort(const char *port_str, const char *prefix) {
 void TrafficDumper::setFilterFragmented(bool frag, const char *prefix) {
 	this->lock();
 	sDumperDef *dumper = findDumper(prefix);
-	if(dumper) {
+	if(dumper && !dumper->malformed) {
 		dumper->only_fragmented = frag;
 	}
 	this->unlock();
@@ -7033,6 +7004,18 @@ TrafficDumper::eBy TrafficDumper::getBy(const char *prefix) {
 	return(rslt);
 }
 
+bool TrafficDumper::setMalformed(bool malformed, const char *prefix) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	bool rslt = false;
+	if(dumper && !dumper->hasFilter()) {
+		dumper->malformed = malformed;
+		rslt = true;
+	}
+	this->unlock();
+	return(rslt);
+}
+
 string TrafficDumper::printDumpers() {
 	ostringstream out;
 	out << "default_path: " << default_path << endl;
@@ -7054,10 +7037,11 @@ string TrafficDumper::printDumpers() {
 	return(out.str());
 }
 
-void TrafficDumper::dump(sDumperDef *dumper, pcap_pkthdr *header, u_char *packet, int dlt, const char *interfaceName) {
+void TrafficDumper::dump(sDumperDef *dumper, pcap_pkthdr *header, u_char *packet, int dlt, const char *interfaceName, eMalformedSource source) {
 	PcapDumper *pcap_dumper = NULL;
 	if(dumper->by == _byDlt) {
-		map<int, PcapDumper*>::iterator iter = dumper->dumpers_by_dlt.find(dlt);
+		sDumperKeyByDlt key(source, dlt);
+		map<sDumperKeyByDlt, PcapDumper*>::iterator iter = dumper->dumpers_by_dlt.find(key);
 		if(iter != dumper->dumpers_by_dlt.end()) {
 			pcap_dumper = iter->second;
 		}
@@ -7068,25 +7052,30 @@ void TrafficDumper::dump(sDumperDef *dumper, pcap_pkthdr *header, u_char *packet
 		while(*interfaceName == ' ') {
 			++interfaceName;
 		}
-		map<string, PcapDumper*>::iterator iter = dumper->dumpers_by_interface.find(interfaceName);
+		sDumperKeyByInterface key(source, interfaceName);
+		map<sDumperKeyByInterface, PcapDumper*>::iterator iter = dumper->dumpers_by_interface.find(key);
 		if(iter != dumper->dumpers_by_interface.end()) {
 			pcap_dumper = iter->second;
 		}
 	}
 	if(!pcap_dumper) {
+		string source_token = source != _msNone ? string("_") + malformedSourceName(source) : "";
 		string dumpFileName = dumper->path + "/" + dumper->prefix + "_" +
 				      (dumper->by == _byDlt ?
 					"dlt_" + intToString(dlt) :
 					"iface_" + find_and_replace(find_and_replace(interfaceName, " ", "").c_str(), "/", "|")) +
+				      source_token +
 				      "_" + dumper->time + ".pcap";
 		pcap_dumper = new FILE_LINE(0) PcapDumper(PcapDumper::na, NULL);
 		pcap_dumper->setEnableAsyncWrite(false);
 		pcap_dumper->setTypeCompress(FileZipHandler::compress_na);
 		if(pcap_dumper->open(tsf_na, dumpFileName.c_str(), dlt)) {
 			if(dumper->by == _byDlt) {
-				dumper->dumpers_by_dlt[dlt] = pcap_dumper;
+				sDumperKeyByDlt key(source, dlt);
+				dumper->dumpers_by_dlt[key] = pcap_dumper;
 			} else {
-				dumper->dumpers_by_interface[interfaceName] = pcap_dumper;
+				sDumperKeyByInterface key(source, interfaceName);
+				dumper->dumpers_by_interface[key] = pcap_dumper;
 			}
 		} else {
 			delete pcap_dumper;
@@ -7095,7 +7084,7 @@ void TrafficDumper::dump(sDumperDef *dumper, pcap_pkthdr *header, u_char *packet
 	}
 	if(pcap_dumper) {
 		pcap_dumper->dump(header, packet, dlt, true);
-		if(force_flush) {
+		if(force_flush || source != _msNone) {
 			pcap_dumper->flush();
 		}
 	}
@@ -7258,6 +7247,10 @@ void TrafficDumper::printDumper(ostringstream &out, TrafficDumper::sDumperDef *d
 	out << indent << "enabled: " << (dumper->enabled ? "yes" : "no") << endl;
 	out << indent << "path: " << (dumper->path.empty() ? "(default)" : dumper->path) << endl;
 	out << indent << "by: " << (dumper->by == TrafficDumper::_byDlt ? "dlt" : "interface") << endl;
+	out << indent << "malformed: " << (dumper->malformed ? "yes" : "no") << endl;
+	if(dumper->malformed) {
+		return;
+	}
 	out << indent << "fragmented_only: " << (dumper->only_fragmented ? "yes" : "no") << endl;
 	out << indent << "src_ips: ";
 	if(dumper->src_ips.empty()) {
@@ -7381,6 +7374,20 @@ void TrafficDumper::updateIsEnabled() {
 		}
 	}
 	is_enabled = false;
+}
+
+const char *TrafficDumper::malformedSourceName(eMalformedSource s) {
+	switch(s) {
+	case _msBadFragHeader: return("bad_frag_header");
+	case _msBadFragHeaderEncaps: return("bad_frag_header_encaps");
+	case _msBadFragHeaderPq: return("bad_frag_header_pq");
+	case _msBadFragHeaderEncapsPq: return("bad_frag_header_encaps_pq");
+	case _msBadIpVersion: return("bad_ip_version");
+	case _msBadIpLength: return("bad_ip_length");
+	case _msCaplenGtLen: return("caplen_gt_len");
+	case _msDataOffset: return("data_offset");
+	default: return("unknown");
+	}
 }
 
 
@@ -7696,6 +7703,10 @@ int is_true(const char *arg) {
 		return 1;
 	else
 		return 0;
+}
+
+int is_yes_or_true(const char *arg) {
+	return(yesno(arg) || is_true(arg));
 }
 
 SensorsMap::SensorsMap() {

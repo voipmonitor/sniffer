@@ -6019,7 +6019,7 @@ int Mgmt_sql_errors_skip(Mgmt_params *params) {
 int Mgmt_traffic_dumper(Mgmt_params *params) {
 	const char *commands =
 		"status, force_flush [on|off], "
-		"start <json: prefix, ip, src_ip, dst_ip, port, src_port, dst_port, by, by_dlt, by_interface, fragmented, path, net_to_ip_bits_limit>, "
+		"start <json: prefix, ip, src_ip, dst_ip, port, src_port, dst_port, by, by_dlt, by_interface, fragmented, path, net_to_ip_bits_limit, malformed>, "
 		"stop <prefix>, "
 		"enable [prefix], disable [prefix], by_dlt [prefix], by_interface [prefix], "
 		"clear_filter [prefix], clear_ips [prefix], clear_nets [prefix], clear_ports [prefix], "
@@ -6085,10 +6085,26 @@ int Mgmt_traffic_dumper(Mgmt_params *params) {
 		if(!_net_to_ip.empty()) {
 			net_to_ip_bits_limit = atoi(_net_to_ip.c_str());
 		}
+		string _malformed = jsonParams.getValue("malformed");
+		bool is_malformed = !_malformed.empty() && is_yes_or_true(_malformed.c_str());
+		if(is_malformed) {
+			td->setMalformed(true, _prefix);
+		}
 		for(size_t i = 0; i < jsonParams.getLocalCount() && err.empty(); i++) {
 			JsonItem *item = jsonParams.getLocalItem(i);
 			string name = item->getLocalName();
 			string val = item->getLocalValue();
+			bool is_filter_param = !strcasecmp(name.c_str(), "ip") ||
+					       !strcasecmp(name.c_str(), "src_ip") || !strcasecmp(name.c_str(), "ip_src") ||
+					       !strcasecmp(name.c_str(), "dst_ip") || !strcasecmp(name.c_str(), "ip_dst") ||
+					       !strcasecmp(name.c_str(), "port") ||
+					       !strcasecmp(name.c_str(), "src_port") || !strcasecmp(name.c_str(), "port_src") ||
+					       !strcasecmp(name.c_str(), "dst_port") || !strcasecmp(name.c_str(), "port_dst") ||
+					       !strcasecmp(name.c_str(), "fragmented");
+			if(is_malformed && is_filter_param) {
+				err = "filters not allowed on malformed dumper\n";
+				continue;
+			}
 			if(!strcasecmp(name.c_str(), "ip")) {
 				if(!td->addFilterIP(val.c_str(), _prefix, net_to_ip_bits_limit)) {
 					err = string("invalid value for '") + name + "'\n";
@@ -6122,19 +6138,20 @@ int Mgmt_traffic_dumper(Mgmt_params *params) {
 					err = "invalid value for 'by' (use 'dlt' or 'interface')\n";
 				}
 			} else if(!strcasecmp(name.c_str(), "by_dlt")) {
-				if(yesno(val.c_str())) {
+				if(is_yes_or_true(val.c_str())) {
 					td->setByDlt(_prefix);
 				}
 			} else if(!strcasecmp(name.c_str(), "by_interface")) {
-				if(yesno(val.c_str())) {
+				if(is_yes_or_true(val.c_str())) {
 					td->setByInterface(_prefix);
 				}
 			} else if(!strcasecmp(name.c_str(), "fragmented")) {
-				td->setFilterFragmented(yesno(val.c_str()), _prefix);
+				td->setFilterFragmented(is_yes_or_true(val.c_str()), _prefix);
 			} else if(!strcasecmp(name.c_str(), "path")) {
 				td->setDumperPath(val.c_str(), _prefix);
 			} else if(strcasecmp(name.c_str(), "prefix") &&
-				  strcasecmp(name.c_str(), "net_to_ip_bits_limit")) {
+				  strcasecmp(name.c_str(), "net_to_ip_bits_limit") &&
+				  strcasecmp(name.c_str(), "malformed")) {
 				err = string("unknown parameter '") + name + "'\n";
 			}
 		}
@@ -6288,7 +6305,7 @@ int Mgmt_traffic_dumper(Mgmt_params *params) {
 				return(params->sendString("invalid port\n"));
 			}
 		} else if(!strcasecmp(subcmd, "set_fragmented")) {
-			bool on = yesno(arg);
+			bool on = is_yes_or_true(arg);
 			trafficDumper->setFilterFragmented(on, prefix);
 			return(params->sendString(string("fragmented: ") + (on ? "on" : "off") + "\n"));
 		} else if(!strcasecmp(subcmd, "set_path")) {
@@ -6301,7 +6318,7 @@ int Mgmt_traffic_dumper(Mgmt_params *params) {
 	} else if(!subcmd[0] || !strcasecmp(subcmd, "status")) {
 		return(params->sendString(trafficDumper->printDumpers()));
 	} else if(!strcasecmp(subcmd, "force_flush")) {
-		if(yesno(arg)) {
+		if(is_yes_or_true(arg)) {
 			trafficDumper->setForceFlush(true);
 			return(params->sendString("force_flush enabled\n"));
 		} else {

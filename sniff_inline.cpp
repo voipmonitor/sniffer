@@ -664,10 +664,10 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			if((ppf & ppf_defrag) && opt_udpfrag) {
 				if(ppd->header_ip->get_tot_len() + ppd->header_ip_offset > HPH(*header_packet)->caplen) {
 					if(interfaceName) {
-						extern BogusDumper *bogusDumper;
+						extern TrafficDumper * volatile trafficDumper;
 						static u_int64_t lastTimeLogErrBadIpHeader = 0;
-						if(bogusDumper) {
-							bogusDumper->dump(HPH(*header_packet), HPP(*header_packet), pcapLinklayerHeaderType, interfaceName);
+						if(trafficDumper) {
+							trafficDumper->dumpMalformed(HPH(*header_packet), HPP(*header_packet), pcapLinklayerHeaderType, interfaceName, TrafficDumper::_msBadFragHeader);
 						}
 						u_int64_t actTime = getTimeMS(HPH(*header_packet));
 						if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
@@ -730,10 +730,10 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				if((ppf & ppf_defrag) && opt_udpfrag) {
 					if(ppd->header_ip->get_tot_len() + ppd->header_ip_offset > HPH(*header_packet)->caplen) {
 						if(interfaceName) {
-							extern BogusDumper *bogusDumper;
+							extern TrafficDumper * volatile trafficDumper;
 							static u_int64_t lastTimeLogErrBadIpHeader_encaps = 0;
-							if(bogusDumper) {
-								bogusDumper->dump(HPH(*header_packet), HPP(*header_packet), pcapLinklayerHeaderType, interfaceName);
+							if(trafficDumper) {
+								trafficDumper->dumpMalformed(HPH(*header_packet), HPP(*header_packet), pcapLinklayerHeaderType, interfaceName, TrafficDumper::_msBadFragHeaderEncaps);
 							}
 							u_int64_t actTime = getTimeMS(HPH(*header_packet));
 							if(actTime - 1000 > lastTimeLogErrBadIpHeader_encaps) {
@@ -1107,10 +1107,10 @@ void pcapProcessEvalError(error_type error, pcap_pkthdr header, u_char *packet,
 		break;
 	case bad_ip_version:
 		if(interfaceName) {
-			extern BogusDumper *bogusDumper;
+			extern TrafficDumper * volatile trafficDumper;
 			static u_int64_t lastTimeLogErrBadIpHeader = 0;
-			if(bogusDumper) {
-				bogusDumper->dump(&header, packet, pcapLinklayerHeaderType, interfaceName);
+			if(trafficDumper) {
+				trafficDumper->dumpMalformed(&header, packet, pcapLinklayerHeaderType, interfaceName, TrafficDumper::_msBadIpVersion);
 			}
 			u_int64_t actTime = getTimeMS(&header);
 			if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
@@ -1121,10 +1121,10 @@ void pcapProcessEvalError(error_type error, pcap_pkthdr header, u_char *packet,
 		break;
 	case bad_ip_length:
 		if(interfaceName) {
-			extern BogusDumper *bogusDumper;
+			extern TrafficDumper * volatile trafficDumper;
 			static u_int64_t lastTimeLogErrBadIpHeader = 0;
-			if(bogusDumper) {
-				bogusDumper->dump(&header, packet, pcapLinklayerHeaderType, interfaceName);
+			if(trafficDumper) {
+				trafficDumper->dumpMalformed(&header, packet, pcapLinklayerHeaderType, interfaceName, TrafficDumper::_msBadIpLength);
 			}
 			u_int64_t actTime = getTimeMS(&header);
 			if(actTime - 1000 > lastTimeLogErrBadIpHeader) {

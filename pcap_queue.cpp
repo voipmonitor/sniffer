@@ -10102,9 +10102,9 @@ bool PcapQueue_readFromFifo::processPacket_analysis(sHeaderPacketPQout* hp) {
 	pcap_pkthdr *header = hp->header->convertToStdHeader();
 	
 	if(header->caplen > header->len) {
-		extern BogusDumper *bogusDumper;
-		if(bogusDumper) {
-			bogusDumper->dump(header, hp->packet, hp->dlt, "process_packet");
+		extern TrafficDumper * volatile trafficDumper;
+		if(trafficDumper) {
+			trafficDumper->dumpMalformed(header, hp->packet, hp->dlt, "process_packet", TrafficDumper::_msCaplenGtLen);
 		}
 		if(verbosity) {
 			static u_int64_t lastTimeSyslog = 0;
@@ -10218,9 +10218,9 @@ bool PcapQueue_readFromFifo::processPacket_analysis(sHeaderPacketPQout* hp) {
 	
 	if(!data || datalen < 0 || datalen > 0xFFFFF ||
 	   (data - (char*)hp->packet) > header->caplen) {
-		extern BogusDumper *bogusDumper;
-		if(bogusDumper) {
-			bogusDumper->dump(header, hp->packet, hp->dlt, "process_packet");
+		extern TrafficDumper * volatile trafficDumper;
+		if(trafficDumper) {
+			trafficDumper->dumpMalformed(header, hp->packet, hp->dlt, "process_packet", TrafficDumper::_msDataOffset);
 		}
 		if(verbosity &&
 		   !(opt_udpfrag && opt_pcap_queue_use_blocks)) {
@@ -11354,6 +11354,12 @@ bool PcapQueue_outputThread::processDefrag_defrag(sHeaderPacketPQout *hp, int fd
 	u_int16_t frag_data = header_ip->get_frag_data();
 	if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
 		if(header_ip->get_tot_len() + hp->header->header_ip_offset > hp->header->get_caplen()) {
+			extern TrafficDumper * volatile trafficDumper;
+			if(trafficDumper) {
+				pcap_pkthdr *std_header = hp->header->convertToStdHeader();
+				const char *ifname = hp->block_store && hp->block_store->ifname[0] ? hp->block_store->ifname : "process_packet";
+				trafficDumper->dumpMalformed(std_header, hp->packet, hp->dlt, ifname, TrafficDumper::_msBadFragHeaderPq);
+			}
 			static u_int64_t lastTimeLogErrBadIpHeader = 0;
 			u_int64_t actTime = hp->header->get_time_ms();
 			if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
@@ -11422,6 +11428,12 @@ bool PcapQueue_outputThread::processDefrag_defrag(sHeaderPacketPQout *hp, int fd
 		int frag_data = header_ip->get_frag_data();
 		if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
 			if(header_ip->get_tot_len() + hp->header->header_ip_offset > hp->header->get_caplen()) {
+				extern TrafficDumper * volatile trafficDumper;
+				if(trafficDumper) {
+					pcap_pkthdr *std_header = hp->header->convertToStdHeader();
+					const char *ifname = hp->block_store && hp->block_store->ifname[0] ? hp->block_store->ifname : "process_packet";
+					trafficDumper->dumpMalformed(std_header, hp->packet, hp->dlt, ifname, TrafficDumper::_msBadFragHeaderEncapsPq);
+				}
 				static u_int64_t lastTimeLogErrBadIpHeader_encaps = 0;
 				u_int64_t actTime = hp->header->get_time_ms();
 				if(actTime - 1000 > lastTimeLogErrBadIpHeader_encaps) {

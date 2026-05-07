@@ -2940,30 +2940,50 @@ private:
 friend void *_SocketSimpleBufferWrite_writeFunction(void *arg);
 };
 
-class BogusDumper {
-public:
-	BogusDumper(const char *path);
-	~BogusDumper();
-	void dump(pcap_pkthdr* header, u_char* packet, int dlt, const char *interfaceName);
-private:
-	void lock() {
-		__SYNC_LOCK(this->_sync);
-	}
-	void unlock() {
-		__SYNC_UNLOCK(this->_sync);
-	}
-private:
-	map<string, PcapDumper*> dumpers;
-	string path;
-	string time;
-	volatile int _sync;
-};
-
 class TrafficDumper {
 public:
 	enum eBy {
 		_byDlt,
 		_byInterface
+	};
+	enum eMalformedSource {
+		_msNone = 0,
+		_msBadFragHeader,
+		_msBadFragHeaderEncaps,
+		_msBadFragHeaderPq,
+		_msBadFragHeaderEncapsPq,
+		_msBadIpVersion,
+		_msBadIpLength,
+		_msCaplenGtLen,
+		_msDataOffset
+	};
+	struct sDumperKeyByDlt {
+		eMalformedSource source;
+		int dlt;
+		sDumperKeyByDlt(eMalformedSource source, int dlt) {
+			this->source = source;
+			this->dlt = dlt;
+		}
+		inline bool operator < (const sDumperKeyByDlt &other) const {
+			if(source != other.source) {
+				return(source < other.source);
+			}
+			return(dlt < other.dlt);
+		}
+	};
+	struct sDumperKeyByInterface {
+		eMalformedSource source;
+		string interface_name;
+		sDumperKeyByInterface(eMalformedSource source, const char *interface_name) {
+			this->source = source;
+			this->interface_name = interface_name ? interface_name : "";
+		}
+		inline bool operator < (const sDumperKeyByInterface &other) const {
+			if(source != other.source) {
+				return(source < other.source);
+			}
+			return(interface_name < other.interface_name);
+		}
 	};
 	struct sDumperDef {
 		string prefix;
@@ -2980,13 +3000,15 @@ public:
 		set<vmPort> dst_ports;
 		set<vmPort> ports;
 		bool only_fragmented;
-		map<int, PcapDumper*> dumpers_by_dlt;
-		map<string, PcapDumper*> dumpers_by_interface;
+		bool malformed;
+		map<sDumperKeyByDlt, PcapDumper*> dumpers_by_dlt;
+		map<sDumperKeyByInterface, PcapDumper*> dumpers_by_interface;
 		bool enabled;
 		sDumperDef(const char *prefix) {
 			this->prefix = prefix;
 			this->by = _byDlt;
 			only_fragmented = false;
+			malformed = false;
 			enabled = false;
 		}
 		~sDumperDef();
@@ -3016,6 +3038,7 @@ public:
 	void setForceFlush(bool ff) { force_flush = ff; }
 	bool getForceFlush() { return force_flush; }
 	void dump(pcap_pkthdr* header, u_char* packet, int dlt, const char *interfaceName, u_int16_t header_ip_offset);
+	void dumpMalformed(pcap_pkthdr* header, u_char* packet, int dlt, const char *interfaceName, eMalformedSource source);
 	sDumperDef *addDumper(const char *prefix);
 	bool removeDumper(const char *prefix);
 	sDumperDef *getDumper(const char *prefix);
@@ -3037,9 +3060,10 @@ public:
 	void setByDlt(const char *prefix = NULL);
 	void setByInterface(const char *prefix = NULL);
 	eBy getBy(const char *prefix = NULL);
+	bool setMalformed(bool malformed, const char *prefix = NULL);
 	string printDumpers();
 private:
-	void dump(sDumperDef *dumper, pcap_pkthdr *header, u_char *packet, int dlt, const char *interfaceName);
+	void dump(sDumperDef *dumper, pcap_pkthdr *header, u_char *packet, int dlt, const char *interfaceName, eMalformedSource source = _msNone);
 	bool _addFilterIP(const char *ip_str, set<vmIP> *ips, vector<vmIPmask> *nets, unsigned net_to_ip_bits_limit = 0);
 	bool _addFilterPort(const char *port_str, set<vmPort> *ports);
 	sDumperDef *findDumper(const char *prefix);
@@ -3085,6 +3109,7 @@ private:
 	void unlock() {
 		__SYNC_UNLOCK(this->_sync);
 	}
+	const char *malformedSourceName(eMalformedSource s);
 private:
 	sDumperDef default_dumper;
 	bool default_dumper_is_defined;
@@ -3435,6 +3460,7 @@ u_int64_t getTotalMemory();
 string ascii_str(string str);
 int yesno(const char *arg);
 int is_true(const char *arg);
+int is_yes_or_true(const char *arg);
 
 class SensorsMap {
 public:
