@@ -7768,13 +7768,40 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			",CONSTRAINT `sip_msg_ibfk_1` FOREIGN KEY (`response_id`) REFERENCES `cdr_sip_response` (`id`) ON UPDATE CASCADE,\
 			CONSTRAINT `sip_msg_ibfk_2` FOREIGN KEY (`ua_src_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
 			CONSTRAINT `sip_msg_ibfk_3` FOREIGN KEY (`ua_dst_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE") +
-	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress + 
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(opt_cdr_partition ?
 		(opt_cdr_partition_by_hours ?
 			string(" PARTITION BY RANGE COLUMNS(time)(\
 				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
 				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
-		 opt_cdr_partition_oldver ? 
+		 opt_cdr_partition_oldver ?
+			string(" PARTITION BY RANGE (to_days(time))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(time)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
+
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `sip_msg_resp` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? string("`ID` bigint unsigned NOT NULL AUTO_INCREMENT,") : "") + "\
+			`sip_msg_ID` bigint unsigned NOT NULL,\
+			`time` ") + column_type_datetime_child_ms() + " NOT NULL,\
+			`time_us` bigint unsigned DEFAULT NULL,\
+			`response_id` mediumint unsigned DEFAULT NULL,\
+			`response_number` smallint unsigned DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`time`" : "") + ")," : "") + "\
+		KEY (`sip_msg_ID`),\
+		KEY `time` (`time`)" +
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `sip_msg_resp_ibfk_1` FOREIGN KEY (`sip_msg_ID`) REFERENCES `sip_msg` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(opt_cdr_partition ?
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(time)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ?
 			string(" PARTITION BY RANGE (to_days(time))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(time)(\
@@ -10822,6 +10849,9 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 			if(typeTables & tt_main) {
 				tables.push_back("sip_msg");
 			}
+			if(typeTables & tt_child) {
+				tables.push_back("sip_msg_resp");
+			}
 		}
 		if(typeTables2 == tt2_na || typeTables2 & tt2_sip_msg_dynamic) {
 			if(typeTables & tt_child) {
@@ -10873,6 +10903,8 @@ bool SqlDb_mysql::getReferenceTablesMap(const char *table, map<string, cSqlDbCod
 		(*reftable_map)["response_id"] = cSqlDbCodebook::_cb_sip_response;
 		(*reftable_map)["ua_src_id"] = cSqlDbCodebook::_cb_ua;
 		(*reftable_map)["ua_dst_id"] = cSqlDbCodebook::_cb_ua;
+	} else if(!strcmp(table, "sip_msg_resp")) {
+		(*reftable_map)["response_id"] = cSqlDbCodebook::_cb_sip_response;
 	}
 	return(reftable_map->size() > 0);
 }
@@ -11378,6 +11410,7 @@ void dropMysqlPartitionsCdr() {
 		}
 	}
 	_dropMysqlPartitions("sip_msg", opt_cleandatabase_sip_msg, 0, sqlDb);
+	_dropMysqlPartitions("sip_msg_resp", opt_cleandatabase_sip_msg, 0, sqlDb);
 	if(custom_headers_sip_msg) {
 		list<string> nextTables = custom_headers_sip_msg->getAllNextTables();
 		for(list<string>::iterator iter = nextTables.begin(); iter != nextTables.end(); iter++) {
@@ -12356,6 +12389,7 @@ void cPartitions::fillTables(SqlDb *sqlDb) {
 	addTable("register_time_info", "register_time_info");
 	// SIP_MSG
 	addTable("sip_msg", "sip_msg");
+	addTable("sip_msg", "sip_msg_resp");
 	if(custom_headers_sip_msg) {
 		list<string> nextTables = custom_headers_sip_msg->getAllNextTables();
 		for(list<string>::iterator iter = nextTables.begin(); iter != nextTables.end(); iter++) {
