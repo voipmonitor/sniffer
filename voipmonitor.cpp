@@ -323,6 +323,7 @@ int opt_sip_notify = 0;
 int opt_save_sip_options = 0;
 int opt_save_sip_subscribe = 0;
 int opt_save_sip_notify = 0;
+bool opt_save_sip_msg_responses = false;
 int opt_save_sip_register = 0;
 bool opt_sip_msg_compare_ip_src = true;
 bool opt_sip_msg_compare_ip_dst = true;
@@ -7303,6 +7304,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-options", &opt_save_sip_options));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-subscribe", &opt_save_sip_subscribe));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-notify", &opt_save_sip_notify));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-msg-responses", &opt_save_sip_msg_responses));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-ip-src", &opt_sip_msg_compare_ip_src));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-ip-dst", &opt_sip_msg_compare_ip_dst));

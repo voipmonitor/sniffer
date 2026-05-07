@@ -28,6 +28,7 @@ extern int opt_sip_notify;
 extern int opt_save_sip_options;
 extern int opt_save_sip_subscribe;
 extern int opt_save_sip_notify;
+extern bool opt_save_sip_msg_responses;
 extern cSqlDbData *dbData;
 extern bool opt_time_precision_in_ms;
 extern string opt_whisper_rest_api_mode;
@@ -374,9 +375,18 @@ void cSipMsgRelation::addSipMsg(cSipMsgItem *item, packet_s_process *packetS, cS
 		if(queue_req_resp.size()) {
 			deque<cSipMsgRequestResponse*>::iterator iter;
 			for(iter = queue_req_resp.begin(); iter != queue_req_resp.end(); iter++) {
-				if(!(*iter)->response && 
-				   (*iter)->request->callid == item->callid &&
+				if((*iter)->request->callid == item->callid &&
 				   (*iter)->request->cseq_number == item->cseq_number) {
+					if(opt_save_sip_msg_responses) {
+						cSipMsgRequestResponse::sResponseHistItem h;
+						h.time_us = item->time_us;
+						h.response_number = item->response_number;
+						h.response_string = item->response_string;
+						(*iter)->responses_hist.push_back(h);
+					}
+					if((*iter)->response) {
+						delete (*iter)->response;
+					}
 					(*iter)->response = item;
 					(*iter)->response->parseContent(packetS);
 					(*iter)->parseCustomHeaders(packetS, CustomHeaders::dir_response);
@@ -1077,7 +1087,7 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 			for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
 				if(next_ch_name[i][0]) {
 					next_ch[i].add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "sip_msg_ID");
-					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP +
 						     sqlDbSaveSipMsg->insertQuery(next_ch_name[i], next_ch[i]));
 					existsNextCh = true;
 				}
@@ -1090,6 +1100,35 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 						query_str += MYSQL_ADD_QUERY_END(queryForSaveUseInfo_vect[i]);
 					}
 				}
+			}
+		}
+		if(opt_save_sip_msg_responses && !requestResponse->responses_hist.empty()) {
+			unsigned respIdx = 0;
+			for(list<cSipMsgRequestResponse::sResponseHistItem>::iterator iterResp = requestResponse->responses_hist.begin();
+			    iterResp != requestResponse->responses_hist.end(); iterResp++) {
+				SqlDb_row resp_row;
+				resp_row.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "sip_msg_ID");
+				resp_row.add_calldate(iterResp->time_us, "time", true);
+				resp_row.add(iterResp->time_us, "time_us");
+				resp_row.add(iterResp->response_number, "response_number");
+				if(!iterResp->response_string.empty()) {
+					if(useSetId()) {
+						resp_row.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_sip_response, iterResp->response_string), "response_id");
+					} else {
+						unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, iterResp->response_string.c_str(), false, true);
+						if(_cb_id) {
+							resp_row.add(_cb_id, "response_id");
+						} else {
+							string varName = "@sip_msg_resp_id_" + intToString(respIdx);
+							query_str += MYSQL_ADD_QUERY_END(string("set ") + varName + " = " +
+								     "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterResp->response_string) + ")");
+							resp_row.add(MYSQL_VAR_PREFIX + varName, "response_id");
+						}
+					}
+				}
+				query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP +
+					     sqlDbSaveSipMsg->insertQuery("sip_msg_resp", resp_row));
+				++respIdx;
 			}
 		}
 		if(useNewStore()) {
@@ -1128,11 +1167,26 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 			}
 		}
 		int64_t sipMsgID = sqlDbSaveSipMsg->insert(table, rec);
-		if(sipMsgID > 0)
-		for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
-			if(next_ch_name[i][0]) {
-				next_ch[i].add(sipMsgID, "sip_msg_ID");
-				sqlDbSaveSipMsg->insert(next_ch_name[i], next_ch[i]);
+		if(sipMsgID > 0) {
+			for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
+				if(next_ch_name[i][0]) {
+					next_ch[i].add(sipMsgID, "sip_msg_ID");
+					sqlDbSaveSipMsg->insert(next_ch_name[i], next_ch[i]);
+				}
+			}
+			if(opt_save_sip_msg_responses && !requestResponse->responses_hist.empty()) {
+				for(list<cSipMsgRequestResponse::sResponseHistItem>::iterator iterResp = requestResponse->responses_hist.begin();
+				    iterResp != requestResponse->responses_hist.end(); iterResp++) {
+					SqlDb_row resp_row;
+					resp_row.add((int64_t)sipMsgID, "sip_msg_ID");
+					resp_row.add_calldate(iterResp->time_us, "time", true);
+					resp_row.add(iterResp->time_us, "time_us");
+					resp_row.add(iterResp->response_number, "response_number");
+					if(!iterResp->response_string.empty()) {
+						resp_row.add(dbData->getCbId(cSqlDbCodebook::_cb_sip_response, iterResp->response_string.c_str(), true), "response_id");
+					}
+					sqlDbSaveSipMsg->insert("sip_msg_resp", resp_row);
+				}
 			}
 		}
 	}

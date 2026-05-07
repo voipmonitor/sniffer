@@ -168,6 +168,12 @@ struct sCallDataPcap {
 
 class cSipMsgRequestResponse {
 public:
+	struct sResponseHistItem {
+		u_int64_t time_us;
+		int response_number;
+		string response_string;
+	};
+public:
 	cSipMsgRequestResponse(u_int64_t time_us);
 	~cSipMsgRequestResponse();
 	void openPcap(packet_s_process *packetS, int type);
@@ -206,6 +212,7 @@ public:
 	cSipMsgItem *request;
 	cSipMsgItem *response;
 	list<u_int64_t> next_requests_time_us;
+	list<sResponseHistItem> responses_hist;
 	sCallDataPcap cdp;
 	volatile bool saved_to_db;
 	CustomHeaders::sCH_Content custom_headers_content;
