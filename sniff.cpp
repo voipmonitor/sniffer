@@ -4116,6 +4116,13 @@ inline void new_invite_register__diameter(Call *call, packet_s_process *packetS)
 		if(!sip_from.empty()) {
 			call->setDiameterFromSip(sip_from.c_str());
 		}
+		extern bool opt_diameter_match_user_session_id;
+		if(opt_diameter_match_user_session_id) {
+			const char *callidstr = packetS->callid_long ? packetS->callid_long : packetS->callid;
+			if(callidstr && *callidstr) {
+				call->setDiameterCallid(callidstr);
+			}
+		}
 	}
 }
 
@@ -5085,6 +5092,13 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 			}
 			if(!sip_from.empty()) {
 				call->setDiameterFromSip(sip_from.c_str());
+			}
+			extern bool opt_diameter_match_user_session_id;
+			if(opt_diameter_match_user_session_id) {
+				const char *callidstr = packetS->callid_long ? packetS->callid_long : packetS->callid;
+				if(callidstr && *callidstr) {
+					call->setDiameterCallid(callidstr);
+				}
 			}
 		}
 	} else if(lastSIPresponseNum && IS_SIP_RESXXX(packetS->sip_method)) {
@@ -6505,6 +6519,8 @@ void process_packet_diameter(packet_s_process *packetS) {
 		cout << "public identity: " << diameter.getPublicIdentity(&dataItems) << endl;
 		cout << "session id: " << diameter.getSessionId(&dataItems) << endl;
 		cout << "calling party address: " << diameter.getCallingPartyAddress(&dataItems) << endl;
+		cout << "user session id: " << diameter.getUserSessionId(&dataItems) << endl;
+		cout << "msisdn: " << diameter.getMsisdn(&dataItems) << endl;
 		cout << "------" << endl;
 		dataItems.print();
 	}

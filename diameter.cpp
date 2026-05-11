@@ -5,6 +5,11 @@
 
 extern bool opt_diameter_ignore_domain;
 extern bool opt_diameter_ignore_prefix;
+extern bool opt_diameter_ignore_leading_plus;
+extern bool opt_diameter_match_user_session_id;
+extern bool opt_diameter_match_msisdn;
+extern string opt_diameter_user_session_id_strip_regex;
+extern string opt_diameter_callid_strip_regex;
 extern int opt_diameter_time_overlap;
 
 
@@ -231,6 +236,9 @@ string cDiameter::getPublicIdentity(cDiameterAvpDataItems *dataItems) {
 				publicIdentity = publicIdentity.substr(prefixSeparatorPos + 1);
 			}
 		}
+		if(opt_diameter_ignore_leading_plus && !publicIdentity.empty() && publicIdentity[0] == '+') {
+			publicIdentity = publicIdentity.substr(1);
+		}
 		return(publicIdentity);
 	}
 	return("");
@@ -282,9 +290,74 @@ string cDiameter::getCallingPartyAddress(cDiameterAvpDataItems *dataItems) {
 				callingPartyAddress = callingPartyAddress.substr(prefixSeparatorPos + 1);
 			}
 		}
+		if(opt_diameter_ignore_leading_plus && !callingPartyAddress.empty() && callingPartyAddress[0] == '+') {
+			callingPartyAddress = callingPartyAddress.substr(1);
+		}
 		return(callingPartyAddress);
 	}
 	return("");
+}
+
+string cDiameter::getUserSessionId(cDiameterAvpDataItems *dataItems) {
+	string userSessionId = getValue(830, dataItems);
+	if(!userSessionId.empty()) {
+		if(!opt_diameter_user_session_id_strip_regex.empty()) {
+			userSessionId = reg_strip(userSessionId.c_str(), opt_diameter_user_session_id_strip_regex.c_str(), __FILE__, __LINE__);
+		}
+		return(userSessionId);
+	}
+	return("");
+}
+
+string cDiameter::getMsisdn(cDiameterAvpDataItems *dataItems) {
+	string rslt;
+	bool allocDataItems = false;
+	if(!dataItems) {
+		allocDataItems = true;
+		dataItems = new FILE_LINE(0) cDiameterAvpDataItems;
+		parse(dataItems);
+	}
+	for(list<cDiameterAvpDataItem*>::iterator iter = dataItems->items.begin(); iter != dataItems->items.end(); iter++) {
+		if((*iter)->code == 701 && (*iter)->length > 0 && (*iter)->payload) {
+			rslt = decodeMsisdn((*iter)->payload->data(), (*iter)->payload->size());
+			break;
+		}
+	}
+	if(allocDataItems) {
+		delete dataItems;
+	}
+	return(rslt);
+}
+
+string cDiameter::decodeMsisdn(const u_char *data, unsigned len) {
+	string rslt;
+	if(len == 0) {
+		return(rslt);
+	}
+	if(data[0] >= '0' && data[0] <= '9') {
+		rslt.reserve(len);
+		for(unsigned i = 0; i < len; i++) {
+			if(data[i] < '0' || data[i] > '9') {
+				break;
+			}
+			rslt += (char)data[i];
+		}
+		return(rslt);
+	}
+	rslt.reserve(len * 2);
+	for(unsigned i = 0; i < len; i++) {
+		u_char low = data[i] & 0x0f;
+		u_char high = (data[i] >> 4) & 0x0f;
+		if(low > 9) {
+			break;
+		}
+		rslt += (char)('0' + low);
+		if(high > 9) {
+			break;
+		}
+		rslt += (char)('0' + high);
+	}
+	return(rslt);
 }
 
 string cDiameter::getValue(unsigned code, cDiameterAvpDataItems *dataItems) {
@@ -410,6 +483,12 @@ void cDiameterPacketStack::sQueuePacketsId::set(cDiameterAvpDataItems *dataItems
 	public_identity = diameter.getPublicIdentity(dataItems);
 	session_id = diameter.getSessionId(dataItems);
 	calling_party_address = diameter.getCallingPartyAddress(dataItems);
+	if(opt_diameter_match_user_session_id) {
+		user_session_id = diameter.getUserSessionId(dataItems);
+	}
+	if(opt_diameter_match_msisdn) {
+		msisdn = diameter.getMsisdn(dataItems);
+	}
 }
 
 string cDiameterPacketStack::sQueuePacketsId::print(void *_packets) const {
@@ -431,6 +510,18 @@ string cDiameterPacketStack::sQueuePacketsId::print(void *_packets) const {
 		out_str << "CA: " << calling_party_address << " ";
 		if(std::find(filter_items_values.begin(), filter_items_values.end(), calling_party_address) == filter_items_values.end()) {
 			filter_items_values.push_back(calling_party_address);
+		}
+	}
+	if(!user_session_id.empty()) {
+		out_str << "USI: " << user_session_id << " ";
+		if(std::find(filter_items_values.begin(), filter_items_values.end(), user_session_id) == filter_items_values.end()) {
+			filter_items_values.push_back(user_session_id);
+		}
+	}
+	if(!msisdn.empty()) {
+		out_str << "MS: " << msisdn << " ";
+		if(std::find(filter_items_values.begin(), filter_items_values.end(), msisdn) == filter_items_values.end()) {
+			filter_items_values.push_back(msisdn);
 		}
 	}
 	cDiameterPacketStack::cQueuePackets *packets = (cDiameterPacketStack::cQueuePackets*)_packets;
@@ -543,14 +634,22 @@ bool cDiameterPacketStack::retrieve(eTypeRetrieve type_retrieve, const char *ide
 	lock();
 	list<cQueuePackets*> qpl;
 	map<string, list<cQueuePackets*> >::iterator iter;
-	if(type_retrieve == _tr_from) {
+	switch(type_retrieve) {
+	case _tr_from:
 		if((iter = packet_stack_by_from.find(identity)) != packet_stack_by_from.end()) {
 			qpl = iter->second;
 		}
-	} else {
+		break;
+	case _tr_to:
 		if((iter = packet_stack_by_to.find(identity)) != packet_stack_by_to.end()) {
 			qpl = iter->second;
 		}
+		break;
+	case _tr_callid:
+		if((iter = packet_stack_by_callid.find(identity)) != packet_stack_by_callid.end()) {
+			qpl = iter->second;
+		}
+		break;
 	}
 	if(qpl.size()) {
 		for(list<cQueuePackets*>::iterator iter_qpl = qpl.begin(); iter_qpl != qpl.end(); iter_qpl++) {
@@ -621,6 +720,10 @@ bool cDiameterPacketStack::retrieve_to_sip(list<string> *to_sip, cQueuePackets *
 	return(retrieve(_tr_to, to_sip, packets, from_time, to_time));
 }
 
+bool cDiameterPacketStack::retrieve_callid(list<string> *callid, cQueuePackets *packets, u_int64_t from_time, u_int64_t to_time) {
+	return(retrieve(_tr_callid, callid, packets, from_time, to_time));
+}
+
 void cDiameterPacketStack::cleanup(u_int64_t time_us) {
 	if(!time_us) {
 		time_us = getTimeUS();
@@ -683,6 +786,13 @@ string cDiameterPacketStack::print_packets_stack() {
 			out_str << " - " << (++counter) << " " << iter->first << endl;
 		}
 	}
+	if(packet_stack_by_callid.size()) {
+		out_str << " * packet_stack_by_callid size: " << packet_stack_by_callid.size() << endl;
+		int counter = 0;
+		for(map<string, list<cQueuePackets*> >::iterator iter = packet_stack_by_callid.begin(); iter != packet_stack_by_callid.end(); iter++) {
+			out_str << " - " << (++counter) << " " << iter->first << endl;
+		}
+	}
 	if(hbh_id_to_queue_packets_id.size()) {
 		out_str << " * hbh_id_to_queue_packets_id size: " << hbh_id_to_queue_packets_id.size() << endl;
 	}
@@ -692,14 +802,18 @@ string cDiameterPacketStack::print_packets_stack() {
 
 bool cDiameterPacketStack::check_used(const sQueuePacketsId *queue_packets_id) {
 	extern Calltable *calltable;
-	return((!queue_packets_id->public_identity.empty() && 
+	return((!queue_packets_id->public_identity.empty() &&
 		(calltable->find_by_diameter_to_sip(queue_packets_id->public_identity.c_str()) != NULL ||
 		 calltable->find_by_diameter_from_sip(queue_packets_id->public_identity.c_str()) != NULL)) ||
-	       (!queue_packets_id->session_id.empty() && 
-		(calltable->find_by_diameter_to_sip(queue_packets_id->session_id.c_str()) != NULL || 
+	       (!queue_packets_id->session_id.empty() &&
+		(calltable->find_by_diameter_to_sip(queue_packets_id->session_id.c_str()) != NULL ||
 		 calltable->find_by_diameter_from_sip(queue_packets_id->session_id.c_str()) != NULL)) ||
-	       (!queue_packets_id->calling_party_address.empty() && 
-		calltable->find_by_diameter_from_sip(queue_packets_id->calling_party_address.c_str()) != NULL));
+	       (!queue_packets_id->calling_party_address.empty() &&
+		calltable->find_by_diameter_from_sip(queue_packets_id->calling_party_address.c_str()) != NULL) ||
+	       (!queue_packets_id->user_session_id.empty() &&
+		calltable->find_by_diameter_callid(queue_packets_id->user_session_id.c_str()) != NULL) ||
+	       (!queue_packets_id->msisdn.empty() &&
+		calltable->find_by_diameter_to_sip(queue_packets_id->msisdn.c_str()) != NULL));
 }
 
 void cDiameterPacketStack::addFindIndexes(cQueuePackets *queue_packets) {
@@ -714,6 +828,12 @@ void cDiameterPacketStack::addFindIndexes(cQueuePackets *queue_packets) {
 	if(!queue_packets->id.calling_party_address.empty()) {
 		addFindIndex(queue_packets, &packet_stack_by_from, queue_packets->id.calling_party_address.c_str());
 	}
+	if(!queue_packets->id.user_session_id.empty()) {
+		addFindIndex(queue_packets, &packet_stack_by_callid, queue_packets->id.user_session_id.c_str());
+	}
+	if(!queue_packets->id.msisdn.empty()) {
+		addFindIndex(queue_packets, &packet_stack_by_to, queue_packets->id.msisdn.c_str());
+	}
 }
 
 void cDiameterPacketStack::addFindIndex(cQueuePackets *queue_packets, map<string, list<cQueuePackets*> > *dia_map, const char *index) {
@@ -723,7 +843,6 @@ void cDiameterPacketStack::addFindIndex(cQueuePackets *queue_packets, map<string
 }
 
 void cDiameterPacketStack::eraseFindIndexes(cQueuePackets *queue_packets) {
-	map<string, cQueuePackets*>::iterator iter;
 	if(!queue_packets->id.public_identity.empty()) {
 		eraseFindIndex(queue_packets, &packet_stack_by_to, queue_packets->id.public_identity.c_str());
 		eraseFindIndex(queue_packets, &packet_stack_by_from, queue_packets->id.public_identity.c_str());
@@ -734,6 +853,12 @@ void cDiameterPacketStack::eraseFindIndexes(cQueuePackets *queue_packets) {
 	}
 	if(!queue_packets->id.calling_party_address.empty()) {
 		eraseFindIndex(queue_packets, &packet_stack_by_from, queue_packets->id.calling_party_address.c_str());
+	}
+	if(!queue_packets->id.user_session_id.empty()) {
+		eraseFindIndex(queue_packets, &packet_stack_by_callid, queue_packets->id.user_session_id.c_str());
+	}
+	if(!queue_packets->id.msisdn.empty()) {
+		eraseFindIndex(queue_packets, &packet_stack_by_to, queue_packets->id.msisdn.c_str());
 	}
 }
 

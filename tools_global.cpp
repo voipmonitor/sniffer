@@ -1908,6 +1908,36 @@ string reg_replace(const char *str, const char *pattern, const char *replace, co
 	return("");
 }
 
+string reg_strip(const char *str, const char *pattern, const char *file, int line) {
+	if(!str || !*str) {
+		return(str ? str : "");
+	}
+	regex_t re;
+	if(regcomp(&re, pattern, REG_EXTENDED | REG_ICASE) != 0) {
+		static u_int64_t lastTimeSyslog = 0;
+		u_int64_t actTime = getTimeMS();
+		if(actTime - 1000 > lastTimeSyslog) {
+			if(file) {
+				syslog(LOG_ERR, "regcomp %s error in reg_strip - call from %s : %i", pattern, file, line);
+			} else {
+				syslog(LOG_ERR, "regcomp %s error in reg_strip", pattern);
+			}
+			lastTimeSyslog = actTime;
+		}
+		return(str);
+	}
+	regmatch_t match[1];
+	memset(match, 0, sizeof(match));
+	int status = regexec(&re, str, 1, match, 0);
+	regfree(&re);
+	if(status != 0 || match[0].rm_so < 0 || match[0].rm_eo <= match[0].rm_so) {
+		return(str);
+	}
+	string rslt = str;
+	rslt.erase(match[0].rm_so, match[0].rm_eo - match[0].rm_so);
+	return(rslt);
+}
+
 bool reg_pattern_contain_subresult(const char *pattern) {
 	const char *begin = NULL;
 	while((begin = strchr(begin ? begin + 1 : pattern, '(')) != NULL) {

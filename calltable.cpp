@@ -11709,6 +11709,7 @@ Calltable::Calltable(SqlDb *sqlDb) {
 	_sync_lock_calls_mergeMAP = 0;
 	_sync_lock_calls_diameter_from_sip_listMAP = 0;
 	_sync_lock_calls_diameter_to_sip_listMAP = 0;
+	_sync_lock_calls_diameter_callid_listMAP = 0;
 	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
 	_sync_lock_conference_calls_map = 0;
 	#endif
@@ -14958,6 +14959,10 @@ void Call::setDiameterFromSip(const char *from_sip) {
 			from_sip = pointerToPrefixSeparator + 1;
 		}
 	}
+	extern bool opt_diameter_ignore_leading_plus;
+	if(opt_diameter_ignore_leading_plus && *from_sip == '+') {
+		from_sip += 1;
+	}
 	calltable->lock_calls_diameter_from_sip_listMAP();
 	diameter_from_sip[from_sip] = true;
 	calltable->calls_diameter_from_sip_listMAP[from_sip] = this;
@@ -14979,10 +14984,30 @@ void Call::setDiameterToSip(const char *to_sip) {
 			to_sip = pointerToPrefixSeparator + 1;
 		}
 	}
+	extern bool opt_diameter_ignore_leading_plus;
+	if(opt_diameter_ignore_leading_plus && *to_sip == '+') {
+		to_sip += 1;
+	}
 	calltable->lock_calls_diameter_to_sip_listMAP();
 	diameter_to_sip[to_sip] = true;
 	calltable->calls_diameter_to_sip_listMAP[to_sip] = this;
 	calltable->unlock_calls_diameter_to_sip_listMAP();
+}
+
+void Call::setDiameterCallid(const char *callid) {
+	extern string opt_diameter_callid_strip_regex;
+	string callid_normalized;
+	if(!opt_diameter_callid_strip_regex.empty()) {
+		callid_normalized = reg_strip(callid, opt_diameter_callid_strip_regex.c_str(), __FILE__, __LINE__);
+		callid = callid_normalized.c_str();
+	}
+	if(!*callid) {
+		return;
+	}
+	calltable->lock_calls_diameter_callid_listMAP();
+	diameter_callid[callid] = true;
+	calltable->calls_diameter_callid_listMAP[callid] = this;
+	calltable->unlock_calls_diameter_callid_listMAP();
 }
 
 void Call::getDiameterFromSip(list<string> *from_sip) {
@@ -14994,6 +15019,12 @@ void Call::getDiameterFromSip(list<string> *from_sip) {
 void Call::getDiameterToSip(list<string> *to_sip) {
 	for(map<string, bool>::iterator iter = diameter_to_sip.begin(); iter != diameter_to_sip.end(); iter++) {
 		to_sip->push_back(iter->first);
+	}
+}
+
+void Call::getDiameterCallid(list<string> *callid) {
+	for(map<string, bool>::iterator iter = diameter_callid.begin(); iter != diameter_callid.end(); iter++) {
+		callid->push_back(iter->first);
 	}
 }
 
@@ -15019,11 +15050,24 @@ void Call::clearDiameterToSip() {
 	calltable->unlock_calls_diameter_to_sip_listMAP();
 }
 
+void Call::clearDiameterCallid() {
+	calltable->lock_calls_diameter_callid_listMAP();
+	for(map<string, bool>::iterator iter = diameter_callid.begin(); iter != diameter_callid.end(); iter++) {
+		map<string, Call*>::iterator iter_c = calltable->calls_diameter_callid_listMAP.find(iter->first);
+		if(iter_c != calltable->calls_diameter_callid_listMAP.end()) {
+			calltable->calls_diameter_callid_listMAP.erase(iter_c);
+		}
+	}
+	calltable->unlock_calls_diameter_callid_listMAP();
+}
+
 void Call::moveDiameterPacketsToPcap(bool enableSave) {
 	bool use_retrieve_from_sip = false;
 	bool use_retrieve_to_sip = false;
+	bool use_retrieve_callid = false;
 	string retrieve_from_sip_hbh_str;
 	string retrieve_to_sip_hbh_str;
+	string retrieve_callid_hbh_str;
 	list<string> from_sip;
 	getDiameterFromSip(&from_sip);
 	if(from_sip.size()) {
@@ -15062,13 +15106,34 @@ void Call::moveDiameterPacketsToPcap(bool enableSave) {
 			use_retrieve_to_sip = true;
 		}
 	}
+	list<string> callid;
+	getDiameterCallid(&callid);
+	if(callid.size()) {
+		extern cDiameterPacketStack diameter_packet_stack;
+		cDiameterPacketStack::cQueuePackets packets;
+		if(diameter_packet_stack.retrieve_callid(&callid, &packets, first_packet_time_us, get_last_packet_time_us()) && packets.packets.size()) {
+			if(sverb.diameter_assign) {
+				retrieve_callid_hbh_str = packets.hbh_str();
+			}
+			for(list<cDiameterPacketStack::sPacket>::iterator iter = packets.packets.begin(); iter != packets.packets.end(); iter++) {
+				if(enableSave) {
+					packet_s_process *packetS = (packet_s_process*)iter->packet;
+					save_packet(this, packetS, _t_packet_diameter);
+				}
+			}
+			packets.destroy_packets();
+			use_retrieve_callid = true;
+		}
+	}
 	clearDiameterFromSip();
 	clearDiameterToSip();
+	clearDiameterCallid();
 	if(sverb.diameter_assign &&
-	   (use_retrieve_from_sip || use_retrieve_to_sip)) {
-		cout << "diameters in call " << call_id << " " 
+	   (use_retrieve_from_sip || use_retrieve_to_sip || use_retrieve_callid)) {
+		cout << "diameters in call " << call_id << " "
 		     << (use_retrieve_from_sip ? "FROM " + retrieve_from_sip_hbh_str + " " : "")
-		     <<	(use_retrieve_to_sip ? "TO " + retrieve_to_sip_hbh_str + " " : "")
+		     << (use_retrieve_to_sip ? "TO " + retrieve_to_sip_hbh_str + " " : "")
+		     << (use_retrieve_callid ? "CALLID " + retrieve_callid_hbh_str + " " : "")
 		     << endl;
 	}
 }

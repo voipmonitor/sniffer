@@ -3063,10 +3063,13 @@ public:
 	}
 	void setDiameterFromSip(const char *from_sip);
 	void setDiameterToSip(const char *to_sip);
+	void setDiameterCallid(const char *callid);
 	void getDiameterFromSip(list<string> *from_sip);
 	void getDiameterToSip(list<string> *to_sip);
+	void getDiameterCallid(list<string> *callid);
 	void clearDiameterFromSip();
 	void clearDiameterToSip();
+	void clearDiameterCallid();
 	void moveDiameterPacketsToPcap(bool enableSave = true);
 	void set_pcap_dump_error(int pcap_dump_error) {
 		this->pcap_dump_error |= pcap_dump_error;
@@ -3104,6 +3107,7 @@ private:
 	int payload_rslt;
 	map<string, bool> diameter_from_sip;
 	map<string, bool> diameter_to_sip;
+	map<string, bool> diameter_callid;
 	list<sTextDataItem*> text_data;
 	list<sPrematureResponse> *prematureResponses;
 public:
@@ -3499,6 +3503,7 @@ public:
 	map<string, Call*> calls_mergeMAP;
 	map<string, Call*> calls_diameter_from_sip_listMAP;
 	map<string, Call*> calls_diameter_to_sip_listMAP;
+	map<string, Call*> calls_diameter_callid_listMAP;
 	map<string, Call*> conference_calls_map;
 	map<string, Call*> registers_listMAP;
 	map<d_item<vmIP>, Call*> skinny_ipTuples;
@@ -3581,6 +3586,10 @@ public:
 		extern unsigned int opt_lock_calls_usleep;
 		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_diameter_to_sip_listMAP, opt_lock_calls_usleep);
 	}
+	void lock_calls_diameter_callid_listMAP() {
+		extern unsigned int opt_lock_calls_usleep;
+		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_diameter_callid_listMAP, opt_lock_calls_usleep);
+	}
 	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
 	void lock_conference_calls_map() {
 		extern unsigned int opt_lock_calls_usleep;
@@ -3630,6 +3639,7 @@ public:
 	void unlock_calls_mergeMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_mergeMAP); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ }
 	void unlock_calls_diameter_from_sip_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_diameter_from_sip_listMAP); }
 	void unlock_calls_diameter_to_sip_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_diameter_to_sip_listMAP); }
+	void unlock_calls_diameter_callid_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_diameter_callid_listMAP); }
 	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
 	void unlock_conference_calls_map() { __SYNC_UNLOCK(this->_sync_lock_conference_calls_map); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ }
 	#endif
@@ -3936,6 +3946,16 @@ public:
 		unlock_calls_diameter_to_sip_listMAP();
 		return(rslt_call);
 	}
+	Call *find_by_diameter_callid(const char *callid) {
+		Call *rslt_call = NULL;
+		lock_calls_diameter_callid_listMAP();
+		map<string, Call*>::iterator iter = calls_diameter_callid_listMAP.find(callid);
+		if(iter != calls_diameter_callid_listMAP.end()) {
+			rslt_call = iter->second;
+		}
+		unlock_calls_diameter_callid_listMAP();
+		return(rslt_call);
+	}
 	Ss7 *find_by_ss7_id(string *ss7_id) {
 		Ss7 *rslt_ss7 = NULL;
 		lock_ss7_listMAP();
@@ -4156,6 +4176,7 @@ private:
 	volatile int _sync_lock_calls_mergeMAP;
 	volatile int _sync_lock_calls_diameter_from_sip_listMAP;
 	volatile int _sync_lock_calls_diameter_to_sip_listMAP;
+	volatile int _sync_lock_calls_diameter_callid_listMAP;
 	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
 	volatile int _sync_lock_conference_calls_map;
 	#endif

@@ -95,6 +95,9 @@ public:
 	string getPublicIdentity(cDiameterAvpDataItems *dataItems = NULL);
 	string getSessionId(cDiameterAvpDataItems *dataItems = NULL);
 	string getCallingPartyAddress(cDiameterAvpDataItems *dataItems = NULL);
+	string getUserSessionId(cDiameterAvpDataItems *dataItems = NULL);
+	string getMsisdn(cDiameterAvpDataItems *dataItems = NULL);
+	static string decodeMsisdn(const u_char *data, unsigned len);
 	string getValue(unsigned code, cDiameterAvpDataItems *dataItems = NULL);
 	int getValues(unsigned code, list<string> *values, cDiameterAvpDataItems *dataItems = NULL);
 	void parse(cDiameterAvpDataItems *dataItems);
@@ -120,7 +123,8 @@ class cDiameterPacketStack {
 public:
 	enum eTypeRetrieve {
 		_tr_from,
-		_tr_to
+		_tr_to,
+		_tr_callid
 	};
 	struct sPacket {
 		void *packet;
@@ -144,24 +148,34 @@ public:
 		string public_identity;
 		string session_id;
 		string calling_party_address;
+		string user_session_id;
+		string msisdn;
 		void set(cDiameterAvpDataItems *dataItems);
 		string print(void *packets) const;
 		bool isSet() {
 			return(!public_identity.empty() ||
 			       !session_id.empty() ||
-			       !calling_party_address.empty());
+			       !calling_party_address.empty() ||
+			       !user_session_id.empty() ||
+			       !msisdn.empty());
 		}
-		bool operator == (const sQueuePacketsId& other) const { 
+		bool operator == (const sQueuePacketsId& other) const {
 			return(this->public_identity == other.public_identity &&
 			       this->session_id == other.session_id &&
-			       this->calling_party_address == other.calling_party_address); 
+			       this->calling_party_address == other.calling_party_address &&
+			       this->user_session_id == other.user_session_id &&
+			       this->msisdn == other.msisdn);
 		}
-		bool operator < (const sQueuePacketsId& other) const { 
-			return(this->public_identity < other.public_identity ? true : 
+		bool operator < (const sQueuePacketsId& other) const {
+			return(this->public_identity < other.public_identity ? true :
 			       this->public_identity > other.public_identity ? false :
-			       this->session_id < other.session_id ? true : 
+			       this->session_id < other.session_id ? true :
 			       this->session_id > other.session_id ? false :
-			       this->calling_party_address < other.calling_party_address); 
+			       this->calling_party_address < other.calling_party_address ? true :
+			       this->calling_party_address > other.calling_party_address ? false :
+			       this->user_session_id < other.user_session_id ? true :
+			       this->user_session_id > other.user_session_id ? false :
+			       this->msisdn < other.msisdn);
 		}
 	};
 	class cQueuePackets {
@@ -184,6 +198,7 @@ public:
 	bool retrieve(eTypeRetrieve type_retrieve, list<string> *identity, cQueuePackets *packets, u_int64_t from_time, u_int64_t to_time);
 	bool retrieve_from_sip(list<string> *from_sip, cQueuePackets *packets, u_int64_t from_time, u_int64_t to_time);
 	bool retrieve_to_sip(list<string> *to_sip, cQueuePackets *packets, u_int64_t from_time, u_int64_t to_time);
+	bool retrieve_callid(list<string> *callid, cQueuePackets *packets, u_int64_t from_time, u_int64_t to_time);
 	void cleanup(u_int64_t time_us = 0);
 	string print_packets_stack();
 private:
@@ -203,6 +218,7 @@ public:
 	map<sQueuePacketsId, cQueuePackets*> packet_stack;
 	map<string, list<cQueuePackets*> > packet_stack_by_from;
 	map<string, list<cQueuePackets*> > packet_stack_by_to;
+	map<string, list<cQueuePackets*> > packet_stack_by_callid;
 	map<u_int32_t, cQueuePackets*> hbh_id_to_queue_packets_id;
 	unsigned age_expiration_s;
 	unsigned cleanup_period_s;
