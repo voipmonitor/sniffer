@@ -3109,7 +3109,7 @@ TcpReassembly::~TcpReassembly() {
 		}
 		this->dataCallback->writeToDb(true);
 	}
-	map<TcpReassemblyLink_id, TcpReassemblyLink*>::iterator iter;
+	TcpReassembly::tcp_links_map_t::iterator iter;
 	for(iter = this->links.begin(); iter != this->links.end();) {
 		delete iter->second;
 		this->links.erase(iter++);
@@ -3227,7 +3227,7 @@ string TcpReassembly::getCpuUsagePerc(int pstatDataIndex) {
 			unsigned maxStreams = 0;
 			unsigned sumPackets = 0;
 			unsigned maxPackets = 0;
-			map<TcpReassemblyLink_id, TcpReassemblyLink*>::iterator iter_link;
+			TcpReassembly::tcp_links_map_t::iterator iter_link;
 			for(iter_link = this->links.begin(); iter_link != this->links.end(); iter_link++) {
 				TcpReassemblyLink *link = iter_link->second;
 				unsigned streamsCount = link->queue_by_ack.size();
@@ -3632,7 +3632,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 	this->act_time_from_header = getTimeMS(header);
 	
 	TcpReassemblyLink *link = NULL;
-	map<TcpReassemblyLink_id, TcpReassemblyLink*>::iterator iter;
+	TcpReassembly::tcp_links_map_t::iterator iter;
 	TcpReassemblyStream::eDirection direction = TcpReassemblyStream::DIRECTION_TO_DEST;
 	TcpReassemblyLink_id id(header_ip->get_saddr(), header_ip->get_daddr(), header_tcp.get_source(), header_tcp.get_dest());
 	TcpReassemblyLink_id idr(header_ip->get_daddr(), header_ip->get_saddr(), header_tcp.get_dest(), header_tcp.get_source());
@@ -3802,7 +3802,7 @@ void TcpReassembly::cleanup(bool all) {
 		(*_debug_stream) << "cleanup all " << getTypeString() << endl;
 	}
 	list<TcpReassemblyLink*> links;
-	map<TcpReassemblyLink_id, TcpReassemblyLink*>::iterator iter;
+	TcpReassembly::tcp_links_map_t::iterator iter;
 	this->lock_links();
 	if(all && opt_pb_read_from_file[0] && ENABLE_DEBUG(type, _debug_cleanup)) {
 		(*_debug_stream)
@@ -3957,7 +3957,7 @@ void TcpReassembly::cleanup_simple(bool all, bool lock) {
 	}
 	if(simpleByAck) {
 		u_int64_t act_time = this->act_time_from_header;
-		map<TcpReassemblyLink_id, TcpReassemblyLink*>::iterator iterLink;
+		TcpReassembly::tcp_links_map_t::iterator iterLink;
 		if(lock) lock_links();
 		for(iterLink = this->links.begin(); iterLink != this->links.end(); ) {
 			TcpReassemblyLink *link = iterLink->second;
@@ -4009,7 +4009,7 @@ void TcpReassembly::cleanup_simple(bool all, bool lock) {
 	} else {
 		size_t counter = 0;
 		u_int64_t time_correction = 0;
-		map<TcpReassemblyLink_id, TcpReassemblyLink*>::iterator iter;
+		TcpReassembly::tcp_links_map_t::iterator iter;
 		for(iter = this->links.begin(); iter != this->links.end(); ) {
 			++counter;
 			if(!(counter % 1000)) {
@@ -4084,7 +4084,7 @@ bool TcpReassembly::enableStop() {
 
 void TcpReassembly::printContent() {
 	std::ostream *__debug_stream = _debug_stream ? _debug_stream : &cout;
-	map<TcpReassemblyLink_id, TcpReassemblyLink*>::iterator iter;
+	TcpReassembly::tcp_links_map_t::iterator iter;
 	int counter = 0;
 	for(iter = this->links.begin(); iter != this->links.end(); iter++) {
 		(*__debug_stream)

@@ -179,27 +179,29 @@ struct vmIP {
 	inline bool operator != (const vmIP& other) const {
 		return(!(*this == other));
 	}
-	inline bool operator < (const vmIP& other) const { 
+	inline bool operator < (const vmIP& other) const {
+		return(this->compare(other) < 0);
+	}
+	inline bool operator <= (const vmIP& other) const {
+		return(this->compare(other) <= 0);
+	}
+	inline bool operator > (const vmIP& other) const {
+		return(this->compare(other) > 0);
+	}
+	inline bool operator >= (const vmIP& other) const {
+		return(this->compare(other) >= 0);
+	}
+	inline int compare(const vmIP& other) const {
 		#if VM_IPV6
-		return(this->v6 != other.v6 ?
-			this->v6 < other.v6 :
-			(this->v6 ?
-			  memcmp(&this->ip.v6, &other.ip.v6, sizeof(this->ip.v6)) < 0 :
-			  this->ip.v4.n < other.ip.v4.n)); 
-		#else
-		return(this->ip.v4.n < other.ip.v4.n);
+		if(this->v6 != other.v6) {
+			return(this->v6 ? 1 : -1);
+		}
+		if(this->v6) {
+			return(memcmp(&this->ip.v6, &other.ip.v6, sizeof(this->ip.v6)));
+		}
 		#endif
-	}
-	inline bool operator <= (const vmIP& other) const { 
-		return(*this < other ||
-		       *this == other); 
-	}
-	inline bool operator > (const vmIP& other) const { 
-		return(!(*this <= other));
-	}
-	inline bool operator >= (const vmIP& other) const { 
-		return(*this > other ||
-		       *this == other); 
+		return(this->ip.v4.n < other.ip.v4.n ? -1 :
+		       this->ip.v4.n > other.ip.v4.n ? 1 : 0);
 	}
 	inline bool isSet() const {
 		#if VM_IPV6
@@ -368,6 +370,15 @@ struct vmIP {
 			return(ip.v6.__in6_u.__u6_addr32[3]);
 		}
 		#endif
+	}
+	inline size_t hash() const {
+		#if VM_IPV6
+		if(v6) {
+			const u_int32_t *p = ip.v6.__in6_u.__u6_addr32;
+			return((size_t)p[0] ^ ((size_t)p[1] << 13) ^ ((size_t)p[2] << 27) ^ ((size_t)p[3] << 41));
+		}
+		#endif
+		return((size_t)ip.v4.n);
 	}
 	inline void *getPointerToIP() {
 		#if VM_IPV6

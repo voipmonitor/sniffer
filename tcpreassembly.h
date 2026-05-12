@@ -6,6 +6,14 @@
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <algorithm>
+#include <map>
+
+#if __cplusplus >= 201103L
+	#define TCPREASSEMBLY_FAST_LINKS 1
+	#include <unordered_map>
+#else
+	#define TCPREASSEMBLY_FAST_LINKS 0
+#endif
 
 #include "sniff.h"
 #include "pcap_queue_block.h"
@@ -235,11 +243,11 @@ public:
 };
 
 struct TcpReassemblyLink_id {
-	TcpReassemblyLink_id(vmIP ip_src = 0, vmIP ip_dst = 0, 
+	TcpReassemblyLink_id(vmIP ip_src = 0, vmIP ip_dst = 0,
 			     vmPort port_src = 0, vmPort port_dst = 0) {
 		this->ip_src = ip_src;
 		this->ip_dst = ip_dst;
-		this->port_src = port_src; 
+		this->port_src = port_src;
 		this->port_dst = port_dst;
 	}
 	void reverse() {
@@ -255,11 +263,30 @@ struct TcpReassemblyLink_id {
 	vmPort port_src;
 	vmPort port_dst;
 	bool operator < (const TcpReassemblyLink_id& other) const {
-		return((this->ip_src < other.ip_src) ? 1 : (this->ip_src > other.ip_src) ? 0 :
-		       (this->ip_dst < other.ip_dst) ? 1 : (this->ip_dst > other.ip_dst) ? 0 :
-		       (this->port_src < other.port_src) ? 1 : (this->port_src > other.port_src) ? 0 :
-		       (this->port_dst < other.port_dst));
+		int c = this->ip_src.compare(other.ip_src);
+		if(c) return(c < 0);
+		c = this->ip_dst.compare(other.ip_dst);
+		if(c) return(c < 0);
+		if(this->port_src != other.port_src) return(this->port_src < other.port_src);
+		return(this->port_dst < other.port_dst);
 	}
+	bool operator == (const TcpReassemblyLink_id& other) const {
+		return(this->port_src == other.port_src &&
+		       this->port_dst == other.port_dst &&
+		       this->ip_src == other.ip_src &&
+		       this->ip_dst == other.ip_dst);
+	}
+	inline size_t hash() const {
+		size_t h = this->ip_src.hash();
+		h = (h << 13) ^ (h >> 51) ^ this->ip_dst.hash();
+		h = (h << 7) ^ (h >> 57) ^ ((size_t)(u_int16_t)this->port_src.port << 16) ^ (size_t)(u_int16_t)this->port_dst.port;
+		return(h);
+	}
+	struct TcpReassemblyLink_id_hasher {
+		inline size_t operator () (const TcpReassemblyLink_id &id) const {
+			return(id.hash());
+		}
+	};
 };
 
 class TcpReassemblyStream_packet {
@@ -1159,9 +1186,15 @@ private:
 	void unlock_cleanup() {
 		__SYNC_UNLOCK(this->_sync_cleanup);
 	}
+public:
+	#if TCPREASSEMBLY_FAST_LINKS
+	typedef std::unordered_map<TcpReassemblyLink_id, TcpReassemblyLink*, TcpReassemblyLink_id::TcpReassemblyLink_id_hasher> tcp_links_map_t;
+	#else
+	typedef std::map<TcpReassemblyLink_id, TcpReassemblyLink*> tcp_links_map_t;
+	#endif
 private:
 	eType type;
-	map<TcpReassemblyLink_id, TcpReassemblyLink*> links;
+	tcp_links_map_t links;
 	volatile int _sync_links;
 	volatile int _sync_push;
 	volatile int _sync_cleanup;
