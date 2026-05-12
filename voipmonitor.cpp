@@ -9297,6 +9297,9 @@ void set_context_config() {
 		} else if(opt_dpdk_pkt_burst >= 1024 && !CONFIG.isSet("dpdk_worker_slave_thread")) {
 			opt_dpdk_worker_slave_thread = true;
 		}
+		if(opt_dpdk_mbufs_in_packetbuffer && opt_dpdk_copy_packetbuffer) {
+			opt_dpdk_copy_packetbuffer = 0;
+		}
 	}
 	
 	if(opt_use_dpdk || opt_t2_boost > 1) {

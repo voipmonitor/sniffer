@@ -1453,7 +1453,7 @@ static int rte_worker_thread(void *arg) {
 					bool filled = false;
 					#if DPDK_DEBUG
 					if(per_1_packet) {
-						dpdk->config.callback.packet_allocation(dpdk->config.callback.packet_user, dpdk->pkts_len[pkts_i]);
+						dpdk->config.callback.packet_allocation(dpdk->config.callback.packet_user, dpdk->pkts_len[pkts_i], true, true);
 						dpdk->pb_headers[pkts_i] = (void*)_dd->pcap_header_plus2; 
 						dpdk->pb_packets[pkts_i] = (void*)_dd->headerPacket.packet;
 						dpdk->batch_start = pkts_i;

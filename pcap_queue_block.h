@@ -223,11 +223,29 @@ struct pcap_pkthdr_plus2 : public pcap_pkthdr_plus {
 	u_int8_t ignore;
 };
 
-struct pcap_block_store {
+struct pcap_block_store_copydata {
 	enum header_mode {
 		plus,
 		plus2
 	};
+	header_mode hm;
+	size_t size;
+	size_t size_compress;
+	size_t size_packets;
+	size_t count;
+	bool full;
+	uint16_t dlink;
+	int16_t sensor_id;
+	vmIP sensor_ip;
+	char ifname[10];
+	u_int32_t block_counter;
+	bool require_confirmation;
+	u_int idFileStore;
+	u_int64_t filePosition;
+	u_int64_t timestampMS;
+};
+
+struct pcap_block_store : public pcap_block_store_copydata {
 	enum compress_method {
 		compress_method_default,
 		snappy,
@@ -550,30 +568,16 @@ struct pcap_block_store {
 		       #endif
 		);
 	}
-	header_mode hm;
-	bool dpdk;
 	uint32_t *offsets;
+	size_t offsets_size;
+	u_char *block;
+	size_t block_alloc_size;
+	bool dpdk;
 	unsigned dpdk_data_size;
 	s_dpdk_data *dpdk_data;
-	u_char *block;
-	size_t size;
-	size_t size_compress;
-	size_t size_packets;
-	size_t count;
-	size_t offsets_size;
-	bool full;
-	uint16_t dlink;
-	int16_t sensor_id;
-	vmIP sensor_ip;
-	char ifname[10];
-	u_int32_t block_counter;
-	bool require_confirmation;
 	u_char *restoreBuffer;
 	size_t restoreBufferSize;
 	size_t restoreBufferAllocSize;
-	u_int idFileStore;
-	u_int64_t filePosition;
-	u_int64_t timestampMS;
 	u_int64_t pushToTrashMS;
 	volatile int _sync_packet_lock;
 	volatile int _destroy_flag;

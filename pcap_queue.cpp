@@ -339,6 +339,7 @@ u_int16_t register_pcap_handle(pcap_t *handle) {
 void pcap_block_store::init(bool prefetch) {
 	if(!this->dpdk) {
 		this->block = new FILE_LINE(0) u_char[opt_pcap_queue_block_max_size];
+		this->block_alloc_size = opt_pcap_queue_block_max_size;
 		if(prefetch) {
 			size_t offset = 0;
 			while(offset < opt_pcap_queue_block_max_size) {
@@ -375,19 +376,18 @@ void pcap_block_store::clear(bool prefetch) {
 }
 
 void pcap_block_store::copy(pcap_block_store *from) {
-	count = from->count;
-	size = from->size;
-	size_packets = from->size_packets;
-	if(!block) {
-		block = new FILE_LINE(0) u_char[opt_pcap_queue_block_max_size];
+	*(pcap_block_store_copydata*)this = *(pcap_block_store_copydata*)from;
+	if(!this->block) {
+		this->block = new FILE_LINE(0) u_char[opt_pcap_queue_block_max_size];
+		this->block_alloc_size = opt_pcap_queue_block_max_size;
 	}
-	dpdk_memcpy(block, from->block, size);
-	if(!offsets || count > offsets_size)  {
-		if(offsets) {
-			delete [] offsets;
+	dpdk_memcpy(this->block, from->block, this->size);
+	if(!this->offsets || this->count > this->offsets_size) {
+		if(this->offsets) {
+			delete [] this->offsets;
 		}
-		offsets = new FILE_LINE(0) uint32_t[from->offsets_size];
-		offsets_size = from->offsets_size;
+		this->offsets = new FILE_LINE(0) uint32_t[from->offsets_size];
+		this->offsets_size = from->offsets_size;
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
 		delete [] this->_sync_packets_lock;
 		this->_sync_packets_lock = new FILE_LINE(0) volatile int8_t[this->offsets_size];
@@ -397,15 +397,15 @@ void pcap_block_store::copy(pcap_block_store *from) {
 		#endif
 		#endif
 	}
-	dpdk_memcpy(offsets, from->offsets, count * sizeof(uint32_t));
-	_sync_packet_lock = 0;
+	dpdk_memcpy(this->offsets, from->offsets, this->count * sizeof(uint32_t));
 	#if DEBUG_SYNC_PCAP_BLOCK_STORE
 	memset((void*)this->_sync_packets_lock, 0, sizeof(int8_t) * this->offsets_size);
 	#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
 	memset((void*)this->_sync_packets_flag, 0, sizeof(int8_t) * this->offsets_size * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH);
 	#endif
 	#endif
-	timestampMS = getTimeMS_rdtsc();
+	this->timestampMS = getTimeMS_rdtsc();
+	this->_sync_packet_lock = 0;
 }
 
 bool pcap_block_store::add_hp(pcap_pkthdr_plus *header, u_char *packet, int memcpy_packet_size) {
@@ -424,6 +424,7 @@ bool pcap_block_store::add_hp(pcap_pkthdr_plus *header, u_char *packet, int memc
 		while(true) {
 			this->block = new FILE_LINE(15004) u_char[opt_pcap_queue_block_max_size];
 			if(this->block) {
+				this->block_alloc_size = opt_pcap_queue_block_max_size;
 				break;
 			}
 			syslog(LOG_ERR, "not enough memory for alloc packetbuffer block");
@@ -532,6 +533,7 @@ bool pcap_block_store::get_add_hp_pointers(pcap_pkthdr_plus2 **header, u_char **
 		while(true) {
 			this->block = new FILE_LINE(15008) u_char[opt_pcap_queue_block_max_size];
 			if(this->block) {
+				this->block_alloc_size = opt_pcap_queue_block_max_size;
 				break;
 			}
 			syslog(LOG_ERR, "not enough memory for alloc packetbuffer block");
@@ -631,6 +633,7 @@ void pcap_block_store::destroy(bool init) {
 		delete [] this->block;
 		this->block = NULL;
 	}
+	this->block_alloc_size = 0;
 	if(this->is_voip) {
 		delete [] this->is_voip;
 		this->is_voip = NULL;
@@ -696,6 +699,7 @@ void pcap_block_store::freeBlock() {
 		delete [] this->block;
 		this->block = NULL;
 	}
+	this->block_alloc_size = 0;
 }
 
 u_char* pcap_block_store::getSaveBuffer(uint32_t block_counter) {
@@ -754,6 +758,7 @@ void pcap_block_store::restoreFromSaveBuffer(u_char *saveBuffer) {
 			__FILE__, __LINE__);
 	size_t sizeBlock = this->getUseSize();
 	this->block = new FILE_LINE(15012) u_char[sizeBlock];
+	this->block_alloc_size = sizeBlock;
 	memcpy_heapsafe(this->block, this->block,
 			saveBuffer + sizeof(pcap_block_store_header) + this->count * sizeof(uint32_t), saveBuffer,
 			sizeBlock,
@@ -928,6 +933,7 @@ bool pcap_block_store::compress_snappy() {
 			#else
 				this->block = (u_char*)realloc(snappyBuff, snappyBuffSize);
 			#endif
+			this->block_alloc_size = snappyBuffSize;
 			this->size_compress = snappyBuffSize;
 			sumPacketsSizeCompress[0] += this->size_compress;
 			return(true);
@@ -957,6 +963,7 @@ bool pcap_block_store::compress_lz4() {
 	if(lz4_size > 0) {
 		delete [] this->block;
 		this->block = new FILE_LINE(15016) u_char[lz4_size];
+		this->block_alloc_size = lz4_size;
 		memcpy_heapsafe(this->block, lz4Buff, lz4_size,
 				__FILE__, __LINE__);
 		delete [] lz4Buff;
@@ -998,6 +1005,7 @@ bool pcap_block_store::uncompress_snappy() {
 		case SNAPPY_OK:
 			delete [] this->block;
 			this->block = snappyBuff;
+			this->block_alloc_size = snappyBuffSize;
 			this->size_compress = 0;
 			return(true);
 		case SNAPPY_INVALID_INPUT:
@@ -1026,6 +1034,7 @@ bool pcap_block_store::uncompress_lz4() {
 	if(LZ4_decompress_fast((char*)this->block, (char*)lz4Buff, this->size) >= 0) {
 		delete [] this->block;
 		this->block = lz4Buff;
+		this->block_alloc_size = lz4BuffSize;
 		this->size_compress = 0;
 		return(true);
 	} else {
@@ -3984,6 +3993,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 		if(!dpdk_activate(dpdkConfig, this->dpdkHandle, error)) {
 			__SYNC_UNLOCK(_sync_start_capture);
 			pcapLinklayerHeaderType = DLT_EN10MB;
+			global_pcap_dlink = pcapLinklayerHeaderType;
 			return(true);
 		} else {
 			if(!error->empty()) {
@@ -6371,6 +6381,21 @@ bool PcapQueue_readFromInterfaceThread::dpdk_check_block(pcap_dispatch_data *dd,
 					cout << " * dpdk_check_block "
 					     << "bad caplen/size " << i << "/" << size_packet_a << "/" << (dd->block->size - dd->block->offsets[i]) << endl;
 				}
+			}
+		}
+		ether_header *eth = NULL;
+		u_int16_t header_ip_offset;
+		u_int16_t protocol;
+		u_int16_t vlan;
+		if(!parseEtherHeader(dd->block->dlink, dd->block->get_packet(i),
+				     &eth, NULL,
+				     header_ip_offset, protocol, vlan) ||
+		   !eth ||
+		   (htons(eth->ether_type) != ETHERTYPE_IP && htons(eth->ether_type) != ETHERTYPE_IPV6)) {
+			rslt = false;
+			if(!only_check && sverb.dpdk) {
+				cout << " * dpdk_check_block "
+				     << "bad ether_type " << i << endl;
 			}
 		}
 	}
@@ -9312,6 +9337,7 @@ void *PcapQueue_readFromFifo::destroyBlocksThreadFunction(void */*arg*/, unsigne
 			buffersControl.sub__pb_trash_size(block->getUseAllSize());
 			if(opt_use_dpdk && opt_dpdk_rotate_packetbuffer &&
 			   (opt_dpdk_copy_packetbuffer || opt_dpdk_prealloc_packetbuffer) &&
+			   block->block_alloc_size == opt_pcap_queue_block_max_size &&
 			   buffersControl.check__pb__add_pool(block->getUseAllSize())) {
 				 buffersControl.add__pb_pool_size(block->getUseAllSize());
 				 lock_blockStorePool();
@@ -10438,6 +10464,7 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 			buffersControl.sub__pb_trash_size(block->getUseAllSize());
 			if(opt_use_dpdk && opt_dpdk_rotate_packetbuffer &&
 			   (opt_dpdk_copy_packetbuffer || opt_dpdk_prealloc_packetbuffer) &&
+			   block->block_alloc_size == opt_pcap_queue_block_max_size &&
 			   buffersControl.check__pb__add_pool(block->getUseAllSize())) {
 				buffersControl.add__pb_pool_size(block->getUseAllSize());
 				lock_blockStorePool();
