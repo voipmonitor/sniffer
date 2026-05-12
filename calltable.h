@@ -3878,6 +3878,17 @@ public:
 		}
 		unlock_skinny_maps();
 	}
+	void remove_from_skinny_ipTuples(vmIP saddr, vmIP daddr, Call *call) {
+		d_item<vmIP> ip2;
+		ip2.items[0] = min(saddr, daddr);
+		ip2.items[1] = max(saddr, daddr);
+		lock_skinny_maps();
+		map<d_item<vmIP>, Call*>::iterator iter = skinny_ipTuples.find(ip2);
+		if(iter != skinny_ipTuples.end() && iter->second == call) {
+			skinny_ipTuples.erase(iter);
+		}
+		unlock_skinny_maps();
+	}
 	void set_skinny_last_callstate(Call *call, vmIP saddr, vmIP daddr, int state) {
 		d_item<vmIP> ip2;
 		ip2.items[0] = min(saddr, daddr);

@@ -1525,6 +1525,10 @@ Call *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 			   previous_state == SKINNY_CONNECTED) {
 				call->set_destroy_call_at(header->ts.tv_sec, 5);
 			}
+			if(previous_state == SKINNY_RINGIN ||
+			   previous_state == SKINNY_RINGOUT) {
+				calltable->remove_from_skinny_ipTuples(saddr, daddr, call);
+			}
 			}
 			break;
 		case SKINNY_RINGOUT:
