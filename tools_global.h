@@ -290,15 +290,17 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 			rslt_useconds = useconds_min;
 		}
 	}
+	u_int64_t start_us = getTimeUS();
+	usleep(rslt_useconds);
+	unsigned int actual_us = (unsigned int)(getTimeUS() - start_us);
 	#if SNIFFER_THREADS_EXT
 	extern sVerbose sverb;
 	if(sverb.sniffer_threads_ext) {
 		void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line);
-		usleep_stats_add(rslt_useconds, !opt_usleep_progressive || counter == (unsigned int)-1, file, line);
+		usleep_stats_add(actual_us, !opt_usleep_progressive || counter == (unsigned int)-1, file, line);
 	}
 	#endif
-	usleep(rslt_useconds);
-	return(rslt_useconds);
+	return(actual_us);
 }
 inline unsigned int usleep(unsigned int useconds, const char *file, int line) {
 	extern unsigned int opt_usleep_force;
@@ -309,15 +311,17 @@ inline unsigned int usleep(unsigned int useconds, const char *file, int line) {
 	if(opt_usleep_minimal && useconds < opt_usleep_minimal) {
 		useconds = opt_usleep_minimal;
 	}
+	u_int64_t start_us = getTimeUS();
+	usleep(useconds);
+	unsigned int actual_us = (unsigned int)(getTimeUS() - start_us);
 	#if SNIFFER_THREADS_EXT
 	extern sVerbose sverb;
 	if(sverb.sniffer_threads_ext) {
 		void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line);
-		usleep_stats_add(useconds, 1, file, line);
+		usleep_stats_add(actual_us, 1, file, line);
 	}
 	#endif
-	usleep(useconds);
-	return(useconds);
+	return(actual_us);
 }
 #endif
 

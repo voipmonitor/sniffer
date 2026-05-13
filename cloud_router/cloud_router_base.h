@@ -46,10 +46,13 @@ using namespace std;
 struct sCloudRouterVerbose {
 	sCloudRouterVerbose() {
 		memset(this, 0, sizeof(*this));
-		start_server = true;
-		start_client = true;
-		connect_command = true;
-		connect_info = true;
+		extern int opt_server_log_suppress;
+		if(!opt_server_log_suppress) {
+			start_server = true;
+			start_client = true;
+			connect_command = true;
+			connect_info = true;
+		}
 		sql_error = true;
 	}
 	bool start_server;

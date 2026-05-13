@@ -17,6 +17,8 @@ sSnifferServerGuiTasks snifferServerGuiTasks;
 sSnifferServerServices *snifferServerServices;
 cSnifferServer *snifferServer;
 
+extern int opt_server_log_suppress;
+
 static bool opt_enable_responses_sender;
 
 
@@ -359,9 +361,11 @@ cSnifferServerConnection::cSnifferServerConnection(cSocket *socket, cSnifferServ
 
 cSnifferServerConnection::~cSnifferServerConnection() {
 	server->unregisterConnectionThread(this);
-	syslog(LOG_NOTICE, "close connection from %s:%i, socket: %i, type connection: %s", 
-	       socket->getIP().c_str(), socket->getPort(), socket->getHandle(),
-	       getTypeConnectionStr().c_str());
+	if(!opt_server_log_suppress) {
+		syslog(LOG_NOTICE, "close connection from %s:%i, socket: %i, type connection: %s",
+		       socket->getIP().c_str(), socket->getPort(), socket->getHandle(),
+		       getTypeConnectionStr().c_str());
+	}
 }
 
 void cSnifferServerConnection::connection_process() {
@@ -698,16 +702,18 @@ void cSnifferServerConnection::cp_service() {
 			break;
 		}
 		if(errors_counter > 100) {
-			ostringstream verbstr;
-			verbstr << "SNIFFER SERVICE STOP (because too many errors): "
-				<< "sensor_id: " << sensor_id;
-			if(!sensor_name.empty()) {
-				verbstr << ", " << "sensor_name: " << sensor_name;
+			if(!opt_server_log_suppress) {
+				ostringstream verbstr;
+				verbstr << "SNIFFER SERVICE STOP (because too many errors): "
+					<< "sensor_id: " << sensor_id;
+				if(!sensor_name.empty()) {
+					verbstr << ", " << "sensor_name: " << sensor_name;
+				}
+				if(!sensor_string.empty()) {
+					verbstr << ", " << "sensor_string: " << sensor_string;
+				}
+				syslog(LOG_INFO, "%s", verbstr.str().c_str());
 			}
-			if(!sensor_string.empty()) {
-				verbstr << ", " << "sensor_string: " << sensor_string;
-			}
-			syslog(LOG_INFO, "%s", verbstr.str().c_str());
 			break;
 		}
 		sSnifferServerGuiTask task = getTask();
@@ -768,7 +774,9 @@ void cSnifferServerConnection::cp_service() {
 				}
 				if(!okSend) {
 					add_rchs_query(rchs_query, false);
-					syslog(LOG_NOTICE, "failed send data to remote chart client - try again after 1s");
+					if(opt_server_log_suppress < 2) {
+						syslog(LOG_NOTICE, "failed send data to remote chart client - try again after 1s");
+					}
 					wait_remote_chart_server_processing_to_time_ms = getTimeMS() + 1000;
 					++errors_counter;
 					continue;
@@ -781,10 +789,14 @@ void cSnifferServerConnection::cp_service() {
 				} else {
 					add_rchs_query(rchs_query, false);
 					if(response.empty()) {
-						syslog(LOG_NOTICE, "failed receive confirmation from remote chart client - try again after 1s");
+						if(opt_server_log_suppress < 2) {
+							syslog(LOG_NOTICE, "failed receive confirmation from remote chart client - try again after 1s");
+						}
 						wait_remote_chart_server_processing_to_time_ms = getTimeMS() + 1000;
 					} else {
-						syslog(LOG_NOTICE, "remote chart client sent error '%s' - try again after 1s", response.c_str());
+						if(opt_server_log_suppress < 2) {
+							syslog(LOG_NOTICE, "remote chart client sent error '%s' - try again after 1s", response.c_str());
+						}
 						wait_remote_chart_server_processing_to_time_ms = getTimeMS() + 1000;
 					}
 					++errors_counter;
@@ -1161,8 +1173,10 @@ bool cSnifferServerConnection::cp_store_check() {
 }
 
 void cSnifferServerConnection::cp_packetbuffer_block() {
-	syslog(LOG_NOTICE, "accept new connection from %s:%i, socket: %i", 
-	       socket->getIP().c_str(), socket->getPort(), socket->getHandle());
+	if(!opt_server_log_suppress) {
+		syslog(LOG_NOTICE, "accept new connection from %s:%i, socket: %i",
+		       socket->getIP().c_str(), socket->getPort(), socket->getHandle());
+	}
 	extern PcapQueue_readFromFifo *pcapQueueQ;
 	while(!pcapQueueQ || !pcapQueueQ->threadInitIsOk()) {
 		USLEEP(10000);
@@ -1175,10 +1189,28 @@ void cSnifferServerConnection::cp_packetbuffer_block() {
 	size_t blockLength;
 	unsigned counter = 0;
 	u_int32_t block_counter = 0;
+	extern cBuffersControl buffersControl;
+	extern uint64_t opt_pcap_queue_store_queue_max_disk_size;
+	extern string opt_pcap_queue_disk_folder;
 	while(!server->isTerminate() &&
 	      (block = socket->readBlock(&blockLength, cSocket::_te_aes, "", counter > 0, 0, 1024 * 1024)) != NULL) {
 		if(is_readend() || !pcapQueueQ) {
 			break;
+		}
+		if(!(opt_pcap_queue_store_queue_max_disk_size && !opt_pcap_queue_disk_folder.empty())) {
+			double heapPerc = buffersControl.getPerc_pb();
+			if(heapPerc > 90) {
+				if(opt_server_log_suppress < 2) {
+					syslog(LOG_NOTICE, "enforce close connection (heap is almost full) from %s:%i",
+					       socket->getIP().c_str(), socket->getPort());
+				}
+				USLEEP(500000);
+				break;
+			} else if(heapPerc > 85) {
+				USLEEP(10000);
+			} else if(heapPerc > 80) {
+				USLEEP(1000);
+			}
 		}
 		string errorAddBlock;
 		string warningAddBlock;
@@ -1193,14 +1225,14 @@ void cSnifferServerConnection::cp_packetbuffer_block() {
 		}
 		++counter;
 		if(!errorAddBlock.empty()) {
-			cLogSensor::log(cLogSensor::error, 
+			cLogSensor::log(cLogSensor::error,
 					"error in receiving packets from client",
-					"connection from %s, error: %s", 
+					"connection from %s, error: %s",
 					socket->getIP().c_str(),
 					errorAddBlock.c_str());
 		}
 		if(!warningAddBlock.empty()) {
-			cLogSensor::log(cLogSensor::warning, 
+			cLogSensor::log(cLogSensor::warning,
 					"warning in receiving packets from client",
 					"connection from %s, warning: %s", 
 					socket->getIP().c_str(),
@@ -1281,17 +1313,21 @@ bool cSnifferServerConnection::rsaAesInit(bool writeRsltOK) {
 		if(sensorId > 0 && sensorName.length()) {
 			extern SensorsMap sensorsMap;
 			sensorsMap.setSensorName(sensorId, sensorName.c_str());
-			syslog(LOG_NOTICE, "detect sensor name: '%s' for sensor id: %i", sensorName.c_str(), sensorId);
+			if(!opt_server_log_suppress) {
+				syslog(LOG_NOTICE, "detect sensor name: '%s' for sensor id: %i", sensorName.c_str(), sensorId);
+			}
 		}
 		string sensorTime = jsonTokenAesKeys.getValue("time");
 		if(sensorTime.length()) {
-			syslog(LOG_NOTICE, "reported sensor time: %s for sensor id: %i", sensorTime.c_str(), sensorId);
+			if(!opt_server_log_suppress) {
+				syslog(LOG_NOTICE, "reported sensor time: %s for sensor id: %i", sensorTime.c_str(), sensorId);
+			}
 			time_t actualTimeSec = time(NULL);
 			time_t sensorTimeSec = stringToTime(sensorTime.c_str(), true);
 			extern int opt_client_server_connect_maximum_time_diff_s;
 			int timeDiff = abs((int64_t)actualTimeSec - (int64_t)sensorTimeSec) % (3600/2);
 			if(timeDiff > opt_client_server_connect_maximum_time_diff_s) {
-				cLogSensor::log(cLogSensor::error,  
+				cLogSensor::log(cLogSensor::error,
 						"sensor is not allowed to connect because of different time",
 						"Time difference between server and client (id_sensor:%i) is too big (%is). Please synchronise time on both server and client. Or the data was delayed due some network problems.",
 						sensorId,
@@ -1532,7 +1568,9 @@ int cSnifferClientService::receive_process_loop_begin() {
 						if(!rsltConnectData_json.getValue("use_blocks_pb").empty() &&
 						   !opt_pcap_queue_use_blocks) {
 							opt_pcap_queue_use_blocks = true;
-							syslog(LOG_NOTICE, "enabling pcap_queue_use_blocks because it is enabled on server");
+							if(opt_server_log_suppress < 2) {
+								syslog(LOG_NOTICE, "enabling pcap_queue_use_blocks because it is enabled on server");
+							}
 							change_config = true;
 						}
 						if(!rsltConnectData_json.getValue("deduplicate").empty()) {
@@ -1542,10 +1580,12 @@ int cSnifferClientService::receive_process_loop_begin() {
 								if(server_dup_check_type == _dedup_crc32_hw && !crc32_sse_is_available()) server_dup_check_type = _dedup_crc32_sw; // do not force SSE 4.2 version if we do not have it
 								#endif
 								if(opt_dup_check_type != server_dup_check_type) {
-									syslog(LOG_NOTICE, 
-									       opt_dup_check_type ?
-										"change the deduplication type because it is set differently on the server" :
-										"enabling deduplicate because it is enabled on server");
+									if(opt_server_log_suppress < 2) {
+										syslog(LOG_NOTICE,
+										       opt_dup_check_type ?
+											"change the deduplication type because it is set differently on the server" :
+											"enabling deduplicate because it is enabled on server");
+									}
 									opt_dup_check_type = server_dup_check_type;
 									change_config = true;
 								}

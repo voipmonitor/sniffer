@@ -15,10 +15,13 @@ using namespace std;
 struct sSnifferServerVerbose {
 	sSnifferServerVerbose() {
 		memset(this, 0, sizeof(*this));
-		start_server = true;
-		start_client = true;
-		connect_command = true;
-		connect_info = true;
+		extern int opt_server_log_suppress;
+		if(!opt_server_log_suppress) {
+			start_server = true;
+			start_client = true;
+			connect_command = true;
+			connect_info = true;
+		}
 	}
 	bool start_server;
 	bool start_client;

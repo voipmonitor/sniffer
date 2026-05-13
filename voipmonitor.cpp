@@ -1065,6 +1065,8 @@ cSnifferClientService *snifferClientService;
 cSnifferClientService **snifferClientNextServices;
 cSnifferClientService *snifferClientService_charts_cache;
 
+int opt_server_log_suppress = 0;
+
 char ssh_host[1024] = "";
 int ssh_port = 22;
 char ssh_username[256] = "";
@@ -7673,6 +7675,9 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_connect_maximum_time_diff_s", &opt_client_server_connect_maximum_time_diff_s));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_sleep_ms_if_queue_is_full", &opt_client_server_sleep_ms_if_queue_is_full));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_receiver_timeout", &opt_client_server_receiver_timeout_s));
+					expert();
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("server_log_suppress", &opt_server_log_suppress))
+						->addValues("all:2"));
 		subgroup("siprec");
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("siprec_bind", &opt_siprec_bind_ip));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("siprec_bind_port", &opt_siprec_bind_port));
