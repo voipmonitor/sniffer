@@ -1715,6 +1715,8 @@ static cCreatePartitions CreatePartitions;
 
 bool opt_sip_thread_log_ext;
 
+bool opt_check_sip_complete_in_virtual_packet = false;
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -6865,6 +6867,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_sip_strategy_zstd", &opt_pcap_dump_tar_sip_zstdstrategy));
 					addConfigItem(new FILE_LINE(42207) cConfigItem_type_compress("tar_internalcompress_sip", &opt_pcap_dump_tar_internalcompress_sip));
 					addConfigItem(new FILE_LINE(42208) cConfigItem_integer("tar_internal_sip_level", &opt_pcap_dump_tar_internal_gzip_sip_level));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("check_sip_complete_in_virtual_packet", &opt_check_sip_complete_in_virtual_packet));
 		subgroup("RTP/RTCP/UDPTL");
 			addConfigItem((new FILE_LINE(42209) cConfigItem_yesno("savertp"))
 				->addValues("header:-1|h:-1")

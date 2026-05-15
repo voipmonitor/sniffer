@@ -104,6 +104,7 @@
 #include "websocket.h"
 #include "mgcp.h"
 #include "pcap_queue.h"
+#include "sniff_proc_class.h"
 
 #ifndef SIZE_MAX
 # ifdef __SIZE_MAX__
@@ -1892,6 +1893,18 @@ bool PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 							packets_alloc[packets_alloc_counter] = (u_char*)packet;
 							headers_alloc[packets_alloc_counter] = header;
 							++packets_alloc_counter;
+							extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp);
+							extern bool opt_check_sip_complete_in_virtual_packet;
+							extern char *sipportmatrix;
+							if(opt_check_sip_complete_in_virtual_packet && data && datalen > 0 &&
+							   (sipportmatrix[source] || sipportmatrix[dest]) &&
+							   check_sip20((char*)data, datalen, NULL, istcp) &&
+							   !TcpReassemblySip::_checkSip(data, datalen, TcpReassemblySip::_chssm_strict)) {
+								syslog(LOG_NOTICE, "pcapdumper: pcap file %s contains incomplete sip packet (datalen %u, %s:%u -> %s:%u)",
+								       fileName.c_str(), datalen,
+								       saddr.getString().c_str(), source.getPort(),
+								       daddr.getString().c_str(), dest.getPort());
+							}
 						}
 					}
 				}
@@ -6912,6 +6925,18 @@ void TrafficDumper::setDumperPath(const char *path, const char *prefix) {
 	this->unlock();
 }
 
+bool TrafficDumper::setRotateInterval(u_int32_t interval, const char *prefix) {
+	this->lock();
+	sDumperDef *dumper = findDumper(prefix);
+	bool rslt = false;
+	if(dumper) {
+		dumper->rotate_interval = interval;
+		rslt = true;
+	}
+	this->unlock();
+	return(rslt);
+}
+
 void TrafficDumper::enableDumper(const char *prefix) {
 	this->lock();
 	sDumperDef *dumper = findDumper(prefix);
@@ -6919,7 +6944,7 @@ void TrafficDumper::enableDumper(const char *prefix) {
 		if(dumper->path.empty()) {
 			dumper->path = default_path;
 		}
-		dumper->time = getActDateTimeF(true);
+		dumper->time = getTimeS_rdtsc();
 		dumper->enabled = true;
 		updateIsEnabled();
 	}
@@ -7038,6 +7063,22 @@ string TrafficDumper::printDumpers() {
 }
 
 void TrafficDumper::dump(sDumperDef *dumper, pcap_pkthdr *header, u_char *packet, int dlt, const char *interfaceName, eMalformedSource source) {
+	if(dumper->rotate_interval > 0) {
+		u_int32_t now_s = getTimeS_rdtsc();
+		if(now_s >= dumper->time + dumper->rotate_interval) {
+			for(map<sDumperKeyByDlt, PcapDumper*>::iterator it = dumper->dumpers_by_dlt.begin(); it != dumper->dumpers_by_dlt.end(); it++) {
+				it->second->close();
+				delete it->second;
+			}
+			dumper->dumpers_by_dlt.clear();
+			for(map<sDumperKeyByInterface, PcapDumper*>::iterator it = dumper->dumpers_by_interface.begin(); it != dumper->dumpers_by_interface.end(); it++) {
+				it->second->close();
+				delete it->second;
+			}
+			dumper->dumpers_by_interface.clear();
+			dumper->time = now_s;
+		}
+	}
 	PcapDumper *pcap_dumper = NULL;
 	if(dumper->by == _byDlt) {
 		sDumperKeyByDlt key(source, dlt);
@@ -7060,12 +7101,17 @@ void TrafficDumper::dump(sDumperDef *dumper, pcap_pkthdr *header, u_char *packet
 	}
 	if(!pcap_dumper) {
 		string source_token = source != _msNone ? string("_") + malformedSourceName(source) : "";
+		char time_buf[20];
+		time_t t = dumper->time;
+		struct tm tm_val;
+		::localtime_r(&t, &tm_val);
+		strftime(time_buf, sizeof(time_buf), "%Y-%m-%dT%T", &tm_val);
 		string dumpFileName = dumper->path + "/" + dumper->prefix + "_" +
 				      (dumper->by == _byDlt ?
 					"dlt_" + intToString(dlt) :
 					"iface_" + find_and_replace(find_and_replace(interfaceName, " ", "").c_str(), "/", "|")) +
 				      source_token +
-				      "_" + dumper->time + ".pcap";
+				      "_" + time_buf + ".pcap";
 		pcap_dumper = new FILE_LINE(0) PcapDumper(PcapDumper::na, NULL);
 		pcap_dumper->setEnableAsyncWrite(false);
 		pcap_dumper->setTypeCompress(FileZipHandler::compress_na);
@@ -7247,6 +7293,13 @@ void TrafficDumper::printDumper(ostringstream &out, TrafficDumper::sDumperDef *d
 	out << indent << "enabled: " << (dumper->enabled ? "yes" : "no") << endl;
 	out << indent << "path: " << (dumper->path.empty() ? "(default)" : dumper->path) << endl;
 	out << indent << "by: " << (dumper->by == TrafficDumper::_byDlt ? "dlt" : "interface") << endl;
+	out << indent << "rotate_interval: ";
+	if(dumper->rotate_interval) {
+		out << dumper->rotate_interval << "s";
+	} else {
+		out << "(off)";
+	}
+	out << endl;
 	out << indent << "malformed: " << (dumper->malformed ? "yes" : "no") << endl;
 	if(dumper->malformed) {
 		return;

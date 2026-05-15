@@ -6019,13 +6019,13 @@ int Mgmt_sql_errors_skip(Mgmt_params *params) {
 int Mgmt_traffic_dumper(Mgmt_params *params) {
 	const char *commands =
 		"status, force_flush [on|off], "
-		"start <json: prefix, ip, src_ip, dst_ip, port, src_port, dst_port, by, by_dlt, by_interface, fragmented, path, net_to_ip_bits_limit, malformed>, "
+		"start <json: prefix, ip, src_ip, dst_ip, port, src_port, dst_port, by, by_dlt, by_interface, fragmented, path, net_to_ip_bits_limit, malformed, rotate_interval>, "
 		"stop <prefix>, "
 		"enable [prefix], disable [prefix], by_dlt [prefix], by_interface [prefix], "
 		"clear_filter [prefix], clear_ips [prefix], clear_nets [prefix], clear_ports [prefix], "
 		"add_ip <ip/net> [prefix], add_src_ip <ip/net> [prefix], add_dst_ip <ip/net> [prefix], "
 		"add_port <port|range> [prefix], add_src_port <port|range> [prefix], add_dst_port <port|range> [prefix], "
-		"set_fragmented <on|off> [prefix], set_path <path> [prefix]";
+		"set_fragmented <on|off> [prefix], set_path <path> [prefix], set_rotate <sec> [prefix]";
 	if(params->task == params->mgmt_task_DoInit) {
 		params->registerCommand("traffic_dumper", (string("traffic dumper management: ") + commands).c_str());
 		return(0);
@@ -6149,6 +6149,8 @@ int Mgmt_traffic_dumper(Mgmt_params *params) {
 				td->setFilterFragmented(is_yes_or_true(val.c_str()), _prefix);
 			} else if(!strcasecmp(name.c_str(), "path")) {
 				td->setDumperPath(val.c_str(), _prefix);
+			} else if(!strcasecmp(name.c_str(), "rotate_interval")) {
+				td->setRotateInterval((u_int32_t)atoi(val.c_str()), _prefix);
 			} else if(strcasecmp(name.c_str(), "prefix") &&
 				  strcasecmp(name.c_str(), "net_to_ip_bits_limit") &&
 				  strcasecmp(name.c_str(), "malformed")) {
@@ -6239,7 +6241,8 @@ int Mgmt_traffic_dumper(Mgmt_params *params) {
 		  !strcasecmp(subcmd, "add_src_port") ||
 		  !strcasecmp(subcmd, "add_dst_port") ||
 		  !strcasecmp(subcmd, "set_fragmented") ||
-		  !strcasecmp(subcmd, "set_path")) {
+		  !strcasecmp(subcmd, "set_path") ||
+		  !strcasecmp(subcmd, "set_rotate")) {
 		const char *prefix = arg2[0] ? arg2 : NULL;
 		if(prefix) {
 			if(!trafficDumper->getDumper(prefix)) { 
@@ -6314,6 +6317,13 @@ int Mgmt_traffic_dumper(Mgmt_params *params) {
 			}
 			trafficDumper->setDumperPath(arg, prefix);
 			return(params->sendString(string("path set: ") + arg + "\n"));
+		} else if(!strcasecmp(subcmd, "set_rotate")) {
+			if(!arg[0]) {
+				return(params->sendString("missing interval (seconds)\n"));
+			}
+			u_int32_t interval = (u_int32_t)atoi(arg);
+			trafficDumper->setRotateInterval(interval, prefix);
+			return(params->sendString(string("rotate_interval set: ") + (interval ? intToString(interval) + "s" : "off") + "\n"));
 		}
 	} else if(!subcmd[0] || !strcasecmp(subcmd, "status")) {
 		return(params->sendString(trafficDumper->printDumpers()));

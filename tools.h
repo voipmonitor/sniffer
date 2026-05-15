@@ -2988,7 +2988,8 @@ public:
 	struct sDumperDef {
 		string prefix;
 		string path;
-		string time;
+		u_int32_t time;
+		u_int32_t rotate_interval;
 		eBy by;
 		set<vmIP> src_ips;
 		vector<vmIPmask> src_nets;
@@ -3006,6 +3007,8 @@ public:
 		bool enabled;
 		sDumperDef(const char *prefix) {
 			this->prefix = prefix;
+			this->time = 0;
+			this->rotate_interval = 0;
 			this->by = _byDlt;
 			only_fragmented = false;
 			malformed = false;
@@ -3051,6 +3054,7 @@ public:
 	bool addFilterPort(const char *port_str, const char *prefix = NULL);
 	void setFilterFragmented(bool frag, const char *prefix = NULL);
 	void setDumperPath(const char *path, const char *prefix = NULL);
+	bool setRotateInterval(u_int32_t interval, const char *prefix = NULL);
 	void enableDumper(const char *prefix = NULL);
 	void disableDumper(const char *prefix = NULL);
 	void clearFilter(const char *prefix = NULL);
