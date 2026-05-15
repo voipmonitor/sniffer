@@ -1452,7 +1452,7 @@ public:
 		int regstate;
 		bool regresponse;
 		int register_expires;
-		map<u_int32_t, u_int64_t> regrrdstart_us;
+		map<u_int32_t, u_int64_t> reg_request_us;
 		double regrrddiff_ms;		// RRD diff time REGISTER<->OK - RFC6076
 		//uint64_t regsrcmac;		// mac if ether layer present in REGISTER
 		list<u_int32_t> *reg_tcp_seq;

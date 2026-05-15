@@ -3922,8 +3922,8 @@ inline bool init_call_branch(Call *call, CallBranch *c_branch, packet_s_process 
 			call->set_destroy_call_at(packetS->getTime_s(), opt_register_timeout);
 
 			if(packetS->cseq.is_set()) {
-				if(!call->reg.regrrdstart_us[packetS->cseq.number]) {
-					call->reg.regrrdstart_us[packetS->cseq.number] = packetS->getTimeUS();
+				if(!call->reg.reg_request_us[packetS->cseq.number]) {
+					call->reg.reg_request_us[packetS->cseq.number] = packetS->getTimeUS();
 				}
 
 /*				//Parse ether header for src mac else 0
@@ -4390,6 +4390,7 @@ inline Call *new_premature_response_call_register(packet_s_process *packetS, int
 	CallBranch *c_branch = &call->first_branch;
 	c_branch->branch_call_id = call->call_id;
 	c_branch->branch_fbasename = call->fbasename;
+	call->set_destroy_call_at(packetS->getTime_s(), 5);
 	return(call);
 }
 
@@ -4866,6 +4867,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 			goto endsip;
 		}
 		call->type_base = INVITE;
+		call->destroy_call_at = 0;
 		call->set_first_packet_time_us(packetS->getTimeUS());
 		call->flags = flags;
 		call->nat_aliases = nat_aliases;
@@ -6718,6 +6720,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 				goto endsip;
 			}
 			call->type_base = REGISTER;
+			call->destroy_call_at = 0;
 			call->set_first_packet_time_us(packetS->getTimeUS());
 			call->flags = flags;
 			call->nat_aliases = nat_aliases;
@@ -6780,8 +6783,8 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			call->reg.regcount = 1;
 			if(packetS->cseq.is_set()) {
 				call->reg.registercseq = packetS->cseq;
-				if(!call->reg.regrrdstart_us[packetS->cseq.number]) {
-					call->reg.regrrdstart_us[packetS->cseq.number] = packetS->getTimeUS();
+				if(!call->reg.reg_request_us[packetS->cseq.number]) {
+					call->reg.reg_request_us[packetS->cseq.number] = packetS->getTimeUS();
 				}
 			}
 			goto endsip_save_packet;
@@ -6798,8 +6801,8 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			call->reg.regcount = 1;
 			if(packetS->cseq.is_set()) {
 				call->reg.registercseq = packetS->cseq;
-				if(!call->reg.regrrdstart_us[packetS->cseq.number]) {
-					call->reg.regrrdstart_us[packetS->cseq.number] = packetS->getTimeUS();
+				if(!call->reg.reg_request_us[packetS->cseq.number]) {
+					call->reg.reg_request_us[packetS->cseq.number] = packetS->getTimeUS();
 				}
 			}
 			if(logPacketSipMethodCall_enable) {
@@ -6809,8 +6812,8 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		}
 		if(packetS->cseq.is_set()) {
 			call->reg.registercseq = packetS->cseq;
-			if(!call->reg.regrrdstart_us[packetS->cseq.number]) {
-				call->reg.regrrdstart_us[packetS->cseq.number] = packetS->getTimeUS();
+			if(!call->reg.reg_request_us[packetS->cseq.number]) {
+				call->reg.reg_request_us[packetS->cseq.number] = packetS->getTimeUS();
 			}
 		}
 		if(!call_created && packetS->pflags.get_tcp()) {
@@ -6843,18 +6846,26 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		}
 		if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER OK Call-ID[%s]", call->call_id.c_str());
 		if(packetS->cseq.is_set()) {
-			map<u_int32_t, u_int64_t>::iterator rrd_iter = call->reg.regrrdstart_us.find(packetS->cseq.number);
-			if(rrd_iter != call->reg.regrrdstart_us.end()) {
+			map<u_int32_t, u_int64_t>::iterator reg_request_iter = call->reg.reg_request_us.find(packetS->cseq.number);
+			if(reg_request_iter != call->reg.reg_request_us.end()) {
 				call->reg.reg200count++;
 				call->reg.regstate = rs_OK;
 				u_int64_t packet_time_us = packetS->getTimeUS();
-				call->reg.regrrddiff_ms = packet_time_us > rrd_iter->second ? (double)(packet_time_us - rrd_iter->second) / 1000 : 0;
-				call->reg.regrrdstart_us.erase(rrd_iter);
+				if(packet_time_us > reg_request_iter->second) {
+					call->reg.regrrddiff_ms = (double)(packet_time_us - reg_request_iter->second) / 1000;
+				} else if(call->reg.regrrddiff_ms < 0) {
+					call->reg.regrrddiff_ms = 0;
+				}
+				call->reg.reg_request_us.erase(reg_request_iter);
 			} else {
-				call->reg.regstate = rs_UnknownMessageOK;
+				if(call->reg.regstate != rs_OK) {
+					call->reg.regstate = rs_UnknownMessageOK;
+				}
 			}
 		} else {
-			call->reg.regstate = rs_UnknownMessageOK;
+			if(call->reg.regstate != rs_OK) {
+				call->reg.regstate = rs_UnknownMessageOK;
+			}
 		}
 		save_packet(call, packetS, _t_packet_sip);
 		if(call->reg.regstate == rs_OK &&
