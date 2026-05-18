@@ -837,6 +837,7 @@ public:
 	deque<sReadBufferItem> readBuffer;
 	uint32_t readBufferBeginPos;
 	bool eof;
+	volatile int _sync_userData_lock;
 private:
 	volatile int _sync_write_lock;
 	static volatile u_int64_t buffers_sumcapacity;
@@ -1213,10 +1214,12 @@ public:
 		 long long writeBytes = 0) {
 		extern int opt_pcap_dump_bufflength;
 		for(int pass = 0; pass < 2; pass++) {
-			if(pass || ((FileZipHandler*)handle)->userData > (unsigned)countPcapThreads) {
+			int useThreadOper = 0;
+			unsigned int useDataIdx = 0;
+			__SYNC_LOCK_USLEEP(((FileZipHandler*)handle)->_sync_userData_lock, 10);
+			if(pass) {
 				((FileZipHandler*)handle)->userData = 0;
 			}
-			int useThreadOper = 0;
 			if(opt_pcap_dump_bufflength) {
 				if(((FileZipHandler*)handle)->userData) {
 					useThreadOper = -1;
@@ -1236,13 +1239,16 @@ public:
 					((FileZipHandler*)handle)->userData = minSizeIndex + 1;
 				}
 			}
-			if(add(new FILE_LINE(39009) AsyncCloseItem_pcap(handle, updateFilesQueue, call, pcapDumper, 
-									typeSpoolFile, file, 
-									writeBytes),
-			       opt_pcap_dump_bufflength ?
-				((FileZipHandler*)handle)->userData - 1 :
-				0,
-			       useThreadOper)) {
+			useDataIdx = ((FileZipHandler*)handle)->userData;
+			bool added = add(new FILE_LINE(39009) AsyncCloseItem_pcap(handle, updateFilesQueue, call, pcapDumper,
+										 typeSpoolFile, file,
+										 writeBytes),
+					 opt_pcap_dump_bufflength ?
+					  useDataIdx - 1 :
+					  0,
+					 useThreadOper);
+			__SYNC_UNLOCK(((FileZipHandler*)handle)->_sync_userData_lock);
+			if(added) {
 				break;
 			}
 		}
@@ -1251,10 +1257,12 @@ public:
 		      char *data, int length) {
 		extern int opt_pcap_dump_bufflength;
 		for(int pass = 0; pass < 2; pass++) {
-			if(pass || ((FileZipHandler*)handle)->userData > (unsigned)countPcapThreads) {
+			int useThreadOper = 0;
+			unsigned int useDataIdx = 0;
+			__SYNC_LOCK_USLEEP(((FileZipHandler*)handle)->_sync_userData_lock, 10);
+			if(pass) {
 				((FileZipHandler*)handle)->userData = 0;
 			}
-			int useThreadOper = 0;
 			if(opt_pcap_dump_bufflength) {
 				if(!((FileZipHandler*)handle)->userData) {
 					useThreadOper = 1;
@@ -1273,11 +1281,14 @@ public:
 					((FileZipHandler*)handle)->userData = minSizeIndex + 1;
 				}
 			}
-			if(add(new FILE_LINE(39010) AsyncWriteItem_pcap(handle, data, length),
-			       opt_pcap_dump_bufflength ?
-				((FileZipHandler*)handle)->userData - 1 :
-				0,
-			       useThreadOper)) {
+			useDataIdx = ((FileZipHandler*)handle)->userData;
+			bool added = add(new FILE_LINE(39010) AsyncWriteItem_pcap(handle, data, length),
+					 opt_pcap_dump_bufflength ?
+					  useDataIdx - 1 :
+					  0,
+					 useThreadOper);
+			__SYNC_UNLOCK(((FileZipHandler*)handle)->_sync_userData_lock);
+			if(added) {
 				break;
 			}
 		}
@@ -1287,10 +1298,12 @@ public:
 		 eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 		 long long writeBytes = 0) {
 		for(int pass = 0; pass < 2; pass++) {
-			if(pass || handle->userData > (unsigned)countPcapThreads) {
+			int useThreadOper = 0;
+			unsigned int useDataIdx = 0;
+			__SYNC_LOCK_USLEEP(handle->_sync_userData_lock, 10);
+			if(pass) {
 				handle->userData = 0;
 			}
-			int useThreadOper = 0;
 			if(handle->userData) {
 				useThreadOper = -1;
 			} else {
@@ -1308,11 +1321,14 @@ public:
 				}
 				handle->userData = minSizeIndex + 1;
 			}
-			if(add(new FILE_LINE(39011) AsyncCloseItem_fileZipHandler(handle, updateFilesQueue, call, graphSaver,
-										  typeSpoolFile, file, 
-										  writeBytes),
-			       handle->userData - 1,
-			       useThreadOper)) {
+			useDataIdx = handle->userData;
+			bool added = add(new FILE_LINE(39011) AsyncCloseItem_fileZipHandler(handle, updateFilesQueue, call, graphSaver,
+											   typeSpoolFile, file,
+											   writeBytes),
+					 useDataIdx - 1,
+					 useThreadOper);
+			__SYNC_UNLOCK(handle->_sync_userData_lock);
+			if(added) {
 				break;
 			}
 		}
@@ -1320,10 +1336,12 @@ public:
 	void addWrite(FileZipHandler *handle,
 		      char *data, int length) {
 		for(int pass = 0; pass < 2; pass++) {
-			if(pass || handle->userData > (unsigned)countPcapThreads) {
+			int useThreadOper = 0;
+			unsigned int useDataIdx = 0;
+			__SYNC_LOCK_USLEEP(handle->_sync_userData_lock, 10);
+			if(pass) {
 				handle->userData = 0;
 			}
-			int useThreadOper = 0;
 			if(!handle->userData) {
 				useThreadOper = 1;
 				unsigned int size;
@@ -1340,9 +1358,12 @@ public:
 				}
 				handle->userData = minSizeIndex + 1;
 			}
-			if(add(new FILE_LINE(39012) AsyncWriteItem_fileZipHandler(handle, data, length),
-			       handle->userData - 1,
-			       useThreadOper)) {
+			useDataIdx = handle->userData;
+			bool added = add(new FILE_LINE(39012) AsyncWriteItem_fileZipHandler(handle, data, length),
+					 useDataIdx - 1,
+					 useThreadOper);
+			__SYNC_UNLOCK(handle->_sync_userData_lock);
+			if(added) {
 				break;
 			}
 		}

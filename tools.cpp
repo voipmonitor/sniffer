@@ -4856,6 +4856,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	this->readBufferBeginPos = 0;
 	this->eof = false;
 	this->_sync_write_lock = 0;
+	this->_sync_userData_lock = 0;
 }
 
 FileZipHandler::~FileZipHandler() {
