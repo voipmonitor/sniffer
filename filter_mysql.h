@@ -219,30 +219,40 @@ private:
 			direction = 0;
 			flags = 0;
 			nat_aliases = NULL;
+			number_matcher = NULL;
+			specificity = 0;
 		}
 		~t_payload() {
 			if(nat_aliases) {
 				delete nat_aliases;
+			}
+			if(number_matcher) {
+				delete number_matcher;
 			}
 		}
 		char prefix[MAX_PREFIX];
 		int direction;
 		u_int64_t flags;
 		sNatAliases *nat_aliases;
+		PhoneNumber *number_matcher;
+		unsigned specificity;
 	};
         struct t_node_tel {
                 t_node_tel *nodes[256];
                 t_payload *payload;
         };
         t_node_tel *first_node;
-public: 
+	std::vector<t_payload*> wildcard_payloads;
+	static void dump_trie_node(ostringstream &oss, t_node_tel *node);
+	static void dump_payload_line(ostringstream &oss, t_payload *p, bool wildcard);
+public:
         TELNUMfilter();
         ~TELNUMfilter();
         void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	void loadFile(u_int32_t *global_flags);
 	void add_payload(t_payload *payload);
 	int _add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *telnum_src, const char *telnum_dst, bool reconfigure = false);
-        static void dump2man(ostringstream &oss, t_node_tel *node = NULL);
+        static void dump2man(ostringstream &oss);
 	static int add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *telnum_src, const char *telnum_dst, bool reconfigure = false);
 	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void freeActive();
