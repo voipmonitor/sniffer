@@ -515,7 +515,7 @@ void cSnifferServerConnection::cp_gui_command(int32_t sensor_id, string command,
 	}
 	sSnifferServerGuiTask task;
 	task.sensor_id = sensor_id;
-	if(!aes_key && !cManagerAes::notNeedAesForCommand((char*)command.c_str()) && cManagerAes::getAesKey(NULL)) {
+	if(!aes_key && !cManagerAes::notNeedAesForCommand((char*)command.c_str()) && cManagerAes::checkExistsAesKey()) {
 		syslog(LOG_INFO, "Need AES for command %s", command.c_str());
 		task.command = "need_aes";
 	} else {

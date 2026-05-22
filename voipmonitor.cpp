@@ -1962,6 +1962,17 @@ void *database_backup(void */*dummy*/) {
 	bool callCreateSchema = false;
 	manager_parse_command_enable();
 	while(!is_terminating()) {
+		sPcapStatData stat_data;
+		stat_data.rss_vsz.load();
+		stat_data.hugepages.load();
+		stat_data.tcm_alloc.load();
+		stat_data.load_avg.load();
+		stat_data.tlb.load();
+		stat_data.version.load();
+		stat_data.mode = sPcapStatData::_mode_database_backup;
+		extern vm_atomic<sPcapStatData> pbStatData;
+		pbStatData = stat_data;
+	 
 		syslog(LOG_NOTICE, "-- START BACKUP PROCESS");
 		
 		SqlDb *sqlDbSrc = new FILE_LINE(42003) SqlDb_mysql();
@@ -5280,8 +5291,8 @@ int main_init_read() {
 	#endif
 
 	if(is_enable_packetbuffer()) {
+		reset_pcap_stat_load_state();
 		PcapQueue_init();
-		
 		if(is_read_from_file_by_pb() && opt_tcpreassembly_thread) {
 			if(tcpReassemblyHttp) {
 				tcpReassemblyHttp->setIgnoreTerminating(true);

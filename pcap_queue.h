@@ -9,6 +9,7 @@
 #include <deque>
 #include <queue>
 #include <string>
+#include <vector>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
@@ -21,6 +22,7 @@
 #include "ip_frag.h"
 #include "header_packet.h"
 #include "dpdk.h"
+#include "disk_io_monitor.h"
 
 #define READ_THREADS_MAX 20
 #define DLT_TYPES_MAX 10
@@ -178,6 +180,758 @@ private:
 friend class PcapQueue_readFromFifo;
 };
 
+struct sPcapStatData {
+	enum eSectionNameBy {
+		_section_id_by_title,
+		_section_id_by_varname
+	};
+	enum eMode {
+		_mode_standard,
+		_mode_database_backup
+	};
+	struct sValue {
+		string name;
+		string value;
+		string unit;
+		sValue() {}
+		sValue(const string &name, const string &value, const string &unit = "") : name(name), value(value), unit(unit) {}
+	};
+	struct sSectionValues {
+		string sect_id;
+		vector<sValue> values;
+		sSectionValues() {}
+		sSectionValues(const string &sect_id) : sect_id(sect_id) {}
+	};
+	struct sLoadState {
+		struct {
+			u_int64_t old_time_ms;
+		} sql_q;
+		struct {
+			u_int64_t old_time_ms;
+			unsigned long long last_transfered;
+		} cache_dir_q;
+		struct {
+			u_int64_t old_time_ms;
+		} read_threads;
+		struct {
+			u_int64_t old_time_ms;
+			u_int64_t old_count_tlb;
+		} tlb;
+		struct {
+			u_int64_t old_time_ms;
+		} traffic;
+		struct {
+			u_int64_t old_time_ms;
+			u_int64_t counter_calls_old;
+			u_int64_t counter_calls_clean_old;
+			u_int64_t counter_calls_save_1_old;
+			u_int64_t counter_calls_save_2_old;
+			u_int64_t counter_registers_old;
+			u_int64_t counter_registers_clean_old;
+			u_int64_t counter_sip_packets_old[2];
+			u_int64_t counter_sip_register_packets_old;
+			u_int64_t counter_sip_message_packets_old;
+			u_int64_t counter_rtp_packets_old[2];
+			u_int64_t counter_all_packets_old;
+			u_int64_t counter_user_packets_old[5];
+		} ps;
+		sLoadState() { reset(); }
+		void reset() { memset((void*)this, 0, sizeof(*this)); }
+	};
+	eMode mode;
+	bool initialized;
+	struct sCalls {
+		u_int64_t active;
+		u_int64_t registers_active;
+		u_int64_t total;
+		u_int64_t storing;
+		u_int64_t registers_total;
+		bool valid;
+		sCalls() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("calls"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const;
+		void get_values(vector<sValue> &out) const;
+		void rrd() const;
+	} calls;
+	struct sAudio {
+		u_int64_t queue_size;
+		u_int64_t threads;
+		bool valid;
+		sAudio() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("audio"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} audio;
+	struct sTranscribe {
+		string_simple value;
+		void load();
+		string title() const { return("transcribe"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(!value.empty()) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} transcribe;
+	struct sSS7 {
+		u_int64_t listmap_size;
+		u_int64_t queue_size;
+		bool valid;
+		sSS7() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("ss7"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} ss7;
+	struct sPS {
+		unsigned long calls_new;
+		unsigned long calls_cleanup;
+		unsigned long calls_for_save;
+		unsigned long calls_saved;
+		unsigned long registers_new;
+		unsigned long registers_cleanup;
+		unsigned long packets_sip_all;
+		unsigned long packets_sip_all_parsed;
+		unsigned long packets_sip_register;
+		unsigned long packets_sip_message;
+		unsigned long packets_rtp;
+		unsigned long packets_rtp_sdp_multi;
+		unsigned long packets_all;
+		vector_simple<unsigned long> packets_debug;
+		bool calls_new_valid;
+		bool calls_cleanup_valid;
+		bool calls_for_save_valid;
+		bool calls_saved_valid;
+		bool registers_new_valid;
+		bool registers_cleanup_valid;
+		bool packets_sip_all_valid;
+		bool packets_sip_all_parsed_valid;
+		bool packets_sip_register_valid;
+		bool packets_sip_message_valid;
+		bool packets_rtp_valid;
+		bool packets_rtp_sdp_multi_valid;
+		bool packets_all_valid;
+		bool valid;
+		sPS() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("PS"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+		void rrd() const;
+	} ps;
+	struct sSqlF {
+		string_simple stat;
+		string_simple stat_proc;
+		u_int32_t avg_delay;
+		u_int32_t query_count;
+		bool valid;
+		sSqlF() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("SQLf"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+		void rrd() const;
+	} sqlf;
+	struct sSqlQ {
+		struct sItem {
+			int id_main;
+			string_simple id_main_str;
+			int id_2;
+			int size;
+			sItem() { memset((void*)this, 0, sizeof(*this)); }
+		};
+		vector_simple<sItem> items;
+		u_int32_t avg_delay_std;
+		u_int32_t avg_delay_redirect;
+		u_int32_t count_std;
+		u_int32_t count_redirect;
+		u_int64_t insert_count;
+		bool cloud_mode;
+		int cloud_size;
+		bool valid;
+		sSqlQ() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("SQLq"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+		void rrd() const;
+	} sqlq;
+	struct sHeap {
+		double all_perc;
+		double used_perc;
+		double trash_perc;
+		double pool_perc;
+		double async_write_perc;
+		unsigned long trash_min_time;
+		unsigned long trash_max_time;
+		bool trash_time_valid;
+		bool pool_valid;
+		bool async_valid;
+		bool valid;
+		sHeap() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("heap"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+		void rrd() const;
+	} heap;
+	struct sDeq {
+		double used_perc;
+		unsigned int window;
+		bool valid;
+		sDeq() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("deq"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} deq;
+	struct sDrop {
+		unsigned long bypass_buffer_exceeded;
+		string_simple packet_drops;
+		u_int64_t packet_drops_count;
+		bool valid;
+		sDrop() { memset((void*)this, 0, sizeof(*this)); }
+		void load(unsigned long bypass, const string &drops, u_int64_t count);
+		string title() const { return("drop"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+		void rrd() const;
+	} drop;
+	struct sPbDiskBuffer {
+		double mb;
+		double perc;
+		bool valid;
+		sPbDiskBuffer() { memset((void*)this, 0, sizeof(*this)); }
+		void load(double mb, double perc);
+		string title() const { return("fileq"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} pb_disk_buffer;
+	struct sPbCompress {
+		double value;
+		bool valid;
+		sPbCompress() { memset((void*)this, 0, sizeof(*this)); }
+		void load(double value);
+		string title() const { return("comp"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} pb_compress;
+	struct sTraffic {
+		double mbps_in;
+		double mbps_out;
+		double pps_in;
+		double pps_out;
+		u_int64_t packets_in_sum;
+		u_int64_t packets_out_sum;
+		bool mbps_in_valid;
+		bool mbps_out_valid;
+		bool pps_in_valid;
+		bool pps_out_valid;
+		bool packets_sum_valid;
+		bool valid;
+		sTraffic() { memset((void*)this, 0, sizeof(*this)); }
+		void load(class PcapQueue *instance);
+		string title() const { return(""); }
+		string name() const { return("total_traffic"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(name(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+		void rrd() const;
+	} traffic;
+	struct sIo {
+		sIOMetrics metrics;
+		bool active;
+		bool calibrating;
+		int calibration_progress;
+		string_simple status_string;
+		sIo() : active(false), calibrating(false), calibration_progress(0) {}
+		void load(double useAsyncWriteBuffer);
+		string title() const { return("IO"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(active || calibrating) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+		void rrd() const;
+	} disk_io;
+	struct sCacheDirQ {
+		u_int64_t files_queue;
+		double mBps;
+		bool valid;
+		sCacheDirQ() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("cdq"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} cdq;
+	struct sTarQueue {
+		u_int64_t count;
+		bool valid;
+		sTarQueue() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("tarQ"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} tar_queue;
+	struct sTarCopyQueue {
+		u_int64_t length;
+		bool valid;
+		sTarCopyQueue() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("tarMq"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} tar_copy_queue;
+	struct sTarChunkBuffer {
+		double mb;
+		bool valid;
+		sTarChunkBuffer() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("tarB"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} tar_chunk_buffer;
+	struct sFileBuffer {
+		double mb;
+		bool valid;
+		sFileBuffer() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("fileB"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} file_buffer;
+	struct sTarCPU {
+		vector_simple<double> cpu_spool1;
+		vector_simple<double> cpu_spool2;
+		bool valid;
+		sTarCPU() { memset((void*)this, 0, sizeof(*this)); }
+		void load(int pstatDataIndex);
+		string title() const { return("tarCPU"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const;
+		void get_values(vector<sValue> &out) const;
+		void rrd() const;
+	} tar_cpu;
+	struct sReadThreads {
+		struct sReadThread {
+			string_simple interace_alias;
+			double mbps;
+			double cpu_main;
+			bool cpu_main_valid;
+			unsigned long aloc_stack;
+			unsigned long alloc_alloc;
+			double cpu_dpdk_worker;
+			bool cpu_dpdk_worker_valid;
+			vector_simple<double> cpu_dpdk_rte_read;
+			double cpu_dpdk_rte_worker;
+			bool cpu_dpdk_rte_worker_valid;
+			double cpu_dpdk_rte_worker_slave;
+			bool cpu_dpdk_rte_worker_slave_valid;
+			double cpu_dpdk_rte_worker2;
+			bool cpu_dpdk_rte_worker2_valid;
+			double cpu_detach;
+			bool cpu_detach_valid;
+			unsigned long detach_aloc_stack;
+			unsigned long detach_alloc_alloc;
+			double cpu_pcap_process;
+			bool cpu_pcap_process_valid;
+			double cpu_defrag;
+			bool cpu_defrag_valid;
+			double cpu_md1;
+			bool cpu_md1_valid;
+			double cpu_md2;
+			bool cpu_md2_valid;
+			double cpu_dedup;
+			bool cpu_dedup_valid;
+			double cpu_service;
+			bool cpu_service_valid;
+			sReadThread() {memset((void*)this, 0, sizeof(*this));}
+			string title() const;
+			string render(bool with_title = true) const;
+			void get_sections(vector<sValue> &out) const { out.push_back(sValue(title(), render(false))); }
+			void get_values(vector<sValue> &out) const;
+		};
+		vector_simple<sReadThread> threads;
+		double sum_max;
+		int count_threads_sum_max;
+		sReadThreads() : sum_max(0), count_threads_sum_max(0) {}
+		void load(class PcapQueue *instance, int pstatDataIndex);
+		string title() const { return("..."); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const;
+		void get_values(vector<sValue> &out) const;
+	} read_threads;
+	struct sT0 {
+		double cpu_capture;
+		double cpu_write;
+		vector_simple<double> cpu_next;
+		bool cpu_write_valid;
+		bool valid;
+		sT0() { memset((void*)this, 0, sizeof(*this)); }
+		string title() const { return("t0CPU"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+		void rrd() const;
+	} t0;
+	struct sT1 {
+		string_simple cpu_string;
+		double cpu_perc;
+		bool valid;
+		sT1() { memset((void*)this, 0, sizeof(*this)); }
+		string title() const { return("t1CPU"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+		void rrd() const;
+	} t1;
+	struct sT2 {
+		struct sPreproc {
+			string_simple name;
+			double cpu;
+			unsigned long aloc_stack;
+			unsigned long alloc_alloc;
+			vector_simple<double> cpu_next;
+			sPreproc() { memset((void*)this, 0, sizeof(*this)); }
+		};
+		double cpu_mirror;
+		bool cpu_mirror_valid;
+		double cpu_pb;
+		bool cpu_pb_valid;
+		double cpu_detach;
+		vector_simple<double> cpu_detach_next;
+		bool cpu_detach_valid;
+		double cpu_defrag;
+		vector_simple<double> cpu_defrag_next;
+		bool cpu_defrag_valid;
+		double cpu_dedup;
+		bool cpu_dedup_valid;
+		double cpu_detach2;
+		vector_simple<double> cpu_detach2_next;
+		bool cpu_detach2_valid;
+		double cpu_ipacc;
+		bool cpu_ipacc_valid;
+		vector_simple<sPreproc> preproc;
+		double cpu_rtp_rh_main;
+		bool cpu_rtp_rh_main_valid;
+		vector_simple<double> cpu_rtp_rh_next;
+		vector_simple<double> cpu_rtp_rd;
+		double cpu_sum;
+		int threads_count;
+		bool valid;
+		sT2() { memset((void*)this, 0, sizeof(*this)); }
+		string title() const { return("t2CPU"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+		void rrd() const;
+	} t2;
+	struct sRTP {
+		double cpu_sum;
+		double cpu_max;
+		double cpu_min;
+		int threads_active;
+		string_simple extend;
+		bool valid;
+		sRTP() { memset((void*)this, 0, sizeof(*this)); }
+		string title() const { return("tRTP_CPU"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} rtp;
+	struct sHttp {
+		string_simple cpu_perc;
+		bool valid;
+		sHttp() { memset((void*)this, 0, sizeof(*this)); }
+		void load(int pstatDataIndex);
+		string title() const { return("thttpCPU"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} http;
+	struct sWebrtc {
+		string_simple cpu_perc;
+		bool valid;
+		sWebrtc() { memset((void*)this, 0, sizeof(*this)); }
+		void load(int pstatDataIndex);
+		string title() const { return("twebrtcCPU"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} webrtc;
+	struct sSsl {
+		string_simple cpu_perc;
+		bool valid;
+		sSsl() { memset((void*)this, 0, sizeof(*this)); }
+		void load(int pstatDataIndex);
+		string title() const { return("tsslCPU"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} ssl;
+	struct sDtls {
+		u_int32_t queue_links;
+		u_int32_t queue_packets;
+		bool valid;
+		sDtls() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("dtls"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} dtls;
+	struct sSipTcp {
+		string_simple cpu_perc;
+		bool valid;
+		sSipTcp() { memset((void*)this, 0, sizeof(*this)); }
+		void load(int pstatDataIndex);
+		string title() const { return("tsip_tcpCPU"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} sip_tcp;
+	struct sIpfix {
+		string_simple value;
+		void load();
+		string title() const { return("ipfix"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(!value.empty()) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} ipfix;
+	struct sHep {
+		string_simple value;
+		void load();
+		string title() const { return("hep"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(!value.empty()) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} hep;
+	struct sRibbonsbc {
+		string_simple value;
+		void load();
+		string title() const { return("ribbonsbc"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(!value.empty()) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} ribbonsbc;
+	struct sAsyncCloseCPU {
+		vector_simple<double> cpu_perc;
+		bool valid;
+		sAsyncCloseCPU() { memset((void*)this, 0, sizeof(*this)); }
+		void load(int pstatDataIndex);
+		string title() const { return("tacCPU"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+		void rrd() const;
+	} async_close_cpu;
+	struct sAsyncCloseQueue {
+		vector_simple<unsigned> queue;
+		bool valid;
+		sAsyncCloseQueue() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("tacQ"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} async_close_queue;
+	struct sStoring {
+		string_simple cpu_perc;
+		bool valid;
+		sStoring() { memset((void*)this, 0, sizeof(*this)); }
+		void load(int pstatDataIndex);
+		string title() const { return("storing"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} storing;
+	struct sCharts {
+		string_simple cpu_perc;
+		u_int32_t requests;
+		u_int64_t delay_us;
+		u_int64_t queue_size;
+		u_int64_t remote_queue_size;
+		bool cpu_valid;
+		bool requests_valid;
+		bool queue_valid;
+		bool remote_queue_valid;
+		bool valid;
+		sCharts() { memset((void*)this, 0, sizeof(*this)); }
+		void load(int pstatDataIndex);
+		string title() const { return("charts"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} charts;
+	struct sIpacc {
+		string_simple cpu_perc;
+		bool valid;
+		sIpacc() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("tipaccCPU"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} ipacc;
+	struct sIpaccBuffer {
+		u_int64_t buffer_length;
+		u_int64_t buffer_size;
+		bool valid;
+		sIpaccBuffer() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("ipacc_buffer"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} ipacc_buffer;
+	struct sRrd {
+		double cpu_perc;
+		bool valid;
+		sRrd() { memset((void*)this, 0, sizeof(*this)); }
+		void load(int pstatDataIndex);
+		string title() const { return("RRD"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} rrd;
+	struct sDedup {
+		u_int64_t counter;
+		u_int64_t collisions;
+		bool valid;
+		sDedup() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("DUPL"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} dedup;
+	struct sRssVsz {
+		u_int64_t rss_mb;
+		u_int64_t vsz_mb;
+		bool valid;
+		sRssVsz() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("RSS/VSZ"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+		void rrd() const;
+	} rss_vsz;
+	struct sHugepages {
+		u_int64_t base_mb;
+		bool valid;
+		sHugepages() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("HP"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} hugepages;
+	struct sTcmAlloc {
+		u_int64_t heap;
+		u_int64_t alloc;
+		u_int64_t free;
+		u_int64_t unmapped;
+		u_int64_t thread_cache;
+		bool valid;
+		sTcmAlloc() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("TCM"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} tcm_alloc;
+	struct sHeapHugepage {
+		u_int64_t mb;
+		bool valid;
+		sHeapHugepage() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("HEAP_HUGEPAGE"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} heap_hugepage;
+	struct sHeapHashtable {
+		u_int64_t alloc_mb;
+		u_int64_t size_mb;
+		bool valid;
+		sHeapHashtable() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("HEAP_HASHTABLE"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} heap_hashtable;
+	struct sLoadAvg {
+		double la1;
+		double la5;
+		double la15;
+		u_int64_t uptime_hours;
+		int cpu_count;
+		bool cpu_ht;
+		bool overload_indicator;
+		bool valid;
+		sLoadAvg() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("LA"); }
+		string name() const { return("LA"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(name(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+		void rrd() const;
+	} load_avg;
+	struct sTlb {
+		unsigned int count;
+		bool tlb_high_indicator;
+		bool valid;
+		sTlb() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("TLB"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} tlb;
+	struct sVersion {
+		string_simple value;
+		void load();
+		string title() const { return("v"); }
+		string name() const { return("version"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(!value.empty()) { out.push_back(sValue(name(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} version;
+	struct sExternalError {
+		string_simple value;
+		void load(const string &error);
+		string title() const { return(""); }
+		string name() const { return("external_error"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(!value.empty()) { out.push_back(sValue(name(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} external_error;
+	sPcapStatData() :
+		mode(_mode_standard),
+		initialized(false) {}
+	string render();
+	void get_sections_all(vector<sValue> &out, eSectionNameBy by = _section_id_by_title) const;
+	void get_values_all(vector<sSectionValues> &out, eSectionNameBy by = _section_id_by_varname) const;
+	string get_sections_all_json(eSectionNameBy by = _section_id_by_title) const;
+	string get_values_all_json(eSectionNameBy by = _section_id_by_varname) const;
+	void rrd_all() const;
+};
 class PcapQueue {
 public:
 	enum eTypeQueue {
@@ -240,13 +994,13 @@ protected:
 	}
 	virtual string pcapStatString_packets(int statPeriod);
 	virtual double pcapStat_get_compress();
-	virtual double pcapStat_get_speed_mb_s(int statPeriod);
+	virtual double pcapStat_get_speed_mb_s(u_int64_t divide_ms);
 	#if LOG_PACKETS_PER_SEC
-	virtual u_int64_t pcapStat_get_speed_packets_s(int statPeriod);
+	virtual u_int64_t pcapStat_get_speed_packets_s(u_int64_t divide_ms);
 	#endif
-	virtual double pcapStat_get_speed_out_mb_s(int statPeriod);
+	virtual double pcapStat_get_speed_out_mb_s(u_int64_t divide_ms);
 	#if LOG_PACKETS_PER_SEC
-	virtual u_int64_t pcapStat_get_speed_out_packets_s(int statPeriod);
+	virtual u_int64_t pcapStat_get_speed_out_packets_s(u_int64_t divide_ms);
 	#endif
 	virtual unsigned long pcapStat_get_bypass_buffer_size_exeeded() { return(0); }
 	virtual double pcapStat_get_disk_buffer_perc() { return(-1); }
@@ -255,20 +1009,16 @@ protected:
 	virtual string pcapDropCountStat_interface() { return(""); }
 	virtual ulong getCountPacketDrop() { return(0); }
 	virtual string getStatPacketDrop() { return(""); }
-	virtual string pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, int /*divide*/, int /*pstatDataIndex*/) { 
+	virtual void pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, u_int64_t /*divide_ms*/, int /*pstatDataIndex*/, vector_simple<sPcapStatData::sReadThreads::sReadThread> * /*data*/) {
 		if(sumMax) *sumMax = 0;
 		if(countThreadsSumMax) *countThreadsSumMax = 0;
-		return(""); 
 	};
 	virtual void initStat_interface() {};
 	int getThreadPid(eTypeThread typeThread);
 	pstat_data *getThreadPstatData(eTypeThread typeThread, int pstatDataIndex);
 	void preparePstatData(eTypeThread typeThread, int pstatDataIndex);
-	void prepareProcPstatData();
 	double getCpuUsagePerc(eTypeThread typeThread, int pstatDataIndex, bool preparePstatData = true);
 	virtual string getCpuUsage(bool /*writeThread*/, int /*pstatDataIndex*/, bool /*preparePstatData*/ = true) { return(""); }
-	long unsigned int getVsizeUsage(bool preparePstatData = false);
-	long unsigned int getRssUsage(bool preparePstatData = false);
 	virtual bool isMirrorSender() {
 		return(false);
 	}
@@ -297,7 +1047,6 @@ protected:
 	pstat_data mainThreadPstatData[2][2];
 	pstat_data writeThreadPstatData[2][2];
 	pstat_data nextThreadsPstatData[PCAP_QUEUE_NEXT_THREADS_MAX][2][2];
-	pstat_data procPstatData[2];
 	bool initAllReadThreadsFinished;
 	#if SNIFFER_THREADS_EXT
 	cThreadMonitor::sThread *thread_data_main;
@@ -308,22 +1057,12 @@ protected:
 private:
 	u_char* packetBuffer;
 	PcapQueue *instancePcapHandle;
-	u_int64_t counter_calls_old;
-	u_int64_t counter_calls_clean_old;
-	u_int64_t counter_calls_save_1_old;
-	u_int64_t counter_calls_save_2_old;
-	u_int64_t counter_registers_old;
-	u_int64_t counter_registers_clean_old;
-	u_int64_t counter_sip_packets_old[2];
-	u_int64_t counter_sip_register_packets_old;
-	u_int64_t counter_sip_message_packets_old;
-	u_int64_t counter_rtp_packets_old[2];
-	u_int64_t counter_all_packets_old;
-	u_int64_t counter_user_packets_old[5];
 	u_int64_t lastTimeLogErrPcapNextExNullPacket;
 	u_int64_t lastTimeLogErrPcapNextExErrorReading;
 	u_long pcapStatLogCounter;
 	u_long pcapStatCpuCheckCounter;
+friend struct sPcapStatData::sReadThreads;
+friend struct sPcapStatData::sTraffic;
 friend void *_PcapQueue_threadFunction(void *arg);
 friend void *_PcapQueue_writeThreadFunction(void *arg);
 };
@@ -831,7 +1570,7 @@ private:
 	void terminate();
 	const char *getTypeThreadName();
 	void prepareLogTraffic();
-	double getTraffic(int divide);
+	double getTraffic(u_int64_t divide_ms);
 private:
 	pthread_t threadHandle;
 	int threadId;
@@ -931,7 +1670,7 @@ protected:
 	virtual ulong getCountPacketDrop();
 	virtual string getStatPacketDrop();
 	void initStat_interface();
-	string pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, int divide, int pstatDataIndex);
+	void pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, u_int64_t divide_ms, int pstatDataIndex, vector_simple<sPcapStatData::sReadThreads::sReadThread> *data);
 	string getInterface();
 	string getInterfaceAlias();
 	void prepareLogTraffic();
@@ -1520,6 +2259,7 @@ void PcapQueue_init();
 void PcapQueue_term();
 int getThreadingMode();
 void setThreadingMode(int threadingMode);
+void reset_pcap_stat_load_state();
 
 u_int16_t register_pcap_handle(pcap_t *handle);
 inline pcap_t *get_pcap_handle(u_int16_t index) {

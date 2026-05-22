@@ -48,6 +48,184 @@ struct TfileListElem {
     time_t mtime;
 };
 
+class string_simple {
+public:
+	string_simple() {
+		ptr = NULL;
+	}
+	string_simple(const char *s) {
+		ptr = NULL;
+		set(s);
+	}
+	string_simple(const string &s) {
+		ptr = NULL;
+		set(s.c_str());
+	}
+	string_simple(const string_simple &other) {
+		ptr = NULL;
+		set(other.ptr);
+	}
+	~string_simple() {
+		if(ptr) {
+			delete [] ptr;
+		}
+	}
+	string_simple &operator = (const char *s) {
+		set(s);
+		return(*this);
+	}
+	string_simple &operator = (const string &s) {
+		set(s.c_str());
+		return(*this);
+	}
+	string_simple &operator = (const string_simple &other) {
+		if(this != &other) {
+			set(other.ptr);
+		}
+		return(*this);
+	}
+	const char *c_str() const {
+		return(ptr ? ptr : "");
+	}
+	bool empty() const {
+		return(!ptr || !*ptr);
+	}
+	size_t length() const {
+		return(ptr ? strlen(ptr) : 0);
+	}
+	void clear() {
+		if(ptr) {
+			delete [] ptr;
+			ptr = NULL;
+		}
+	}
+	operator string() const {
+		return(string(ptr ? ptr : ""));
+	}
+private:
+	void set(const char *s) {
+		clear();
+		if(s && *s) {
+			ptr = new FILE_LINE(0) char[strlen(s) + 1];
+			strcpy(ptr, s);
+		}
+	}
+	char *ptr;
+};
+inline std::ostream &operator << (std::ostream &os, const string_simple &s) {
+	if(!s.empty()) {
+		os << s.c_str();
+	}
+	return(os);
+}
+
+template <class T>
+class vector_simple {
+public:
+	vector_simple() {
+		ptr = NULL;
+		count = 0;
+	}
+	vector_simple(const vector_simple &other) {
+		ptr = NULL;
+		count = 0;
+		copy_from(other);
+	}
+	vector_simple(const std::vector<T> &v) {
+		ptr = NULL;
+		count = 0;
+		copy_from_vector(v);
+	}
+	~vector_simple() {
+		clear();
+	}
+	vector_simple &operator = (const vector_simple &other) {
+		if(this != &other) {
+			copy_from(other);
+		}
+		return(*this);
+	}
+	vector_simple &operator = (const std::vector<T> &v) {
+		copy_from_vector(v);
+		return(*this);
+	}
+	void push_back(const T &val) {
+		extend(count + 1);
+		ptr[count - 1] = new T(val);
+	}
+	T &operator [] (size_t i) {
+		extend(i + 1);
+		if(!ptr[i]) {
+			ptr[i] = new T();
+		}
+		return(*ptr[i]);
+	}
+	const T &operator [] (size_t i) const {
+		return(*ptr[i]);
+	}
+	bool isSet(size_t i) const {
+		return(i < count && ptr[i] != NULL);
+	}
+	size_t size() const {
+		return(count);
+	}
+	bool empty() const {
+		return(count == 0);
+	}
+	void clear() {
+		if(ptr) {
+			for(size_t i = 0; i < count; i++) {
+				if(ptr[i]) {
+					delete ptr[i];
+				}
+			}
+			delete[] ptr;
+			ptr = NULL;
+		}
+		count = 0;
+	}
+private:
+	void extend(size_t new_count) {
+		if(new_count <= count) {
+			return;
+		}
+		T **new_ptr = new T*[new_count];
+		for(size_t i = 0; i < count; i++) {
+			new_ptr[i] = ptr[i];
+		}
+		for(size_t i = count; i < new_count; i++) {
+			new_ptr[i] = NULL;
+		}
+		if(ptr) {
+			delete[] ptr;
+		}
+		ptr = new_ptr;
+		count = new_count;
+	}
+	void copy_from(const vector_simple &other) {
+		clear();
+		if(other.count > 0) {
+			ptr = new T*[other.count];
+			for(size_t i = 0; i < other.count; i++) {
+				ptr[i] = other.ptr[i] ? new T(*other.ptr[i]) : NULL;
+			}
+			count = other.count;
+		}
+	}
+	void copy_from_vector(const std::vector<T> &v) {
+		clear();
+		if(!v.empty()) {
+			ptr = new T*[v.size()];
+			for(size_t i = 0; i < v.size(); i++) {
+				ptr[i] = new T(v[i]);
+			}
+			count = v.size();
+		}
+	}
+	T **ptr;
+	size_t count;
+};
+
 struct string_icase : public string
 {
 	string_icase() {

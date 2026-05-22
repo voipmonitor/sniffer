@@ -64,6 +64,13 @@ inline char str_front(const std::string &s) { return s[0]; }
  * Calibration profile loaded from file
  */
 struct sCalibrationProfile {
+    struct sValue {
+        std::string name;
+        std::string value;
+        std::string unit;
+        sValue() {}
+        sValue(const std::string &name, const std::string &value, const std::string &unit = "") : name(name), value(value), unit(unit) {}
+    };
     std::string uuid;
     std::string device;
     std::string filesystem;
@@ -111,6 +118,7 @@ struct sCalibrationProfile {
         needs_recalibration = false;
         valid = false;
     }
+    void get_values(std::vector<sValue> &out) const;
 };
 
 
@@ -166,6 +174,13 @@ enum eCalibrationState {
  * Computed I/O metrics
  */
 struct sIOMetrics {
+    struct sValue {
+        std::string name;
+        std::string value;
+        std::string unit;
+        sValue() {}
+        sValue(const std::string &name, const std::string &value, const std::string &unit = "") : name(name), value(value), unit(unit) {}
+    };
     // Throughput metrics
     double write_throughput_mbs;  // Current write throughput MB/s
     double read_throughput_mbs;   // Current read throughput MB/s
@@ -212,6 +227,7 @@ struct sIOMetrics {
             default: return "";
         }
     }
+    void get_values(std::vector<sValue> &out) const;
 };
 
 

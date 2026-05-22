@@ -31,7 +31,6 @@ double get_cpu_usage_perc(const int tid, pstat_data *data);
 context_switches_data get_context_switches(const context_switches_data* cur, const context_switches_data* last);
 long unsigned int getRss();
 void getLoadAvg(double *la_1, double *la_5, double *la_15);
-std::string getLoadAvgStr();
 bool get_cpu_ht();
 int get_cpu_count();
 

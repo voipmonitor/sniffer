@@ -1407,7 +1407,7 @@ void *manager_read_thread(void * arg) {
 				command = "failed_aes_decrypt";
 			}
 		} else {
-			if(!clientInfo.file_socket && cManagerAes::getAesKey(NULL)) {
+			if(!clientInfo.file_socket && cManagerAes::checkExistsAesKey()) {
 				aes_missing = true;
 			}
 			command = (char*)command_buffer;
@@ -1430,62 +1430,105 @@ void *manager_read_thread(void * arg) {
 }
 
 
-bool cManagerAes::getAesKey(cAesKey *aes_key, bool force) {
+bool cManagerAes::getAesKey(cAesKey *aes_key, bool force, bool from_source_db) {
 	if(!is_support_manager_aes()) {
 		cManagerAes::aes_key.ckey.clear();
 		cManagerAes::aes_key.ivec.clear();
 		return(false);
 	}
-	extern string opt_manager_aes_key;
-	extern string opt_manager_aes_iv;
-	if(!opt_manager_aes_key.empty() && !opt_manager_aes_iv.empty()) {
-		string ckey = base64_decode(opt_manager_aes_key.c_str());
-		string ivec = base64_decode(opt_manager_aes_iv.c_str());
-		if(aes_key) {
-			aes_key->ckey = ckey;
-			aes_key->ivec = ivec;
-		}
-		cManagerAes::aes_key.ckey = ckey;
-		cManagerAes::aes_key.ivec = ivec;
-		return(true);
-	}
-	__SYNC_LOCK(_sync);
-	if(!force &&
-	   cManagerAes::aes_key.isSetKeys()) {
-		if(aes_key) {
-			*aes_key = cManagerAes::aes_key;
-		}
-		__SYNC_UNLOCK(_sync);
-		return(true);
-	}
-	bool rslt = false;
-	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query("SELECT * from `system` where type = 'manager_key'");
-	SqlDb_row row = sqlDb->fetchRow();
-	if(row) {
-		JsonItem jsonAesKey;
-		jsonAesKey.parse(row["content"]);
-		string key = jsonAesKey.getValue("key");
-		string iv = jsonAesKey.getValue("iv");
-		if(!key.empty() && !iv.empty()) {
-			string ckey = base64_decode(key.c_str());
-			string ivec = base64_decode(iv.c_str());
+	if(!from_source_db) {
+		extern string opt_manager_aes_key;
+		extern string opt_manager_aes_iv;
+		if(!opt_manager_aes_key.empty() && !opt_manager_aes_iv.empty()) {
+			string ckey = base64_decode(opt_manager_aes_key.c_str());
+			string ivec = base64_decode(opt_manager_aes_iv.c_str());
 			if(aes_key) {
 				aes_key->ckey = ckey;
 				aes_key->ivec = ivec;
 			}
 			cManagerAes::aes_key.ckey = ckey;
 			cManagerAes::aes_key.ivec = ivec;
-			rslt = true;
+			return(true);
 		}
 	}
-	delete sqlDb;
+	cAesKey *cache_key = from_source_db ? &cManagerAes::aes_key_src : &cManagerAes::aes_key;
+	__SYNC_LOCK(_sync);
+	if(!force &&
+	   cache_key->isSetKeys()) {
+		if(aes_key) {
+			*aes_key = *cache_key;
+		}
+		__SYNC_UNLOCK(_sync);
+		return(true);
+	}
+	bool rslt = false;
+	SqlDb *sqlDb = NULL;
+	if(from_source_db) {
+		extern bool opt_database_backup;
+		if(opt_database_backup) {
+			extern char opt_database_backup_from_mysql_host[256];
+			extern char opt_database_backup_from_mysql_database[256];
+			extern char opt_database_backup_from_mysql_user[256];
+			extern char opt_database_backup_from_mysql_password[256];
+			extern unsigned int opt_database_backup_from_mysql_port;
+			extern char opt_database_backup_from_mysql_socket[256];
+			extern mysqlSSLOptions optMySSLBackup;
+			SqlDb_mysql *sqlDbSrc = new FILE_LINE(0) SqlDb_mysql();
+			sqlDbSrc->setConnectParameters(opt_database_backup_from_mysql_host,
+						       opt_database_backup_from_mysql_user,
+						       opt_database_backup_from_mysql_password,
+						       opt_database_backup_from_mysql_database,
+						       opt_database_backup_from_mysql_port,
+						       opt_database_backup_from_mysql_socket,
+						       true, &optMySSLBackup);
+			if(sqlDbSrc->connect()) {
+				sqlDb = sqlDbSrc;
+			} else {
+				delete sqlDbSrc;
+			}
+		}
+	} else {
+		sqlDb = createSqlObject();
+	}
+	if(sqlDb) {
+		sqlDb->query("SELECT * from `system` where type = 'manager_key'");
+		SqlDb_row row = sqlDb->fetchRow();
+		if(row) {
+			JsonItem jsonAesKey;
+			jsonAesKey.parse(row["content"]);
+			string key = jsonAesKey.getValue("key");
+			string iv = jsonAesKey.getValue("iv");
+			if(!key.empty() && !iv.empty()) {
+				string ckey = base64_decode(key.c_str());
+				string ivec = base64_decode(iv.c_str());
+				if(aes_key) {
+					aes_key->ckey = ckey;
+					aes_key->ivec = ivec;
+				}
+				cache_key->ckey = ckey;
+				cache_key->ivec = ivec;
+				rslt = true;
+			}
+		}
+		delete sqlDb;
+	}
 	if(!rslt) {
-		cManagerAes::aes_key.ckey.clear();
-		cManagerAes::aes_key.ivec.clear();
+		cache_key->ckey.clear();
+		cache_key->ivec.clear();
 	}
 	__SYNC_UNLOCK(_sync);
 	return(rslt);
+}
+
+bool cManagerAes::checkExistsAesKey(bool force) {
+	if(getAesKey(NULL, force)) {
+		return(true);
+	}
+	extern bool opt_database_backup;
+	if(opt_database_backup && getAesKey(NULL, force, true)) {
+		return(true);
+	}
+	return(false);
 }
 
 bool cManagerAes::isAes(SimpleBuffer *buffer) {
@@ -1509,18 +1552,20 @@ bool cManagerAes::existsEnd(SimpleBuffer *buffer, int *endPos) {
 }
 
 bool cManagerAes::decrypt(SimpleBuffer *buffer, string *rslt, cAesKey *aes_key, string *aes_cipher) {
-	if(!getAesKey(aes_key)) {
+	if(!checkExistsAesKey()) {
 		return(false);
 	}
 	u_char *aes_cipher_end = (u_char*)strnchr((char*)buffer->data(), ':', buffer->size());
-	if(aes_cipher_end && 
+	if(aes_cipher_end &&
 	   aes_cipher_end - buffer->data() < 20) {
 		u_char *end_aes = (u_char*)memmem(buffer->data(), buffer->size(), ":sea", 4);
 		if(end_aes) {
 			*aes_cipher = string((char*)buffer->data(), aes_cipher_end - buffer->data());
-			for(int pass = 0; pass < 2; pass++) {
-				if(pass > 0) {
-					getAesKey(aes_key, true);
+			extern bool opt_database_backup;
+			int max_pass = opt_database_backup ? 3 : 2;
+			for(int pass = 0; pass < max_pass; pass++) {
+				if(!getAesKey(aes_key, pass > 0, pass == 2)) {
+					continue;
 				}
 				cAes aes;
 				aes.setKeys(aes_key);
@@ -1557,13 +1602,14 @@ bool cManagerAes::notNeedAesForCommand(char *command, sMgmtCmdsReg *mgmtCmd) {
 			}
 		}
 	}
-	if(!getAesKey(NULL, true)) {
+	if(!checkExistsAesKey(true)) {
 		return(true);
 	}
 	return(false);
 }
 
 cAesKey cManagerAes::aes_key;
+cAesKey cManagerAes::aes_key_src;
 volatile int cManagerAes::_sync = 0;
 
 
@@ -4574,140 +4620,99 @@ int Mgmt_sniffer_stat(Mgmt_params *params) {
 		params->registerCommand("sniffer_stat", "return sniffer's statistics (use 'plain' for key=value format)", true);
 		return(0);
 	}
-
 	extern vm_atomic<string> storingCdrLastWriteAt;
-	extern vm_atomic<string> pbStatString;
+	extern vm_atomic<sPcapStatData> pbStatData;
 	extern vm_atomic<u_long> pbCountPacketDrop;
 	extern bool opt_upgrade_by_git;
 	extern bool packetbuffer_memory_is_full;
 	extern vm_atomic<string> terminating_error;
-	ostringstream outStrStat;
 	extern int vm_rrd_version;
 	checkRrdVersion(true);
 	__SYNC_LOCK(usersniffer_sync);
 	size_t countLiveSniffers = usersniffer.size();
 	__SYNC_UNLOCK(usersniffer_sync);
-	bool plainOutput = strstr(params->buf, "plain") != NULL;
-	string statStr = pbStatString;
-	bool initializing = statStr.empty();
+	bool plainOutput = strcasestr(params->buf, "plain") != NULL;
+	bool sectionsByVarname = strcasestr(params->buf, "sections_by_varname") != NULL;
+	bool sectionsByTitle = strcasestr(params->buf, "sections_by_title") != NULL;
+	bool valuesByVarname = strcasestr(params->buf, "values_by_varname") != NULL;
+	bool valuesByTitle = strcasestr(params->buf, "values_by_title") != NULL;
+	sPcapStatData statData = pbStatData;
+	bool initializing = !statData.initialized;
+	JsonExport json;
+	json.add("version", RTPSENSOR_VERSION);
+	if(initializing) {
+		if(plainOutput) {
+			json.add("initializing", "true");
+		} else {
+			json.add("initializing", true);
+		}
+	}
+	json.add("build", RTPSENSOR_BUILD_NUMBER);
+	json.add("rrd_version", intToString(vm_rrd_version));
+	json.add("storingCdrLastWriteAt", storingCdrLastWriteAt);
 	if(plainOutput) {
-		outStrStat << "version=" << RTPSENSOR_VERSION << "\n";
-		if(initializing) {
-			outStrStat << "initializing=1\n";
-		}
-		outStrStat << "build=" << RTPSENSOR_BUILD_NUMBER << "\n";
-		outStrStat << "rrd_version=" << vm_rrd_version << "\n";
-		outStrStat << "storingCdrLastWriteAt=" << storingCdrLastWriteAt << "\n";
-		size_t pos = 0;
-		while(pos < statStr.length()) {
-			size_t bracketOpen = statStr.find('[', pos);
-			size_t bracketClose = statStr.find(']', pos);
-			if(bracketOpen != string::npos && bracketClose != string::npos && bracketOpen < bracketClose) {
-				string key = statStr.substr(pos, bracketOpen - pos);
-				string value = statStr.substr(bracketOpen + 1, bracketClose - bracketOpen - 1);
-				size_t keyStart = key.find_first_not_of(' ');
-				if(keyStart != string::npos) {
-					key = key.substr(keyStart);
-				}
-				if(key.empty()) {
-					key = "total_traffic";
-				}
-				pos = bracketClose + 1;
-				size_t suffixEnd = pos;
-				while(suffixEnd < statStr.length() && statStr[suffixEnd] != ' ' && statStr[suffixEnd] != '[') {
-					suffixEnd++;
-				}
-				if(suffixEnd > pos) {
-					value += statStr.substr(pos, suffixEnd - pos);
-					pos = suffixEnd;
-				}
-				if(key == "calls") {
-					outStrStat << "calls_active=" << value << "\n";
-					if(pos < statStr.length() && statStr[pos] == '[') {
-						size_t bracketClose2 = statStr.find(']', pos);
-						if(bracketClose2 != string::npos) {
-							string value2 = statStr.substr(pos + 1, bracketClose2 - pos - 1);
-							outStrStat << "calls_final=" << value2 << "\n";
-							pos = bracketClose2 + 1;
-						}
-					}
-				}
-				else {
-					outStrStat << key << "=" << value << "\n";
-				}
-				if(pos < statStr.length() && statStr[pos] == ' ') {
-					pos++;
-				}
-			} else {
-				break;
-			}
-		}
-		outStrStat << "pbCountPacketDrop=" << pbCountPacketDrop << "\n";
-		outStrStat << "uptime=" << getUptime() << "\n";
-		outStrStat << "memory_is_full=" << packetbuffer_memory_is_full << "\n";
-		outStrStat << "count_live_sniffers=" << countLiveSniffers << "\n";
-		outStrStat << "upgrade_by_git=" << opt_upgrade_by_git << "\n";
-		outStrStat << "use_new_config=" << true << "\n";
-		outStrStat << "terminating_error=" << terminating_error << "\n";
-		// Disk I/O metrics
-		if (diskIOMonitor.isActive()) {
-			sIOMetrics io = diskIOMonitor.getMetrics();
-			outStrStat << "disk_io_capacity_pct=" << fixed << setprecision(1) << io.capacity_pct << "\n";
-			outStrStat << "disk_io_reserve_pct=" << fixed << setprecision(1) << io.reserve_pct << "\n";
-			outStrStat << "disk_io_write_throughput_mbs=" << fixed << setprecision(1) << io.write_throughput_mbs << "\n";
-			outStrStat << "disk_io_read_throughput_mbs=" << fixed << setprecision(1) << io.read_throughput_mbs << "\n";
-			outStrStat << "disk_io_write_iops=" << fixed << setprecision(0) << io.write_iops << "\n";
-			outStrStat << "disk_io_read_iops=" << fixed << setprecision(0) << io.read_iops << "\n";
-			outStrStat << "disk_io_latency_ms=" << fixed << setprecision(2) << io.write_latency_ms << "\n";
-			outStrStat << "disk_io_baseline_latency_ms=" << fixed << setprecision(2) << io.baseline_latency_ms << "\n";
-			outStrStat << "disk_io_latency_ratio=" << fixed << setprecision(1) << io.latency_ratio << "\n";
-			outStrStat << "disk_io_utilization_pct=" << fixed << setprecision(0) << io.utilization_pct << "\n";
-			outStrStat << "disk_io_state=" << io.getStateString() << "\n";
-		} else if (diskIOMonitor.isCalibrating()) {
-			outStrStat << "disk_io_calibrating=" << diskIOMonitor.getCalibrationProgress() << "\n";
+		vector<sPcapStatData::sValue> sections;
+		statData.get_sections_all(sections, sectionsByVarname ? sPcapStatData::_section_id_by_varname : sPcapStatData::_section_id_by_title);
+		for(size_t i = 0; i < sections.size(); i++) {
+			json.addJson(sections[i].name.c_str(), sections[i].value);
 		}
 	} else {
-		outStrStat << "{";
-		outStrStat << "\"version\": \"" << RTPSENSOR_VERSION << "\",";
-		outStrStat << "\"build\": \"" << RTPSENSOR_BUILD_NUMBER << "\",";
-		outStrStat << "\"rrd_version\": \"" << vm_rrd_version << "\",";
-		if(initializing) {
-			outStrStat << "\"initializing\": true,";
+		json.add("pbStatString", statData.render());
+		if(sectionsByVarname || sectionsByTitle) {
+			JsonExport *sectionsObj = json.addObject("pbStatSections");
+			vector<sPcapStatData::sValue> sections;
+			statData.get_sections_all(sections, sectionsByVarname ? sPcapStatData::_section_id_by_varname : sPcapStatData::_section_id_by_title);
+			for(size_t i = 0; i < sections.size(); i++) {
+				sectionsObj->add(sections[i].name.c_str(), sections[i].value);
+			}
 		}
-		outStrStat << "\"storingCdrLastWriteAt\": \"" << storingCdrLastWriteAt << "\",";
-		outStrStat << "\"pbStatString\": \"" << statStr << "\",";
-		outStrStat << "\"pbCountPacketDrop\": \"" << pbCountPacketDrop << "\",";
-		outStrStat << "\"uptime\": \"" << getUptime() << "\",";
-		outStrStat << "\"memory_is_full\": \"" << packetbuffer_memory_is_full << "\",";
-		outStrStat << "\"count_live_sniffers\": \"" << countLiveSniffers << "\",";
-		outStrStat << "\"upgrade_by_git\": \"" << opt_upgrade_by_git << "\",";
-		outStrStat << "\"use_new_config\": \"" << true << "\",";
-		outStrStat << "\"terminating_error\": \"" << terminating_error << "\",";
-		// Disk I/O metrics in JSON
-		if (diskIOMonitor.isActive()) {
-			sIOMetrics io = diskIOMonitor.getMetrics();
-			outStrStat << "\"disk_io\": {";
-			outStrStat << "\"capacity_pct\": " << fixed << setprecision(1) << io.capacity_pct << ",";
-			outStrStat << "\"reserve_pct\": " << fixed << setprecision(1) << io.reserve_pct << ",";
-			outStrStat << "\"write_throughput_mbs\": " << fixed << setprecision(1) << io.write_throughput_mbs << ",";
-			outStrStat << "\"read_throughput_mbs\": " << fixed << setprecision(1) << io.read_throughput_mbs << ",";
-			outStrStat << "\"write_iops\": " << fixed << setprecision(0) << io.write_iops << ",";
-			outStrStat << "\"read_iops\": " << fixed << setprecision(0) << io.read_iops << ",";
-			outStrStat << "\"latency_ms\": " << fixed << setprecision(2) << io.write_latency_ms << ",";
-			outStrStat << "\"baseline_latency_ms\": " << fixed << setprecision(2) << io.baseline_latency_ms << ",";
-			outStrStat << "\"latency_ratio\": " << fixed << setprecision(1) << io.latency_ratio << ",";
-			outStrStat << "\"utilization_pct\": " << fixed << setprecision(0) << io.utilization_pct << ",";
-			outStrStat << "\"state\": \"" << io.getStateString() << "\"";
-			outStrStat << "}";
-		} else if (diskIOMonitor.isCalibrating()) {
-			outStrStat << "\"disk_io\": {\"calibrating\": " << diskIOMonitor.getCalibrationProgress() << "}";
-		} else {
-			outStrStat << "\"disk_io\": null";
+		if(valuesByVarname || valuesByTitle) {
+			JsonExport *valuesObj = json.addObject("pbStatValues");
+			vector<sPcapStatData::sSectionValues> sections;
+			statData.get_values_all(sections, valuesByVarname ? sPcapStatData::_section_id_by_varname : sPcapStatData::_section_id_by_title);
+			for(size_t i = 0; i < sections.size(); i++) {
+				JsonExport *secObj = valuesObj->addObject(sections[i].sect_id.c_str());
+				for(size_t j = 0; j < sections[i].values.size(); j++) {
+					const sPcapStatData::sValue &val = sections[i].values[j];
+					secObj->add(val.name.c_str(), val.unit.empty() ? val.value : val.value + " " + val.unit);
+				}
+			}
 		}
-		outStrStat << "}";
-		outStrStat << endl;
 	}
-	string outStrStatStr = outStrStat.str();
+	json.add("pbCountPacketDrop", intToString((u_long)pbCountPacketDrop));
+	json.add("uptime", intToString(getUptime()));
+	json.add("memory_is_full", intToString((int)packetbuffer_memory_is_full));
+	json.add("count_live_sniffers", intToString(countLiveSniffers));
+	json.add("upgrade_by_git", intToString((int)opt_upgrade_by_git));
+	json.add("use_new_config", "1");
+	json.add("terminating_error", terminating_error);
+	if(diskIOMonitor.isActive()) {
+		sIOMetrics io = diskIOMonitor.getMetrics();
+		vector<sIOMetrics::sValue> io_values;
+		io.get_values(io_values);
+		if(plainOutput) {
+			for(size_t i = 0; i < io_values.size(); i++) {
+				const sIOMetrics::sValue &v = io_values[i];
+				json.add(("disk_io_" + v.name).c_str(), v.value + (!v.unit.empty() ? " " + v.unit : ""));
+			}
+		} else {
+			JsonExport *ioObj = json.addObject("disk_io");
+			for(size_t i = 0; i < io_values.size(); i++) {
+				const sIOMetrics::sValue &v = io_values[i];
+				ioObj->add(v.name.c_str(), v.value + (!v.unit.empty() ? " " + v.unit : ""));
+			}
+		}
+	} else if(diskIOMonitor.isCalibrating()) {
+		if(plainOutput) {
+			json.add("disk_io_calibrating", diskIOMonitor.getCalibrationProgress());
+		} else {
+			JsonExport *ioObj = json.addObject("disk_io");
+			ioObj->add("calibrating", diskIOMonitor.getCalibrationProgress());
+		}
+	} else if(!plainOutput) {
+		json.add("disk_io");
+	}
+	string outStrStatStr = plainOutput ? json.getText() : json.getJson() + "\n";
 	return(params->sendString(&outStrStatStr));
 }
 
@@ -4726,57 +4731,36 @@ int Mgmt_disk_io_calibration(Mgmt_params *params) {
 		params->registerCommand("disk_io_calibration", "return disk I/O calibration profile (JSON)", true);
 		return(0);
 	}
-	ostringstream out;
 	bool plainOutput = strstr(params->buf, "plain") != NULL;
-
 	sCalibrationProfile profile = diskIOMonitor.getProfile();
-
-	if (plainOutput) {
-		if (profile.valid) {
-			out << "device=" << profile.device << "\n";
-			out << "uuid=" << profile.uuid << "\n";
-			out << "calibration_time=" << profile.calibration_time << "\n";
-			out << "baseline_latency_ms=" << fixed << setprecision(2) << profile.baseline_latency_ms << "\n";
-			out << "knee_throughput_mbs=" << fixed << setprecision(1) << profile.knee_throughput_mbs << "\n";
-			out << "knee_latency_ms=" << fixed << setprecision(2) << profile.knee_latency_ms << "\n";
-			out << "max_throughput_mbs=" << fixed << setprecision(1) << profile.max_throughput_mbs << "\n";
-			out << "saturation_latency_ms=" << fixed << setprecision(2) << profile.saturation_latency_ms << "\n";
-			out << "baseline_iops=" << fixed << setprecision(0) << profile.baseline_iops << "\n";
-			out << "knee_iops=" << fixed << setprecision(0) << profile.knee_iops << "\n";
-			out << "max_iops=" << fixed << setprecision(0) << profile.max_iops << "\n";
-		} else if (diskIOMonitor.isCalibrating()) {
-			out << "status=calibrating\n";
-			out << "progress=" << diskIOMonitor.getCalibrationProgress() << "\n";
-		} else {
-			out << "status=no_calibration\n";
+	JsonExport json;
+	if(profile.valid) {
+		if(!plainOutput) {
+			json.add("valid", "true");
 		}
+		vector<sCalibrationProfile::sValue> values;
+		profile.get_values(values);
+		for(size_t i = 0; i < values.size(); i++) {
+			const sCalibrationProfile::sValue &v = values[i];
+			json.add(v.name.c_str(), v.value + (!v.unit.empty() ? " " + v.unit : ""));
+		}
+	} else if(diskIOMonitor.isCalibrating()) {
+		if(plainOutput) {
+			json.add("status", "calibrating");
+		} else {
+			json.add("valid", "false");
+			json.add("calibrating", "true");
+		}
+		json.add("progress", diskIOMonitor.getCalibrationProgress());
 	} else {
-		out << "{";
-		if (profile.valid) {
-			out << "\"valid\": true,";
-			out << "\"device\": \"" << profile.device << "\",";
-			out << "\"uuid\": \"" << profile.uuid << "\",";
-			out << "\"calibration_time\": " << profile.calibration_time << ",";
-			out << "\"baseline_latency_ms\": " << fixed << setprecision(2) << profile.baseline_latency_ms << ",";
-			out << "\"knee_throughput_mbs\": " << fixed << setprecision(1) << profile.knee_throughput_mbs << ",";
-			out << "\"knee_latency_ms\": " << fixed << setprecision(2) << profile.knee_latency_ms << ",";
-			out << "\"max_throughput_mbs\": " << fixed << setprecision(1) << profile.max_throughput_mbs << ",";
-			out << "\"saturation_latency_ms\": " << fixed << setprecision(2) << profile.saturation_latency_ms << ",";
-			out << "\"baseline_iops\": " << fixed << setprecision(0) << profile.baseline_iops << ",";
-			out << "\"knee_iops\": " << fixed << setprecision(0) << profile.knee_iops << ",";
-			out << "\"max_iops\": " << fixed << setprecision(0) << profile.max_iops;
-		} else if (diskIOMonitor.isCalibrating()) {
-			out << "\"valid\": false,";
-			out << "\"calibrating\": true,";
-			out << "\"progress\": " << diskIOMonitor.getCalibrationProgress();
+		if(plainOutput) {
+			json.add("status", "no_calibration");
 		} else {
-			out << "\"valid\": false,";
-			out << "\"calibrating\": false";
+			json.add("valid", "false");
+			json.add("calibrating", "false");
 		}
-		out << "}" << endl;
 	}
-
-	string rslt = out.str();
+	string rslt = plainOutput ? json.getText() : json.getJson() + "\n";
 	return(params->sendString(&rslt));
 }
 
@@ -5931,7 +5915,7 @@ int Mgmt_aes(Mgmt_params *params) {
 	} else if(strstr(params->buf, "support_aes") != NULL) {
 		params->sendString(is_support_manager_aes() ? "yes" : "no");
 	} else if(strstr(params->buf, "exists_aes_key") != NULL) {
-		params->sendString(cManagerAes::getAesKey(NULL, true) ? "yes" : "no");
+		params->sendString(cManagerAes::checkExistsAesKey(true) ? "yes" : "no");
 	}
 	return(0);
 }

@@ -868,6 +868,19 @@ string JsonExport::getJson(JsonExport */*parent*/) {
 	return(outStr.str());
 }
 
+string JsonExport::getText(string prefix) {
+	string out;
+	string child_prefix = prefix;
+	if(!name.empty()) {
+		child_prefix += name + "_";
+	}
+	vector<JsonExport*>::iterator iter;
+	for(iter = items.begin(); iter != items.end(); iter++) {
+		out += (*iter)->getText(child_prefix);
+	}
+	return(out);
+}
+
 void JsonExport::add(const char *name, string content, eTypeItem typeItem) {
 	this->add(name, content.c_str(), typeItem);
 }
@@ -950,6 +963,19 @@ string JsonExport_template<type_item>::getJson(JsonExport *parent) {
 		}
 	}
 	return(outStr.str());
+}
+
+template <class type_item>
+string JsonExport_template<type_item>::getText(string prefix) {
+	string out;
+	out += prefix + name + "=";
+	if(typeItem != _null) {
+		ostringstream o;
+		o << content;
+		out += o.str();
+	}
+	out += "\n";
+	return(out);
 }
 
 

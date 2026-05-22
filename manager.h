@@ -172,13 +172,15 @@ public:
 
 class cManagerAes {
 public:
-	static bool getAesKey(cAesKey *aes_key, bool force = false);
+	static bool getAesKey(cAesKey *aes_key, bool force = false, bool from_source_db = false);
+	static bool checkExistsAesKey(bool force = false);
 	static bool isAes(SimpleBuffer *buffer);
 	static bool existsEnd(SimpleBuffer *buffer, int *endPos);
 	static bool decrypt(SimpleBuffer *buffer, string *rslt, cAesKey *aes_key, string *aes_cipher);
 	static bool notNeedAesForCommand(char *command, struct sMgmtCmdsReg *mgmtCmd = NULL);
 private:
 	static cAesKey aes_key;
+	static cAesKey aes_key_src;
 	static volatile int _sync;
 };
 

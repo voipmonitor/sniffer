@@ -5,6 +5,7 @@
  */
 
 #include "disk_io_monitor.h"
+#include "tools_global.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,7 +21,6 @@
 #include <syslog.h>
 
 #include <fstream>
-#include <sstream>
 #include <iomanip>
 #include <algorithm>
 #include <vector>
@@ -1046,101 +1046,68 @@ void cDiskIOMonitor::update(double buffer_level_pct) {
 // ============================================================================
 
 std::string cDiskIOMonitor::formatStatusString() const {
-    char buf[256];
-
-    // Waiting for idle disk before calibration (v2026.01.4)
     if (calibration_state_ == CALIB_STATE_WAITING || calibration_state_ == CALIB_STATE_NONE) {
         if (calibrating_) {
-            // Show basic metrics while waiting
-            snprintf(buf, sizeof(buf), "IO[U%.0f|W%.0f|R%.0f|Q%.1f] WAIT_CALIB",
-                     metrics_.utilization_pct,
-                     metrics_.write_throughput_mbs,
-                     metrics_.read_throughput_mbs,
-                     metrics_.queue_depth);
-            return buf;
+            return "U" + floatToString(metrics_.utilization_pct, 0u) +
+                   "|W" + floatToString(metrics_.write_throughput_mbs, 0u) +
+                   "|R" + floatToString(metrics_.read_throughput_mbs, 0u) +
+                   "|Q" + floatToString(metrics_.queue_depth, 1u) + 
+                   "|WAIT_CALIB";
         }
     }
-
     if (calibrating_) {
-        snprintf(buf, sizeof(buf), "IO[calibrating %d%%]", (int)DIOM_ATOMIC_LOAD(calibration_progress_));
-        return buf;
+        return "calibrating " + intToString((int)DIOM_ATOMIC_LOAD(calibration_progress_)) + "%";
     }
-
     if (!profile_.valid) {
-        return "IO[no calib]";
+        return "no calib";
     }
-
-    // Format: IO[B0.5|L1.2|Q3.2|U45|C75|W125|R10|WI1.2k|RI500]
-    // B = baseline latency (calibrated, ms)
-    // L = current latency (ms)
-    // Q = queue depth
-    // U = utilization %
-    // C = capacity % (current throughput / knee throughput)
-    // W = write MB/s
-    // R = read MB/s
-    // WI = write IOPS
-    // RI = read IOPS
-
-    // Baseline latency
-    char baseline_str[16];
-    if (metrics_.baseline_latency_ms < 0.1) {
-        snprintf(baseline_str, sizeof(baseline_str), "%.2f", metrics_.baseline_latency_ms);
-    } else if (metrics_.baseline_latency_ms < 10.0) {
-        snprintf(baseline_str, sizeof(baseline_str), "%.1f", metrics_.baseline_latency_ms);
-    } else {
-        snprintf(baseline_str, sizeof(baseline_str), "%.0f", metrics_.baseline_latency_ms);
-    }
-
-    // Current latency
-    char latency_str[16];
-    if (metrics_.write_latency_ms < 0.1) {
-        snprintf(latency_str, sizeof(latency_str), "%.2f", metrics_.write_latency_ms);
-    } else if (metrics_.write_latency_ms < 10.0) {
-        snprintf(latency_str, sizeof(latency_str), "%.1f", metrics_.write_latency_ms);
-    } else {
-        snprintf(latency_str, sizeof(latency_str), "%.0f", metrics_.write_latency_ms);
-    }
-
-    // Write IOPS formatting (always use k)
-    char wiops_str[16];
-    snprintf(wiops_str, sizeof(wiops_str), "%.1fk", metrics_.write_iops / 1000.0);
-
-    // Read IOPS formatting (always use k)
-    char riops_str[16];
-    snprintf(riops_str, sizeof(riops_str), "%.1fk", metrics_.read_iops / 1000.0);
-
-    // Queue depth formatting
-    char qdepth_str[16];
-    if (metrics_.queue_depth < 10.0) {
-        snprintf(qdepth_str, sizeof(qdepth_str), "%.1f", metrics_.queue_depth);
-    } else {
-        snprintf(qdepth_str, sizeof(qdepth_str), "%.0f", metrics_.queue_depth);
-    }
-
-    // Format output
-    snprintf(buf, sizeof(buf), "IO[B%s|L%s|Q%s|U%.0f|C%.0f|W%.0f|R%.0f|WI%s|RI%s]",
-             baseline_str,
-             latency_str,
-             qdepth_str,
-             metrics_.utilization_pct,
-             metrics_.capacity_pct,
-             metrics_.write_throughput_mbs,
-             metrics_.read_throughput_mbs,
-             wiops_str,
-             riops_str);
-
-    std::string result = buf;
-
-    // Add RECAL_PEND if calibration was under load (v2026.01.4)
+    std::string result = "B" + floatToString(metrics_.baseline_latency_ms, metrics_.baseline_latency_ms < 0.1 ? 2u : (metrics_.baseline_latency_ms < 10.0 ? 1u : 0u)) +
+                         "|L" + floatToString(metrics_.write_latency_ms, metrics_.write_latency_ms < 0.1 ? 2u : (metrics_.write_latency_ms < 10.0 ? 1u : 0u)) +
+                         "|Q" + floatToString(metrics_.queue_depth, metrics_.queue_depth < 10.0 ? 1u : 0u) +
+                         "|U" + floatToString(metrics_.utilization_pct, 0u) +
+                         "|C" + floatToString(metrics_.capacity_pct, 0u) +
+                         "|W" + floatToString(metrics_.write_throughput_mbs, 0u) +
+                         "|R" + floatToString(metrics_.read_throughput_mbs, 0u) +
+                         "|WI" + floatToString(metrics_.write_iops / 1000.0, 1u) + "k" +
+                         "|RI" + floatToString(metrics_.read_iops / 1000.0, 1u) + "k";
     if (profile_.needs_recalibration || profile_.calibrated_under_load) {
-        result += " RECAL_PEND";
+        result += "|RECAL_PEND";
     }
-
     const char *state_str = metrics_.getStateString();
     if (state_str && state_str[0]) {
-        result += " ";
+        result += "|";
         result += state_str;
     }
-
     return result;
+}
+
+void sCalibrationProfile::get_values(std::vector<sValue> &out) const {
+    out.push_back(sValue("device", device));
+    out.push_back(sValue("uuid", uuid));
+    out.push_back(sValue("calibration_time", intToString((long long)calibration_time)));
+    out.push_back(sValue("baseline_latency_ms", floatToString(baseline_latency_ms, 2u), "ms"));
+    out.push_back(sValue("knee_throughput_mbs", floatToString(knee_throughput_mbs, 1u), "MB/s"));
+    out.push_back(sValue("knee_latency_ms", floatToString(knee_latency_ms, 2u), "ms"));
+    out.push_back(sValue("max_throughput_mbs", floatToString(max_throughput_mbs, 1u), "MB/s"));
+    out.push_back(sValue("saturation_latency_ms", floatToString(saturation_latency_ms, 2u), "ms"));
+    out.push_back(sValue("baseline_iops", floatToString(baseline_iops, 0u)));
+    out.push_back(sValue("knee_iops", floatToString(knee_iops, 0u)));
+    out.push_back(sValue("max_iops", floatToString(max_iops, 0u)));
+}
+
+void sIOMetrics::get_values(std::vector<sValue> &out) const {
+    out.push_back(sValue("capacity_pct", floatToString(capacity_pct, 1u), "%"));
+    out.push_back(sValue("reserve_pct", floatToString(reserve_pct, 1u), "%"));
+    out.push_back(sValue("write_throughput_mbs", floatToString(write_throughput_mbs, 1u), "MB/s"));
+    out.push_back(sValue("read_throughput_mbs", floatToString(read_throughput_mbs, 1u), "MB/s"));
+    out.push_back(sValue("write_iops", floatToString(write_iops, 0u)));
+    out.push_back(sValue("read_iops", floatToString(read_iops, 0u)));
+    out.push_back(sValue("latency_ms", floatToString(write_latency_ms, write_latency_ms < 0.1 ? 2u : (write_latency_ms < 10.0 ? 1u : 0u)), "ms"));
+    out.push_back(sValue("latency_ratio", floatToString(latency_ratio, 1u)));
+    out.push_back(sValue("baseline_latency_ms", floatToString(baseline_latency_ms, baseline_latency_ms < 0.1 ? 2u : (baseline_latency_ms < 10.0 ? 1u : 0u)), "ms"));
+    out.push_back(sValue("queue_depth", floatToString(queue_depth, queue_depth < 10.0 ? 1u : 0u)));
+    out.push_back(sValue("utilization_pct", floatToString(utilization_pct, 0u), "%"));
+    out.push_back(sValue("buffer_level_pct", floatToString(buffer_level_pct, 1u), "%"));
+    out.push_back(sValue("buffer_growing", buffer_growing ? "1" : "0"));
+    out.push_back(sValue("state", getStateString()));
 }

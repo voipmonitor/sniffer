@@ -593,6 +593,7 @@ public:
 	void addJson(const char *name, const string &content);
 	void addJson(const char *name, const char *content);
 	virtual string getJson(JsonExport *parent = NULL);
+	virtual string getText(string prefix = "");
 protected:
 	eTypeItem typeItem;
 	string name;
@@ -606,6 +607,7 @@ public:
 		this->content = content;
 	}
 	string getJson(JsonExport *parent = NULL);
+	string getText(string prefix = "");
 private:
 	type_item content;
 };
