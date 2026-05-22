@@ -961,6 +961,12 @@ bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock, bool de
 				cout << "cSocket::read " << handle
 				     << " errno " << errno << endl;
 			}
+			if(recvLen == 0 && !udp) {
+				if(!(isTerminate() || CR_TERMINATE())) {
+					setError(_se_loss_connection, "peer closed connection", false);
+				}
+				return(false);
+			}
 			if(errno != EWOULDBLOCK) {
 				if(errno != 0 && !quietEwouldblock && !(isTerminate() || CR_TERMINATE())) {
 					setError(_se_loss_connection, "failed read()");
@@ -1133,13 +1139,15 @@ vmPort cSocket::getLocalPort() {
 	return(local_port);
 }
 
-void cSocket::setError(eSocketError error, const char *descr) {
+void cSocket::setError(eSocketError error, const char *descr, bool log) {
 	if(isError()) {
 		return;
 	}
 	this->error = error;
 	this->error_descr = descr ? descr : "";
-	logError();
+	if(log) {
+		logError();
+	}
 }
 
 void cSocket::setError(const char *formatError, ...) {

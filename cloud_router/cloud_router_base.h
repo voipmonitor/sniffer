@@ -454,7 +454,7 @@ public:
 	bool isTerminate() {
 		return(terminate);
 	}
-	void setError(eSocketError error, const char *descr);
+	void setError(eSocketError error, const char *descr, bool log = true);
 	void setError(const char *formatError, ...);
 	void logError();
 	void generate_aes_keys() {
