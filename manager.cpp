@@ -3898,7 +3898,7 @@ int Mgmt_crules_print(Mgmt_params *params) {
 	oss << "IPfilter" << endl;
 	IPfilter::dump2man(oss);
 	oss << "TELNUMfilter" << endl;
-	TELNUMfilter::dump2man(oss, NULL);
+	TELNUMfilter::dump2man(oss);
 	oss << "DOMAINfilter" << endl;
 	DOMAINfilter::dump2man(oss);
 	oss << "SIP_HEADERfilter" << endl;

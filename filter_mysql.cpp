@@ -501,9 +501,24 @@ TELNUMfilter::~TELNUMfilter() {
                 fronta.pop_front();
                 delete(node);
         }
+        for(size_t i = 0; i < wildcard_payloads.size(); i++) {
+                delete wildcard_payloads[i];
+        }
+        wildcard_payloads.clear();
 };
 
 void TELNUMfilter::add_payload(t_payload *payload) {
+	if(strpbrk(payload->prefix, "%_")) {
+		payload->number_matcher = new FILE_LINE(0) PhoneNumber(payload->prefix, PhoneNumber::_tn_prefix);
+		// score by literal-character count so it interoperates with the
+		// trie's found_length (also a literal-character count)
+		for(const char *p = payload->prefix; *p; p++) {
+			if(*p != '%') payload->specificity++;
+		}
+		wildcard_payloads.push_back(payload);
+		return;
+	}
+
 	t_node_tel *tmp = first_node;
 
 	for(unsigned int i = 0; i < strlen(payload->prefix); i++) {
@@ -602,23 +617,43 @@ void TELNUMfilter::loadFile(u_int32_t *global_flags) {
 int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *telnum_src, const char *telnum_dst, bool reconfigure) {
 
 	if (this->count == 0) {
-		// no filters, return 
+		// no filters, return
 		return 0;
 	}
-	
+
+	const char *telnum_in[2] = { telnum_src, telnum_dst };
+	const char *telnum_p[2];
+	string decoded[2];
+	unsigned telnum_len[2];
+	for(int k = 0; k < 2; k++) {
+		if(strchr(telnum_in[k], '%')) {
+			unsigned in_len = strlen(telnum_in[k]);
+			decoded[k].reserve(in_len);
+			for(unsigned int i = 0; i < in_len; i++) {
+				if(telnum_in[k][i] == '%' && !strncmp(telnum_in[k] + i, "%23", 3)) {
+					decoded[k] += '#';
+					i += 2;
+				} else {
+					decoded[k] += telnum_in[k][i];
+				}
+			}
+			telnum_p[k] = decoded[k].c_str();
+			telnum_len[k] = decoded[k].length();
+		} else {
+			telnum_p[k] = telnum_in[k];
+			telnum_len[k] = strlen(telnum_in[k]);
+		}
+	}
+
 	unsigned found_length = 0;
 	u_int64_t found_flags = 0;
 	sNatAliases *found_nat_aliases = NULL;
 	for(int src_dst = 1; src_dst <= 2; src_dst++) {
-		const char *telnum = src_dst == 1 ? telnum_src : telnum_dst;
-		unsigned telnum_length = strlen(telnum);
+		const char *telnum = telnum_p[src_dst - 1];
+		unsigned telnum_length = telnum_len[src_dst - 1];
 		t_node_tel *node = first_node;
 		for(unsigned int i = 0; i < telnum_length; i++) {
 			unsigned char checkChar = telnum[i];
-			if(checkChar == '%' && !strncmp(telnum + i, "%23", 3)) {
-				checkChar = '#';
-				i += 2;
-			}
 			if(!node->nodes[checkChar]) {
 				break;
 			}
@@ -630,6 +665,19 @@ int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, sNatAliases
 				found_length = i + 1;
 				found_flags = node->payload->flags;
 				found_nat_aliases = node->payload->nat_aliases;
+			}
+		}
+		for(size_t k = 0; k < wildcard_payloads.size(); k++) {
+			t_payload *p = wildcard_payloads[k];
+			if(p->direction != 0 && p->direction != src_dst) {
+				continue;
+			}
+			if(p->number_matcher->checkNumber(telnum)) {
+				if(p->specificity > found_length) {
+					found_length = p->specificity;
+					found_flags = p->flags;
+					found_nat_aliases = p->nat_aliases;
+				}
 			}
 		}
 	}
@@ -645,21 +693,32 @@ int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, sNatAliases
 	return(found_length > 0);
 }
 
-void TELNUMfilter::dump2man(ostringstream &oss, t_node_tel *node) {
-	if(!node) {
-		lock();
-		node = filter_active->first_node;
+void TELNUMfilter::dump2man(ostringstream &oss) {
+	lock();
+	dump_trie_node(oss, filter_active->first_node);
+	for(size_t i = 0; i < filter_active->wildcard_payloads.size(); i++) {
+		dump_payload_line(oss, filter_active->wildcard_payloads[i], true);
 	}
+	unlock();
+}
+
+void TELNUMfilter::dump_trie_node(ostringstream &oss, t_node_tel *node) {
 	if(node->payload) {
-		oss << "prefix[" << node->payload->prefix << "] direction[" << node->payload->direction << "] flags[0x" << hex << node->payload->flags << "]" << endl;
+		dump_payload_line(oss, node->payload, false);
 	}
 	for(int i = 0; i < 256; i++) {
 		if(node->nodes[i]) {
-			dump2man(oss, node->nodes[i]);
+			dump_trie_node(oss, node->nodes[i]);
 		}
 	}
-	if (node == filter_active->first_node)
-		unlock();
+}
+
+void TELNUMfilter::dump_payload_line(ostringstream &oss, t_payload *p, bool wildcard) {
+	oss << "prefix[" << p->prefix << "] direction[" << p->direction << "] flags[0x" << hex << p->flags << "]";
+	if(wildcard) {
+		oss << " wildcard";
+	}
+	oss << endl;
 }
 
 int TELNUMfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *telnum_src, const char *telnum_dst, bool reconfigure) {
