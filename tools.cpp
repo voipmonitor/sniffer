@@ -3880,6 +3880,9 @@ bool check_ip_in(vmIP ip, vector<vmIP> *vect_ip, vector<vmIPmask> *vect_net, boo
 }
 
 bool check_ip(vmIP ip, vmIP net, unsigned mask_length) {
+	if(!net.isSet() && mask_length == 0) {
+		return(true);
+	}
 	return(mask_length == 0 || mask_length == 32 ?
 		ip == net :
 		ip.network(mask_length) == net.network(mask_length));

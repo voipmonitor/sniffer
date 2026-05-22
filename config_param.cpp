@@ -1791,13 +1791,14 @@ string cConfigItem_net_port_str_map::normalizeStringValueForCmp(string value) {
 	return(value);
 }
 
-bool cConfigItem_net_port_str_map::parse(const char *str_input, vmIP &ip, u_int16_t &mask, unsigned &port, string &str) {
+bool cConfigItem_net_port_str_map::parse(const char *str_input, vmIP &ip, u_int16_t &mask, unsigned &port, string &str, bool enable_zero_ip) {
 	ip.clear();
 	mask = 0;
 	port = 0;
 	str.clear();
 	const char *after_ip_str;
-	if(ip.setFromString(str_input, &after_ip_str)) {
+	bool ip_parsed = ip.setFromString(str_input, &after_ip_str);
+	if(ip_parsed) {
 		while(*after_ip_str == ' ' || *after_ip_str == '\t') {
 			++after_ip_str;
 		}
@@ -1832,7 +1833,7 @@ bool cConfigItem_net_port_str_map::parse(const char *str_input, vmIP &ip, u_int1
 			str = trim_str(after_ip_str);
 		}
 	}
-	return(ip.isSet());
+	return(ip_parsed && (ip.isSet() || enable_zero_ip));
 }
 
 bool cConfigItem_net_port_str_map::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
@@ -1862,15 +1863,15 @@ bool cConfigItem_net_port_str_map::setParamFromValuesStr(vector<string> list_val
 		u_int16_t mask = 0;
 		unsigned port = 0;
 		string str;
-		if(parse(iter->c_str(), ip, mask, port, str)) {
-			if(ip.isSet() && port > 0) {
+		if(parse(iter->c_str(), ip, mask, port, str, enable_zero_ip)) {
+			if(port > 0) {
 				if(!ok && enableClearBeforeFirstSet) {
 					doClearBeforeFirstSet();
 				}
-				if(!mask) {
-					(*param_ip_port_string_map)[vmIPport(ip, port)] = str;
-				} else {
+				if(mask || (enable_zero_ip && !ip.isSet())) {
 					(*param_net_port_string_map)[vmIPmask_port(vmIPmask(ip, mask), port)] = str;
+				} else {
+					(*param_ip_port_string_map)[vmIPport(ip, port)] = str;
 				}
 				++ok;
 			}

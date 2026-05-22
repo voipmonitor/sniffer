@@ -523,7 +523,11 @@ public:
 	list<string> getValueListStr();
 	string normalizeStringValueForCmp(string value);
 	bool enableMultiValues() { return(true); }
-	static bool parse(const char *str_input, vmIP &ip, u_int16_t &mask, unsigned &port, string &str);
+	cConfigItem_net_port_str_map *setEnableZeroIP() {
+		this->enable_zero_ip = true;
+		return(this);
+	}
+	static bool parse(const char *str_input, vmIP &ip, u_int16_t &mask, unsigned &port, string &str, bool enable_zero_ip = false);
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
@@ -531,6 +535,8 @@ protected:
 	void initBeforeSet();
 	void initParamPointers() {
 		param_ip_port_string_map = NULL;
+		param_net_port_string_map = NULL;
+		enable_zero_ip = false;
 	}
 	string getTypeName() {
 		return("net_port_str_list");
@@ -538,6 +544,7 @@ protected:
 protected:
 	map<vmIPport, string> *param_ip_port_string_map;
 	map<vmIPmask_port, string> *param_net_port_string_map;
+	bool enable_zero_ip;
 };
 
 class cConfigItem_nat_aliases : public cConfigItem {

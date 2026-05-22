@@ -7081,7 +7081,8 @@ void cConfig::addConfigItems() {
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		addConfigItem((new FILE_LINE(42254) cConfigItem_yesno("ssl", &opt_enable_ssl))
 			->addValues("old:10|only:2"));
-		addConfigItem(new FILE_LINE(0) cConfigItem_net_port_str_map("ssl_ipport", &ssl_ipport, &ssl_netport));
+		addConfigItem((new FILE_LINE(0) cConfigItem_net_port_str_map("ssl_ipport", &ssl_ipport, &ssl_netport))
+			->setEnableZeroIP());
 		addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ipport_reverse_enable", &opt_ssl_ipport_reverse_enable));
 		addConfigItem(new FILE_LINE(42256) cConfigItem_integer("ssl_link_timeout", &opt_ssl_link_timeout));
 			advanced();

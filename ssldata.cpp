@@ -755,13 +755,13 @@ bool ssl_ipport_add(const char *add) {
 		u_int16_t mask = 0;
 		unsigned port = 0;
 		string str;
-		if(cConfigItem_net_port_str_map::parse(add_list[i].c_str(), ip, mask, port, str)) {
-			if(ip.isSet() && port > 0) {
-				if(!mask) {
-					ssl_ipport[vmIPport(ip, port)] = str;
+		if(cConfigItem_net_port_str_map::parse(add_list[i].c_str(), ip, mask, port, str, true)) {
+			if(port > 0) {
+				if(mask || !ip.isSet()) {
+					ssl_netport[vmIPmask_port(vmIPmask(ip, mask), port)] = str;
 					++counter_ok;
 				} else {
-					ssl_netport[vmIPmask_port(vmIPmask(ip, mask), port)] = str;
+					ssl_ipport[vmIPport(ip, port)] = str;
 					++counter_ok;
 				}
 			}
@@ -783,18 +783,18 @@ bool ssl_ipport_del(const char *del) {
 		u_int16_t mask = 0;
 		unsigned port = 0;
 		string str;
-		if(cConfigItem_net_port_str_map::parse(add_list[i].c_str(), ip, mask, port, str)) {
-			if(ip.isSet() && port > 0) {
-				if(!mask) {
-					vmIPport index(ip, port);
-					if(ssl_ipport.find(index) != ssl_ipport.end()) {
-						ssl_ipport.erase(index);
-						++counter_ok;
-					}
-				} else {
+		if(cConfigItem_net_port_str_map::parse(add_list[i].c_str(), ip, mask, port, str, true)) {
+			if(port > 0) {
+				if(mask || !ip.isSet()) {
 					vmIPmask_port index(vmIPmask(ip, mask), port);
 					if(ssl_netport.find(index) != ssl_netport.end()) {
 						ssl_netport.erase(index);
+						++counter_ok;
+					}
+				} else {
+					vmIPport index(ip, port);
+					if(ssl_ipport.find(index) != ssl_ipport.end()) {
+						ssl_ipport.erase(index);
 						++counter_ok;
 					}
 				}
