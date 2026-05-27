@@ -1862,6 +1862,7 @@ void sPcapStatData::sSsl::get_values(vector<sValue> &out) const {
 }
 
 void sPcapStatData::sSslWs::load() {
+#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
 	extern bool getSslStat(unsigned *calls, unsigned *sessions_size);
 	unsigned c, s;
 	if(getSslStat(&c, &s)) {
@@ -1869,6 +1870,7 @@ void sPcapStatData::sSslWs::load() {
 		sessions_size = s;
 		valid = true;
 	}
+#endif
 }
 
 string sPcapStatData::sSslWs::render(bool with_title) const {
