@@ -71,6 +71,7 @@ static void appendSection(string &out, const string &s) {
 	X(http)              \
 	X(webrtc)            \
 	X(ssl)               \
+	X(ssl_ws)            \
 	X(dtls)              \
 	X(sip_tcp)           \
 	X(ipfix)             \
@@ -112,7 +113,7 @@ void sPcapStatData::get_sections_all(vector<sValue> &out, eSectionNameBy by) con
 #define X(_n) { \
 	size_t before = out.size(); \
 	_n.get_sections(out); \
-	if(by == _section_id_by_varname && out.size() == before + 1) { \
+	if(by == _section_id_by_varname && out.size() == before + 1 && string(#_n) != "read_threads") { \
 		out[before].name = #_n; \
 	} \
 }
@@ -287,25 +288,29 @@ void sPcapStatData::sAudio::get_values(vector<sValue> &out) const {
 }
 
 void sPcapStatData::sTranscribe::load() {
-	string log = transcribeQueueLog();
-	if(!log.empty()) {
-		value = log;
+	unsigned qs, ct;
+	if(transcribeQueueStat(&qs, &ct)) {
+		queue_size = qs;
+		count_threads = ct;
+		valid = true;
 	}
 }
 
 string sPcapStatData::sTranscribe::render(bool with_title) const {
-	if(value.empty()) {
+	if(!valid) {
 		return("");
 	}
+	string body = intToString(queue_size) + "/" + intToString(count_threads);
 	if(with_title) {
-		return(title() + "[" + string(value) + "]");
+		return(title() + "[" + body + "]");
 	}
-	return(value);
+	return(body);
 }
 
 void sPcapStatData::sTranscribe::get_values(vector<sValue> &out) const {
-	if(value.empty()) return;
-	out.push_back(sValue("value", value));
+	if(!valid) return;
+	out.push_back(sValue("queue_size", intToString(queue_size)));
+	out.push_back(sValue("count_threads", intToString(count_threads)));
 }
 
 void sPcapStatData::sSS7::load() {
@@ -506,16 +511,32 @@ void sPcapStatData::sPS::rrd() const {
 void sPcapStatData::sSqlF::load() {
 	extern MySqlStore *loadFromQFiles;
 	if(!loadFromQFiles) return;
-	string stat = loadFromQFiles->getLoadFromQFilesStat();
-	string stat_proc = sverb.qfiles ? loadFromQFiles->getLoadFromQFilesStat(true) : "";
+	vector<MySqlStore::sLoadFromQFilesStatItem> stat_items;
+	loadFromQFiles->getLoadFromQFilesStat(&stat_items);
+	vector<MySqlStore::sLoadFromQFilesStatItem> stat_proc_items;
+	if(sverb.qfiles) {
+		loadFromQFiles->getLoadFromQFilesStat(&stat_proc_items, true);
+	}
 	avg_delay = SqlDb::getAvgDelayQuery(SqlDb::_tq_store);
 	query_count = loadFromQFiles->getLoadFromQFilesCount();
 	SqlDb::resetDelayQuery(SqlDb::_tq_store);
-	if(!stat.empty()) {
-		this->stat = stat;
+	if(!stat_items.empty()) {
+		for(size_t i = 0; i < stat_items.size(); i++) {
+			sItem item;
+			item.id_main = stat_items[i].id_main;
+			item.id_main_str = stat_items[i].id_main_str;
+			item.id_2 = stat_items[i].id_2;
+			item.count = stat_items[i].count;
+			items.push_back(item);
+		}
 		valid = true;
-		if(!stat_proc.empty()) {
-			this->stat_proc = stat_proc;
+		for(size_t i = 0; i < stat_proc_items.size(); i++) {
+			sItem item;
+			item.id_main = stat_proc_items[i].id_main;
+			item.id_main_str = stat_proc_items[i].id_main_str;
+			item.id_2 = stat_proc_items[i].id_2;
+			item.count = stat_proc_items[i].count;
+			items_proc.push_back(item);
 		}
 	}
 }
@@ -526,12 +547,27 @@ string sPcapStatData::sSqlF::render(bool with_title) const {
 	}
 	string out;
 	if(with_title) out += title() + "[";
-	out += string(stat);
+	bool first = true;
+	for(size_t i = 0; i < items.size(); i++) {
+		if(items.isSet(i)) {
+			if(!first) out += ", ";
+			out += string(items[i].id_main_str) + ": " + intToString(items[i].count);
+			first = false;
+		}
+	}
 	if(avg_delay) {
 		out += " / " + floatToString((double)avg_delay / 1000, (unsigned)3) + "s";
 	}
-	if(!stat_proc.empty()) {
-		out += " / " + string(stat_proc);
+	if(items_proc.size()) {
+		out += " / ";
+		first = true;
+		for(size_t i = 0; i < items_proc.size(); i++) {
+			if(items_proc.isSet(i)) {
+				if(!first) out += ",";
+				out += intToString(items_proc[i].id_main) + "_" + intToString(items_proc[i].id_2) + ":" + intToString(items_proc[i].count);
+				first = false;
+			}
+		}
 	}
 	if(with_title) out += "] ";
 	return(out);
@@ -539,12 +575,21 @@ string sPcapStatData::sSqlF::render(bool with_title) const {
 
 void sPcapStatData::sSqlF::get_values(vector<sValue> &out) const {
 	if(!valid) return;
-	out.push_back(sValue("stat", stat));
+	for(size_t i = 0; i < items.size(); i++) {
+		if(items.isSet(i)) {
+			out.push_back(sValue(string(items[i].id_main_str), intToString(items[i].count)));
+		}
+	}
 	if(avg_delay) {
 		out.push_back(sValue("avg_delay", floatToString((double)avg_delay / 1000, (unsigned)3), "s"));
 	}
-	if(!stat_proc.empty()) {
-		out.push_back(sValue("stat_proc", stat_proc));
+	if(query_count) {
+		out.push_back(sValue("query_count", intToString(query_count)));
+	}
+	for(size_t i = 0; i < items_proc.size(); i++) {
+		if(items_proc.isSet(i)) {
+			out.push_back(sValue(intToString(items_proc[i].id_main) + "_" + intToString(items_proc[i].id_2), intToString(items_proc[i].count)));
+		}
 	}
 }
 
@@ -776,6 +821,7 @@ string sPcapStatData::sHeap::render(bool with_title) const {
 
 void sPcapStatData::sHeap::get_values(vector<sValue> &out) const {
 	if(!valid) return;
+	out.push_back(sValue("all_perc", floatToString(all_perc, (unsigned)0), "%"));
 	out.push_back(sValue("used_perc", floatToString(used_perc, (unsigned)0), "%"));
 	out.push_back(sValue("trash_perc", floatToString(trash_perc, (unsigned)0), "%"));
 	if(trash_time_valid) {
@@ -826,7 +872,7 @@ void sPcapStatData::sDeq::get_values(vector<sValue> &out) const {
 	out.push_back(sValue("window", intToString(window)));
 }
 
-void sPcapStatData::sDrop::load(unsigned long bypass, const string &drops, u_int64_t count) {
+void sPcapStatData::sDrop::load(unsigned long bypass, const vector<sDropItem> &drops, u_int64_t count) {
 	if(!bypass && drops.empty()) return;
 	valid = true;
 	if(bypass) {
@@ -834,7 +880,9 @@ void sPcapStatData::sDrop::load(unsigned long bypass, const string &drops, u_int
 	}
 	if(!drops.empty()) {
 		packet_drops_count = count;
-		packet_drops = drops;
+		for(size_t i = 0; i < drops.size(); i++) {
+			packet_drops.push_back(drops[i]);
+		}
 	}
 }
 
@@ -847,11 +895,18 @@ string sPcapStatData::sDrop::render(bool with_title) const {
 	if(bypass_buffer_exceeded) {
 		out += "H:" + intToString(bypass_buffer_exceeded);
 	}
-	if(!packet_drops.empty()) {
+	if(packet_drops.size()) {
 		if(bypass_buffer_exceeded) {
 			out += " ";
 		}
-		out += string(packet_drops);
+		bool first = true;
+		for(size_t i = 0; i < packet_drops.size(); i++) {
+			if(packet_drops.isSet(i)) {
+				if(!first) out += " ";
+				out += "I-" + string(packet_drops[i].interface_alias) + ":" + intToString(packet_drops[i].count);
+				first = false;
+			}
+		}
 	}
 	if(with_title) out += "] ";
 	return(out);
@@ -860,8 +915,17 @@ string sPcapStatData::sDrop::render(bool with_title) const {
 void sPcapStatData::sDrop::get_values(vector<sValue> &out) const {
 	if(!valid) return;
 	out.push_back(sValue("bypass_buffer_exceeded", intToString(bypass_buffer_exceeded)));
-	if(!packet_drops.empty()) {
-		out.push_back(sValue("packet_drops", packet_drops));
+	if(packet_drops.size()) {
+		sValue interfaces("interfaces", "");
+		for(size_t i = 0; i < packet_drops.size(); i++) {
+			if(packet_drops.isSet(i)) {
+				interfaces.childs.push_back(sValue(string(packet_drops[i].interface_alias), intToString(packet_drops[i].count)));
+			}
+		}
+		out.push_back(interfaces);
+	}
+	if(packet_drops_count) {
+		out.push_back(sValue("packet_drops_count", intToString(packet_drops_count)));
 	}
 }
 
@@ -971,6 +1035,9 @@ void sPcapStatData::sTraffic::load(PcapQueue *instance) {
 
 string sPcapStatData::sTraffic::render(bool with_title) const {
 	if(!valid) {
+		return("");
+	}
+	if(mbps_in <= 0 && mbps_out <= 0) {
 		return("");
 	}
 	string out;
@@ -1321,7 +1388,7 @@ void sPcapStatData::sTarCPU::rrd() const {
 }
 
 string sPcapStatData::sReadThreads::sReadThread::title() const {
-	return(string("t0i_") + string(interace_alias) + "_CPU");
+	return(string("t0i_") + string(interface_alias) + "_CPU");
 }
 
 string sPcapStatData::sReadThreads::sReadThread::render(bool with_title) const {
@@ -1394,33 +1461,32 @@ string sPcapStatData::sReadThreads::sReadThread::render(bool with_title) const {
 }
 
 void sPcapStatData::sReadThreads::sReadThread::get_values(vector<sValue> &out) const {
-	string prefix = string(interace_alias) + "_";
-	out.push_back(sValue(prefix + "mbps", floatToString(mbps, (unsigned)1), "Mb/s"));
-	if(cpu_main_valid) out.push_back(sValue(prefix + "cpu_main", floatToString(cpu_main, (unsigned)1), "%"));
+	out.push_back(sValue("mbps", floatToString(mbps, (unsigned)1), "Mb/s"));
+	if(cpu_main_valid) out.push_back(sValue("cpu_main", floatToString(cpu_main, (unsigned)1), "%"));
 	if(aloc_stack || alloc_alloc) {
-		out.push_back(sValue(prefix + "aloc_stack", intToString(aloc_stack)));
-		out.push_back(sValue(prefix + "alloc_alloc", intToString(alloc_alloc)));
+		out.push_back(sValue("aloc_stack", intToString(aloc_stack)));
+		out.push_back(sValue("alloc_alloc", intToString(alloc_alloc)));
 	}
-	if(cpu_dpdk_worker_valid) out.push_back(sValue(prefix + "cpu_dpdk_worker", floatToString(cpu_dpdk_worker, (unsigned)1), "%"));
+	if(cpu_dpdk_worker_valid) out.push_back(sValue("cpu_dpdk_worker", floatToString(cpu_dpdk_worker, (unsigned)1), "%"));
 	for(size_t i = 0; i < cpu_dpdk_rte_read.size(); i++) {
 		if(cpu_dpdk_rte_read.isSet(i)) {
-			out.push_back(sValue(prefix + "cpu_dpdk_rte_read_" + intToString(i), floatToString(cpu_dpdk_rte_read[i], (unsigned)1), "%"));
+			out.push_back(sValue("cpu_dpdk_rte_read_" + intToString(i), floatToString(cpu_dpdk_rte_read[i], (unsigned)1), "%"));
 		}
 	}
-	if(cpu_dpdk_rte_worker_valid) out.push_back(sValue(prefix + "cpu_dpdk_rte_worker", floatToString(cpu_dpdk_rte_worker, (unsigned)1), "%"));
-	if(cpu_dpdk_rte_worker_slave_valid) out.push_back(sValue(prefix + "cpu_dpdk_rte_worker_slave", floatToString(cpu_dpdk_rte_worker_slave, (unsigned)1), "%"));
-	if(cpu_dpdk_rte_worker2_valid) out.push_back(sValue(prefix + "cpu_dpdk_rte_worker2", floatToString(cpu_dpdk_rte_worker2, (unsigned)1), "%"));
-	if(cpu_detach_valid) out.push_back(sValue(prefix + "cpu_detach", floatToString(cpu_detach, (unsigned)1), "%"));
+	if(cpu_dpdk_rte_worker_valid) out.push_back(sValue("cpu_dpdk_rte_worker", floatToString(cpu_dpdk_rte_worker, (unsigned)1), "%"));
+	if(cpu_dpdk_rte_worker_slave_valid) out.push_back(sValue("cpu_dpdk_rte_worker_slave", floatToString(cpu_dpdk_rte_worker_slave, (unsigned)1), "%"));
+	if(cpu_dpdk_rte_worker2_valid) out.push_back(sValue("cpu_dpdk_rte_worker2", floatToString(cpu_dpdk_rte_worker2, (unsigned)1), "%"));
+	if(cpu_detach_valid) out.push_back(sValue("cpu_detach", floatToString(cpu_detach, (unsigned)1), "%"));
 	if(detach_aloc_stack || detach_alloc_alloc) {
-		out.push_back(sValue(prefix + "detach_aloc_stack", intToString(detach_aloc_stack)));
-		out.push_back(sValue(prefix + "detach_alloc_alloc", intToString(detach_alloc_alloc)));
+		out.push_back(sValue("detach_aloc_stack", intToString(detach_aloc_stack)));
+		out.push_back(sValue("detach_alloc_alloc", intToString(detach_alloc_alloc)));
 	}
-	if(cpu_pcap_process_valid) out.push_back(sValue(prefix + "cpu_pcap_process", floatToString(cpu_pcap_process, (unsigned)1), "%"));
-	if(cpu_defrag_valid) out.push_back(sValue(prefix + "cpu_defrag", floatToString(cpu_defrag, (unsigned)1), "%"));
-	if(cpu_md1_valid) out.push_back(sValue(prefix + "cpu_md1", floatToString(cpu_md1, (unsigned)1), "%"));
-	if(cpu_md2_valid) out.push_back(sValue(prefix + "cpu_md2", floatToString(cpu_md2, (unsigned)1), "%"));
-	if(cpu_dedup_valid) out.push_back(sValue(prefix + "cpu_dedup", floatToString(cpu_dedup, (unsigned)1), "%"));
-	if(cpu_service_valid) out.push_back(sValue(prefix + "cpu_service", floatToString(cpu_service, (unsigned)1), "%"));
+	if(cpu_pcap_process_valid) out.push_back(sValue("cpu_pcap_process", floatToString(cpu_pcap_process, (unsigned)1), "%"));
+	if(cpu_defrag_valid) out.push_back(sValue("cpu_defrag", floatToString(cpu_defrag, (unsigned)1), "%"));
+	if(cpu_md1_valid) out.push_back(sValue("cpu_md1", floatToString(cpu_md1, (unsigned)1), "%"));
+	if(cpu_md2_valid) out.push_back(sValue("cpu_md2", floatToString(cpu_md2, (unsigned)1), "%"));
+	if(cpu_dedup_valid) out.push_back(sValue("cpu_dedup", floatToString(cpu_dedup, (unsigned)1), "%"));
+	if(cpu_service_valid) out.push_back(sValue("cpu_service", floatToString(cpu_service, (unsigned)1), "%"));
 }
 
 void sPcapStatData::sReadThreads::load(PcapQueue *instance, int pstatDataIndex) {
@@ -1452,7 +1518,9 @@ void sPcapStatData::sReadThreads::get_sections(vector<sValue> &out) const {
 void sPcapStatData::sReadThreads::get_values(vector<sValue> &out) const {
 	for(size_t i = 0; i < threads.size(); i++) {
 		if(threads.isSet(i)) {
-			threads[i].get_values(out);
+			sValue iface(string(threads[i].interface_alias), "");
+			threads[i].get_values(iface.childs);
+			out.push_back(iface);
 		}
 	}
 }
@@ -1719,10 +1787,10 @@ string sPcapStatData::sRTP::render(bool with_title) const {
 void sPcapStatData::sRTP::get_values(vector<sValue> &out) const {
 	if(!valid) return;
 	out.push_back(sValue("cpu_sum", floatToString(cpu_sum, (unsigned)1), "%"));
+	out.push_back(sValue("cpu_max", floatToString(cpu_max, (unsigned)1), "%"));
+	out.push_back(sValue("cpu_min", floatToString(cpu_min, (unsigned)1), "%"));
 	if(!extend.empty()) {
 		out.push_back(sValue("extend", extend));
-	} else {
-		out.push_back(sValue("cpu_max", floatToString(cpu_max, (unsigned)1), "%"));
 	}
 	out.push_back(sValue("threads_active", intToString(threads_active)));
 }
@@ -1791,6 +1859,33 @@ string sPcapStatData::sSsl::render(bool with_title) const {
 void sPcapStatData::sSsl::get_values(vector<sValue> &out) const {
 	if(!valid) return;
 	out.push_back(sValue("cpu_perc", cpu_perc, "%"));
+}
+
+void sPcapStatData::sSslWs::load() {
+	extern bool getSslStat(unsigned *calls, unsigned *sessions_size);
+	unsigned c, s;
+	if(getSslStat(&c, &s)) {
+		calls = c;
+		sessions_size = s;
+		valid = true;
+	}
+}
+
+string sPcapStatData::sSslWs::render(bool with_title) const {
+	if(!valid) {
+		return("");
+	}
+	string out;
+	if(with_title) out += title() + "[";
+	out += intToString(calls) + "|" + intToString(sessions_size);
+	if(with_title) out += "] ";
+	return(out);
+}
+
+void sPcapStatData::sSslWs::get_values(vector<sValue> &out) const {
+	if(!valid) return;
+	out.push_back(sValue("calls", intToString(calls)));
+	out.push_back(sValue("sessions_size", intToString(sessions_size)));
 }
 
 void sPcapStatData::sDtls::load() {
@@ -2004,11 +2099,13 @@ void sPcapStatData::sAsyncCloseQueue::get_values(vector<sValue> &out) const {
 }
 
 void sPcapStatData::sStoring::load(int pstatDataIndex) {
-	extern string storing_cdr_getCpuUsagePerc(double *avg, int pstatDataIndex);
-	double storing_cdr_cpu_avg;
-	string storing_cdr_cpu = storing_cdr_getCpuUsagePerc(&storing_cdr_cpu_avg, pstatDataIndex);
-	if(!storing_cdr_cpu.empty()) {
-		cpu_perc = storing_cdr_cpu;
+	extern void storing_cdr_getCpuUsagePerc(vector<double> *cpu_perc, int pstatDataIndex);
+	vector<double> cpu;
+	storing_cdr_getCpuUsagePerc(&cpu, pstatDataIndex);
+	if(!cpu.empty()) {
+		for(size_t i = 0; i < cpu.size(); i++) {
+			cpu_perc.push_back(cpu[i]);
+		}
 		valid = true;
 	}
 }
@@ -2017,12 +2114,28 @@ string sPcapStatData::sStoring::render(bool with_title) const {
 	if(!valid) {
 		return("");
 	}
-	return(with_title ? title() + "[" + string(cpu_perc) + "%] " : string(cpu_perc) + "%");
+	string out;
+	if(with_title) out += title() + "[";
+	bool first = true;
+	for(size_t i = 0; i < cpu_perc.size(); i++) {
+		if(cpu_perc.isSet(i)) {
+			if(!first) out += "/";
+			out += floatToString(cpu_perc[i], (unsigned)1);
+			first = false;
+		}
+	}
+	out += "%";
+	if(with_title) out += "] ";
+	return(out);
 }
 
 void sPcapStatData::sStoring::get_values(vector<sValue> &out) const {
 	if(!valid) return;
-	out.push_back(sValue("cpu_perc", cpu_perc, "%"));
+	for(size_t i = 0; i < cpu_perc.size(); i++) {
+		if(cpu_perc.isSet(i)) {
+			out.push_back(sValue("cpu_" + intToString(i), floatToString(cpu_perc[i], (unsigned)1), "%"));
+		}
+	}
 }
 
 void sPcapStatData::sCharts::load(int pstatDataIndex) {
@@ -2462,6 +2575,8 @@ void sPcapStatData::sLoadAvg::get_values(vector<sValue> &out) const {
 	out.push_back(sValue("la1", floatToString(la1, (unsigned)2)));
 	out.push_back(sValue("la5", floatToString(la5, (unsigned)2)));
 	out.push_back(sValue("la15", floatToString(la15, (unsigned)2)));
+	out.push_back(sValue("cpu_count", intToString(cpu_count)));
+	out.push_back(sValue("cpu_ht", cpu_ht ? "1" : "0"));
 	out.push_back(sValue("uptime_hours", intToString(uptime_hours), "h"));
 	out.push_back(sValue("overload_indicator", overload_indicator ? "1" : "0"));
 }

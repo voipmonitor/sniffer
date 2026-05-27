@@ -193,6 +193,7 @@ struct sPcapStatData {
 		string name;
 		string value;
 		string unit;
+		vector<sValue> childs;
 		sValue() {}
 		sValue(const string &name, const string &value, const string &unit = "") : name(name), value(value), unit(unit) {}
 	};
@@ -267,11 +268,14 @@ struct sPcapStatData {
 		void get_values(vector<sValue> &out) const;
 	} audio;
 	struct sTranscribe {
-		string_simple value;
+		u_int64_t queue_size;
+		u_int64_t count_threads;
+		bool valid;
+		sTranscribe() { memset((void*)this, 0, sizeof(*this)); }
 		void load();
 		string title() const { return("transcribe"); }
 		string render(bool with_title = true) const;
-		void get_sections(vector<sValue> &out) const { if(!value.empty()) { out.push_back(sValue(title(), render(false))); } }
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
 	} transcribe;
 	struct sSS7 {
@@ -323,8 +327,15 @@ struct sPcapStatData {
 		void rrd() const;
 	} ps;
 	struct sSqlF {
-		string_simple stat;
-		string_simple stat_proc;
+		struct sItem {
+			int id_main;
+			string_simple id_main_str;
+			int id_2;
+			int count;
+			sItem() { memset((void*)this, 0, sizeof(*this)); }
+		};
+		vector_simple<sItem> items;
+		vector_simple<sItem> items_proc;
 		u_int32_t avg_delay;
 		u_int32_t query_count;
 		bool valid;
@@ -393,12 +404,17 @@ struct sPcapStatData {
 		void get_values(vector<sValue> &out) const;
 	} deq;
 	struct sDrop {
+		struct sDropItem {
+			string_simple interface_alias;
+			u_int64_t count;
+			sDropItem() { memset((void*)this, 0, sizeof(*this)); }
+		};
 		unsigned long bypass_buffer_exceeded;
-		string_simple packet_drops;
+		vector_simple<sDropItem> packet_drops;
 		u_int64_t packet_drops_count;
 		bool valid;
 		sDrop() { memset((void*)this, 0, sizeof(*this)); }
-		void load(unsigned long bypass, const string &drops, u_int64_t count);
+		void load(unsigned long bypass, const vector<sDropItem> &drops, u_int64_t count);
 		string title() const { return("drop"); }
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
@@ -527,7 +543,7 @@ struct sPcapStatData {
 	} tar_cpu;
 	struct sReadThreads {
 		struct sReadThread {
-			string_simple interace_alias;
+			string_simple interface_alias;
 			double mbps;
 			double cpu_main;
 			bool cpu_main_valid;
@@ -561,7 +577,7 @@ struct sPcapStatData {
 			sReadThread() {memset((void*)this, 0, sizeof(*this));}
 			string title() const;
 			string render(bool with_title = true) const;
-			void get_sections(vector<sValue> &out) const { out.push_back(sValue(title(), render(false))); }
+			void get_sections(vector<sValue> &out) const { out.push_back(sValue(string("read_thread_") + string(interface_alias), render(false))); }
 			void get_values(vector<sValue> &out) const;
 		};
 		vector_simple<sReadThread> threads;
@@ -682,6 +698,17 @@ struct sPcapStatData {
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
 	} ssl;
+	struct sSslWs {
+		unsigned int calls;
+		unsigned int sessions_size;
+		bool valid;
+		sSslWs() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("tsslWS"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+	} ssl_ws;
 	struct sDtls {
 		u_int32_t queue_links;
 		u_int32_t queue_packets;
@@ -749,7 +776,7 @@ struct sPcapStatData {
 		void get_values(vector<sValue> &out) const;
 	} async_close_queue;
 	struct sStoring {
-		string_simple cpu_perc;
+		vector_simple<double> cpu_perc;
 		bool valid;
 		sStoring() { memset((void*)this, 0, sizeof(*this)); }
 		void load(int pstatDataIndex);
@@ -1008,7 +1035,7 @@ protected:
 	virtual string pcapStatString_interface(int /*statPeriod*/) { return(""); }
 	virtual string pcapDropCountStat_interface() { return(""); }
 	virtual ulong getCountPacketDrop() { return(0); }
-	virtual string getStatPacketDrop() { return(""); }
+	virtual void getStatPacketDrop(vector<sPcapStatData::sDrop::sDropItem> * /*items*/) {}
 	virtual void pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, u_int64_t /*divide_ms*/, int /*pstatDataIndex*/, vector_simple<sPcapStatData::sReadThreads::sReadThread> * /*data*/) {
 		if(sumMax) *sumMax = 0;
 		if(countThreadsSumMax) *countThreadsSumMax = 0;
@@ -1171,7 +1198,7 @@ protected:
 	virtual string pcapStatString_interface(int statPeriod);
 	virtual string pcapDropCountStat_interface();
 	virtual ulong getCountPacketDrop();
-	virtual string getStatPacketDrop();
+	virtual void getStatPacketDrop(vector<sPcapStatData::sDrop::sDropItem> *items);
 	virtual void initStat_interface();
 	virtual string getInterface();
 	virtual string getInterfaceAlias();
@@ -1668,7 +1695,7 @@ protected:
 	string pcapStatString_interface(int statPeriod);
 	string pcapDropCountStat_interface();
 	virtual ulong getCountPacketDrop();
-	virtual string getStatPacketDrop();
+	virtual void getStatPacketDrop(vector<sPcapStatData::sDrop::sDropItem> *items);
 	void initStat_interface();
 	void pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, u_int64_t divide_ms, int pstatDataIndex, vector_simple<sPcapStatData::sReadThreads::sReadThread> *data);
 	string getInterface();

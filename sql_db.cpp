@@ -4861,6 +4861,36 @@ string MySqlStore::getLoadFromQFilesStat(bool processes) {
 	return(outStr.str());
 }
 
+void MySqlStore::getLoadFromQFilesStat(vector<sLoadFromQFilesStatItem> *items, bool processes) {
+	if(!processes) {
+		for(map<int, LoadFromQFilesThreadData>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
+			int countQFiles = getCountQFiles(iter->second.id_main);
+			if(countQFiles > 0) {
+				sLoadFromQFilesStatItem item;
+				item.id_main = iter->second.id_main;
+				item.id_main_str = iter->second.name;
+				item.count = countQFiles;
+				items->push_back(item);
+			}
+		}
+	} else {
+		map<int, map<int, MySqlStore_process*> >::iterator iter1;
+		map<int, MySqlStore_process*>::iterator iter2;
+		for(iter1 = this->processes.begin(); iter1 != this->processes.end(); ++iter1) {
+			for(iter2 = iter1->second.begin(); iter2 != iter1->second.end(); ++iter2) {
+				size_t size = iter2->second->getSize();
+				if(size > 0) {
+					sLoadFromQFilesStatItem item;
+					item.id_main = iter1->first;
+					item.id_2 = iter2->first;
+					item.count = size;
+					items->push_back(item);
+				}
+			}
+		}
+	}
+}
+
 unsigned MySqlStore::getLoadFromQFilesCount() {
 	unsigned count = 0;
 	for(map<int, LoadFromQFilesThreadData>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {

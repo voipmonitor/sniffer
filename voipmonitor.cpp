@@ -2760,6 +2760,19 @@ string storing_cdr_getCpuUsagePerc(double *avg, int pstatDataIndex) {
 	return(cpuStr.str());
 }
 
+void storing_cdr_getCpuUsagePerc(vector<double> *cpu_perc, int pstatDataIndex) {
+	double cpu = get_cpu_usage_perc(storing_cdr_tid, storing_cdr_thread_pstat_data[pstatDataIndex]);
+	if(cpu > 0) {
+		cpu_perc->push_back(cpu);
+	}
+	for(int i = 0; i < storing_cdr_next_threads_count; i++) {
+		double cpu = get_cpu_usage_perc(storing_cdr_next_threads[i].tid, storing_cdr_next_threads[i].pstat[pstatDataIndex]);
+		if(cpu > 0) {
+			cpu_perc->push_back(cpu);
+		}
+	}
+}
+
 void *storing_registers( void */*dummy*/ ) {
 	Call *call;
 	while(1) {

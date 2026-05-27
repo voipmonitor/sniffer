@@ -3936,6 +3936,16 @@ string getSslStat() {
 	return(outStr.str());
 }
 
+bool getSslStat(unsigned *calls, unsigned *sessions_size) {
+	extern unsigned int glob_ssl_calls;
+	if(sessions.size() || glob_ssl_calls) {
+		*calls = glob_ssl_calls;
+		*sessions_size = sessions.size();
+		return(true);
+	}
+	return(false);
+}
+
 
 void   
 ssl_print_data(const gchar* name, const guchar* data, size_t len)

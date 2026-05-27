@@ -4615,6 +4615,17 @@ int Mgmt_gitUpgrade(Mgmt_params *params) {
 	return(params->sendString(&rsltString));
 }
 
+static void sniffer_stat_add_value(JsonExport *obj, const sPcapStatData::sValue &val) {
+	if(val.childs.empty()) {
+		obj->add(val.name.c_str(), val.unit.empty() ? val.value : val.value + " " + val.unit);
+	} else {
+		JsonExport *childObj = obj->addObject(val.name.c_str());
+		for(size_t i = 0; i < val.childs.size(); i++) {
+			sniffer_stat_add_value(childObj, val.childs[i]);
+		}
+	}
+}
+
 int Mgmt_sniffer_stat(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
 		params->registerCommand("sniffer_stat", "return sniffer's statistics (use 'plain' for key=value format)", true);
@@ -4673,8 +4684,7 @@ int Mgmt_sniffer_stat(Mgmt_params *params) {
 			for(size_t i = 0; i < sections.size(); i++) {
 				JsonExport *secObj = valuesObj->addObject(sections[i].sect_id.c_str());
 				for(size_t j = 0; j < sections[i].values.size(); j++) {
-					const sPcapStatData::sValue &val = sections[i].values[j];
-					secObj->add(val.name.c_str(), val.unit.empty() ? val.value : val.value + " " + val.unit);
+					sniffer_stat_add_value(secObj, sections[i].values[j]);
 				}
 			}
 		}

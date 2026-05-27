@@ -1040,6 +1040,18 @@ private:
 };
 
 class MySqlStore {
+public:
+	struct sLoadFromQFilesStatItem {
+		int id_main;
+		string id_main_str;
+		int id_2;
+		int count;
+		sLoadFromQFilesStatItem() {
+			id_main = 0;
+			id_2 = 0;
+			count = 0;
+		}
+	};
 private:
 	class QFile {
 	public:
@@ -1202,6 +1214,7 @@ public:
 	void addFileFromINotify(const char *filename);
 	QFileData parseQFilename(const char *filename);
 	string getLoadFromQFilesStat(bool processes = false);
+	void getLoadFromQFilesStat(vector<sLoadFromQFilesStatItem> *items, bool processes = false);
 	unsigned getLoadFromQFilesCount();
 	//
 	void lock(int id_main, int id_2);

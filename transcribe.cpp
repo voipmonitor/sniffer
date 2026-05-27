@@ -1318,17 +1318,16 @@ void transcribeCall(Transcribe::sCall *call) {
 	}
 }
 
-string transcribeQueueLog() {
+bool transcribeQueueStat(unsigned *queue_size, unsigned *count_threads) {
 	if(transcribe) {
-		unsigned queue_size = transcribe->getQueueSize();
-		if(queue_size) {
-			unsigned count_threads = transcribe->getCountThreads();
-			ostringstream outStr;
-			outStr << queue_size << "/" << count_threads;
-			return(outStr.str());
+		unsigned qs = transcribe->getQueueSize();
+		if(qs) {
+			*queue_size = qs;
+			*count_threads = transcribe->getCountThreads();
+			return(true);
 		}
 	}
-	return("");
+	return(false);
 }
 
 void createTranscribe() {

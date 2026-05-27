@@ -224,7 +224,7 @@ private:
 
 void transcribePushCall(Transcribe::sCall *call);
 void transcribeCall(Transcribe::sCall *call);
-string transcribeQueueLog();
+bool transcribeQueueStat(unsigned *queue_size, unsigned *count_threads);
 void createTranscribe();
 void destroyTranscribe();
 
