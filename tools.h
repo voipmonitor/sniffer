@@ -1625,7 +1625,7 @@ class RestartUpgrade {
 public:
 	RestartUpgrade(bool upgrade = false, const char *version = NULL, const char *build = NULL, const char *url = NULL,
 		       const char *md5_32 = NULL, const char *md5_64 = NULL, const char *md5_arm = NULL, const char *md5_64_ws = NULL,
-		       const char *md5_arm64 = NULL);
+		       const char *md5_arm64 = NULL, bool via_server = false);
 	~RestartUpgrade();
 	bool runUpgrade();
 	bool createRestartScript();
@@ -1637,9 +1637,12 @@ public:
 	bool isOk();
 	string getErrorString();
 	string getRsltString();
+	static bool deriveUpgradeUrls(const string &url, string *urlHttps, string *urlHttp);
 private:
 	bool checkShellSafeStr(const char *str);
 	bool downloadUpgradeFile(string urlHttps, string urlHttp, string destFilepathName);
+	bool downloadUpgradeFileViaServer(string urlForServer, string destFilepathName);
+	bool getUpgradeFile(const string &urlSuffix, const string &urlHttpBase, const string &destFilepathName);
 	bool getUpgradeTempFileName();
 	bool getRestartTempScriptFileName();
 	bool getSafeRunTempScriptFileName();
@@ -1648,6 +1651,12 @@ private:
 		       _arm ? md5_arm :
 		       _64bit_ws ? md5_64_ws :
 		       _64bit ? md5_64 : md5_32);
+	}
+	string getArchStr() {
+		return(_arm64 ? "arm64" :
+		       _arm ? "arm" :
+		       _64bit_ws ? "64_ws" :
+		       _64bit ? "64" : "32");
 	}
 	string getCmdLine();
 	string getRunDir();
@@ -1661,6 +1670,7 @@ private:
 	string md5_64_ws;
 	string md5_arm;
 	string md5_arm64;
+	bool via_server;
 	string upgradeTempFileName;
 	string restartTempScriptFileName;
 	string safeRunTempScriptFileName;

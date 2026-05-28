@@ -54,13 +54,14 @@ struct sSnifferServerOptions {
 		mysql_queue_limit = 1000000;
 		mysql_redirect_queue_limit = 0;
 		mysql_concat_limit = 1000;
-		type_compress = 
+		type_compress =
 				#ifdef HAVE_LIBZSTD
 				_cs_compress_zstd;
 				#else
 				_cs_compress_gzip;
 				#endif
 		cp_store_simple_connect_response = false;
+		upgrade_cache_max_age_days = 30;
 	}
 	bool isEnable() {
 		return(!host.empty() && port);
@@ -72,6 +73,8 @@ struct sSnifferServerOptions {
 	unsigned mysql_concat_limit;
 	eServerClientTypeCompress type_compress;
 	bool cp_store_simple_connect_response;
+	string upgrade_cache_dir;
+	unsigned upgrade_cache_max_age_days;
 };
 
 
@@ -307,7 +310,8 @@ public:
 		_tc_store,
 		_tc_packetbuffer_block,
 		_tc_manager_command,
-		_tc_keycheck
+		_tc_keycheck,
+		_tc_sensor_upgrade
 	};
 public:
 	cSnifferServerConnection(cSocket *socket, cSnifferServer *server);
@@ -337,6 +341,7 @@ protected:
 	void cp_packetbuffer_block();
 	void cp_manager_command(string command);
 	void cp_keycheck();
+	void cp_sensor_upgrade();
 private:
 	bool rsaAesInit(bool writeRsltOK = true);
 	eTypeConnection convTypeConnection(string typeConnection);

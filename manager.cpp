@@ -4572,8 +4572,13 @@ int Mgmt_upgrade_restart(Mgmt_params *params) {
 			}
 		}
 	}
+	bool via_server = false;
+	if(url.compare(0, 11, "via-server:") == 0) {
+		via_server = true;
+		url = url.substr(11);
+	}
 	bool ok = false;
-	RestartUpgrade restart(upgrade, version.c_str(), build.c_str(), url.c_str(), md5_32.c_str(), md5_64.c_str(), md5_arm.c_str(), md5_64_ws.c_str(), md5_arm64.c_str());
+	RestartUpgrade restart(upgrade, version.c_str(), build.c_str(), url.c_str(), md5_32.c_str(), md5_64.c_str(), md5_arm.c_str(), md5_64_ws.c_str(), md5_arm64.c_str(), via_server);
 	if(!rsltForSend.length()) {
 		if(restart.createRestartScript() && restart.createSafeRunScript()) {
 			if((!upgrade || restart.runUpgrade()) &&
