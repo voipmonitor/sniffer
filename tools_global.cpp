@@ -12,6 +12,7 @@
 #include <unicode/utf8.h>
 #include <unicode/ustring.h>
 #include <execinfo.h>
+#include <dlfcn.h>
 
 #include "tools_global.h"
 
@@ -3556,17 +3557,104 @@ void cNormReftabs::rtrim(string &v, const char *trim_chars) {
 }
 
 
-string get_backtrace() {
-	void *buffer[1000];
-	int nptrs = backtrace(buffer, 100);
-	char **symbols = backtrace_symbols(buffer, nptrs);
-	if(symbols == NULL) {
-		return("backtrace_symbols() failed");
+string get_backtrace(bool resolve_lines) {
+	void *buffer[100];
+	int nptrs = backtrace(buffer, sizeof(buffer) / sizeof(buffer[0]));
+	if(!resolve_lines) {
+		char **symbols = backtrace_symbols(buffer, nptrs);
+		if(symbols == NULL) {
+			return("backtrace_symbols() failed");
+		}
+		string result;
+		for(int i = 0; i < nptrs; i++) {
+			result += symbols[i];
+			result += "\n";
+		}
+		free(symbols);
+		return(result);
+	}
+	static volatile int cache_lock = 0;
+	static map<void*, string> bt_cache;
+	vector<int> missing;
+	__SYNC_LOCK(cache_lock);
+	for(int i = 0; i < nptrs; i++) {
+		if(bt_cache.find(buffer[i]) == bt_cache.end()) {
+			missing.push_back(i);
+		}
+	}
+	__SYNC_UNLOCK(cache_lock);
+	if(!missing.empty()) {
+		vector<void*> miss_addrs(missing.size());
+		for(size_t k = 0; k < missing.size(); k++) {
+			miss_addrs[k] = buffer[missing[k]];
+		}
+		char **symbols = backtrace_symbols(&miss_addrs[0], miss_addrs.size());
+		if(symbols != NULL) {
+			map<string, vector<int> > by_module;
+			vector<unsigned long> offsets(missing.size(), 0);
+			vector<string> resolved(missing.size());
+			vector<string> raw(missing.size());
+			for(size_t k = 0; k < missing.size(); k++) {
+				raw[k] = symbols[k];
+				Dl_info info;
+				if(dladdr(miss_addrs[k], &info) && info.dli_fname) {
+					offsets[k] = (unsigned long)miss_addrs[k] - (unsigned long)info.dli_fbase;
+					by_module[info.dli_fname].push_back(k);
+				}
+			}
+			free(symbols);
+			for(map<string, vector<int> >::iterator it = by_module.begin(); it != by_module.end(); ++it) {
+				if(it->first.find("libc.so") != string::npos ||
+				   it->first.find("libasan") != string::npos ||
+				   it->first.find("libstdc++") != string::npos ||
+				   it->first.find("libpthread") != string::npos ||
+				   it->first.find("ld-linux") != string::npos) {
+					continue;
+				}
+				string cmd = "addr2line -f -C -i -e \"" + it->first + "\"";
+				for(size_t k = 0; k < it->second.size(); k++) {
+					char b[32];
+					snprintf(b, sizeof(b), " 0x%lx", offsets[it->second[k]]);
+					cmd += b;
+				}
+				cmd += " 2>/dev/null";
+				FILE *pf = popen(cmd.c_str(), "r");
+				if(!pf) continue;
+				for(size_t k = 0; k < it->second.size(); k++) {
+					char fn[1024] = {0}, fl[1024] = {0};
+					if(!fgets(fn, sizeof(fn), pf)) break;
+					if(!fgets(fl, sizeof(fl), pf)) break;
+					size_t l;
+					l = strlen(fn);
+					while(l && (fn[l-1] == '\n' || fn[l-1] == '\r')) fn[--l] = 0;
+					l = strlen(fl);
+					while(l && (fl[l-1] == '\n' || fl[l-1] == '\r')) fl[--l] = 0;
+					if(fl[0] && strcmp(fl, "??:0") != 0 && strcmp(fl, "??:?") != 0) {
+						resolved[it->second[k]] = string(" ") + fn + " at " + fl;
+					}
+				}
+				pclose(pf);
+			}
+			__SYNC_LOCK(cache_lock);
+			for(size_t k = 0; k < missing.size(); k++) {
+				bt_cache[miss_addrs[k]] = raw[k] + resolved[k];
+			}
+			__SYNC_UNLOCK(cache_lock);
+		}
 	}
 	string result;
+	__SYNC_LOCK(cache_lock);
 	for(int i = 0; i < nptrs; i++) {
-		result += symbols[i];
+		map<void*, string>::iterator it = bt_cache.find(buffer[i]);
+		if(it != bt_cache.end()) {
+			result += it->second;
+		} else {
+			char b[64];
+			snprintf(b, sizeof(b), "[unresolved %p]", buffer[i]);
+			result += b;
+		}
 		result += "\n";
 	}
+	__SYNC_UNLOCK(cache_lock);
 	return(result);
 }

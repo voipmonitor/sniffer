@@ -386,6 +386,13 @@ public:
 			return(strcasecmp(this->name.c_str(), other.name.c_str()) < 0); 
 		}
 	};
+private:
+	struct sExistsTableItem {
+		sExistsTableItem() : exists(false), columnsLoaded(false) {}
+		bool exists;
+		bool columnsLoaded;
+		map<string, string> columns;
+	};
 public:
 	SqlDb();
 	virtual ~SqlDb();
@@ -442,14 +449,17 @@ public:
 	virtual bool existsColumn(const char *table, const char *column, string *type = NULL) = 0;
 	bool existsColumn(string table, string column, string *type = NULL) { return(existsColumn(table.c_str(), column.c_str(), type)); }
 	bool existsMultipleColumns(const char *table, ...);
-	void startExistsColumnCache();
-	void stopExistsColumnCache();
-	void suspendExistsColumnCache();
-	void resumeExistsColumnCache();
-	bool isEnableExistColumnCache();
+	void startExistsTableCache();
+	void stopExistsTableCache();
+	void suspendExistsTableCache();
+	void resumeExistsTableCache();
+	bool isEnableExistTableCache();
+	int existsTableInCache(const char *table);
+	void addTableToCache(const char *table, bool exists);
 	int existsColumnInCache(const char *table, const char *column, string *type = NULL);
 	void addColumnToCache(const char *table, const char *column, const char *type);
-	void removeTableFromColumnCache(const char *table);
+	void clearExistsTableCache();
+	void invalidateCachesByQuery(const char *query);
 	virtual string getTypeColumn(const char *table, const char *column, bool toLower = true, bool useCache = false) = 0;
 	string getTypeColumn(string table, string column, bool toLower = true, bool useCache = false) { return(getTypeColumn(table.c_str(), column.c_str(), toLower, useCache)); }
 	virtual bool existsColumnInTypeCache(const char *table, const char *column) = 0;
@@ -664,10 +674,10 @@ protected:
 	unsigned long maxAllowedPacket;
 	string prevQuery;
 	bool useCsvInRemoteResult;
-	map<string, map<string, string> > existsColumn_cache;
-	bool existsColumn_cache_enable;
-	bool existsColumn_cache_suspend;
-	volatile int existsColumn_cache_sync;
+	map<string, sExistsTableItem> existsTable_cache;
+	bool existsTable_cache_enable;
+	bool existsTable_cache_suspend;
+	volatile int existsTable_cache_sync;
 	static map<string, map<string, string> > typeColumn_cache;  
 	static volatile int typeColumn_cache_sync;
 	map<string, list<sPartition> > partitions_cache;

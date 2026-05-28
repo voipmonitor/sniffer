@@ -524,9 +524,9 @@ SqlDb::SqlDb() {
 	this->maxAllowedPacket = 1024*1024*100;
 	this->lastError = 0;
 	this->remote_socket = NULL;
-	this->existsColumn_cache_enable = false;
-	this->existsColumn_cache_suspend = false;
-	this->existsColumn_cache_sync = 0;
+	this->existsTable_cache_enable = false;
+	this->existsTable_cache_suspend = false;
+	this->existsTable_cache_sync = 0;
 	this->partitions_cache_sync = 0;
 	this->useCsvInRemoteResult = false;
 }
@@ -602,6 +602,7 @@ void SqlDb::setCsvInRemoteResult(bool useCsvInRemoteResult) {
 
 bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDeadlock, const char *dropProcQuery) {
 	clearLastError();
+	this->invalidateCachesByQuery(query.c_str());
 	bool ok = false;
 	unsigned int attempt = 0;
 	unsigned int send_query_counter = 0;
@@ -1273,76 +1274,164 @@ bool SqlDb::existsMultipleColumns(const char *table, ...) {
 	return(exists);
 }
 
-void SqlDb::startExistsColumnCache() {
-	__SYNC_LOCK(existsColumn_cache_sync);
-	this->existsColumn_cache.clear();
-	this->existsColumn_cache_enable = true;
-	this->existsColumn_cache_suspend = false;
-	__SYNC_UNLOCK(existsColumn_cache_sync);
+void SqlDb::startExistsTableCache() {
+	__SYNC_LOCK(existsTable_cache_sync);
+	this->existsTable_cache.clear();
+	this->existsTable_cache_enable = true;
+	this->existsTable_cache_suspend = false;
+	__SYNC_UNLOCK(existsTable_cache_sync);
 }
 
-void SqlDb::stopExistsColumnCache() {
-	__SYNC_LOCK(existsColumn_cache_sync);
-	this->existsColumn_cache.clear();
-	this->existsColumn_cache_enable = false;
-	this->existsColumn_cache_suspend = false;
-	__SYNC_UNLOCK(existsColumn_cache_sync);
+void SqlDb::stopExistsTableCache() {
+	__SYNC_LOCK(existsTable_cache_sync);
+	this->existsTable_cache.clear();
+	this->existsTable_cache_enable = false;
+	this->existsTable_cache_suspend = false;
+	__SYNC_UNLOCK(existsTable_cache_sync);
 }
 
-void SqlDb::suspendExistsColumnCache() {
-	__SYNC_LOCK(existsColumn_cache_sync);
-	if(this->existsColumn_cache_enable) {
-		this->existsColumn_cache_suspend = true;
+void SqlDb::suspendExistsTableCache() {
+	__SYNC_LOCK(existsTable_cache_sync);
+	if(this->existsTable_cache_enable) {
+		this->existsTable_cache_suspend = true;
 	}
-	__SYNC_UNLOCK(existsColumn_cache_sync);
+	__SYNC_UNLOCK(existsTable_cache_sync);
 }
 
-void SqlDb::resumeExistsColumnCache() {
-	__SYNC_LOCK(existsColumn_cache_sync);
-	this->existsColumn_cache_suspend = false;
-	__SYNC_UNLOCK(existsColumn_cache_sync);
+void SqlDb::resumeExistsTableCache() {
+	__SYNC_LOCK(existsTable_cache_sync);
+	this->existsTable_cache_suspend = false;
+	__SYNC_UNLOCK(existsTable_cache_sync);
 }
 
-bool SqlDb::isEnableExistColumnCache() {
-	__SYNC_LOCK(existsColumn_cache_sync);
-	bool rslt = this->existsColumn_cache_enable &&
-		    !this->existsColumn_cache_suspend;
-	__SYNC_UNLOCK(existsColumn_cache_sync);
+bool SqlDb::isEnableExistTableCache() {
+	__SYNC_LOCK(existsTable_cache_sync);
+	bool rslt = this->existsTable_cache_enable &&
+		    !this->existsTable_cache_suspend;
+	__SYNC_UNLOCK(existsTable_cache_sync);
 	return(rslt);
 }
 
+int SqlDb::existsTableInCache(const char *table) {
+	__SYNC_LOCK(existsTable_cache_sync);
+	map<string, sExistsTableItem>::iterator iter = this->existsTable_cache.find(table);
+	if(iter != this->existsTable_cache.end()) {
+		int rslt = iter->second.exists ? 1 : 0;
+		__SYNC_UNLOCK(existsTable_cache_sync);
+		return(rslt);
+	}
+	__SYNC_UNLOCK(existsTable_cache_sync);
+	return(-1);
+}
+
+void SqlDb::addTableToCache(const char *table, bool exists) {
+	__SYNC_LOCK(existsTable_cache_sync);
+	this->existsTable_cache[table].exists = exists;
+	__SYNC_UNLOCK(existsTable_cache_sync);
+}
+
 int SqlDb::existsColumnInCache(const char *table, const char *column, string *type) {
-	__SYNC_LOCK(existsColumn_cache_sync);
-	map<string, map<string, string> >::iterator iter = this->existsColumn_cache.find(table);
-	if(iter != this->existsColumn_cache.end()) {
+	__SYNC_LOCK(existsTable_cache_sync);
+	map<string, sExistsTableItem>::iterator iter = this->existsTable_cache.find(table);
+	if(iter != this->existsTable_cache.end() && iter->second.columnsLoaded) {
 		int rslt = 0;
-		map<string, string>::iterator iter2 = iter->second.find(column);
-		if(iter2 != iter->second.end()) {
+		map<string, string>::iterator iter2 = iter->second.columns.find(column);
+		if(iter2 != iter->second.columns.end()) {
 			rslt = 1;
 			if(type) {
 				*type = iter2->second;
 			}
 		}
-		__SYNC_UNLOCK(existsColumn_cache_sync);
+		__SYNC_UNLOCK(existsTable_cache_sync);
 		return(rslt);
 	}
-	__SYNC_UNLOCK(existsColumn_cache_sync);
+	__SYNC_UNLOCK(existsTable_cache_sync);
 	return(-1);
 }
 
 void SqlDb::addColumnToCache(const char *table, const char *column, const char *type) {
-	__SYNC_LOCK(existsColumn_cache_sync);
-	this->existsColumn_cache[table][column] = type;
-	__SYNC_UNLOCK(existsColumn_cache_sync);
+	__SYNC_LOCK(existsTable_cache_sync);
+	sExistsTableItem &entry = this->existsTable_cache[table];
+	entry.exists = true;
+	entry.columnsLoaded = true;
+	entry.columns[column] = type;
+	__SYNC_UNLOCK(existsTable_cache_sync);
 }
 
-void SqlDb::removeTableFromColumnCache(const char *table) {
-	__SYNC_LOCK(existsColumn_cache_sync);
-	map<string, map<string, string> >::iterator iter = this->existsColumn_cache.find(table);
-	if(iter != this->existsColumn_cache.end()) {
-		this->existsColumn_cache.erase(iter);
+void SqlDb::clearExistsTableCache() {
+	__SYNC_LOCK(existsTable_cache_sync);
+	this->existsTable_cache.clear();
+	__SYNC_UNLOCK(existsTable_cache_sync);
+}
+
+static bool isSqlWordChar(char c) {
+	return((c >= '0' && c <= '9') ||
+	       (c >= 'a' && c <= 'z') ||
+	       (c >= 'A' && c <= 'Z') ||
+	       c == '_');
+}
+
+static void skipSqlWsAndComments(const char *&p) {
+	while(*p) {
+		if(*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') {
+			++p;
+		} else if(*p == '-' && p[1] == '-') {
+			p += 2;
+			while(*p && *p != '\n') {
+				++p;
+			}
+		} else if(*p == '#') {
+			++p;
+			while(*p && *p != '\n') {
+				++p;
+			}
+		} else if(*p == '/' && p[1] == '*') {
+			p += 2;
+			while(*p) {
+				if(*p == '*' && p[1] == '/') {
+					p += 2;
+					break;
+				}
+				++p;
+			}
+		} else {
+			break;
+		}
 	}
-	__SYNC_UNLOCK(existsColumn_cache_sync);
+}
+
+void SqlDb::invalidateCachesByQuery(const char *query) {
+	if(!query) {
+		return;
+	}
+	const char *p = query;
+	skipSqlWsAndComments(p);
+	static const struct { const char *kw; int len; } keywords[] = {
+		{"create", 6},
+		{"drop", 4},
+		{"rename", 6},
+		{"alter", 5}
+	};
+	bool match = false;
+	for(int i = 0; i < 4 && !match; i++) {
+		if(strncasecmp(p, keywords[i].kw, keywords[i].len) != 0) {
+			continue;
+		}
+		if(isSqlWordChar(p[keywords[i].len])) {
+			continue;
+		}
+		const char *q = p + keywords[i].len;
+		skipSqlWsAndComments(q);
+		if(strncasecmp(q, "table", 5) != 0) {
+			continue;
+		}
+		if(!isSqlWordChar(q[5])) {
+			match = true;
+		}
+	}
+	if(match) {
+		this->clearExistsTableCache();
+	}
 }
 
 bool SqlDb::isIPv6Column(string table, string column, bool useCache) {
@@ -1698,9 +1787,6 @@ bool SqlDb::tryAlterAndLog(string table, string reason, vector<string> alters,
 			implode(alters, " ");
 		syslog(LOG_WARNING, "%s", msg.c_str());
 	}
-	if(okAlter) {
-		this->removeTableFromColumnCache(table.c_str());
-	}
 	return(okAlter);
 }
 
@@ -1811,6 +1897,10 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			if(opt_mysql_connect_timeout) {
 				mysql_options(this->hMysql, MYSQL_OPT_CONNECT_TIMEOUT, &opt_mysql_connect_timeout);
 			}
+			mysql_options(this->hMysql, MYSQL_INIT_COMMAND,
+				      "SET NAMES UTF8;"
+				      "SET sql_mode = '';"
+				      "SET group_concat_max_len = 100000000");
 			bool isLocalhost = conn_server_ip == "localhost" || conn_server_ip == "127.0.0.1";
 			for(int connectLocalhostPass = (isLocalhost ? (!this->conn_socket.empty() ? 0 : 1) : 2); connectLocalhostPass <= 2; ++connectLocalhostPass) {
 				const char *_host = 
@@ -1825,12 +1915,12 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 								    (const char*)NULL;
 				this->hMysqlConn = mysql_real_connect(
 							this->hMysql,
-							_host, 
+							_host,
 							this->conn_user.c_str(),
 							this->conn_password.c_str(),
-							NULL,
+							createDb ? (const char*)NULL : this->conn_database.c_str(),
 							this->conn_port ? this->conn_port : opt_mysql_port,
-							_socket, 
+							_socket,
 							CLIENT_MULTI_RESULTS | (opt_mysql_client_compress ? CLIENT_COMPRESS : 0));
 				if(this->hMysqlConn) {
 					connect_via_str = _socket ? 
@@ -1896,41 +1986,34 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			bool rslt = true;
 			this->mysqlThreadId = mysql_thread_id(this->hMysql);
 			sql_disable_next_attempt_if_error = 1;
-			if(!this->query("SET NAMES UTF8")) {
-				rslt = false;
-			}
 			sql_noerror = 1;
-			this->query("SET GLOBAL innodb_stats_on_metadata=0"); // this will speedup "Slow query on information_schema.tables"
+			this->query("SET GLOBAL innodb_stats_on_metadata=0");
 			if(opt_mysql_timezone[0]) {
 				this->query(string("SET time_zone = '") + opt_mysql_timezone + "'");
 			}
 			sql_noerror = 0;
-			if(!this->query("SET sql_mode = ''") ||
-			   !this->query("SET group_concat_max_len = 100000000")) {
-				rslt = false;
-			}
-			char tmp[1024];
 			if(createDb) {
-				if(this->getDbMajorVersion() >= 5 and 
+				if(this->getDbMajorVersion() >= 5 and
 					!(this->getDbMajorVersion() == 5 and this->getDbMinorVersion() <= 1)) {
 					this->query("SET GLOBAL innodb_file_per_table=1;");
 				}
+				char tmp[1024];
 				snprintf(tmp, sizeof(tmp), "CREATE DATABASE IF NOT EXISTS `%s`", this->conn_database.c_str());
 				if(!this->query(tmp)) {
 					rslt = false;
 				}
-			}
-			snprintf(tmp, sizeof(tmp), "USE `%s`", this->conn_database.c_str());
-			bool disableLogErrorOld = false;
-			if(silentConnect) {
-				disableLogErrorOld = getDisableLogError();
-				setDisableLogError(true);
-			}
-			if(!this->query(tmp)) {
-				rslt = false;
-			}
-			if(silentConnect) {
-				setDisableLogError(disableLogErrorOld);
+				snprintf(tmp, sizeof(tmp), "USE `%s`", this->conn_database.c_str());
+				bool disableLogErrorOld = false;
+				if(silentConnect) {
+					disableLogErrorOld = getDisableLogError();
+					setDisableLogError(true);
+				}
+				if(!this->query(tmp)) {
+					rslt = false;
+				}
+				if(silentConnect) {
+					setDisableLogError(disableLogErrorOld);
+				}
 			}
 			if(mainInit) {
 				if(!isCloud()) {
@@ -2279,6 +2362,7 @@ bool SqlDb_mysql::connected() {
 }
 
 bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, const char *dropProcQuery) {
+	this->invalidateCachesByQuery(query.c_str());
 	if(isCloud() || snifferClientOptions.isEnableRemoteQuery()) {
 		string preparedQuery = this->prepareQuery(query, false);
 		if(verbosity > 1) {
@@ -2333,7 +2417,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 				syslog(LOG_INFO, "%s", prepareQueryForPrintf(preparedQuery).c_str());
 			}
 			if(sverb.query_regex[0] && reg_match(prepareQueryForPrintf(preparedQuery).c_str(), sverb.query_regex)) {
-				cout << prepareQueryForPrintf(preparedQuery) << endl;
+				cout << "QUERY: " << prepareQueryForPrintf(preparedQuery) << endl;
 			}
 		}
 		if(pass > 0) {
@@ -2645,6 +2729,12 @@ int64_t SqlDb_mysql::getInsertId() {
 }
 
 bool SqlDb_mysql::existsTable(const char *table) {
+	if(isEnableExistTableCache()) {
+		int exists = this->existsTableInCache(table);
+		if(exists >= 0) {
+			return(exists > 0);
+		}
+	}
 	const char *db_table_separator;
 	if((db_table_separator = strchr(table, '.')) != NULL) {
 		string db = string(table, db_table_separator - table);
@@ -2656,7 +2746,11 @@ bool SqlDb_mysql::existsTable(const char *table) {
 	while(this->fetchRow()) {
 		++countRow;
 	}
-	return(countRow > 0);
+	bool rslt = countRow > 0;
+	if(isEnableExistTableCache()) {
+		this->addTableToCache(table, rslt);
+	}
+	return(rslt);
 }
 
 list<string> SqlDb_mysql::getAllTables() {
@@ -2682,7 +2776,7 @@ bool SqlDb_mysql::existsDatabase() {
 }
 
 bool SqlDb_mysql::existsColumn(const char *table, const char *column, string *type) {
-	if(isEnableExistColumnCache()) {
+	if(isEnableExistTableCache()) {
 		int exists = this->existsColumnInCache(table, column, type);
 		if(exists < 0) {
 			this->query(string("show columns from ") + escapeTableName(table));
@@ -2738,7 +2832,7 @@ string SqlDb_mysql::getTypeColumn(const char *table, const char *column, bool to
 		}
 		__SYNC_UNLOCK(typeColumn_cache_sync);
 		return(type);
-	} else if(isEnableExistColumnCache()) {
+	} else if(isEnableExistTableCache()) {
 		string type;
 		existsColumn(table, column, &type);
 		if(toLower) {
@@ -3256,6 +3350,7 @@ bool SqlDb_odbc::connected() {
 }
 
 bool SqlDb_odbc::query(string query, bool /*callFromStoreProcessWithFixDeadlock*/, const char */*dropProcQuery*/) {
+	this->invalidateCachesByQuery(query.c_str());
 	SQLRETURN rslt = SQL_NULL_DATA;
 	if(this->hStatement) {
 		SQLFreeHandle(SQL_HANDLE_STMT, this->hStatement);
@@ -5805,7 +5900,7 @@ bool SqlDb_mysql::createSchema(int connectId) {
 	
 	sql_disable_next_attempt_if_error = 1;
 	this->multi_off();
-
+	this->startExistsTableCache();
 	bool existsCdrTable = false;
 	if(connectId == 0) {
 		existsCdrTable = this->existsTable("cdr");
@@ -5843,8 +5938,8 @@ bool SqlDb_mysql::createSchema(int connectId) {
 		       createSchema_init_cdr_partitions(connectId));
 
 	sql_disable_next_attempt_if_error = 0;
+	this->stopExistsTableCache();
 	syslog(LOG_DEBUG, "done");
-	
 	if(connectId == 0 && result) {
 		this->saveTimezoneInformation();
 		if(sniffer_version_num > sniffer_version_num_save &&
@@ -9400,7 +9495,7 @@ void SqlDb_mysql::checkSchema(int connectId, bool enableAlter) {
 		return;
 	}
 	sql_disable_next_attempt_if_error = 1;
-	startExistsColumnCache();
+	startExistsTableCache();
 	if(!opt_cdr_partition &&
 	   (isCloud() ||
 	    this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500)) {
@@ -9445,8 +9540,7 @@ void SqlDb_mysql::checkSchema(int connectId, bool enableAlter) {
 		tp.setPrecisionToLow(NULL, NULL);
 	}
 	
-	stopExistsColumnCache();
-	
+	stopExistsTableCache();
 	#if VM_IPV6
 	extern bool useIPv6;
 	string cdrIP_type = this->getTypeColumn("cdr", "sipcallerip", true);;
