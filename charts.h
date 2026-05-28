@@ -8,10 +8,12 @@
 
 #if __cplusplus >= 201103L
 	#define CHARTS_FAST_CACHE 1
+	#define CHARTS_FLAT_CACHE 1
 	#include <list>
 	#include <unordered_map>
 #else
 	#define CHARTS_FAST_CACHE 0
+	#define CHARTS_FLAT_CACHE 0
 #endif
 
 #include "config.h"
@@ -989,6 +991,155 @@ struct sFilterCache_call_ipv6_comb_hasher {
 };
 #endif
 
+#if CHARTS_FLAT_CACHE
+template<class K>
+class cFlatFilterCache {
+public:
+	cFlatFilterCache() {
+		limit = 0;
+		capacity = 0;
+		mask = 0;
+		slots = NULL;
+		order = NULL;
+		order_capacity = 0;
+		order_mask = 0;
+		order_head = 0;
+		order_count = 0;
+	}
+	~cFlatFilterCache() {
+		if(slots) {
+			delete [] slots;
+		}
+		if(order) {
+			delete [] order;
+		}
+	}
+	void setLimit(unsigned limit) {
+		this->limit = limit;
+	}
+	int get(const K *key) {
+		if(!slots) {
+			return(-1);
+		}
+		size_t h = hashKey(key);
+		unsigned idx = (unsigned)h & mask;
+		while(slots[idx].used) {
+			if(slots[idx].hash == h && slots[idx].key == *key) {
+				return(slots[idx].value ? 1 : 0);
+			}
+			idx = (idx + 1) & mask;
+		}
+		return(-1);
+	}
+	void add(const K *key, bool set) {
+		if(!slots) {
+			allocate();
+		}
+		size_t h = hashKey(key);
+		unsigned idx = (unsigned)h & mask;
+		while(slots[idx].used) {
+			if(slots[idx].hash == h && slots[idx].key == *key) {
+				slots[idx].value = set;
+				return;
+			}
+			idx = (idx + 1) & mask;
+		}
+		slots[idx].used = true;
+		slots[idx].hash = h;
+		slots[idx].key = *key;
+		slots[idx].value = set;
+		order[(order_head + order_count) & order_mask] = *key;
+		++order_count;
+		if(order_count > limit) {
+			evictOldest();
+		}
+	}
+private:
+	cFlatFilterCache(const cFlatFilterCache&);
+	cFlatFilterCache& operator=(const cFlatFilterCache&);
+	struct sSlot {
+		sSlot() {
+			used = false;
+		}
+		size_t hash;
+		K key;
+		bool used;
+		bool value;
+	};
+	void allocate() {
+		capacity = roundUpPow2(limit) * 2;
+		if(capacity < 16) {
+			capacity = 16;
+		}
+		mask = capacity - 1;
+		slots = new FILE_LINE(0) sSlot[capacity];
+		order_capacity = roundUpPow2(limit + 1);
+		if(order_capacity < 16) {
+			order_capacity = 16;
+		}
+		order_mask = order_capacity - 1;
+		order = new FILE_LINE(0) K[order_capacity];
+		order_head = 0;
+		order_count = 0;
+	}
+	void evictOldest() {
+		K oldest = order[order_head];
+		order_head = (order_head + 1) & order_mask;
+		--order_count;
+		eraseKey(&oldest);
+	}
+	void eraseKey(const K *key) {
+		size_t h = hashKey(key);
+		unsigned idx = (unsigned)h & mask;
+		while(slots[idx].used) {
+			if(slots[idx].hash == h && slots[idx].key == *key) {
+				eraseAt(idx);
+				return;
+			}
+			idx = (idx + 1) & mask;
+		}
+	}
+	void eraseAt(unsigned i) {
+		unsigned j = i;
+		while(true) {
+			j = (j + 1) & mask;
+			if(!slots[j].used) {
+				break;
+			}
+			unsigned home = (unsigned)slots[j].hash & mask;
+			bool keep = i <= j ? (home > i && home <= j) : (home > i || home <= j);
+			if(keep) {
+				continue;
+			}
+			slots[i] = slots[j];
+			i = j;
+		}
+		slots[i].used = false;
+	}
+	static size_t hashKey(const K *key) {
+		size_t h = key->hash();
+		h ^= h >> (sizeof(size_t) * 4);
+		return(h);
+	}
+	static unsigned roundUpPow2(unsigned v) {
+		unsigned p = 1;
+		while(p < v) {
+			p <<= 1;
+		}
+		return(p);
+	}
+	unsigned limit;
+	unsigned capacity;
+	unsigned mask;
+	sSlot *slots;
+	K *order;
+	unsigned order_capacity;
+	unsigned order_mask;
+	unsigned order_head;
+	unsigned order_count;
+};
+#endif
+
 class cFilterCacheItem {
 public:
 	inline cFilterCacheItem(unsigned limit);
@@ -999,7 +1150,7 @@ public:
 	inline void add(sFilterCache_call_ipv6_comb *ip_comb, bool set);
 	#endif
 private:
-	#if CHARTS_FAST_CACHE
+	#if CHARTS_FAST_CACHE && !CHARTS_FLAT_CACHE
 	typedef list<sFilterCache_call_ipv4_comb> ipv4_lru_list_t;
 	typedef unordered_map<sFilterCache_call_ipv4_comb, pair<ipv4_lru_list_t::iterator, bool>, sFilterCache_call_ipv4_comb_hasher> ipv4_map_t;
 	#if VM_IPV6
@@ -1008,7 +1159,12 @@ private:
 	#endif
 	#endif
 	unsigned limit;
-	#if CHARTS_FAST_CACHE
+	#if CHARTS_FLAT_CACHE
+	cFlatFilterCache<sFilterCache_call_ipv4_comb> ipv4_comb_map;
+	#if VM_IPV6
+	cFlatFilterCache<sFilterCache_call_ipv6_comb> ipv6_comb_map;
+	#endif
+	#elif CHARTS_FAST_CACHE
 	ipv4_lru_list_t ipv4_lru_list;
 	ipv4_map_t ipv4_comb_map;
 	#if VM_IPV6
