@@ -105,6 +105,7 @@
 #include "mgcp.h"
 #include "pcap_queue.h"
 #include "sniff_proc_class.h"
+#include "server.h"
 
 #ifndef SIZE_MAX
 # ifdef __SIZE_MAX__
@@ -2499,7 +2500,7 @@ volatile bool cSystemdService::detected = false;
 volatile bool cSystemdService::is_service = false;
 string cSystemdService::unit_name;
 
-RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *build, const char *url, const char *md5_32, const char *md5_64, const char *md5_arm, const char *md5_64_ws, const char *md5_arm64) {
+RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *build, const char *url, const char *md5_32, const char *md5_64, const char *md5_arm, const char *md5_64_ws, const char *md5_arm64, bool via_server) {
 	this->upgrade = upgrade;
 	if(version) {
 		this->version = version;
@@ -2525,6 +2526,7 @@ RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *bu
 	if(md5_arm64) {
 		this->md5_arm64 = md5_arm64;
 	}
+	this->via_server = via_server;
 	this->_64bit = false;
 	this->_64bit_ws = false;
 	this->_arm = false;
@@ -2557,28 +2559,50 @@ RestartUpgrade::~RestartUpgrade() {
 	}
 }
 
-bool RestartUpgrade::runUpgrade() {
-	if(verbosity > 0) {
-		syslog(LOG_NOTICE, "start upgrade from: '%s'", url.c_str());
+bool RestartUpgrade::getUpgradeFile(const string &urlSuffix, const string &urlHttpBase, const string &destFilepathName) {
+	if(via_server) {
+		return(downloadUpgradeFileViaServer(url + urlSuffix, destFilepathName));
 	}
-	bool okUrl = false;
-	string urlHttp;
+	return(downloadUpgradeFile(url + urlSuffix, urlHttpBase + urlSuffix, destFilepathName));
+}
+
+bool RestartUpgrade::deriveUpgradeUrls(const string &url, string *urlHttps, string *urlHttp) {
+	string https;
+	string http;
 	if(url.find("http://voipmonitor.org") == 0 ||
 	   url.find("http://www.voipmonitor.org") == 0 ||
 	   url.find("http://download.voipmonitor.org") == 0) {
-		urlHttp = url;
-		url = "https" + url.substr(4);
-		okUrl = true;
+		http = url;
+		https = "https" + url.substr(4);
 	} else if(url.find("https://voipmonitor.org") == 0 ||
 		  url.find("https://www.voipmonitor.org") == 0 ||
 		  url.find("https://download.voipmonitor.org") == 0) {
-		urlHttp = "http" + url.substr(5);
-		okUrl = true;
-	}
-	if(!okUrl) {
-		this->errorString = "url " + url + " not allowed";
-		syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		https = url;
+		http = "http" + url.substr(5);
+	} else {
 		return(false);
+	}
+	if(urlHttps) *urlHttps = https;
+	if(urlHttp) *urlHttp = http;
+	return(true);
+}
+
+bool RestartUpgrade::runUpgrade() {
+	if(verbosity > 0) {
+		syslog(LOG_NOTICE, "start upgrade from: '%s'%s", url.c_str(),
+		       via_server ? " (via server)" : "");
+	}
+	string urlHttp;
+	if(via_server) {
+		urlHttp = url;
+	} else {
+		string urlHttps;
+		if(!deriveUpgradeUrls(url, &urlHttps, &urlHttp)) {
+			this->errorString = "url " + url + " not allowed";
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+			return(false);
+		}
+		url = urlHttps;
 	}
 	if(!this->upgradeTempFileName.length() && !this->getUpgradeTempFileName()) {
 		this->errorString = "failed create temp name for new binary";
@@ -2600,7 +2624,7 @@ bool RestartUpgrade::runUpgrade() {
 					(string(".gz.") + (this->_arm64 ? "arm64" :
 							   this->_arm ? "armv6k" :
 							   this->_64bit ? "64" : "32")));
-		if(!this->downloadUpgradeFile(url + urlSuffix, urlHttp + urlSuffix, binaryGzFilepathName)) {
+		if(!this->getUpgradeFile(urlSuffix, urlHttp, binaryGzFilepathName)) {
 			return(false);
 		}
 		if(verbosity > 0) {
@@ -2652,7 +2676,7 @@ bool RestartUpgrade::runUpgrade() {
 					       "static" + "/usr/local/sbin/voipmonitor";
 		binaryFilepathName = this->upgradeTempFileName + "/" + appname;
 		string urlSuffix = "build-" + build + "/tarballdevel/" + tarFileName;
-		if(!this->downloadUpgradeFile(url + urlSuffix, urlHttp + urlSuffix, tarFilepathName)) {
+		if(!this->getUpgradeFile(urlSuffix, urlHttp, tarFilepathName)) {
 			return(false);
 		}
 		if(verbosity > 0) {
@@ -3118,6 +3142,141 @@ bool RestartUpgrade::downloadUpgradeFile(string urlHttps, string urlHttp, string
 		syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
 		return(false);
 	}
+	return(true);
+}
+
+bool RestartUpgrade::downloadUpgradeFileViaServer(string urlForServer, string destFilepathName) {
+	extern sSnifferClientOptions snifferClientOptions;
+	extern sSnifferServerClientOptions snifferServerClientOptions;
+	cSocketBlock *sock = NULL;
+	FILE *fh = NULL;
+	bool destWritten = false;
+	long long expectedSize = 0;
+	long long totalReceived = 0;
+	bool ok = false;
+	if(!snifferClientOptions.isSetHostPort()) {
+		this->errorString = "via-server upgrade requires sniffer client/server mode";
+		goto cleanup;
+	}
+	if(verbosity > 0) {
+		syslog(LOG_NOTICE, "try download file via server: '%s'", urlForServer.c_str());
+	}
+	sock = new FILE_LINE(0) cSocketBlock("sensor_upgrade", true);
+	sock->setHostsPort(snifferClientOptions.hosts, snifferClientOptions.port);
+	if(!sock->connect()) {
+		this->errorString = "failed connect to server for upgrade";
+		goto cleanup;
+	}
+	if(!sock->write("{\"type_connection\":\"sensor_upgrade\"}\r\n")) {
+		this->errorString = "failed send connect command";
+		goto cleanup;
+	}
+	{
+		string rsltRsaKey;
+		if(!sock->readBlock(&rsltRsaKey) || rsltRsaKey.find("rsa_key") == string::npos) {
+			this->errorString = "failed read rsa key from server";
+			goto cleanup;
+		}
+		JsonItem jsonRsaKey;
+		jsonRsaKey.parse(rsltRsaKey);
+		sock->set_rsa_pub_key(jsonRsaKey.getValue("rsa_key"));
+		sock->generate_aes_keys();
+		JsonExport jsonKeys;
+		jsonKeys.add("password", snifferServerClientOptions.password);
+		string aes_ckey, aes_ivec;
+		sock->get_aes_keys(&aes_ckey, &aes_ivec);
+		jsonKeys.add("aes_ckey", aes_ckey);
+		jsonKeys.add("aes_ivec", aes_ivec);
+		if(!sock->writeBlock(jsonKeys.getJson(), cSocket::_te_rsa)) {
+			this->errorString = "failed send password & aes keys";
+			goto cleanup;
+		}
+		string handshakeOk;
+		if(!sock->readBlock(&handshakeOk) || handshakeOk != "OK") {
+			this->errorString = "handshake rejected by server: " + handshakeOk;
+			goto cleanup;
+		}
+		JsonExport reqExp;
+		reqExp.add("version", this->version);
+		reqExp.add("build", this->build);
+		reqExp.add("arch", this->getArchStr());
+		reqExp.add("url", urlForServer);
+		if(!sock->writeBlock(reqExp.getJson(), cSocket::_te_aes)) {
+			this->errorString = "failed send upgrade request";
+			goto cleanup;
+		}
+		string statusStr;
+		if(!sock->readBlock(&statusStr, cSocket::_te_aes)) {
+			this->errorString = "failed read status from server";
+			goto cleanup;
+		}
+		JsonItem statusJson;
+		statusJson.parse(statusStr);
+		string errFromServer = statusJson.getValue("error");
+		if(!errFromServer.empty()) {
+			this->errorString = "server error: " + errFromServer;
+			goto cleanup;
+		}
+		expectedSize = atoll(statusJson.getValue("size").c_str());
+	}
+	fh = fopen(destFilepathName.c_str(), "wb");
+	if(!fh) {
+		this->errorString = "failed open destination file " + destFilepathName;
+		goto cleanup;
+	}
+	destWritten = true;
+	while(true) {
+		string blockStr;
+		if(!sock->readBlock(&blockStr, cSocket::_te_aes)) {
+			this->errorString = "connection dropped during transfer";
+			goto cleanup;
+		}
+		if(blockStr.length() > 0 && blockStr[0] == '{') {
+			JsonItem ctrlJson;
+			ctrlJson.parse(blockStr);
+			if(!ctrlJson.getValue("eof").empty()) {
+				break;
+			}
+			if(!ctrlJson.getValue("error").empty()) {
+				this->errorString = "server error during transfer: " + ctrlJson.getValue("error");
+				goto cleanup;
+			}
+		}
+		if(fwrite(blockStr.data(), 1, blockStr.length(), fh) != blockStr.length()) {
+			this->errorString = "failed write to destination file";
+			goto cleanup;
+		}
+		totalReceived += blockStr.length();
+		if(!sock->writeBlock("OK", cSocket::_te_aes)) {
+			this->errorString = "failed ack chunk";
+			goto cleanup;
+		}
+	}
+	if(expectedSize > 0 && totalReceived != expectedSize) {
+		this->errorString = "size mismatch: received " + intToString(totalReceived) +
+				    " vs expected " + intToString(expectedSize);
+		goto cleanup;
+	}
+	ok = true;
+cleanup:
+	if(fh) {
+		fclose(fh);
+	}
+	if(sock) {
+		delete sock;
+	}
+	if(!ok) {
+		if(destWritten) {
+			unlink(destFilepathName.c_str());
+		}
+		rmdir_r(this->upgradeTempFileName.c_str());
+		syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		return(false);
+	}
+	if(verbosity > 0) {
+		syslog(LOG_NOTICE, "download via server finished (size: %lli)", totalReceived);
+	}
+	this->errorString = "";
 	return(true);
 }
 

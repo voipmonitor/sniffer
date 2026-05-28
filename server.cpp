@@ -1,4 +1,5 @@
 #include <mysqld_error.h>
+#include <sys/stat.h>
 
 #include "voipmonitor.h"
 
@@ -6,6 +7,7 @@
 #include "sql_db.h"
 #include "pcap_queue.h"
 #include "manager.h"
+#include "tools.h"
 
 
 extern int opt_id_sensor;
@@ -456,6 +458,9 @@ void cSnifferServerConnection::connection_process() {
 		break;
 	case _tc_keycheck:
 		cp_keycheck();
+		break;
+	case _tc_sensor_upgrade:
+		cp_sensor_upgrade();
 		break;
 	default:
 		delete this;
@@ -1259,6 +1264,211 @@ void cSnifferServerConnection::cp_manager_command(string command) {
 	delete this;
 }
 
+#define NUM_UPGRADE_CACHE_MUTEXES 16
+static pthread_mutex_t upgradeCacheMutexPool[NUM_UPGRADE_CACHE_MUTEXES];
+static volatile bool upgradeCacheMutexPoolInited = false;
+static volatile int upgradeCacheMutexPoolInitSync = 0;
+static volatile time_t upgradeCacheLastCleanup = 0;
+static volatile int upgradeCacheCleanupSync = 0;
+
+static pthread_mutex_t *upgradeCacheLock(const string &urlMd5) {
+	if(!upgradeCacheMutexPoolInited) {
+		__SYNC_LOCK(upgradeCacheMutexPoolInitSync);
+		if(!upgradeCacheMutexPoolInited) {
+			for(int i = 0; i < NUM_UPGRADE_CACHE_MUTEXES; i++) {
+				pthread_mutex_init(&upgradeCacheMutexPool[i], NULL);
+			}
+			upgradeCacheMutexPoolInited = true;
+		}
+		__SYNC_UNLOCK(upgradeCacheMutexPoolInitSync);
+	}
+	unsigned slot = (unsigned)strtol(urlMd5.substr(0, 2).c_str(), NULL, 16) % NUM_UPGRADE_CACHE_MUTEXES;
+	pthread_mutex_t *mtx = &upgradeCacheMutexPool[slot];
+	pthread_mutex_lock(mtx);
+	return(mtx);
+}
+
+static void maybeUpgradeCacheCleanup(const string &cacheDir, unsigned maxAgeDays) {
+	if(!maxAgeDays) {
+		return;
+	}
+	time_t now = time(NULL);
+	bool doIt = false;
+	__SYNC_LOCK(upgradeCacheCleanupSync);
+	if(now - upgradeCacheLastCleanup > 3600) {
+		upgradeCacheLastCleanup = now;
+		doIt = true;
+	}
+	__SYNC_UNLOCK(upgradeCacheCleanupSync);
+	if(!doIt) {
+		return;
+	}
+	DIR *dp = opendir(cacheDir.c_str());
+	if(!dp) {
+		return;
+	}
+	time_t maxAge = (time_t)maxAgeDays * 24 * 60 * 60;
+	struct dirent *de;
+	while((de = readdir(dp)) != NULL) {
+		if(de->d_name[0] == '.') {
+			continue;
+		}
+		size_t nameLen = strlen(de->d_name);
+		if(nameLen >= 4 && strcmp(de->d_name + nameLen - 4, ".tmp") == 0) {
+			continue;
+		}
+		string path = cacheDir + "/" + de->d_name;
+		struct stat st;
+		if(::stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
+			if(now > st.st_mtime && (now - st.st_mtime) > maxAge) {
+				unlink(path.c_str());
+			}
+		}
+	}
+	closedir(dp);
+}
+
+static void sendUpgradeError(cSocketBlock *socket, const char *msg) {
+	JsonExport errExp;
+	errExp.add("error", msg);
+	socket->writeBlock(errExp.getJson(), cSocket::_te_aes);
+}
+
+void cSnifferServerConnection::cp_sensor_upgrade() {
+	if(!rsaAesInit()) {
+		delete this;
+		return;
+	}
+	string requestStr;
+	if(!socket->readBlock(&requestStr, cSocket::_te_aes)) {
+		socket->setError("failed read sensor_upgrade request");
+		delete this;
+		return;
+	}
+	JsonItem requestJson;
+	requestJson.parse(requestStr);
+	string version = requestJson.getValue("version");
+	string build = requestJson.getValue("build");
+	string arch = requestJson.getValue("arch");
+	string url = requestJson.getValue("url");
+	if(version.empty() || arch.empty()) {
+		sendUpgradeError(socket, "missing version/arch");
+		delete this;
+		return;
+	}
+	if(!RestartUpgrade::deriveUpgradeUrls(url, NULL, NULL)) {
+		sendUpgradeError(socket, "url not allowed");
+		delete this;
+		return;
+	}
+	extern char opt_spooldir_main[1024];
+	string cacheDir = snifferServerOptions.upgrade_cache_dir;
+	if(cacheDir.empty() && opt_spooldir_main[0]) {
+		cacheDir = string(opt_spooldir_main) + "/sensor_upgrade_cache";
+	}
+	if(cacheDir.empty()) {
+		sendUpgradeError(socket, "server upgrade cache disabled");
+		delete this;
+		return;
+	}
+	if(mkdir_r(cacheDir, 0755) != 0 && errno != EEXIST) {
+		sendUpgradeError(socket, "failed create cache dir");
+		delete this;
+		return;
+	}
+	maybeUpgradeCacheCleanup(cacheDir, snifferServerOptions.upgrade_cache_max_age_days);
+	string urlMd5 = GetStringMD5(url);
+	string cachePath = cacheDir + "/" + urlMd5;
+	pthread_mutex_t *mtx = upgradeCacheLock(urlMd5);
+	long long fileSize = GetFileSize(cachePath);
+	if(fileSize <= 0) {
+		string downloadTmp = cachePath + ".tmp";
+		unlink(downloadTmp.c_str());
+		string urlHttps;
+		string urlHttp;
+		RestartUpgrade::deriveUpgradeUrls(url, &urlHttps, &urlHttp);
+		extern int opt_upgrade_try_http_if_https_fail;
+		string downloadError;
+		bool downloaded = false;
+		for(int pass = 0; pass < (opt_upgrade_try_http_if_https_fail ? 2 : 1); pass++) {
+			string _url = pass == 1 ? urlHttp : urlHttps;
+			if(!opt_server_log_suppress) {
+				syslog(LOG_NOTICE, "sensor_upgrade: download %s", _url.c_str());
+			}
+			if(get_url_file(_url.c_str(), downloadTmp.c_str(), &downloadError)) {
+				long long sz = GetFileSize(downloadTmp);
+				if(sz > 0) {
+					downloaded = true;
+					break;
+				}
+				downloadError = "zero size";
+			}
+			unlink(downloadTmp.c_str());
+		}
+		if(!downloaded) {
+			pthread_mutex_unlock(mtx);
+			sendUpgradeError(socket, ("download failed: " + downloadError).c_str());
+			delete this;
+			return;
+		}
+		if(rename(downloadTmp.c_str(), cachePath.c_str()) != 0) {
+			unlink(downloadTmp.c_str());
+			pthread_mutex_unlock(mtx);
+			sendUpgradeError(socket, "failed move file into cache");
+			delete this;
+			return;
+		}
+		fileSize = GetFileSize(cachePath);
+	}
+	pthread_mutex_unlock(mtx);
+	FILE *fh = fopen(cachePath.c_str(), "rb");
+	if(!fh) {
+		sendUpgradeError(socket, "failed open cached file");
+		delete this;
+		return;
+	}
+	JsonExport okExp;
+	okExp.add("rslt", "OK");
+	okExp.add("size", (long long unsigned)fileSize);
+	if(!socket->writeBlock(okExp.getJson(), cSocket::_te_aes)) {
+		fclose(fh);
+		delete this;
+		return;
+	}
+	if(!opt_server_log_suppress) {
+		syslog(LOG_NOTICE, "sensor_upgrade: stream version=%s build=%s arch=%s size=%lli",
+		       version.c_str(), build.c_str(), arch.c_str(), fileSize);
+	}
+	size_t chunkSize = 1024 * 1024;
+	u_char *chunkBuf = new FILE_LINE(0) u_char[chunkSize];
+	bool ok = true;
+	while(!server->isTerminate()) {
+		size_t nread = fread(chunkBuf, 1, chunkSize, fh);
+		if(nread > 0) {
+			if(!socket->writeBlock(chunkBuf, nread, cSocket::_te_aes)) {
+				ok = false;
+				break;
+			}
+			string ack;
+			if(!socket->readBlock(&ack, cSocket::_te_aes) || ack != "OK") {
+				ok = false;
+				break;
+			}
+		}
+		if(nread < chunkSize) {
+			break;
+		}
+	}
+	delete [] chunkBuf;
+	fclose(fh);
+	if(ok) {
+		JsonExport eofExp;
+		eofExp.add("eof", (long long unsigned)1);
+		socket->writeBlock(eofExp.getJson(), cSocket::_te_aes);
+	}
+	delete this;
+}
+
 void cSnifferServerConnection::cp_keycheck() {
 	if(!rsaAesInit()) {
 		delete this;
@@ -1365,6 +1575,8 @@ cSnifferServerConnection::eTypeConnection cSnifferServerConnection::convTypeConn
 		return(_tc_manager_command);
 	} else if(typeConnection == "keycheck") {
 		return(_tc_keycheck);
+	} else if(typeConnection == "sensor_upgrade") {
+		return(_tc_sensor_upgrade);
 	} else {
 		return(_tc_na);
 	}
@@ -1416,6 +1628,7 @@ string cSnifferServerConnection::getTypeConnectionStr() {
 	case _tc_packetbuffer_block: return("packetbuffer_block");
 	case _tc_manager_command: return("manager_command");
 	case _tc_keycheck: return("keycheck");
+	case _tc_sensor_upgrade: return("sensor_upgrade");
 	}
 	return("");
 }

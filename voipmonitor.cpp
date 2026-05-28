@@ -7686,6 +7686,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("packetbuffer_sender", &snifferClientOptions.packetbuffer_sender));
 			addConfigItem((new FILE_LINE(0) cConfigItem_string("server_password", &snifferServerClientOptions.password))
 				->setPassword());
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("server_upgrade_cache_dir", &snifferServerOptions.upgrade_cache_dir));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_upgrade_cache_max_age_days", &snifferServerOptions.upgrade_cache_max_age_days));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("remote_chart_server", &snifferClientOptions.remote_chart_server));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_sql_queue_limit", &snifferServerOptions.mysql_queue_limit));
