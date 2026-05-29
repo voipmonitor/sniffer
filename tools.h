@@ -4708,6 +4708,8 @@ private:
 
 #define EF_VECTOR_VALUES(ptr) ((vector<cEvalFormula::sValue>*)ptr)
 
+#define EVAL_FORMULA_FAST_CHILD_CHECK 1
+
 class cEvalFormula {
 public:
 	enum eEvalSpecType {
@@ -5098,6 +5100,10 @@ public:
 			u_operators = NULL;
 			b_operators = NULL;
 			cond_s = NULL;
+			#if EVAL_FORMULA_FAST_CHILD_CHECK
+			child_types = NULL;
+			child_op_counts = NULL;
+			#endif
 		}
 		~sSplitOperands() {
 			clearOperands();
@@ -5122,6 +5128,10 @@ public:
 		string cond;
 		cEvalFormula::sSplitOperands *cond_s;
 		cEvalFormula::sOperandReplaceData ord;
+		#if EVAL_FORMULA_FAST_CHILD_CHECK
+		int *child_types;
+		unsigned *child_op_counts;
+		#endif
 	};
 public:
 	cEvalFormula(eEvalSpecType evalSpecType, bool debug = false) {

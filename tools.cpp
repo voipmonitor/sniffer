@@ -10619,8 +10619,12 @@ cEvalFormula::sValue cEvalFormula::sSplitOperands::e_opt(cEvalFormula *f, unsign
 			sValue rslt, operand, *operand_pt;
 			for(unsigned i = 0; i < operands_count; i++) {
 				operand_pt = NULL;
+				#if EVAL_FORMULA_FAST_CHILD_CHECK
+				if(child_types[i] == 0 && !child_op_counts[i]) {
+				#else
 				if(operands[i]->type == 0 &&
 				   !operands[i]->operands_count) {
+				#endif
 					operand_pt = &operands[i]->value;
 					if(u_operators[i]) {
 						operand = f->e_u_operator(*operand_pt, u_operators[i]);
@@ -10632,6 +10636,9 @@ cEvalFormula::sValue cEvalFormula::sSplitOperands::e_opt(cEvalFormula *f, unsign
 					bool _existsSpecType;
 					bool _opt;
 					operand = operands[i]->e_opt(f, level + 1, &_existsSpecType, &_opt);
+					#if EVAL_FORMULA_FAST_CHILD_CHECK
+					child_op_counts[i] = operands[i]->operands_count;
+					#endif
 					if(_existsSpecType) {
 						if(existsSpecType) *existsSpecType = true;
 					}
@@ -10722,8 +10729,12 @@ cEvalFormula::sValue cEvalFormula::sSplitOperands::e(cEvalFormula *f, unsigned l
 					break;
 				}
 				operand_pt = NULL;
+				#if EVAL_FORMULA_FAST_CHILD_CHECK
+				if(child_types[i] == 0 && !child_op_counts[i]) {
+				#else
 				if(operands[i]->type == 0 &&
 				   !operands[i]->operands_count) {
+				#endif
 					operand_pt = &operands[i]->value;
 					if(u_operators[i]) {
 						operand = f->e_u_operator(*operand_pt, u_operators[i]);
@@ -10830,14 +10841,26 @@ void cEvalFormula::sSplitOperands::addOperand(sSplitOperands *operand) {
 	sSplitOperands** operands_new = new FILE_LINE(0) sSplitOperands*[operands_count + 1];
 	eOperator *u_operators_new = new FILE_LINE(0) eOperator[operands_count + 1];
 	eOperator *b_operators_new = new FILE_LINE(0) eOperator[operands_count + 1];
+	#if EVAL_FORMULA_FAST_CHILD_CHECK
+	int *child_types_new = new FILE_LINE(0) int[operands_count + 1];
+	unsigned *child_op_counts_new = new FILE_LINE(0) unsigned[operands_count + 1];
+	#endif
 	for(unsigned i = 0; i < operands_count; i++) {
 		operands_new[i] = operands[i];
 		u_operators_new[i] = u_operators[i];
 		b_operators_new[i] = b_operators[i];
+		#if EVAL_FORMULA_FAST_CHILD_CHECK
+		child_types_new[i] = child_types[i];
+		child_op_counts_new[i] = child_op_counts[i];
+		#endif
 	}
 	operands_new[operands_count] = operand;
 	u_operators_new[operands_count] = _o_na;
 	b_operators_new[operands_count] = _o_na;
+	#if EVAL_FORMULA_FAST_CHILD_CHECK
+	child_types_new[operands_count] = operand->type;
+	child_op_counts_new[operands_count] = operand->operands_count;
+	#endif
 	++operands_count;
 	if(operands) delete [] operands;
 	operands = operands_new;
@@ -10845,6 +10868,12 @@ void cEvalFormula::sSplitOperands::addOperand(sSplitOperands *operand) {
 	u_operators = u_operators_new;
 	if(b_operators) delete [] b_operators;
 	b_operators = b_operators_new;
+	#if EVAL_FORMULA_FAST_CHILD_CHECK
+	if(child_types) delete [] child_types;
+	child_types = child_types_new;
+	if(child_op_counts) delete [] child_op_counts;
+	child_op_counts = child_op_counts_new;
+	#endif
 }
 
 void cEvalFormula::sSplitOperands::clearOperands() {
@@ -10860,9 +10889,19 @@ void cEvalFormula::sSplitOperands::clearOperands() {
 		u_operators = NULL;
 	}
 	if(b_operators) {
-		delete b_operators;
+		delete [] b_operators;
 		b_operators = NULL;
 	}
+	#if EVAL_FORMULA_FAST_CHILD_CHECK
+	if(child_types) {
+		delete [] child_types;
+		child_types = NULL;
+	}
+	if(child_op_counts) {
+		delete [] child_op_counts;
+		child_op_counts = NULL;
+	}
+	#endif
 	operands_count = 0;
 }
 
