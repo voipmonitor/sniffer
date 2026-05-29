@@ -1838,6 +1838,9 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			bool reconnect = 1;
 			mysql_options(this->hMysql, MYSQL_OPT_RECONNECT, &reconnect);
 		}
+		extern bool opt_mysql_use_init_command;
+		bool use_init_command = opt_mysql_use_init_command;
+		bool init_command_fallback_attempted = false;
 		string connect_via_str;
 		for(int connectPass = 0; connectPass < 2; connectPass++) {
 			if(connectPass) {
@@ -1897,10 +1900,15 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			if(opt_mysql_connect_timeout) {
 				mysql_options(this->hMysql, MYSQL_OPT_CONNECT_TIMEOUT, &opt_mysql_connect_timeout);
 			}
-			mysql_options(this->hMysql, MYSQL_INIT_COMMAND,
-				      "SET NAMES UTF8;"
-				      "SET sql_mode = '';"
-				      "SET group_concat_max_len = 100000000");
+			if(use_init_command) {
+				mysql_options(this->hMysql, MYSQL_INIT_COMMAND,
+					      "SET character_set_client = 'utf8',"
+					      " character_set_connection = 'utf8',"
+					      " character_set_results = 'utf8',"
+					      " collation_connection = 'utf8_general_ci',"
+					      " sql_mode = '',"
+					      " group_concat_max_len = 100000000");
+			}
 			bool isLocalhost = conn_server_ip == "localhost" || conn_server_ip == "127.0.0.1";
 			for(int connectLocalhostPass = (isLocalhost ? (!this->conn_socket.empty() ? 0 : 1) : 2); connectLocalhostPass <= 2; ++connectLocalhostPass) {
 				const char *_host = 
@@ -1918,7 +1926,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 							_host,
 							this->conn_user.c_str(),
 							this->conn_password.c_str(),
-							createDb ? (const char*)NULL : this->conn_database.c_str(),
+							(use_init_command && !createDb) ? this->conn_database.c_str() : (const char*)NULL,
 							this->conn_port ? this->conn_port : opt_mysql_port,
 							_socket,
 							CLIENT_MULTI_RESULTS | (opt_mysql_client_compress ? CLIENT_COMPRESS : 0));
@@ -1930,6 +1938,24 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				}
 			}
 			if(!this->hMysqlConn) {
+				if(use_init_command && !init_command_fallback_attempted) {
+					unsigned int err = mysql_errno(this->hMysql);
+					if(err == ER_PARSE_ERROR ||
+					   err == ER_UNKNOWN_CHARACTER_SET ||
+					   err == ER_SYNTAX_ERROR ||
+					   err == ER_UNKNOWN_SYSTEM_VARIABLE ||
+					   err == ER_WRONG_VALUE_FOR_VAR ||
+					   err == ER_UNKNOWN_COLLATION) {
+						use_init_command = false;
+						init_command_fallback_attempted = true;
+						opt_mysql_use_init_command = false;
+						syslog(LOG_WARNING, "MYSQL_INIT_COMMAND failed (error %u: %s) - falling back to legacy init; option 'mysql_use_init_command' auto-disabled for this process",
+						       err, mysql_error(this->hMysql));
+						mysql_close(this->hMysql);
+						--connectPass;
+						continue;
+					}
+				}
 				break;
 			}
 			sql_disable_next_attempt_if_error = 1;
@@ -1986,21 +2012,34 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			bool rslt = true;
 			this->mysqlThreadId = mysql_thread_id(this->hMysql);
 			sql_disable_next_attempt_if_error = 1;
+			if(!use_init_command) {
+				if(!this->query("SET NAMES UTF8")) {
+					rslt = false;
+				}
+			}
 			sql_noerror = 1;
 			this->query("SET GLOBAL innodb_stats_on_metadata=0");
 			if(opt_mysql_timezone[0]) {
 				this->query(string("SET time_zone = '") + opt_mysql_timezone + "'");
 			}
 			sql_noerror = 0;
-			if(createDb) {
-				if(this->getDbMajorVersion() >= 5 and
-					!(this->getDbMajorVersion() == 5 and this->getDbMinorVersion() <= 1)) {
-					this->query("SET GLOBAL innodb_file_per_table=1;");
-				}
-				char tmp[1024];
-				snprintf(tmp, sizeof(tmp), "CREATE DATABASE IF NOT EXISTS `%s`", this->conn_database.c_str());
-				if(!this->query(tmp)) {
+			if(!use_init_command) {
+				if(!this->query("SET sql_mode = ''") ||
+				   !this->query("SET group_concat_max_len = 100000000")) {
 					rslt = false;
+				}
+			}
+			if(createDb || !use_init_command) {
+				char tmp[1024];
+				if(createDb) {
+					if(this->getDbMajorVersion() >= 5 and
+						!(this->getDbMajorVersion() == 5 and this->getDbMinorVersion() <= 1)) {
+						this->query("SET GLOBAL innodb_file_per_table=1;");
+					}
+					snprintf(tmp, sizeof(tmp), "CREATE DATABASE IF NOT EXISTS `%s`", this->conn_database.c_str());
+					if(!this->query(tmp)) {
+						rslt = false;
+					}
 				}
 				snprintf(tmp, sizeof(tmp), "USE `%s`", this->conn_database.c_str());
 				bool disableLogErrorOld = false;
