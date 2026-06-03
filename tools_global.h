@@ -321,15 +321,15 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 	} else {
 		usleep(rslt_useconds);
 	}
-	unsigned int actual_us = (unsigned int)(getTimeUS() - start_us);
+	unsigned int real_useconds = (unsigned int)(getTimeUS() - start_us);
 	#if SNIFFER_THREADS_EXT
 	extern sVerbose sverb;
 	if(!sem && sverb.sniffer_threads_ext) {
-		void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line);
-		usleep_stats_add(actual_us, !opt_usleep_progressive || counter == (unsigned int)-1, file, line);
+		void usleep_stats_add(unsigned int useconds, unsigned int useconds_real, bool fix, const char *file, int line);
+		usleep_stats_add(rslt_useconds, real_useconds, !opt_usleep_progressive || counter == (unsigned int)-1, file, line);
 	}
 	#endif
-	return(actual_us);
+	return(real_useconds);
 }
 #endif
 

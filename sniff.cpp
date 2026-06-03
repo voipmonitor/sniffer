@@ -190,6 +190,7 @@ extern int opt_process_rtp_packets_hash_next_thread;
 extern int opt_process_rtp_packets_hash_next_thread_max;
 extern int opt_preprocess_packets_next_thread_sem_sync;
 extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
+extern int opt_use_sem_items_ready;
 extern unsigned int opt_preprocess_packets_qring_length;
 extern unsigned int opt_preprocess_packets_qring_item_length;
 extern unsigned int opt_preprocess_packets_qring_usleep;
@@ -10345,7 +10346,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 					this->process_DETACH_X_1(batch[batch_index], qring_detach_active_push_item->batch[batch_index]);
 					this->process_DETACH_X_2(qring_detach_active_push_item->batch[batch_index]);
 					this->items_flag[batch_index] = 1;
-					if(opt_preprocess_packets_next_thread_sem_sync == 2) {
+					if(opt_preprocess_packets_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 						sem_post(&this->sem_items_ready);
 					}
 				} }
@@ -10357,7 +10358,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 				    batch_index += batch_index_skip) {
 					this->process_DETACH_plus(batch[batch_index], false);
 					this->items_flag[batch_index] = 1;
-					if(opt_preprocess_packets_next_thread_sem_sync == 2) {
+					if(opt_preprocess_packets_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 						sem_post(&this->sem_items_ready);
 					}
 				} }
@@ -10372,7 +10373,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 						packet_s_process *packetS = batch[batch_index];
 						this->process_SIP(packetS, true);
 						this->items_flag[batch_index] = 1;
-						if(opt_preprocess_packets_next_thread_sem_sync == 2) {
+						if(opt_preprocess_packets_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 							sem_post(&this->sem_items_ready);
 						}
 					}
@@ -10393,7 +10394,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 						}
 					}
 					__SYNC_INC(this->next_threads_completed);
-					if(opt_preprocess_packets_next_thread_sem_sync == 2) {
+					if(opt_preprocess_packets_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 						sem_post(&this->sem_items_ready);
 					}
 					for(unsigned batch_index = 0;
@@ -10416,7 +10417,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 								packetS->_findCall = true;
 							}
 							this->items_flag[batch_index] = 1;
-							if(opt_preprocess_packets_next_thread_sem_sync == 2) {
+							if(opt_preprocess_packets_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 								sem_post(&this->sem_items_ready);
 							}
 						}
@@ -10434,7 +10435,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 								this->process_createSipCall(&packetS, &next_thread_data->map_calls);
 							}
 							this->items_flag[batch_index] = 1;
-							if(opt_preprocess_packets_next_thread_sem_sync == 2) {
+							if(opt_preprocess_packets_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 								sem_post(&this->sem_items_ready);
 							}
 						}
@@ -10449,7 +10450,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 							this->process_findSipCall(&packetS);
 						}
 						this->items_flag[batch_index] = 1;
-						if(opt_preprocess_packets_next_thread_sem_sync == 2) {
+						if(opt_preprocess_packets_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 							sem_post(&this->sem_items_ready);
 						}
 					}
@@ -10465,7 +10466,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 						packet_s_process *packetS = batch[batch_index];
 						this->process_PROCESS_CALL(packetS, next_thread_data->thread_index, false, true);
 						this->items_flag[batch_index] = 1;
-						if(opt_preprocess_packets_next_thread_sem_sync == 2) {
+						if(opt_preprocess_packets_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 							sem_post(&this->sem_items_ready);
 						}
 					}
@@ -10583,7 +10584,7 @@ void *PreProcessPacket::outThreadFunction() {
 						}
 					}
 					if(_process_only_in_next_threads) {
-						if(opt_preprocess_packets_next_thread_sem_sync == 2) {
+						if(opt_preprocess_packets_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 							while(completed < count) {
 								if(this->items_flag[completed] != 0) {
 									#if SNIFFER_THREADS_EXT
@@ -10719,7 +10720,7 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 					if(_process_only_in_next_threads) {
 						#if not EXPERIMENTAL_T2_STOP_IN_PROCESS_DETACH
-						if(opt_preprocess_packets_next_thread_sem_sync == 2) {
+						if(opt_preprocess_packets_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 							while(completed < count) {
 								if(this->items_flag[completed] != 0) {
 									#if SNIFFER_THREADS_EXT
@@ -10989,7 +10990,7 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 				}
 				if(_process_only_in_next_threads) {
-					if(opt_preprocess_packets_next_thread_sem_sync == 2) {
+					if(opt_preprocess_packets_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 						while(completed < count) {
 							if(this->items_flag[completed] != 0) {
 								#if SNIFFER_THREADS_EXT
@@ -11162,7 +11163,7 @@ void *PreProcessPacket::outThreadFunction() {
 							}
 						}
 						if(_process_only_in_next_threads) {
-							if(opt_preprocess_packets_next_thread_sem_sync == 2) {
+							if(opt_preprocess_packets_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 								if(_lock_calls_listMAP) {
 									for(int i = 0; i < _next_threads_count; i++) {
 										sem_wait(&this->sem_items_ready);
@@ -11290,7 +11291,7 @@ void *PreProcessPacket::outThreadFunction() {
 							}
 						}
 						if(_process_only_in_next_threads) {
-							if(opt_preprocess_packets_next_thread_sem_sync == 2) {
+							if(opt_preprocess_packets_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 								while(completed < count) {
 									if(this->items_flag[completed] != 0) {
 										++completed;
@@ -11441,7 +11442,7 @@ void *PreProcessPacket::outThreadFunction() {
 						}
 					}
 					if(_process_only_in_next_threads) {
-						if(opt_preprocess_packets_next_thread_sem_sync == 2) {
+						if(opt_preprocess_packets_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 							while(completed < count) {
 								if(this->items_flag[completed] != 0) {
 									#if SNIFFER_THREADS_EXT
@@ -11955,8 +11956,10 @@ void PreProcessPacket::terminate() {
 		sem_post(&this->sem_qring_free_count);
 	}
 	if(opt_preprocess_packets_next_thread_sem_sync == 2) {
-		for(unsigned int i = 0; i < this->qring_batch_item_length; i++) {
-			sem_post(&this->sem_items_ready);
+		if(opt_use_sem_items_ready) {
+			for(unsigned int i = 0; i < this->qring_batch_item_length; i++) {
+				sem_post(&this->sem_items_ready);
+			}
 		}
 		for(int i = 0; i < this->next_threads_count; i++) {
 			if(this->next_threads[i].sem_done_inited) {
@@ -13398,7 +13401,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 			unsigned batch_index_skip = hash_thread_data->skip;
 			bool ENABLE_DTLS_QUEUE_WITH_LOCK_ = ENABLE_DTLS_QUEUE_WITH_LOCK;
 			bool ENABLE_DTLS_QUEUE_LOCKLESS_ = ENABLE_DTLS_QUEUE_LOCKLESS;
-			bool sem_consume_mode = opt_process_rtp_packets_hash_next_thread_sem_sync == 2 && batch_index_skip > 1;
+			bool sem_consume_mode = opt_process_rtp_packets_hash_next_thread_sem_sync == 2 && batch_index_skip > 1 && opt_use_sem_items_ready;
 			for(unsigned batch_index = batch_index_start;
 			    batch_index < batch_index_end;
 			    batch_index += batch_index_skip) {
@@ -13499,7 +13502,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 				}
 			}
 			if(_find_hash_only_in_next_threads) {
-				if(opt_process_rtp_packets_hash_next_thread_sem_sync == 2) {
+				if(opt_process_rtp_packets_hash_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 					while(batch_index_distribute < count) {
 						if(this->hash_find_flag[batch_index_distribute] != 0) {
 							packet_s_process_0 *packetS = batch->batch[batch_index_distribute];
@@ -13958,8 +13961,10 @@ void ProcessRtpPacket::terminate() {
 		sem_post(&this->sem_qring_free_count);
 	}
 	if(type == hash && opt_process_rtp_packets_hash_next_thread_sem_sync == 2) {
-		for(unsigned int i = 0; i < this->qring_batch_item_length; i++) {
-			sem_post(&this->sem_items_ready);
+		if(opt_use_sem_items_ready) {
+			for(unsigned int i = 0; i < this->qring_batch_item_length; i++) {
+				sem_post(&this->sem_items_ready);
+			}
 		}
 		for(int i = 0; i < this->process_rtp_packets_hash_next_threads; i++) {
 			if(this->hash_next_threads[i].sem_done_inited) {

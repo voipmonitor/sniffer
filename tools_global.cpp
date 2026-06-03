@@ -1158,7 +1158,7 @@ struct sUsleepStatsIdCnt {
 static map<sUsleepStatsId, unsigned int> usleepStats;
 static volatile int usleepStatsSync;
 
-void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line) {
+void usleep_stats_add(unsigned int useconds, unsigned int useconds_real, bool fix, const char *file, int line) {
 	extern bool opt_usleep_stats;
 	if(opt_usleep_stats) {
 		static __thread unsigned int tid = 0;
@@ -1185,7 +1185,7 @@ void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int lin
 			thread = threadMonitor.getSelfThread();
 		}
 		if(thread) {
-			thread->usleep_sum += useconds;
+			thread->usleep_sum += useconds_real;
 		}
 	}
 	#endif

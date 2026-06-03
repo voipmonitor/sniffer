@@ -107,6 +107,7 @@ extern int opt_id_sensor;
 extern char opt_name_sensor[256];
 extern int opt_t2_boost;
 extern int opt_t2_boost_pb_detach_thread;
+extern int opt_use_sem_items_ready;
 extern bool opt_t2_boost_pcap_dispatch;
 extern pcap_t *global_pcap_handle;
 extern u_int16_t global_pcap_handle_index;
@@ -10045,8 +10046,10 @@ void PcapQueue_outputThread::stop() {
 		}
 		extern int opt_pcap_queue_output_next_thread_sem_sync;
 		if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
-			for(unsigned int i = 0; i < this->qring_batch_item_length; i++) {
-				sem_post(&this->sem_items_ready);
+			if(opt_use_sem_items_ready) {
+				for(unsigned int i = 0; i < this->qring_batch_item_length; i++) {
+					sem_post(&this->sem_items_ready);
+				}
 			}
 			for(int i = 0; i < this->next_threads_count; i++) {
 				if(this->next_threads[i].sem_done_inited) {
@@ -10322,7 +10325,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 					}
 				}
 				if(_process_only_in_next_threads) {
-					if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
+					if(opt_pcap_queue_output_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 						while(completed < count) {
 							if(this->items_flag[completed] != 0) {
 								this->processDetach_push(&batch->batch[completed]);
@@ -10416,7 +10419,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 					}
 				}
 				if(_process_only_in_next_threads) {
-					if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
+					if(opt_pcap_queue_output_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 						while(completed < count) {
 							if(this->items_flag[completed] != 0) {
 								bool destroy = false;
@@ -10552,7 +10555,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 					}
 				}
 				if(_process_only_in_next_threads) {
-					if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
+					if(opt_pcap_queue_output_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 						while(completed < count) {
 							if(this->items_flag[completed] != 0) {
 								if(this->items_flag[completed] > 0) {
@@ -10749,7 +10752,7 @@ void *PcapQueue_outputThread::nextThreadFunction(int next_thread_index_plus) {
 						this->processDetach_findHeaderIp(&batch[batch_index]);
 					}
 					this->items_flag[batch_index] = 1;
-					if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
+					if(opt_pcap_queue_output_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 						sem_post(&this->sem_items_ready);
 					}
 				} }
@@ -10760,7 +10763,7 @@ void *PcapQueue_outputThread::nextThreadFunction(int next_thread_index_plus) {
 				    batch_index < batch_index_end;
 				    batch_index += batch_index_skip) {
 					this->items_flag[batch_index] = this->pcapQueue->processPacket_analysis(&batch[batch_index]) ? 1 : -1;
-					if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
+					if(opt_pcap_queue_output_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 						sem_post(&this->sem_items_ready);
 					}
 				} }
@@ -10772,7 +10775,7 @@ void *PcapQueue_outputThread::nextThreadFunction(int next_thread_index_plus) {
 				    batch_index += batch_index_skip) {
 					if(this->items_thread_index[batch_index] == next_thread_data->thread_index) {
 						this->items_flag[batch_index] = this->processDefrag_defrag(&batch[batch_index], this->items_index[batch_index]) ? 1 : -1;
-						if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
+						if(opt_pcap_queue_output_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
 							sem_post(&this->sem_items_ready);
 						}
 					}

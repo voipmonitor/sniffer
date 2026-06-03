@@ -504,6 +504,7 @@ int opt_use_pcap_queue_sem_sync = 0;
 int opt_use_preprocess_packets_sem_sync = 0;
 int opt_use_preprocess_rtp_packets_sem_sync = 0;
 int opt_use_rtp_read_thread_sync = 0;
+int opt_use_sem_items_ready = 0;
 int opt_pcap_queue_output_qring_sem_sync = 0;
 int opt_pcap_queue_output_next_thread_sem_sync = 2;
 int opt_pcap_queue_readfrominterface_qring_sem_sync = 0;
@@ -6768,6 +6769,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("use_preprocess_packets_sem_sync", &opt_use_preprocess_packets_sem_sync));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("use_preprocess_rtp_packets_sem_sync", &opt_use_preprocess_rtp_packets_sem_sync));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("use_rtp_read_thread_sem_sync", &opt_use_rtp_read_thread_sync));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("use_sem_items_ready", &opt_use_sem_items_ready));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pcap_queue_output_qring_sem_sync", &opt_pcap_queue_output_qring_sem_sync));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("pcap_queue_output_next_thread_sem_sync", &opt_pcap_queue_output_next_thread_sem_sync))
 						->addValues("2:2"));
