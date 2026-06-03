@@ -730,10 +730,6 @@ struct packet_s_process_rtp_call_info {
 struct packet_s_process_calls_info {
 	volatile int length;
 	bool find_by_dest;
-	#if EXPERIMENTAL_PROCESS_RTP_MOD_01
-	u_int8_t threads_rd[MAX_PROCESS_RTP_PACKET_THREADS];
-	u_int8_t threads_rd_count;
-	#endif
 	packet_s_process_rtp_call_info calls[1];
 	static unsigned __size_of;
 	static inline packet_s_process_calls_info* create() {
@@ -1362,9 +1358,16 @@ public:
 				*/
 				
 				batch_packet_rtp *current_batch = this->qring[this->writeit];
-				unsigned int usleepCounter = 0;
-				while(current_batch->used != 0) {
-					USLEEP_C(20, usleepCounter++);
+				extern int opt_rtp_read_thread_qring_sem_sync;
+				if(opt_rtp_read_thread_qring_sem_sync) {
+					if(sem_trywait(&this->sem_qring_free_count) == -1) {
+						sem_wait(&this->sem_qring_free_count);
+					}
+				} else {
+					unsigned int usleepCounter = 0;
+					while(current_batch->used != 0) {
+						USLEEP_C(20, usleepCounter++);
+					}
 				}
 				memcpy(current_batch->batch, thread_buffer->batch, sizeof(rtp_packet_pcap_queue) * thread_buffer->count);
 				#if RQUEUE_SAFE
@@ -1382,11 +1385,9 @@ public:
 						this->writeit++;
 					}
 				#endif
-				
-				/* destroy threadbuffer array - debug
-				end_thread_buffer_copy:
-				*/
-				
+				if(opt_rtp_read_thread_qring_sem_sync) {
+					sem_post(&this->sem_qring_filled_count);
+				}
 				thread_buffer->count = 0;
 				__SYNC_UNLOCK(this->push_lock_sync);
 			}
@@ -1422,9 +1423,16 @@ public:
 			
 			if(!qring_push_index) {
 				packet->blockstore_addflag(62 /*pb lock flag*/);
-				unsigned int usleepCounter = 0;
-				while(this->qring[this->writeit]->used != 0) {
-					USLEEP_C(20, usleepCounter++);
+				extern int opt_rtp_read_thread_qring_sem_sync;
+				if(opt_rtp_read_thread_qring_sem_sync) {
+					if(sem_trywait(&this->sem_qring_free_count) == -1) {
+						sem_wait(&this->sem_qring_free_count);
+					}
+				} else {
+					unsigned int usleepCounter = 0;
+					while(this->qring[this->writeit]->used != 0) {
+						USLEEP_C(20, usleepCounter++);
+					}
 				}
 				qring_push_index = this->writeit + 1;
 				qring_push_index_count = 0;
@@ -1458,6 +1466,10 @@ public:
 						this->writeit++;
 					}
 				#endif
+				extern int opt_rtp_read_thread_qring_sem_sync;
+				if(opt_rtp_read_thread_qring_sem_sync) {
+					sem_post(&this->sem_qring_filled_count);
+				}
 				qring_push_index = 0;
 				qring_push_index_count = 0;
 			}
@@ -1492,6 +1504,10 @@ public:
 					this->writeit++;
 				}
 			#endif
+			extern int opt_rtp_read_thread_qring_sem_sync;
+			if(opt_rtp_read_thread_qring_sem_sync) {
+				sem_post(&this->sem_qring_filled_count);
+			}
 			qring_push_index = 0;
 			qring_push_index_count = 0;
 		}
@@ -1517,9 +1533,16 @@ public:
 		 
 			__SYNC_LOCK(this->push_lock_sync);
 			batch_packet_rtp *current_batch = this->qring[this->writeit];
-			unsigned int usleepCounter = 0;
-			while(current_batch->used != 0) {
-				USLEEP_C(20, usleepCounter++);
+			extern int opt_rtp_read_thread_qring_sem_sync;
+			if(opt_rtp_read_thread_qring_sem_sync) {
+				if(sem_trywait(&this->sem_qring_free_count) == -1) {
+					sem_wait(&this->sem_qring_free_count);
+				}
+			} else {
+				unsigned int usleepCounter = 0;
+				while(current_batch->used != 0) {
+					USLEEP_C(20, usleepCounter++);
+				}
 			}
 			memcpy(current_batch->batch, thread_buffer->batch, sizeof(rtp_packet_pcap_queue) * thread_buffer->count);
 			#if RQUEUE_SAFE
@@ -1537,6 +1560,9 @@ public:
 					this->writeit++;
 				}
 			#endif
+			if(opt_rtp_read_thread_qring_sem_sync) {
+				sem_post(&this->sem_qring_filled_count);
+			}
 			thread_buffer->count = 0;
 			__SYNC_UNLOCK(this->push_lock_sync);
 		}
@@ -1565,6 +1591,8 @@ public:
 	volatile double cpu;
 	volatile int push_lock_sync;
 	volatile int count_lock_sync;
+	sem_t sem_qring_free_count;
+	sem_t sem_qring_filled_count;
 };
 
 #define MAXLIVEFILTERS 10

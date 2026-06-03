@@ -1257,6 +1257,7 @@ pcap_store_queue::pcap_store_queue(const char *fileStoreFolder) {
 	this->lastTimeLogErrDiskIsFull = 0;
 	this->lastTimeLogErrMemoryIsFull = 0;
 	this->firstTimeLogErrMemoryIsFull = 0;
+	this->useSemSync = false;
 	if(fileStoreFolder && fileStoreFolder[0] && access(fileStoreFolder, F_OK ) == -1) {
 		mkdir_r(fileStoreFolder, 0700);
 	}
@@ -1275,6 +1276,23 @@ pcap_store_queue::~pcap_store_queue() {
 		delete blockStore;
 		this->queueStore.pop_front();
 	}
+	if(this->useSemSync) {
+		sem_destroy(&this->sem_filled);
+	}
+}
+
+void pcap_store_queue::setUseSemSync(bool enable) {
+	if(enable && !this->useSemSync) {
+		sem_init(&this->sem_filled, 0, 0);
+		this->useSemSync = true;
+	} else if(!enable && this->useSemSync) {
+		sem_destroy(&this->sem_filled);
+		this->useSemSync = false;
+	}
+}
+
+unsigned int pcap_store_queue::wait_for_data(unsigned int timeout_us, unsigned int counter) {
+	return(usleep(timeout_us, counter, __FILE__, __LINE__, this->useSemSync ? &this->sem_filled : NULL));
 }
 
 bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreIfFail) {
@@ -1357,6 +1375,9 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreI
 	this->lock_queue();
 	this->queueStore.push_back(blockStore);
 	this->unlock_queue();
+	if(this->useSemSync) {
+		sem_post(&this->sem_filled);
+	}
 	return(true);
 }
 
@@ -1368,6 +1389,9 @@ bool pcap_store_queue::pop(pcap_block_store **blockStore) {
 		this->queueStore.pop_front();
 	}
 	this->unlock_queue();
+	if(*blockStore && this->useSemSync) {
+		sem_trywait(&this->sem_filled);
+	}
 	if(*blockStore && 
 	   opt_pcap_queue_store_queue_max_disk_size &&
 	   this->fileStoreFolder.length()) {
@@ -4136,6 +4160,11 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(sInterface 
 	this->readit = 0;
 	this->writeit = 0;
 	this->qring_sync = 0;
+	extern int opt_pcap_queue_readfrominterface_qring_sem_sync;
+	if(opt_pcap_queue_readfrominterface_qring_sem_sync) {
+		sem_init(&this->sem_qring_free_count, 0, this->qringmax);
+		sem_init(&this->sem_qring_filled_count, 0, 0);
+	}
 	this->readIndex = 0;
 	this->readIndexPos = 0;
 	this->readIndexCount = 0;
@@ -4277,6 +4306,13 @@ PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 	if(this->qring_blocks_used) {
 		delete [] this->qring_blocks_used;
 	}
+	extern int opt_pcap_queue_readfrominterface_qring_sem_sync;
+	if(opt_pcap_queue_readfrominterface_qring_sem_sync) {
+		sem_post(&this->sem_qring_free_count);
+		sem_post(&this->sem_qring_filled_count);
+		sem_destroy(&this->sem_qring_free_count);
+		sem_destroy(&this->sem_qring_filled_count);
+	}
 	if(this->headerPacketStackSnaplen) {
 		delete this->headerPacketStackSnaplen;
 	}
@@ -4324,16 +4360,26 @@ inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packe
 	}
 	#endif
 	unsigned int _writeIndex;
+	extern int opt_pcap_queue_readfrominterface_qring_sem_sync;
 	if(writeIndex) {
 		_writeIndex = writeIndex - 1;
 	} else {
 		_writeIndex = writeit % qringmax;
-		unsigned int usleepCounter = 0;
-		while(qring[_writeIndex]->used) {
+		if(opt_pcap_queue_readfrominterface_qring_sem_sync) {
+			if(sem_trywait(&this->sem_qring_free_count) == -1) {
+				sem_wait(&this->sem_qring_free_count);
+			}
 			if(is_terminating()) {
 				return;
 			}
-			USLEEP_C(100, usleepCounter++);
+		} else {
+			unsigned int usleepCounter = 0;
+			while(qring[_writeIndex]->used) {
+				if(is_terminating()) {
+					return;
+				}
+				USLEEP_C(100, usleepCounter++);
+			}
 		}
 		writeIndex = _writeIndex + 1;
 		writeIndexCount = 0;
@@ -4360,6 +4406,9 @@ inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packe
 			writeit++;
 		}
 		#endif
+		if(opt_pcap_queue_readfrominterface_qring_sem_sync) {
+			sem_post(&this->sem_qring_filled_count);
+		}
 	}
 	/****
 	uint32_t writeIndex = this->writeit[index] % this->qringmax;
@@ -4413,15 +4462,28 @@ inline void PcapQueue_readFromInterfaceThread::push_block(pcap_block_store *bloc
 			 pcapQueueQ->checkIfDiskBufferIsFull(true));
 	}
 	unsigned int _writeIndex = writeit % qringmax;
-	unsigned int usleepCounter = 0;
-	while(qring_blocks_used[_writeIndex]) {
+	extern int opt_pcap_queue_readfrominterface_qring_sem_sync;
+	if(opt_pcap_queue_readfrominterface_qring_sem_sync) {
+		__SYNC_UNLOCK_ARM_ONLY(qring_sync);
+		if(sem_trywait(&this->sem_qring_free_count) == -1) {
+			sem_wait(&this->sem_qring_free_count);
+		}
+		__SYNC_LOCK_ARM_ONLY(qring_sync);
 		if(is_terminating()) {
 			__SYNC_UNLOCK_ARM_ONLY(qring_sync);
 			return;
 		}
-		__SYNC_UNLOCK_ARM_ONLY(qring_sync);
-		USLEEP_C(100, usleepCounter++);
-		__SYNC_LOCK_ARM_ONLY(qring_sync);
+	} else {
+		unsigned int usleepCounter = 0;
+		while(qring_blocks_used[_writeIndex]) {
+			if(is_terminating()) {
+				__SYNC_UNLOCK_ARM_ONLY(qring_sync);
+				return;
+			}
+			__SYNC_UNLOCK_ARM_ONLY(qring_sync);
+			USLEEP_C(100, usleepCounter++);
+			__SYNC_LOCK_ARM_ONLY(qring_sync);
+		}
 	}
 	qring_blocks[_writeIndex] = block;
 	#if RQUEUE_SAFE
@@ -4437,14 +4499,18 @@ inline void PcapQueue_readFromInterfaceThread::push_block(pcap_block_store *bloc
 		writeit++;
 	}
 	#endif
+	if(opt_pcap_queue_readfrominterface_qring_sem_sync) {
+		sem_post(&this->sem_qring_filled_count);
+	}
+	extern int opt_pcap_queue_iface_blocks_available_sem_sync;
+	if(opt_pcap_queue_iface_blocks_available_sem_sync && this->parent) {
+		sem_post(&this->parent->sem_blocks_available);
+	}
 	__SYNC_UNLOCK_ARM_ONLY(qring_sync);
 }
 
 inline void PcapQueue_readFromInterfaceThread::tryForcePush() {
 	if(writeIndexCount && force_push && writeIndex) {
-		/*
-		cout << "force push " << typeThread << endl;
-		*/
 		unsigned int _writeIndex = writeIndex - 1;
 		force_push = false;
 		#if RQUEUE_SAFE
@@ -4462,6 +4528,10 @@ inline void PcapQueue_readFromInterfaceThread::tryForcePush() {
 			writeit++;
 		}
 		#endif
+		extern int opt_pcap_queue_readfrominterface_qring_sem_sync;
+		if(opt_pcap_queue_readfrominterface_qring_sem_sync) {
+			sem_post(&this->sem_qring_filled_count);
+		}
 	}
 }
 
@@ -4521,6 +4591,10 @@ inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread:
 			readit++;
 		}
 		#endif
+		extern int opt_pcap_queue_readfrominterface_qring_sem_sync;
+		if(opt_pcap_queue_readfrominterface_qring_sem_sync) {
+			sem_post(&this->sem_qring_free_count);
+		}
 	}
 	return(rslt_hpi);
 	/****
@@ -4578,6 +4652,10 @@ inline pcap_block_store *PcapQueue_readFromInterfaceThread::pop_block() {
 		readit++;
 	}
 	#endif
+	extern int opt_pcap_queue_readfrominterface_qring_sem_sync;
+	if(opt_pcap_queue_readfrominterface_qring_sem_sync) {
+		sem_post(&this->sem_qring_free_count);
+	}
 	#if DEBUG_PB_BLOCKS_SEQUENCE
 	if(block) {
 		if(block->pb_blocks_sequence != pb_blocks_sequence_last + 1) {
@@ -4608,7 +4686,9 @@ void PcapQueue_readFromInterfaceThread::cancelThread() {
 #define POP_FROM_PREV_THREAD \
 	hpii = this->prevThread->pop(); \
 	if(!hpii.header_packet) { \
-		this->pop_usleep_sum += USLEEP_C(100, this->counter_pop_usleep++); \
+		extern int opt_pcap_queue_readfrominterface_qring_sem_sync; \
+		this->pop_usleep_sum += USLEEP_C_SEM_CONSUME(100, this->counter_pop_usleep++, \
+			opt_pcap_queue_readfrominterface_qring_sem_sync ? &this->prevThread->sem_qring_filled_count : NULL); \
 		if(this->pop_usleep_sum > this->pop_usleep_sum_last_push + 100000) { \
 			this->prevThread->setForcePush(); \
 			this->pop_usleep_sum_last_push = this->pop_usleep_sum; \
@@ -6098,7 +6178,9 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 		default:
 			block = this->prevThread->pop_block();
 			if(!block) {
-				this->pop_usleep_sum += USLEEP_C(20, this->counter_pop_usleep++);
+				extern int opt_pcap_queue_readfrominterface_qring_sem_sync;
+				this->pop_usleep_sum += USLEEP_C_SEM_CONSUME(20, this->counter_pop_usleep++,
+					opt_pcap_queue_readfrominterface_qring_sem_sync ? &this->prevThread->sem_qring_filled_count : NULL);
 				if(this->pop_usleep_sum > this->pop_usleep_sum_last_push + opt_pcap_queue_block_max_time_ms * 1000) {
 					this->prevThread->setForcePush();
 					this->pop_usleep_sum_last_push = this->pop_usleep_sum;
@@ -6353,6 +6435,10 @@ PcapQueue_readFromInterface::PcapQueue_readFromInterface(const char *nameQueue)
 	this->readThreadsCount = 0;
 	this->lastReadThreadsIndex_pcapStatString_interface = -1;
 	this->lastTimeLogErrThread0BufferIsFull = 0;
+	extern int opt_pcap_queue_iface_blocks_available_sem_sync;
+	if(opt_pcap_queue_iface_blocks_available_sem_sync) {
+		sem_init(&this->sem_blocks_available, 0, 0);
+	}
 	this->block_qring = NULL;
 	if(opt_pcap_queue_iface_dedup_separate_threads_extend &&
 	   !opt_pcap_queue_suppress_t1_thread &&
@@ -6363,6 +6449,10 @@ PcapQueue_readFromInterface::PcapQueue_readFromInterface(const char *nameQueue)
 			100,
 			100, 100,
 			&terminating, true);
+		extern int opt_pcap_queue_iface_block_qring_sem_sync;
+		if(opt_pcap_queue_iface_block_qring_sem_sync) {
+			this->block_qring->setUseSemSync(true);
+		}
 	}
 }
 
@@ -6391,6 +6481,11 @@ PcapQueue_readFromInterface::~PcapQueue_readFromInterface() {
 			}
 		}
 		delete this->block_qring;
+	}
+	extern int opt_pcap_queue_iface_blocks_available_sem_sync;
+	if(opt_pcap_queue_iface_blocks_available_sem_sync) {
+		sem_post(&this->sem_blocks_available);
+		sem_destroy(&this->sem_blocks_available);
 	}
 }
 
@@ -6912,7 +7007,9 @@ void PcapQueue_readFromInterface::threadFunction_blocks() {
 			}
 			usleepCounter = 0;
 		} else {
-			USLEEP_C(20, usleepCounter++);
+			extern int opt_pcap_queue_iface_blocks_available_sem_sync;
+			USLEEP_C_SEM_CONSUME(20, usleepCounter++,
+					     opt_pcap_queue_iface_blocks_available_sem_sync ? &this->sem_blocks_available : NULL);
 		}
 	}
 
@@ -6962,10 +7059,9 @@ void *PcapQueue_readFromInterface::writeThreadFunction(void *arg, unsigned int a
 	}
 	if(this->block_qring) {
 		sHeaderPacket *hp;
-		unsigned int usleepCounter = 0;
 		while(!TERMINATING) {
 			pcap_block_store *blockStore;
-			if(this->block_qring->pop(&blockStore, false)) {
+			if(this->block_qring->pop(&blockStore, true)) {
 				#if SNIFFER_THREADS_EXT
 				if(sverb.sniffer_threads_ext > 1 && thread_data_write) {
 					thread_data_write->inc_packets_in(blockStore->size_packets, blockStore->count);
@@ -6987,9 +7083,6 @@ void *PcapQueue_readFromInterface::writeThreadFunction(void *arg, unsigned int a
 					thread_data_write->inc_packets_out(blockStore->size_packets, blockStore->count);
 				}
 				#endif
-				usleepCounter = 0;
-			} else {
-				USLEEP_C(100, usleepCounter++);
 			}
 		}
 	}
@@ -7696,6 +7789,10 @@ bool PcapQueue_readFromFifo::initThread(void *arg, unsigned int arg2, string *er
 		return(false);
 	}
 	this->pcapStoreQueue.init();
+	extern int opt_pcap_queue_store_queue_sem_sync;
+	if(opt_pcap_queue_store_queue_sem_sync) {
+		this->pcapStoreQueue.setUseSemSync(true);
+	}
 	return(PcapQueue::initThread(arg, arg2, error));
 }
 
@@ -8033,7 +8130,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 			while(!TERMINATING) {
 				blockStore = blockStoreBypassQueue->pop(false);
 				if(!blockStore) {
-					USLEEP_C(100, usleepCounter++);
+					blockStoreBypassQueue->wait_for_data(100, usleepCounter++);
 					continue;
 				}
 				#if DEBUG_PB_BLOCKS_SEQUENCE
@@ -8523,7 +8620,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 				this->pushBatchProcessPacket();
 				usleepSumTime_lastPush = usleepSumTime;
 			}
-			usleepSumTime += USLEEP_C(100, usleepCounter++);
+			usleepSumTime += this->pcapStoreQueue.wait_for_data(100, usleepCounter++);
 		}
 		if(!(this->packetServerDirection != directionWrite &&
 		     opt_ipaccount)) {
@@ -9823,6 +9920,11 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 		this->qring[i] = new FILE_LINE(15060) sBatchHP(this->qring_batch_item_length);
 		this->qring[i]->used = 0;
 	}
+	extern int opt_pcap_queue_output_qring_sem_sync;
+	if(opt_pcap_queue_output_qring_sem_sync) {
+		sem_init(&this->sem_qring_free_count, 0, this->qring_length);
+		sem_init(&this->sem_qring_filled_count, 0, 0);
+	}
 	this->items_flag = new FILE_LINE(0) volatile int8_t[this->qring_batch_item_length];
 	this->items_index = new FILE_LINE(0) u_int8_t[this->qring_batch_item_length];
 	this->items_thread_index = new FILE_LINE(0) u_int8_t[this->qring_batch_item_length];
@@ -9879,6 +9981,10 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 	#if SNIFFER_THREADS_EXT
 	thread_data = NULL;
 	#endif
+	extern int opt_pcap_queue_output_next_thread_sem_sync;
+	if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
+		sem_init(&this->sem_items_ready, 0, 0);
+	}
 	for(int i = 0; i < this->next_threads_count; i++) {
 		this->next_threads[i].sem_init();
 		arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
@@ -9895,6 +10001,15 @@ PcapQueue_outputThread::~PcapQueue_outputThread() {
 		delete this->qring[i];
 	}
 	delete [] this->qring;
+	extern int opt_pcap_queue_output_qring_sem_sync;
+	if(opt_pcap_queue_output_qring_sem_sync) {
+		sem_destroy(&this->sem_qring_free_count);
+		sem_destroy(&this->sem_qring_filled_count);
+	}
+	extern int opt_pcap_queue_output_next_thread_sem_sync;
+	if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
+		sem_destroy(&this->sem_items_ready);
+	}
 	delete [] this->items_flag;
 	delete [] this->items_index;
 	delete [] this->items_thread_index;
@@ -9923,7 +10038,34 @@ void PcapQueue_outputThread::start() {
 void PcapQueue_outputThread::stop() {
 	if(this->initThreadOk) {
 		this->terminatingThread = true;
+		extern int opt_pcap_queue_output_qring_sem_sync;
+		if(opt_pcap_queue_output_qring_sem_sync) {
+			sem_post(&this->sem_qring_filled_count);
+			sem_post(&this->sem_qring_free_count);
+		}
+		extern int opt_pcap_queue_output_next_thread_sem_sync;
+		if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
+			for(unsigned int i = 0; i < this->qring_batch_item_length; i++) {
+				sem_post(&this->sem_items_ready);
+			}
+			for(int i = 0; i < this->next_threads_count; i++) {
+				if(this->next_threads[i].sem_done_inited) {
+					sem_post(&this->next_threads[i].sem_done);
+				}
+			}
+		}
 		pthread_join(this->out_thread_handle, NULL);
+		for(int i = 0; i < this->next_threads_count; i++) {
+			if(this->next_threads[i].thread_handle) {
+				this->next_threads[i].terminate = true;
+				if(this->next_threads[i].sem_sync_inited) {
+					sem_post(&this->next_threads[i].sem_sync);
+				}
+				pthread_join(this->next_threads[i].thread_handle, NULL);
+				this->next_threads[i].sem_term();
+				this->next_threads[i].null();
+			}
+		}
 		this->initThreadOk = false;
 		this->terminatingThread = false;
 	}
@@ -9976,43 +10118,61 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 		hp->block_store->lock_packet(hp->block_store_index, 1 /*pb lock flag*/);
 		hp->block_store_locked = true;
 	}
+	extern int opt_pcap_queue_output_qring_sem_sync;
 	if(!qring_push_index) {
 		#if SNIFFER_THREADS_EXT
 		if(sverb.sniffer_threads_ext && thread_data) {
 			++thread_data->buffer_push_cnt_all;
 		}
 		#endif
-		unsigned int usleepCounter = 0;
-		while(this->qring[this->writeit]->used != 0) {
-			if(is_terminating()) {
-				hp->destroy_or_unlock_blockstore();
-				return;
-			}
-			if(usleepCounter == 0) {
-				#if SNIFFER_THREADS_EXT
+		if(opt_pcap_queue_output_qring_sem_sync) {
+			#if SNIFFER_THREADS_EXT
+			if(sem_trywait(&this->sem_qring_free_count) == -1) {
 				if(sverb.sniffer_threads_ext && thread_data) {
 					++thread_data->buffer_push_cnt_full;
 				}
-				#endif
+				sem_wait(&this->sem_qring_free_count);
 			}
-			#if SNIFFER_THREADS_EXT
-			if(sverb.sniffer_threads_ext && thread_data) {
-				++thread_data->buffer_push_cnt_full_loop;
-			}
+			#else
+			sem_wait(&this->sem_qring_free_count);
 			#endif
-			extern unsigned int opt_sip_batch_usleep;
-			if(opt_sip_batch_usleep) {
-				#if SNIFFER_THREADS_EXT
-				unsigned us =
-				#endif
-				USLEEP_C(opt_sip_batch_usleep, usleepCounter++);
+			if(is_terminating() || this->terminatingThread) {
+				hp->destroy_or_unlock_blockstore();
+				return;
+			}
+		} else {
+			unsigned int usleepCounter = 0;
+			while(this->qring[this->writeit]->used != 0) {
+				if(is_terminating() || this->terminatingThread) {
+					hp->destroy_or_unlock_blockstore();
+					return;
+				}
+				if(usleepCounter == 0) {
+					#if SNIFFER_THREADS_EXT
+					if(sverb.sniffer_threads_ext && thread_data) {
+						++thread_data->buffer_push_cnt_full;
+					}
+					#endif
+				}
 				#if SNIFFER_THREADS_EXT
 				if(sverb.sniffer_threads_ext && thread_data) {
-					thread_data->buffer_push_sum_usleep_full_loop += us;
+					++thread_data->buffer_push_cnt_full_loop;
 				}
 				#endif
-			} else {
-				__ASM_PAUSE;
+				extern unsigned int opt_sip_batch_usleep;
+				if(opt_sip_batch_usleep) {
+					#if SNIFFER_THREADS_EXT
+					unsigned us =
+					#endif
+					USLEEP_C(opt_sip_batch_usleep, usleepCounter++);
+					#if SNIFFER_THREADS_EXT
+					if(sverb.sniffer_threads_ext && thread_data) {
+						thread_data->buffer_push_sum_usleep_full_loop += us;
+					}
+					#endif
+				} else {
+					__ASM_PAUSE;
+				}
 			}
 		}
 		qring_push_index = this->writeit + 1;
@@ -10038,6 +10198,9 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 			this->writeit++;
 		}
 		#endif
+		if(opt_pcap_queue_output_qring_sem_sync) {
+			sem_post(&this->sem_qring_filled_count);
+		}
 		qring_push_index = 0;
 		qring_push_index_count = 0;
 	}
@@ -10072,6 +10235,10 @@ void PcapQueue_outputThread::push_batch() {
 			this->writeit++;
 		}
 		#endif
+		extern int opt_pcap_queue_output_qring_sem_sync;
+		if(opt_pcap_queue_output_qring_sem_sync) {
+			sem_post(&this->sem_qring_filled_count);
+		}
 		qring_push_index = 0;
 		qring_push_index_count = 0;
 	}
@@ -10107,6 +10274,14 @@ void *PcapQueue_outputThread::outThreadFunction() {
 			}
 			this->next_threads_count_mod = 0;
 		}
+		extern int opt_pcap_queue_output_qring_sem_sync;
+		if(opt_pcap_queue_output_qring_sem_sync) {
+			extern unsigned int opt_push_batch_limit_ms;
+			if(SEM_TIMEDWAIT_MS(&this->sem_qring_filled_count, opt_push_batch_limit_ms) == -1) {
+				this->flushDownstream();
+				continue;
+			}
+		}
 		if(this->qring[this->readit]->used == 1) {
 			batch = this->qring[this->readit];
 			#if SNIFFER_THREADS_EXT
@@ -10118,7 +10293,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 			#endif
 			uint32_t firstHeaderTimeS = batch->batch[0].header->get_tv_sec();
 			if(typeOutputThread == detach && this->next_threads[0].thread_handle) {
-				extern int opt_pre_process_packets_next_thread_sem_sync;
+				extern int opt_pcap_queue_output_next_thread_sem_sync;
 				unsigned count = batch->count;
 				unsigned completed = 0;
 				int _next_threads_count = this->next_threads_count;
@@ -10138,48 +10313,65 @@ void *PcapQueue_outputThread::outThreadFunction() {
 						this->next_threads[i].next_data.skip = 1;
 					}
 					this->next_threads[i].next_data.batch = batch->batch;
+					this->next_threads[i].next_data.signal_done = !_process_only_in_next_threads;
 					this->next_threads[i].next_data.processing = 1;
-					if(opt_pre_process_packets_next_thread_sem_sync) {
-						sem_post(&this->next_threads[i].sem_sync[0]);
+					if(opt_pcap_queue_output_next_thread_sem_sync) {
+						sem_post(&this->next_threads[i].sem_sync);
 					} else {
 						this->next_threads[i].next_data.data_ready = 1;
 					}
 				}
 				if(_process_only_in_next_threads) {
-					while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
-					      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
-						if(completed < count &&
-						   this->items_flag[completed] != 0) {
-							this->processDetach_push(&batch->batch[completed]);
-							++completed;
-						} else {
-							extern unsigned int opt_sip_batch_sync_usleep;
-							if(opt_sip_batch_sync_usleep) {
-								USLEEP(opt_sip_batch_sync_usleep);
+					if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
+						while(completed < count) {
+							if(this->items_flag[completed] != 0) {
+								this->processDetach_push(&batch->batch[completed]);
+								++completed;
+								sem_trywait(&this->sem_items_ready);
 							} else {
-								__ASM_PAUSE;
+								sem_wait(&this->sem_items_ready);
+							}
+						}
+					} else {
+						while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
+						      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
+							if(completed < count &&
+							   this->items_flag[completed] != 0) {
+								this->processDetach_push(&batch->batch[completed]);
+								++completed;
+							} else {
+								extern unsigned int opt_sip_batch_sync_usleep;
+								if(opt_sip_batch_sync_usleep) {
+									USLEEP(opt_sip_batch_sync_usleep);
+								} else {
+									__ASM_PAUSE;
+								}
 							}
 						}
 					}
 				} else {
-					for(unsigned batch_index = 0; 
-					    batch_index < count / (_next_threads_count + 1); 
+					for(unsigned batch_index = 0;
+					    batch_index < count / (_next_threads_count + 1);
 					    batch_index++) {
 						if(opt_t2_boost_pb_detach_thread == 2) {
 							this->processDetach_findHeaderIp(&batch->batch[batch_index]);
 						}
 					}
 				}
-				for(int i = 0; i < _next_threads_count; i++) {
-					if(opt_pre_process_packets_next_thread_sem_sync == 2) {
-						sem_wait(&this->next_threads[i].sem_sync[1]);
+				if(!_process_only_in_next_threads) {
+					if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
+						for(int i = 0; i < _next_threads_count; i++) {
+							sem_wait(&this->next_threads[i].sem_done);
+						}
 					} else {
-						while(this->next_threads[i].next_data.processing) { 
-							extern unsigned int opt_sip_batch_sync_usleep;
-							if(opt_sip_batch_sync_usleep) {
-								USLEEP(opt_sip_batch_sync_usleep);
-							} else {
-								__ASM_PAUSE;
+						for(int i = 0; i < _next_threads_count; i++) {
+							while(this->next_threads[i].next_data.processing) {
+								extern unsigned int opt_sip_batch_sync_usleep;
+								if(opt_sip_batch_sync_usleep) {
+									USLEEP(opt_sip_batch_sync_usleep);
+								} else {
+									__ASM_PAUSE;
+								}
 							}
 						}
 					}
@@ -10188,7 +10380,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 					this->processDetach_push(&batch->batch[batch_index]);
 				}
 			} else if(typeOutputThread == detach2 && this->next_threads[0].thread_handle) {
-				extern int opt_pre_process_packets_next_thread_sem_sync;
+				extern int opt_pcap_queue_output_next_thread_sem_sync;
 				unsigned count = batch->count;
 				unsigned completed = 0;
 				int _next_threads_count = this->next_threads_count;
@@ -10215,59 +10407,89 @@ void *PcapQueue_outputThread::outThreadFunction() {
 						this->next_threads[i].next_data.skip = 1;
 					}
 					this->next_threads[i].next_data.batch = batch->batch;
+					this->next_threads[i].next_data.signal_done = !_process_only_in_next_threads;
 					this->next_threads[i].next_data.processing = 1;
-					if(opt_pre_process_packets_next_thread_sem_sync) {
-						sem_post(&this->next_threads[i].sem_sync[0]);
+					if(opt_pcap_queue_output_next_thread_sem_sync) {
+						sem_post(&this->next_threads[i].sem_sync);
 					} else {
 						this->next_threads[i].next_data.data_ready = 1;
 					}
 				}
 				if(_process_only_in_next_threads) {
-					while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
-					      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
-						if(completed < count &&
-						   this->items_flag[completed] != 0) {
-							bool destroy = false;
-							if(this->items_flag[completed] < 0) {
-								destroy = true;
-							} else {
-								destroy = !this->pcapQueue->processPacket_push(&batch->batch[completed]);
-								#if SNIFFER_THREADS_EXT
-								if(!destroy) {
-									tm_inc_packets_out(&batch->batch[completed]);
+					if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
+						while(completed < count) {
+							if(this->items_flag[completed] != 0) {
+								bool destroy = false;
+								if(this->items_flag[completed] < 0) {
+									destroy = true;
+								} else {
+									destroy = !this->pcapQueue->processPacket_push(&batch->batch[completed]);
+									#if SNIFFER_THREADS_EXT
+									if(!destroy) {
+										tm_inc_packets_out(&batch->batch[completed]);
+									}
+									#endif
 								}
-								#endif
-							}
-							if(destroy) {
-								batch->batch[completed].destroy_or_unlock_blockstore();
-							}
-							++completed;
-						} else {
-							extern unsigned int opt_sip_batch_sync_usleep;
-							if(opt_sip_batch_sync_usleep) {
-								USLEEP(opt_sip_batch_sync_usleep);
+								if(destroy) {
+									batch->batch[completed].destroy_or_unlock_blockstore();
+								}
+								++completed;
+								sem_trywait(&this->sem_items_ready);
 							} else {
-								__ASM_PAUSE;
+								sem_wait(&this->sem_items_ready);
+							}
+						}
+					} else {
+						while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
+						      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
+							if(completed < count &&
+							   this->items_flag[completed] != 0) {
+								bool destroy = false;
+								if(this->items_flag[completed] < 0) {
+									destroy = true;
+								} else {
+									destroy = !this->pcapQueue->processPacket_push(&batch->batch[completed]);
+									#if SNIFFER_THREADS_EXT
+									if(!destroy) {
+										tm_inc_packets_out(&batch->batch[completed]);
+									}
+									#endif
+								}
+								if(destroy) {
+									batch->batch[completed].destroy_or_unlock_blockstore();
+								}
+								++completed;
+							} else {
+								extern unsigned int opt_sip_batch_sync_usleep;
+								if(opt_sip_batch_sync_usleep) {
+									USLEEP(opt_sip_batch_sync_usleep);
+								} else {
+									__ASM_PAUSE;
+								}
 							}
 						}
 					}
 				} else {
-					for(unsigned batch_index = 0; 
-					    batch_index < count / (_next_threads_count + 1); 
+					for(unsigned batch_index = 0;
+					    batch_index < count / (_next_threads_count + 1);
 					    batch_index++) {
 						this->items_flag[batch_index] = this->pcapQueue->processPacket_analysis(&batch->batch[batch_index]) ? 1 : -1;
 					}
 				}
-				for(int i = 0; i < _next_threads_count; i++) {
-					if(opt_pre_process_packets_next_thread_sem_sync == 2) {
-						sem_wait(&this->next_threads[i].sem_sync[1]);
+				if(!_process_only_in_next_threads) {
+					if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
+						for(int i = 0; i < _next_threads_count; i++) {
+							sem_wait(&this->next_threads[i].sem_done);
+						}
 					} else {
-						while(this->next_threads[i].next_data.processing) { 
-							extern unsigned int opt_sip_batch_sync_usleep;
-							if(opt_sip_batch_sync_usleep) {
-								USLEEP(opt_sip_batch_sync_usleep);
-							} else {
-								__ASM_PAUSE;
+						for(int i = 0; i < _next_threads_count; i++) {
+							while(this->next_threads[i].next_data.processing) {
+								extern unsigned int opt_sip_batch_sync_usleep;
+								if(opt_sip_batch_sync_usleep) {
+									USLEEP(opt_sip_batch_sync_usleep);
+								} else {
+									__ASM_PAUSE;
+								}
 							}
 						}
 					}
@@ -10290,7 +10512,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 				}
 			}
 			else if(typeOutputThread == defrag && this->next_threads[0].thread_handle) {
-				extern int opt_pre_process_packets_next_thread_sem_sync;
+				extern int opt_pcap_queue_output_next_thread_sem_sync;
 				unsigned count = batch->count;
 				unsigned completed = 0;
 				int _next_threads_count = this->next_threads_count;
@@ -10321,28 +10543,43 @@ void *PcapQueue_outputThread::outThreadFunction() {
 						this->next_threads[i].next_data.thread_index = i + 1;
 					}
 					this->next_threads[i].next_data.batch = batch->batch;
+					this->next_threads[i].next_data.signal_done = !_process_only_in_next_threads;
 					this->next_threads[i].next_data.processing = 1;
-					if(opt_pre_process_packets_next_thread_sem_sync) {
-						sem_post(&this->next_threads[i].sem_sync[0]);
+					if(opt_pcap_queue_output_next_thread_sem_sync) {
+						sem_post(&this->next_threads[i].sem_sync);
 					} else {
 						this->next_threads[i].next_data.data_ready = 1;
 					}
 				}
 				if(_process_only_in_next_threads) {
-					while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
-					      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
-						if(completed < count &&
-						   this->items_flag[completed] != 0) {
-							if(this->items_flag[completed] > 0) {
-								this->processDefrag_push(&batch->batch[completed]);
-							}
-							++completed;
-						} else {
-							extern unsigned int opt_sip_batch_sync_usleep;
-							if(opt_sip_batch_sync_usleep) {
-								USLEEP(opt_sip_batch_sync_usleep);
+					if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
+						while(completed < count) {
+							if(this->items_flag[completed] != 0) {
+								if(this->items_flag[completed] > 0) {
+									this->processDefrag_push(&batch->batch[completed]);
+								}
+								++completed;
+								sem_trywait(&this->sem_items_ready);
 							} else {
-								__ASM_PAUSE;
+								sem_wait(&this->sem_items_ready);
+							}
+						}
+					} else {
+						while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
+						      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
+							if(completed < count &&
+							   this->items_flag[completed] != 0) {
+								if(this->items_flag[completed] > 0) {
+									this->processDefrag_push(&batch->batch[completed]);
+								}
+								++completed;
+							} else {
+								extern unsigned int opt_sip_batch_sync_usleep;
+								if(opt_sip_batch_sync_usleep) {
+									USLEEP(opt_sip_batch_sync_usleep);
+								} else {
+									__ASM_PAUSE;
+								}
 							}
 						}
 					}
@@ -10353,16 +10590,20 @@ void *PcapQueue_outputThread::outThreadFunction() {
 						}
 					}
 				}
-				for(int i = 0; i < _next_threads_count; i++) {
-					if(opt_pre_process_packets_next_thread_sem_sync == 2) {
-						sem_wait(&this->next_threads[i].sem_sync[1]);
+				if(!_process_only_in_next_threads) {
+					if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
+						for(int i = 0; i < _next_threads_count; i++) {
+							sem_wait(&this->next_threads[i].sem_done);
+						}
 					} else {
-						while(this->next_threads[i].next_data.processing) { 
-							extern unsigned int opt_sip_batch_sync_usleep;
-							if(opt_sip_batch_sync_usleep) {
-								USLEEP(opt_sip_batch_sync_usleep);
-							} else {
-								__ASM_PAUSE;
+						for(int i = 0; i < _next_threads_count; i++) {
+							while(this->next_threads[i].next_data.processing) {
+								extern unsigned int opt_sip_batch_sync_usleep;
+								if(opt_sip_batch_sync_usleep) {
+									USLEEP(opt_sip_batch_sync_usleep);
+								} else {
+									__ASM_PAUSE;
+								}
 							}
 						}
 					}
@@ -10407,6 +10648,9 @@ void *PcapQueue_outputThread::outThreadFunction() {
 				this->readit++;
 			}
 			#endif
+			if(opt_pcap_queue_output_qring_sem_sync) {
+				sem_post(&this->sem_qring_free_count);
+			}
 			usleepCounter = 0;
 			usleepSumTime = 0;
 			usleepSumTime_lastPush = 0;
@@ -10419,40 +10663,44 @@ void *PcapQueue_outputThread::outThreadFunction() {
 			}
 			extern unsigned int opt_push_batch_limit_ms;
 			if(usleepSumTime > usleepSumTime_lastPush + opt_push_batch_limit_ms * 1000) {
-				switch(typeOutputThread) {
-				case detach:
-					if(pcapQueueQ_outThread_defrag) {
-						pcapQueueQ_outThread_defrag->push_batch();
-						break;
-					}
-				case defrag:
-					if(pcapQueueQ_outThread_dedup) {
-						pcapQueueQ_outThread_dedup->push_batch();
-						break;
-					}
-				case dedup:
-					if(pcapQueueQ_outThread_detach2) {
-						pcapQueueQ_outThread_detach2->push_batch();
-						break;
-					}
-				case detach2:
-					if(opt_t2_boost_direct_rtp) {
-						if(preProcessPacket[PreProcessPacket::ppt_detach_x]) {
-							preProcessPacket[PreProcessPacket::ppt_detach_x]->push_batch();
-						}
-					} else {
-						if(preProcessPacket[PreProcessPacket::ppt_detach]) {
-							preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
-						}
-					}
-					break;
-				}
+				this->flushDownstream();
 				usleepSumTime_lastPush = usleepSumTime;
 			}
 		}
 	}
 	syslog(LOG_NOTICE, "stop thread t2_%s/%i", this->getNameOutputThread().c_str(), this->outThreadId);
 	return(NULL);
+}
+
+void PcapQueue_outputThread::flushDownstream() {
+	switch(typeOutputThread) {
+	case detach:
+		if(pcapQueueQ_outThread_defrag) {
+			pcapQueueQ_outThread_defrag->push_batch();
+			break;
+		}
+	case defrag:
+		if(pcapQueueQ_outThread_dedup) {
+			pcapQueueQ_outThread_dedup->push_batch();
+			break;
+		}
+	case dedup:
+		if(pcapQueueQ_outThread_detach2) {
+			pcapQueueQ_outThread_detach2->push_batch();
+			break;
+		}
+	case detach2:
+		if(opt_t2_boost_direct_rtp) {
+			if(preProcessPacket[PreProcessPacket::ppt_detach_x]) {
+				preProcessPacket[PreProcessPacket::ppt_detach_x]->push_batch();
+			}
+		} else {
+			if(preProcessPacket[PreProcessPacket::ppt_detach]) {
+				preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
+			}
+		}
+		break;
+	}
 }
 
 void *PcapQueue_outputThread::_nextThreadFunction(void *arg) {
@@ -10470,9 +10718,9 @@ void *PcapQueue_outputThread::nextThreadFunction(int next_thread_index_plus) {
 	while(!is_terminating() && !this->terminatingThread) {
 		s_next_thread *next_thread = &this->next_threads[next_thread_index_plus - 1];
 		s_next_thread_data *next_thread_data = &next_thread->next_data;
-		extern int opt_pre_process_packets_next_thread_sem_sync;
-		if(opt_pre_process_packets_next_thread_sem_sync) {
-			sem_wait(&next_thread->sem_sync[0]);
+		extern int opt_pcap_queue_output_next_thread_sem_sync;
+		if(opt_pcap_queue_output_next_thread_sem_sync) {
+			sem_wait(&next_thread->sem_sync);
 		} else {
 			while(!this->terminatingThread && !next_thread_data->data_ready && !next_thread->terminate) {
 				extern unsigned int opt_sip_batch_usleep;
@@ -10494,30 +10742,39 @@ void *PcapQueue_outputThread::nextThreadFunction(int next_thread_index_plus) {
 			switch(typeOutputThread) {
 			case detach: {
 				sHeaderPacketPQout *batch = (sHeaderPacketPQout*)next_thread_data->batch;
-				for(unsigned batch_index = batch_index_start; 
-				    batch_index < batch_index_end; 
+				for(unsigned batch_index = batch_index_start;
+				    batch_index < batch_index_end;
 				    batch_index += batch_index_skip) {
 					if(opt_t2_boost_pb_detach_thread == 2) {
 						this->processDetach_findHeaderIp(&batch[batch_index]);
 					}
 					this->items_flag[batch_index] = 1;
+					if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
+						sem_post(&this->sem_items_ready);
+					}
 				} }
 				break;
 			case detach2: {
 				sHeaderPacketPQout *batch = (sHeaderPacketPQout*)next_thread_data->batch;
-				for(unsigned batch_index = batch_index_start; 
-				    batch_index < batch_index_end; 
+				for(unsigned batch_index = batch_index_start;
+				    batch_index < batch_index_end;
 				    batch_index += batch_index_skip) {
 					this->items_flag[batch_index] = this->pcapQueue->processPacket_analysis(&batch[batch_index]) ? 1 : -1;
+					if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
+						sem_post(&this->sem_items_ready);
+					}
 				} }
 				break;
 			case defrag: {
 				sHeaderPacketPQout *batch = (sHeaderPacketPQout*)next_thread_data->batch;
-				for(unsigned batch_index = batch_index_start; 
-				    batch_index < batch_index_end; 
+				for(unsigned batch_index = batch_index_start;
+				    batch_index < batch_index_end;
 				    batch_index += batch_index_skip) {
 					if(this->items_thread_index[batch_index] == next_thread_data->thread_index) {
 						this->items_flag[batch_index] = this->processDefrag_defrag(&batch[batch_index], this->items_index[batch_index]) ? 1 : -1;
+						if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
+							sem_post(&this->sem_items_ready);
+						}
 					}
 				} }
 				break;
@@ -10525,10 +10782,11 @@ void *PcapQueue_outputThread::nextThreadFunction(int next_thread_index_plus) {
 				break;
 			}
 			next_thread_data->processing = 0;
-			usleepCounter = 0;
-			if(opt_pre_process_packets_next_thread_sem_sync == 2) {
-				sem_post(&next_thread->sem_sync[1]);
+			if(opt_pcap_queue_output_next_thread_sem_sync == 2 && next_thread->sem_done_inited &&
+			   next_thread_data->signal_done) {
+				sem_post(&next_thread->sem_done);
 			}
+			usleepCounter = 0;
 		} else {
 			extern unsigned int opt_sip_batch_usleep;
 			if(opt_sip_batch_usleep) {
@@ -10570,7 +10828,6 @@ void PcapQueue_outputThread::termNextThread() {
 	extern int opt_pre_process_packets_next_thread_detach;
 	extern int opt_pre_process_packets_next_thread_detach2;
 	extern int opt_pre_process_packets_next_thread_defrag;
-	extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
 	if(!(this->next_threads_count > 0 &&
 	     ((typeOutputThread == detach && (opt_pre_process_packets_next_thread_detach <= 0 || this->next_threads_count > opt_pre_process_packets_next_thread_detach)) ||
 	      (typeOutputThread == detach2 && (opt_pre_process_packets_next_thread_detach2 <= 0 || this->next_threads_count > opt_pre_process_packets_next_thread_detach2)) ||
@@ -10579,8 +10836,8 @@ void PcapQueue_outputThread::termNextThread() {
 	}
 	--this->next_threads_count;
 	this->next_threads[this->next_threads_count].terminate = true;
-	if(opt_process_rtp_packets_hash_next_thread_sem_sync) {
-		sem_post(&this->next_threads[this->next_threads_count].sem_sync[0]);
+	if(this->next_threads[this->next_threads_count].sem_sync_inited) {
+		sem_post(&this->next_threads[this->next_threads_count].sem_sync);
 	}
 	pthread_join(this->next_threads[this->next_threads_count].thread_handle, NULL);
 	this->next_threads[this->next_threads_count].sem_term();
@@ -11071,6 +11328,10 @@ static void *dpdk_main_thread_fce(void *arg) {
 
 void PcapQueue_init() {
 	blockStoreBypassQueue = new FILE_LINE(15061) pcap_block_store_queue;
+	extern int opt_pcap_queue_bypass_qring_sem_sync;
+	if(opt_pcap_queue_bypass_qring_sem_sync) {
+		blockStoreBypassQueue->setUseSemSync(true);
+	}
 	if(opt_use_dpdk) {
 		if(opt_dpdk_init == 0) {
 			dpdk_do_pre_init(NULL);

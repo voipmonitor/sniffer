@@ -7,6 +7,8 @@
 #include <unistd.h>
 #include <syslog.h>
 #include <string>
+#include <semaphore.h>
+#include <time.h>
 
 #include "heap_safe.h"
 #include "sync.h"
@@ -36,31 +38,64 @@ public:
 		readit = 0;
 		writeit = 0;
 		_sync_lock = 0;
+		useSemSync = false;
 	}
 	~rqueue_quick() {
 		delete [] buffer;
 		delete [] free;
+		if(useSemSync) {
+			sem_destroy(&sem_qring_free);
+			sem_destroy(&sem_qring_filled);
+		}
+	}
+	void setUseSemSync(bool enable) {
+		if(enable && !useSemSync) {
+			sem_init(&sem_qring_free, 0, length);
+			sem_init(&sem_qring_filled, 0, 0);
+			useSemSync = true;
+		} else if(!enable && useSemSync) {
+			sem_destroy(&sem_qring_free);
+			sem_destroy(&sem_qring_filled);
+			useSemSync = false;
+		}
 	}
 	bool push(typeItem *item, bool waitForFree, bool useLock = false) {
-		if(!waitForFree && free[writeit] != 1) {
+		if(useSemSync) {
+			if(waitForFree) {
+				while(true) {
+					if(term_rqueue && *term_rqueue) {
+						return(false);
+					}
+					if(SEM_TIMEDWAIT_US(&sem_qring_free, pushUsleep) == 0) {
+						break;
+					}
+				}
+			} else {
+				if(sem_trywait(&sem_qring_free) == -1) {
+					return(false);
+				}
+			}
+		} else if(!waitForFree && free[writeit] != 1) {
 			return(false);
 		}
 		#if IS_ARM
 		useLock = true;
 		#endif
 		if(useLock) lock();
-		while(free[writeit] != 1) {
-			if(waitForFree) {
-				if(term_rqueue && *term_rqueue) {
+		if(!useSemSync) {
+			while(free[writeit] != 1) {
+				if(waitForFree) {
+					if(term_rqueue && *term_rqueue) {
+						if(useLock) unlock();
+						return(false);
+					}
+					if(useLock) unlock();
+					USLEEP(pushUsleep);
+					if(useLock) lock();
+				} else {
 					if(useLock) unlock();
 					return(false);
 				}
-				if(useLock) unlock();
-				USLEEP(pushUsleep);
-				if(useLock) lock();
-			} else {
-				if(useLock) unlock();
-				return(false);
 			}
 		}
 		if(binaryBuffer) {
@@ -80,23 +115,44 @@ public:
 			}
 		#endif
 		if(useLock) unlock();
+		if(useSemSync) {
+			sem_post(&sem_qring_filled);
+		}
 		return(true);
 	}
 	bool pop(typeItem *item, bool waitForFree, bool useLock = false) {
+		if(useSemSync) {
+			if(waitForFree) {
+				while(true) {
+					if(term_rqueue && *term_rqueue) {
+						return(false);
+					}
+					if(SEM_TIMEDWAIT_US(&sem_qring_filled, popUsleep) == 0) {
+						break;
+					}
+				}
+			} else {
+				if(sem_trywait(&sem_qring_filled) == -1) {
+					return(false);
+				}
+			}
+		}
 		#if IS_ARM
 		useLock = true;
 		#endif
 		if(useLock) lock();
-		while(free[readit] != 0) {
-			if(waitForFree) {
-				if(term_rqueue && *term_rqueue) {
+		if(!useSemSync) {
+			while(free[readit] != 0) {
+				if(waitForFree) {
+					if(term_rqueue && *term_rqueue) {
+						if(useLock) unlock();
+						return(false);
+					}
+					USLEEP(popUsleep);
+				} else {
 					if(useLock) unlock();
 					return(false);
 				}
-				USLEEP(popUsleep);
-			} else {
-				if(useLock) unlock();
-				return(false);
 			}
 		}
 		if(binaryBuffer) {
@@ -116,15 +172,26 @@ public:
 			}
 		#endif
 		if(useLock) unlock();
+		if(useSemSync) {
+			sem_post(&sem_qring_free);
+		}
 		return(true);
 	}
 	u_int8_t popq(typeItem *item, bool useLock = false) {
+		if(useSemSync) {
+			if(sem_trywait(&sem_qring_filled) == -1) {
+				return(false);
+			}
+		}
 		#if IS_ARM
 		useLock = true;
 		#endif
 		if(useLock) lock();
 		if(free[readit] != 0) {
 			if(useLock) unlock();
+			if(useSemSync) {
+				sem_post(&sem_qring_filled);
+			}
 			return(false);
 		}
 		*item = buffer[readit];
@@ -140,6 +207,9 @@ public:
 			}
 		#endif
 		if(useLock) unlock();
+		if(useSemSync) {
+			sem_post(&sem_qring_free);
+		}
 		return(true);
 	}
 	bool get(typeItem *item, bool useLock = false) {
@@ -147,7 +217,7 @@ public:
 		useLock = true;
 		#endif
 		if(useLock) lock();
-		while(free[readit] != 0) {
+		if(free[readit] != 0) {
 			if(useLock) unlock();
 			return(false);
 		}
@@ -176,6 +246,16 @@ public:
 			}
 		#endif
 		if(useLock) unlock();
+		if(useSemSync) {
+			sem_trywait(&sem_qring_filled);
+			sem_post(&sem_qring_free);
+		}
+	}
+	unsigned int wait_for_data(unsigned int timeout_us, unsigned int counter = (unsigned int)-1) {
+		return(usleep(timeout_us, counter, __FILE__, __LINE__, useSemSync ? &sem_qring_filled : NULL));
+	}
+	unsigned int wait_for_free(unsigned int timeout_us, unsigned int counter = (unsigned int)-1) {
+		return(usleep(timeout_us, counter, __FILE__, __LINE__, useSemSync ? &sem_qring_free : NULL));
 	}
 	void lock() {
 		__SYNC_LOCK(this->_sync_lock);
@@ -203,6 +283,9 @@ private:
 	v_u_int32_t readit;
 	v_u_int32_t writeit;
 	volatile int _sync_lock;
+	bool useSemSync;
+	sem_t sem_qring_free;
+	sem_t sem_qring_filled;
 };
 
 

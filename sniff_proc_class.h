@@ -523,6 +523,7 @@ public:
 		volatile int data_ready;
 		volatile int processing;
 		volatile int mode;
+		volatile bool signal_done;
 		map<string, Call*> map_calls;
 		void null(bool null_map_calls = false) {
 			batch = NULL;
@@ -533,6 +534,7 @@ public:
 			data_ready = 0;
 			processing = 0;
 			mode = 0;
+			signal_done = false;
 			if(null_map_calls) {
 				map_calls.clear();
 			}
@@ -543,26 +545,41 @@ public:
 		pthread_t thread_handle;
 		pstat_data thread_pstat_data[2][2];
 		s_next_thread_data next_data;
-		sem_t sem_sync[2];
+		sem_t sem_sync;
+		bool sem_sync_inited;
+		sem_t sem_done;
+		bool sem_done_inited;
 		volatile int terminate;
 		void null() {
 			thread_id = 0;
 			thread_handle = 0;
 			memset(thread_pstat_data, 0, sizeof(thread_pstat_data));
 			next_data.null();
-			memset(sem_sync, 0, sizeof(sem_sync));
+			memset(&sem_sync, 0, sizeof(sem_sync));
+			sem_sync_inited = false;
+			memset(&sem_done, 0, sizeof(sem_done));
+			sem_done_inited = false;
 			terminate = 0;
 		}
 		void sem_init() {
-			extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
-			for(int i = 0; i < opt_process_rtp_packets_hash_next_thread_sem_sync; i++) {
-				::sem_init(&sem_sync[i], 0, 0);
+			extern int opt_preprocess_packets_next_thread_sem_sync;
+			if(opt_preprocess_packets_next_thread_sem_sync >= 1) {
+				::sem_init(&sem_sync, 0, 0);
+				sem_sync_inited = true;
+			}
+			if(opt_preprocess_packets_next_thread_sem_sync == 2) {
+				::sem_init(&sem_done, 0, 0);
+				sem_done_inited = true;
 			}
 		}
 		void sem_term() {
-			extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
-			for(int i = 0; i < opt_process_rtp_packets_hash_next_thread_sem_sync; i++) {
-				sem_destroy(&sem_sync[i]);
+			if(sem_sync_inited) {
+				sem_destroy(&sem_sync);
+				sem_sync_inited = false;
+			}
+			if(sem_done_inited) {
+				sem_destroy(&sem_done);
+				sem_done_inited = false;
 			}
 		}
 	};
@@ -744,34 +761,48 @@ public:
 				++thread_data->buffer_push_cnt_all;
 			}
 			#endif
-			unsigned int usleepCounter = 0;
-			while(this->qring_detach_x[this->writeit]->used != 0) {
-				if(usleepCounter == 0) {
-					#if SNIFFER_THREADS_EXT
+			extern int opt_preprocess_packets_qring_sem_sync;
+			if(opt_preprocess_packets_qring_sem_sync) {
+				#if SNIFFER_THREADS_EXT
+				if(sem_trywait(&this->sem_qring_free_count) == -1) {
 					if(sverb.sniffer_threads_ext && thread_data) {
 						++thread_data->buffer_push_cnt_full;
 					}
-					#endif
+					sem_wait(&this->sem_qring_free_count);
 				}
-				#if SNIFFER_THREADS_EXT
-				if(sverb.sniffer_threads_ext && thread_data) {
-					++thread_data->buffer_push_cnt_full_loop;
-				}
+				#else
+				sem_wait(&this->sem_qring_free_count);
 				#endif
-				extern unsigned int opt_preprocess_packets_qring_push_usleep;
-				if(opt_preprocess_packets_qring_push_usleep) {
-					#if SNIFFER_THREADS_EXT
-					unsigned us =
-					#endif
-					USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
+			} else {
+				unsigned int usleepCounter = 0;
+				while(this->qring_detach_x[this->writeit]->used != 0) {
+					if(usleepCounter == 0) {
+						#if SNIFFER_THREADS_EXT
+						if(sverb.sniffer_threads_ext && thread_data) {
+							++thread_data->buffer_push_cnt_full;
+						}
+						#endif
+					}
 					#if SNIFFER_THREADS_EXT
 					if(sverb.sniffer_threads_ext && thread_data) {
-						thread_data->buffer_push_sum_usleep_full_loop += us;
+						++thread_data->buffer_push_cnt_full_loop;
 					}
 					#endif
-				} else {
-					__ASM_PAUSE;
-					++usleepCounter;
+					extern unsigned int opt_preprocess_packets_qring_push_usleep;
+					if(opt_preprocess_packets_qring_push_usleep) {
+						#if SNIFFER_THREADS_EXT
+						unsigned us =
+						#endif
+						USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
+						#if SNIFFER_THREADS_EXT
+						if(sverb.sniffer_threads_ext && thread_data) {
+							thread_data->buffer_push_sum_usleep_full_loop += us;
+						}
+						#endif
+					} else {
+						__ASM_PAUSE;
+						++usleepCounter;
+					}
 				}
 			}
 			qring_push_index = this->writeit + 1;
@@ -802,6 +833,10 @@ public:
 					this->writeit++;
 				}
 			#endif
+			extern int opt_preprocess_packets_qring_sem_sync;
+			if(opt_preprocess_packets_qring_sem_sync) {
+				sem_post(&this->sem_qring_filled_count);
+			}
 			qring_push_index = 0;
 			qring_push_index_count = 0;
 		}
@@ -813,34 +848,48 @@ public:
 				++thread_data->buffer_push_cnt_all;
 			}
 			#endif
-			unsigned int usleepCounter = 0;
-			while(this->qring_detach[this->writeit]->used != 0) {
-				if(usleepCounter == 0) {
-					#if SNIFFER_THREADS_EXT
+			extern int opt_preprocess_packets_qring_sem_sync;
+			if(opt_preprocess_packets_qring_sem_sync) {
+				#if SNIFFER_THREADS_EXT
+				if(sem_trywait(&this->sem_qring_free_count) == -1) {
 					if(sverb.sniffer_threads_ext && thread_data) {
 						++thread_data->buffer_push_cnt_full;
 					}
-					#endif
+					sem_wait(&this->sem_qring_free_count);
 				}
-				#if SNIFFER_THREADS_EXT
-				if(sverb.sniffer_threads_ext && thread_data) {
-					++thread_data->buffer_push_cnt_full_loop;
-				}
+				#else
+				sem_wait(&this->sem_qring_free_count);
 				#endif
-				extern unsigned int opt_preprocess_packets_qring_push_usleep;
-				if(opt_preprocess_packets_qring_push_usleep) {
-					#if SNIFFER_THREADS_EXT
-					unsigned us =
-					#endif
-					USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
+			} else {
+				unsigned int usleepCounter = 0;
+				while(this->qring_detach[this->writeit]->used != 0) {
+					if(usleepCounter == 0) {
+						#if SNIFFER_THREADS_EXT
+						if(sverb.sniffer_threads_ext && thread_data) {
+							++thread_data->buffer_push_cnt_full;
+						}
+						#endif
+					}
 					#if SNIFFER_THREADS_EXT
 					if(sverb.sniffer_threads_ext && thread_data) {
-						thread_data->buffer_push_sum_usleep_full_loop += us;
+						++thread_data->buffer_push_cnt_full_loop;
 					}
 					#endif
-				} else {
-					__ASM_PAUSE;
-					++usleepCounter;
+					extern unsigned int opt_preprocess_packets_qring_push_usleep;
+					if(opt_preprocess_packets_qring_push_usleep) {
+						#if SNIFFER_THREADS_EXT
+						unsigned us =
+						#endif
+						USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
+						#if SNIFFER_THREADS_EXT
+						if(sverb.sniffer_threads_ext && thread_data) {
+							thread_data->buffer_push_sum_usleep_full_loop += us;
+						}
+						#endif
+					} else {
+						__ASM_PAUSE;
+						++usleepCounter;
+					}
 				}
 			}
 			qring_push_index = this->writeit + 1;
@@ -896,6 +945,10 @@ public:
 					this->writeit++;
 				}
 			#endif
+			extern int opt_preprocess_packets_qring_sem_sync;
+			if(opt_preprocess_packets_qring_sem_sync) {
+				sem_post(&this->sem_qring_filled_count);
+			}
 			qring_push_index = 0;
 			qring_push_index_count = 0;
 		}
@@ -920,34 +973,48 @@ public:
 				++thread_data->buffer_push_cnt_all;
 			}
 			#endif
-			unsigned int usleepCounter = 0;
-			while(this->qring_detach[this->writeit]->used != 0) {
-				if(usleepCounter == 0) {
-					#if SNIFFER_THREADS_EXT
+			extern int opt_preprocess_packets_qring_sem_sync;
+			if(opt_preprocess_packets_qring_sem_sync) {
+				#if SNIFFER_THREADS_EXT
+				if(sem_trywait(&this->sem_qring_free_count) == -1) {
 					if(sverb.sniffer_threads_ext && thread_data) {
 						++thread_data->buffer_push_cnt_full;
 					}
-					#endif
+					sem_wait(&this->sem_qring_free_count);
 				}
-				#if SNIFFER_THREADS_EXT
-				if(sverb.sniffer_threads_ext && thread_data) {
-					++thread_data->buffer_push_cnt_full_loop;
-				}
+				#else
+				sem_wait(&this->sem_qring_free_count);
 				#endif
-				extern unsigned int opt_preprocess_packets_qring_push_usleep;
-				if(opt_preprocess_packets_qring_push_usleep) {
-					#if SNIFFER_THREADS_EXT
-					unsigned us =
-					#endif
-					USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
+			} else {
+				unsigned int usleepCounter = 0;
+				while(this->qring_detach[this->writeit]->used != 0) {
+					if(usleepCounter == 0) {
+						#if SNIFFER_THREADS_EXT
+						if(sverb.sniffer_threads_ext && thread_data) {
+							++thread_data->buffer_push_cnt_full;
+						}
+						#endif
+					}
 					#if SNIFFER_THREADS_EXT
 					if(sverb.sniffer_threads_ext && thread_data) {
-						thread_data->buffer_push_sum_usleep_full_loop += us;
+						++thread_data->buffer_push_cnt_full_loop;
 					}
 					#endif
-				} else {
-					__ASM_PAUSE;
-					++usleepCounter;
+					extern unsigned int opt_preprocess_packets_qring_push_usleep;
+					if(opt_preprocess_packets_qring_push_usleep) {
+						#if SNIFFER_THREADS_EXT
+						unsigned us =
+						#endif
+						USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
+						#if SNIFFER_THREADS_EXT
+						if(sverb.sniffer_threads_ext && thread_data) {
+							thread_data->buffer_push_sum_usleep_full_loop += us;
+						}
+						#endif
+					} else {
+						__ASM_PAUSE;
+						++usleepCounter;
+					}
 				}
 			}
 			qring_push_index = this->writeit + 1;
@@ -969,6 +1036,10 @@ public:
 				this->writeit++;
 			}
 		#endif
+		extern int opt_preprocess_packets_qring_sem_sync;
+		if(opt_preprocess_packets_qring_sem_sync) {
+			sem_post(&this->sem_qring_filled_count);
+		}
 		qring_push_index = 0;
 		qring_push_index_count = 0;
 	}
@@ -1007,8 +1078,18 @@ public:
 			}
 			#endif
 			if(!qring_push_index) {
-				unsigned int usleepCounter = 0;
-				while(this->qring[this->writeit]->used != 0) {
+				extern int opt_preprocess_packets_qring_sem_sync;
+				if(opt_preprocess_packets_qring_sem_sync) {
+					#if SNIFFER_THREADS_EXT
+					if(sem_trywait(&this->sem_qring_free_count) == -1) {
+						if(sverb.sniffer_threads_ext && thread_data) {
+							++thread_data->buffer_push_cnt_full;
+						}
+						sem_wait(&this->sem_qring_free_count);
+					}
+					#else
+					sem_wait(&this->sem_qring_free_count);
+					#endif
 					if(is_terminating()) {
 						this->packetS_destroy(packetS);
 						if(_lock) {
@@ -1016,32 +1097,43 @@ public:
 						}
 						return(false);
 					}
-					if(usleepCounter == 0) {
+				} else {
+					unsigned int usleepCounter = 0;
+					while(this->qring[this->writeit]->used != 0) {
+						if(is_terminating()) {
+							this->packetS_destroy(packetS);
+							if(_lock) {
+								unlock_push();
+							}
+							return(false);
+						}
+						if(usleepCounter == 0) {
+							#if SNIFFER_THREADS_EXT
+							if(sverb.sniffer_threads_ext && thread_data) {
+								++thread_data->buffer_push_cnt_full;
+							}
+							#endif
+						}
 						#if SNIFFER_THREADS_EXT
 						if(sverb.sniffer_threads_ext && thread_data) {
-							++thread_data->buffer_push_cnt_full;
+							++thread_data->buffer_push_cnt_full_loop;
 						}
 						#endif
-					}
-					#if SNIFFER_THREADS_EXT
-					if(sverb.sniffer_threads_ext && thread_data) {
-						++thread_data->buffer_push_cnt_full_loop;
-					}
-					#endif
-					extern unsigned int opt_preprocess_packets_qring_push_usleep;
-					if(opt_preprocess_packets_qring_push_usleep) {
-						#if SNIFFER_THREADS_EXT
-						unsigned us =
-						#endif
-						USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
-						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data) {
-							thread_data->buffer_push_sum_usleep_full_loop += us;
+						extern unsigned int opt_preprocess_packets_qring_push_usleep;
+						if(opt_preprocess_packets_qring_push_usleep) {
+							#if SNIFFER_THREADS_EXT
+							unsigned us =
+							#endif
+							USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
+							#if SNIFFER_THREADS_EXT
+							if(sverb.sniffer_threads_ext && thread_data) {
+								thread_data->buffer_push_sum_usleep_full_loop += us;
+							}
+							#endif
+						} else {
+							__ASM_PAUSE;
+							++usleepCounter;
 						}
-						#endif
-					} else {
-						__ASM_PAUSE;
-						++usleepCounter;
 					}
 				}
 				qring_push_index = this->writeit + 1;
@@ -1067,6 +1159,10 @@ public:
 						this->writeit++;
 					}
 				#endif
+				extern int opt_preprocess_packets_qring_sem_sync;
+				if(opt_preprocess_packets_qring_sem_sync) {
+					sem_post(&this->sem_qring_filled_count);
+				}
 				qring_push_index = 0;
 				qring_push_index_count = 0;
 			}
@@ -1160,63 +1256,6 @@ public:
 		}
 		return(true);
 	}
-	inline void push_packet_to_rtp_delay_queue(packet_s_process *packetS) {
-		#if EXPERIMENTAL_CHECK_TID_IN_PUSH
-		static __thread unsigned _tid = 0;
-		if(!_tid) {
-			_tid = get_unix_tid();
-		}
-		if(!push_thread) {
-			push_thread = _tid;
-		} else if(push_thread != _tid) {
-			u_int64_t time = getTimeMS_rdtsc();
-			if(time > last_race_log[0] + 1000) {
-				syslog(LOG_ERR, "race in %s %s %i (%i != %i)", getNameTypeThread().c_str(), __FILE__, __LINE__, push_thread, _tid);
-				last_race_log[0] = time;
-			}
-			push_thread = _tid;
-		}
-		#endif
-		extern bool use_push_batch_limit_ms;
-		u_int64_t time_us = use_push_batch_limit_ms ? packetS->getTimeUS() : 0;
-		if(!rtp_delay_queue_push_item) {
-			if(rtp_delay_queue__max_length_ms > 0) {
-				bool rtp_delay_queue_full = false;
-				unsigned int usleepCounter = 0;
-				do {
-					rtp_delay_queue_full = false;
-					__SYNC_LOCK(rtp_delay_queue_lock);
-					if(rtp_delay_queue.size() > 1) {
-						batch_packet_s_time *front = rtp_delay_queue.front();
-						rtp_delay_queue_full = rtp_delay_queue_last_time > front->batch[front->count - 1]->getTimeUS() + rtp_delay_queue__max_length_ms * 1000 * 1.5;
-					}
-					__SYNC_UNLOCK(rtp_delay_queue_lock);
-					if(rtp_delay_queue_full) {
-						extern unsigned int opt_preprocess_packets_qring_push_usleep;
-						if(opt_preprocess_packets_qring_push_usleep) {
-							USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
-						} else {
-							__ASM_PAUSE;
-							++usleepCounter;
-						}
-					}
-				} while(rtp_delay_queue_full);
-			}
-			extern unsigned int opt_preprocess_packets_qring_item_length;
-			rtp_delay_queue_push_item = new FILE_LINE(0) batch_packet_s_time(opt_preprocess_packets_qring_item_length);
-			extern unsigned int opt_push_batch_limit_ms;
-			rtp_delay_queue_push_item_limit_us = use_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
-		}
-		rtp_delay_queue_push_item->push(packetS);
-		if(rtp_delay_queue_push_item->count == rtp_delay_queue_push_item->max_count ||
-		   time_us > rtp_delay_queue_push_item_limit_us) {
-			__SYNC_LOCK(rtp_delay_queue_lock);
-			rtp_delay_queue.push(rtp_delay_queue_push_item);
-			rtp_delay_queue_last_time = rtp_delay_queue_push_item->batch[rtp_delay_queue_push_item->count - 1]->getTimeUS();
-			__SYNC_UNLOCK(rtp_delay_queue_lock);
-			rtp_delay_queue_push_item = NULL;
-		}
-	}
 	inline void push_batch() {
 		#if EXPERIMENTAL_CHECK_TID_IN_PUSH
 		static __thread unsigned _tid = 0;
@@ -1265,6 +1304,10 @@ public:
 						this->writeit++;
 					}
 				#endif
+				extern int opt_preprocess_packets_qring_sem_sync;
+				if(opt_preprocess_packets_qring_sem_sync) {
+					sem_post(&this->sem_qring_filled_count);
+				}
 				qring_push_index = 0;
 				qring_push_index_count = 0;
 			}
@@ -1277,15 +1320,6 @@ public:
 		}
 		if(_lock) {
 			this->unlock_push();
-		}
-	}
-	inline void push_batch_to_rtp_delay_queue() {
-		if(rtp_delay_queue_push_item) {
-			__SYNC_LOCK(rtp_delay_queue_lock);
-			rtp_delay_queue.push(rtp_delay_queue_push_item);
-			rtp_delay_queue_last_time = rtp_delay_queue_push_item->batch[rtp_delay_queue_push_item->count - 1]->getTimeUS();
-			__SYNC_UNLOCK(rtp_delay_queue_lock);
-			rtp_delay_queue_push_item = NULL;
 		}
 	}
 	void push_batch_nothread();
@@ -1879,6 +1913,10 @@ private:
 	void process_SIP_OTHER(packet_s_process *packetS);
 	void process_DIAMETER(packet_s_process *packetS);
 	void process_RTP(packet_s_process_0 *packetS);
+	inline void _process_RTP(packet_s_process_0 *packetS);
+	inline void _push_to_internal_rtp_delay_queue(packet_s_process_0 *packetS);
+	inline void _drain_expired_from_internal_rtp_delay_queue();
+	inline bool _is_rtp_delay_queue_full();
 	void process_OTHER(packet_s_stack *packetS);
 	void process_parseSipDataExt(packet_s_process **packetS_ref, packet_s_process *packetS_orig);
 	inline void process_parseSipData(packet_s_process **packetS_ref, packet_s_process *packetS_orig
@@ -1908,6 +1946,7 @@ private:
 	void createNextThread();
 	void termNextThread();
 	inline void processNextAction(packet_s_process *packetS);
+	void flushDownstream();
 	bool isNextThreadsGt2Processing(int next_threads) {
 		for(int i = 2; i < next_threads; i++) {
 			if(this->next_threads[i].next_data.processing) {
@@ -1959,12 +1998,15 @@ private:
 	unsigned qring_push_index_count;
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
+	sem_t sem_qring_free_count;
+	sem_t sem_qring_filled_count;
 	int outThreadId;
 	pthread_t out_thread_handle;
 	pstat_data threadPstatData[2][2];
 	volatile int next_threads_count;
 	volatile int next_threads_count_mod;
 	s_next_thread next_threads[MAX_PRE_PROCESS_PACKET_NEXT_THREADS];
+	sem_t sem_items_ready;
 	volatile int next_threads_completed;
 	volatile int8_t *items_flag;
 	volatile int8_t *items_thread_index;
@@ -1997,8 +2039,7 @@ private:
 	batch_packet_s_time* rtp_delay_queue_push_item;
 	u_int64_t rtp_delay_queue_push_item_limit_us;
 	batch_packet_s_time* rtp_delay_queue_pop_item;
-	volatile u_int64_t rtp_delay_queue_last_time;
-	volatile int rtp_delay_queue_lock;
+	u_int64_t rtp_delay_queue_last_time;
 	#if SNIFFER_THREADS_EXT
 	cThreadMonitor::sThread *thread_data;
 	#endif
@@ -2151,22 +2192,18 @@ public:
 		volatile unsigned start;
 		volatile unsigned end;
 		volatile unsigned skip;
-		#if EXPERIMENTAL_PROCESS_RTP_MOD_02
-		volatile int thread_index;
-		#endif
 		volatile int data_ready;
 		volatile int processing;
+		volatile bool signal_done;
 		unsigned counters[2];
 		void null() {
 			batch = NULL;
 			start = 0;
 			end = 0;
 			skip = 0;
-			#if EXPERIMENTAL_PROCESS_RTP_MOD_02
-			thread_index = 0;
-			#endif
 			data_ready = 0;
 			processing = 0;
+			signal_done = false;
 			counters[0] = 0;
 			counters[1] = 0;
 		}
@@ -2176,26 +2213,41 @@ public:
 		pthread_t thread_handle;
 		pstat_data thread_pstat_data[2][2];
 		s_hash_thread_data hash_data;
-		sem_t sem_sync[2];
+		sem_t sem_sync;
+		bool sem_sync_inited;
+		sem_t sem_done;
+		bool sem_done_inited;
 		volatile int terminate;
 		void null() {
 			thread_id = 0;
 			thread_handle = 0;
 			memset(thread_pstat_data, 0, sizeof(thread_pstat_data));
 			hash_data.null();
-			memset(sem_sync, 0, sizeof(sem_sync));
+			memset(&sem_sync, 0, sizeof(sem_sync));
+			sem_sync_inited = false;
+			memset(&sem_done, 0, sizeof(sem_done));
+			sem_done_inited = false;
 			terminate = 0;
 		}
 		void sem_init() {
 			extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
-			for(int i = 0; i < opt_process_rtp_packets_hash_next_thread_sem_sync; i++) {
-				::sem_init(&sem_sync[i], 0, 0);
+			if(opt_process_rtp_packets_hash_next_thread_sem_sync >= 1) {
+				::sem_init(&sem_sync, 0, 0);
+				sem_sync_inited = true;
+			}
+			if(opt_process_rtp_packets_hash_next_thread_sem_sync == 2) {
+				::sem_init(&sem_done, 0, 0);
+				sem_done_inited = true;
 			}
 		}
 		void sem_term() {
-			extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
-			for(int i = 0; i < opt_process_rtp_packets_hash_next_thread_sem_sync; i++) {
-				sem_destroy(&sem_sync[i]);
+			if(sem_sync_inited) {
+				sem_destroy(&sem_sync);
+				sem_sync_inited = false;
+			}
+			if(sem_done_inited) {
+				sem_destroy(&sem_done);
+				sem_done_inited = false;
 			}
 		}
 	};
@@ -2235,38 +2287,56 @@ public:
 				++thread_data->buffer_push_cnt_all;
 			}
 			#endif
-			unsigned int usleepCounter = 0;
-			while(this->qring[this->writeit]->used != 0) {
+			extern int opt_preprocess_rtp_packets_qring_sem_sync;
+			if(opt_preprocess_rtp_packets_qring_sem_sync) {
+				#if SNIFFER_THREADS_EXT
+				if(sem_trywait(&this->sem_qring_free_count) == -1) {
+					if(sverb.sniffer_threads_ext && thread_data) {
+						++thread_data->buffer_push_cnt_full;
+					}
+					sem_wait(&this->sem_qring_free_count);
+				}
+				#else
+				sem_wait(&this->sem_qring_free_count);
+				#endif
 				if(is_terminating()) {
 					PACKET_S_PROCESS_DESTROY(&packetS);
 					return;
 				}
-				if(usleepCounter == 0) {
+			} else {
+				unsigned int usleepCounter = 0;
+				while(this->qring[this->writeit]->used != 0) {
+					if(is_terminating()) {
+						PACKET_S_PROCESS_DESTROY(&packetS);
+						return;
+					}
+					if(usleepCounter == 0) {
+						#if SNIFFER_THREADS_EXT
+						if(sverb.sniffer_threads_ext && thread_data) {
+							++thread_data->buffer_push_cnt_full;
+						}
+						#endif
+					}
 					#if SNIFFER_THREADS_EXT
 					if(sverb.sniffer_threads_ext && thread_data) {
-						++thread_data->buffer_push_cnt_full;
+						++thread_data->buffer_push_cnt_full_loop;
 					}
 					#endif
-				}
-				#if SNIFFER_THREADS_EXT
-				if(sverb.sniffer_threads_ext && thread_data) {
-					++thread_data->buffer_push_cnt_full_loop;
-				}
-				#endif
-				extern unsigned int opt_process_rtp_packets_qring_push_usleep;
-				if(opt_process_rtp_packets_qring_push_usleep) {
-					#if SNIFFER_THREADS_EXT
-					unsigned us =
-					#endif
-					USLEEP_C(opt_process_rtp_packets_qring_push_usleep, usleepCounter++);
-					#if SNIFFER_THREADS_EXT
-					if(sverb.sniffer_threads_ext && thread_data) {
-						thread_data->buffer_push_sum_usleep_full_loop += us;
+					extern unsigned int opt_process_rtp_packets_qring_push_usleep;
+					if(opt_process_rtp_packets_qring_push_usleep) {
+						#if SNIFFER_THREADS_EXT
+						unsigned us =
+						#endif
+						USLEEP_C(opt_process_rtp_packets_qring_push_usleep, usleepCounter++);
+						#if SNIFFER_THREADS_EXT
+						if(sverb.sniffer_threads_ext && thread_data) {
+							thread_data->buffer_push_sum_usleep_full_loop += us;
+						}
+						#endif
+					} else {
+						__ASM_PAUSE;
+						++usleepCounter;
 					}
-					#endif
-				} else {
-					__ASM_PAUSE;
-					++usleepCounter;
 				}
 			}
 			qring_push_index = this->writeit + 1;
@@ -2292,6 +2362,10 @@ public:
 					this->writeit++;
 				}
 			#endif
+			extern int opt_preprocess_rtp_packets_qring_sem_sync;
+			if(opt_preprocess_rtp_packets_qring_sem_sync) {
+				sem_post(&this->sem_qring_filled_count);
+			}
 			qring_push_index = 0;
 			qring_push_index_count = 0;
 		}
@@ -2325,6 +2399,10 @@ public:
 					this->writeit++;
 				}
 			#endif
+			extern int opt_preprocess_rtp_packets_qring_sem_sync;
+			if(opt_preprocess_rtp_packets_qring_sem_sync) {
+				sem_post(&this->sem_qring_filled_count);
+			}
 			qring_push_index = 0;
 			qring_push_index_count = 0;
 		}
@@ -2389,6 +2467,7 @@ private:
 	inline void find_hash(packet_s_process_0 *packetS, unsigned *counters, bool lock = true);
 	void createNextHashThread();
 	void termNextHashThread();
+	void flushDownstream();
 public:
 	eType type;
 	int indexThread;
@@ -2405,10 +2484,13 @@ private:
 	unsigned qring_push_index_count;
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
+	sem_t sem_qring_free_count;
+	sem_t sem_qring_filled_count;
 	pthread_t out_thread_handle;
 	pstat_data threadPstatData[2][2];
 	bool term_processRtp;
 	s_hash_next_thread hash_next_threads[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
+	sem_t sem_items_ready;
 	volatile int8_t *hash_find_flag;
 	u_int32_t last_rtp_threads_push;
 	volatile int _sync_count;

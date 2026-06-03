@@ -484,8 +484,6 @@ int opt_pre_process_packets_next_thread_defrag = -1;
 int opt_pre_process_packets_next_thread_max = 4;
 int opt_process_rtp_packets_hash_next_thread = 1;
 int opt_process_rtp_packets_hash_next_thread_max = -1;
-int opt_pre_process_packets_next_thread_sem_sync = 2;
-int opt_process_rtp_packets_hash_next_thread_sem_sync = 2;
 unsigned int opt_preprocess_packets_qring_length = 2000;
 unsigned int opt_preprocess_packets_qring_item_length = 0;
 unsigned int opt_preprocess_packets_qring_usleep = 10;
@@ -501,6 +499,24 @@ bool use_push_batch_limit_ms = true;
 unsigned int opt_batch_length_sip_high_traffic = 5000;
 unsigned int opt_batch_length_rtp_high_traffic = 40000;
 bool batch_length_high_traffic_need = false;
+int opt_use_sem_sync = 0;
+int opt_use_pcap_queue_sem_sync = 0;
+int opt_use_preprocess_packets_sem_sync = 0;
+int opt_use_preprocess_rtp_packets_sem_sync = 0;
+int opt_use_rtp_read_thread_sync = 0;
+int opt_pcap_queue_output_qring_sem_sync = 0;
+int opt_pcap_queue_output_next_thread_sem_sync = 2;
+int opt_pcap_queue_readfrominterface_qring_sem_sync = 0;
+int opt_pcap_queue_iface_block_qring_sem_sync = 0;
+int opt_pcap_queue_bypass_qring_sem_sync = 0;
+int opt_pcap_queue_iface_blocks_available_sem_sync = 0;
+int opt_pcap_queue_store_queue_sem_sync = 0;
+int opt_preprocess_packets_qring_sem_sync = 0;
+int opt_preprocess_packets_next_thread_sem_sync = 2;
+int opt_preprocess_rtp_packets_qring_sem_sync = 0;
+int opt_process_rtp_packets_hash_next_thread_sem_sync = 2;
+int opt_rtp_read_thread_qring_sem_sync = 0;
+int opt_ipacc_qring_sem_sync = 0;
 bool opt_usleep_stats = false;
 bool opt_usleep_progressive = true;
 double opt_usleep_progressive_index = 0;
@@ -6739,10 +6755,6 @@ void cConfig::addConfigItems() {
 						->addValues("yes:1|y:1|no:0|n:0"));
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("process_rtp_packets_hash_next_thread_max", &opt_process_rtp_packets_hash_next_thread_max))
 						->setMaximum(MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS));
-					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("pre_process_packets_next_thread_sem_sync", &opt_pre_process_packets_next_thread_sem_sync))
-						->addValues("2:2"));
-					addConfigItem((new FILE_LINE(42157) cConfigItem_yesno("process_rtp_packets_hash_next_thread_sem_sync", &opt_process_rtp_packets_hash_next_thread_sem_sync))
-						->addValues("2:2"));
 					addConfigItem(new FILE_LINE(42158) cConfigItem_integer("process_rtp_packets_qring_length", &opt_process_rtp_packets_qring_length));
 					addConfigItem(new FILE_LINE(42159) cConfigItem_integer("process_rtp_packets_qring_item_length", &opt_process_rtp_packets_qring_item_length));
 					addConfigItem(new FILE_LINE(42160) cConfigItem_integer("process_rtp_packets_qring_usleep", &opt_process_rtp_packets_qring_usleep));
@@ -6751,6 +6763,27 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("push_batch_limit_for_traffic_lt_mb_s", &opt_push_batch_limit_for_traffic_lt_mb_s));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("batch_length_sip_high_traffic", &opt_batch_length_sip_high_traffic));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("batch_length_rtp_high_traffic", &opt_batch_length_rtp_high_traffic));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("use_sem_sync", &opt_use_sem_sync));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("use_pcap_queue_sem_sync", &opt_use_pcap_queue_sem_sync));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("use_preprocess_packets_sem_sync", &opt_use_preprocess_packets_sem_sync));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("use_preprocess_rtp_packets_sem_sync", &opt_use_preprocess_rtp_packets_sem_sync));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("use_rtp_read_thread_sem_sync", &opt_use_rtp_read_thread_sync));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pcap_queue_output_qring_sem_sync", &opt_pcap_queue_output_qring_sem_sync));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("pcap_queue_output_next_thread_sem_sync", &opt_pcap_queue_output_next_thread_sem_sync))
+						->addValues("2:2"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pcap_queue_readfrominterface_qring_sem_sync", &opt_pcap_queue_readfrominterface_qring_sem_sync));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pcap_queue_iface_block_qring_sem_sync", &opt_pcap_queue_iface_block_qring_sem_sync));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pcap_queue_bypass_qring_sem_sync", &opt_pcap_queue_bypass_qring_sem_sync));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pcap_queue_iface_blocks_available_sem_sync", &opt_pcap_queue_iface_blocks_available_sem_sync));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pcap_queue_store_queue_sem_sync", &opt_pcap_queue_store_queue_sem_sync));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("preprocess_packets_qring_sem_sync", &opt_preprocess_packets_qring_sem_sync));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("preprocess_packets_next_thread_sem_sync", &opt_preprocess_packets_next_thread_sem_sync))
+						->addValues("2:2"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("preprocess_rtp_packets_qring_sem_sync", &opt_preprocess_rtp_packets_qring_sem_sync));
+					addConfigItem((new FILE_LINE(42157) cConfigItem_yesno("process_rtp_packets_hash_next_thread_sem_sync", &opt_process_rtp_packets_hash_next_thread_sem_sync))
+						->addValues("2:2"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("rtp_read_thread_qring_sem_sync", &opt_rtp_read_thread_qring_sem_sync));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipacc_qring_sem_sync", &opt_ipacc_qring_sem_sync));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleanup_calls_period", &opt_cleanup_calls_period));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("destroy_calls_period", &opt_destroy_calls_period));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("safe_cleanup_calls", &opt_safe_cleanup_calls))
@@ -9627,8 +9660,8 @@ void set_context_config() {
 			opt_process_rtp_packets_hash_next_thread = 2;
 		}
 		#endif
-		if(!CONFIG.isSet("pre_process_packets_next_thread_sem_sync")) {
-			opt_pre_process_packets_next_thread_sem_sync = 1;
+		if(!CONFIG.isSet("preprocess_packets_next_thread_sem_sync")) {
+			opt_preprocess_packets_next_thread_sem_sync = 1;
 		}
 		if(!CONFIG.isSet("process_rtp_packets_hash_next_thread_sem_sync")) {
 			opt_process_rtp_packets_hash_next_thread_sem_sync = 1;
@@ -9663,6 +9696,27 @@ void set_context_config() {
 		if(!CONFIG.isSet("usleep_progressive")) {
 			opt_usleep_progressive = false;
 		}
+	}
+	
+	if(opt_use_sem_sync || opt_use_pcap_queue_sem_sync) {
+		opt_pcap_queue_output_qring_sem_sync = 1;
+		opt_pcap_queue_output_next_thread_sem_sync = 2;
+		opt_pcap_queue_readfrominterface_qring_sem_sync = 1;
+		opt_pcap_queue_iface_block_qring_sem_sync = 1;
+		opt_pcap_queue_bypass_qring_sem_sync = 1;
+		opt_pcap_queue_iface_blocks_available_sem_sync = 1;
+		opt_pcap_queue_store_queue_sem_sync = 1;
+	}
+	if(opt_use_sem_sync || opt_use_preprocess_packets_sem_sync) {
+		opt_preprocess_packets_qring_sem_sync = 1;
+		opt_preprocess_packets_next_thread_sem_sync = 2;
+	}
+	if(opt_use_sem_sync || opt_use_preprocess_rtp_packets_sem_sync) {
+		opt_preprocess_rtp_packets_qring_sem_sync = 1;
+		opt_process_rtp_packets_hash_next_thread_sem_sync = 2;
+	}
+	if(opt_use_sem_sync || opt_use_rtp_read_thread_sync) {
+		opt_rtp_read_thread_qring_sem_sync = 1;
 	}
 	
 	hash_modify_queue_length_ms = opt_t2_boost == 2 && (CONFIG.isSet("hash_queue_length_ms_high_traffic") || !CONFIG.isSet("hash_queue_length_ms")) ?

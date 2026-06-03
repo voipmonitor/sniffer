@@ -9216,10 +9216,8 @@ string getSystemTimezone(int method) {
 }
 
 
-#if not DETACH_X_MOD_OLDVER
 volatile unsigned cHeapItemsPointerStack::slot_id_used = 0;
 volatile int cHeapItemsPointerStack::slot_id_sync = 0;
-#endif
 
 
 cThreadMonitor::cThreadMonitor() {

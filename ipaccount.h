@@ -218,6 +218,8 @@ private:
 	unsigned int qringmax;
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
+	sem_t sem_qring_free_count;
+	sem_t sem_qring_filled_count;
 	pthread_t out_thread_handle;
 	int outThreadId;
 	pstat_data threadPstatData[2][2];

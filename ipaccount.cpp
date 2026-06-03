@@ -184,6 +184,11 @@ Ipacc::Ipacc() {
 	for(unsigned int i = 0; i < qringmax; i++) {
 		qring[i].used = 0;
 	}
+	extern int opt_ipacc_qring_sem_sync;
+	if(opt_ipacc_qring_sem_sync) {
+		sem_init(&sem_qring_free_count, 0, qringmax);
+		sem_init(&sem_qring_filled_count, 0, 0);
+	}
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	save_thread_count = 2;
 	save_thread_data = new FILE_LINE(0) s_save_thread_data[save_thread_count];
@@ -201,12 +206,24 @@ Ipacc::~Ipacc() {
 	stopThread();
 	delete [] qring;
 	delete [] save_thread_data;
+	extern int opt_ipacc_qring_sem_sync;
+	if(opt_ipacc_qring_sem_sync) {
+		sem_destroy(&sem_qring_free_count);
+		sem_destroy(&sem_qring_filled_count);
+	}
 	term();
 }
 
 inline void Ipacc::push(time_t timestamp, vmIP saddr, vmIP daddr, vmPort port, int proto, int packetlen, int voippacket) {
-	while(this->qring[this->writeit].used != 0) {
-		USLEEP(10);
+	extern int opt_ipacc_qring_sem_sync;
+	if(opt_ipacc_qring_sem_sync) {
+		if(sem_trywait(&this->sem_qring_free_count) == -1) {
+			sem_wait(&this->sem_qring_free_count);
+		}
+	} else {
+		while(this->qring[this->writeit].used != 0) {
+			USLEEP(10);
+		}
 	}
 	packet *_packet = &this->qring[this->writeit];
 	_packet->timestamp = timestamp;
@@ -221,6 +238,9 @@ inline void Ipacc::push(time_t timestamp, vmIP saddr, vmIP daddr, vmPort port, i
 		this->writeit = 0;
 	} else {
 		this->writeit++;
+	}
+	if(opt_ipacc_qring_sem_sync) {
+		sem_post(&this->sem_qring_filled_count);
 	}
 }
 
@@ -650,7 +670,11 @@ void Ipacc::stopThread() {
 void *Ipacc::outThreadFunction() {
 	this->outThreadId = get_unix_tid();
 	syslog(LOG_NOTICE, "start Ipacc out thread %i", this->outThreadId);
+	extern int opt_ipacc_qring_sem_sync;
 	while(!is_terminating()) {
+		if(opt_ipacc_qring_sem_sync) {
+			SEM_TIMEDWAIT_MS(&this->sem_qring_filled_count, 1);
+		}
 		if(this->qring[this->readit].used == 1) {
 			packet *_packet = &this->qring[this->readit];
 			add_octets(_packet->timestamp, _packet->saddr, _packet->daddr, _packet->port, _packet->proto, _packet->packetlen, _packet->voippacket);
@@ -660,7 +684,10 @@ void *Ipacc::outThreadFunction() {
 			} else {
 				this->readit++;
 			}
-		} else {
+			if(opt_ipacc_qring_sem_sync) {
+				sem_post(&this->sem_qring_free_count);
+			}
+		} else if(!opt_ipacc_qring_sem_sync) {
 			USLEEP(1000);
 		}
 	}

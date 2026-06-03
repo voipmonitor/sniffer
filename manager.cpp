@@ -5246,6 +5246,11 @@ int Mgmt_thread(Mgmt_params *params) {
 				return(params->sendString("ok\n"));
 			}
 		}
+	} else if(!strcasecmp(thread_params[0], "rtp_rd")) {
+		if(!strcasecmp(thread_params[1], "add")) {
+			ProcessRtpPacket::addRtpRdThread();
+			return(params->sendString("ok\n"));
+		}
 	} else if(!strcasecmp(thread_params[0], "sip_t2")) {
 		if(!strcasecmp(thread_params[1], "add")) {
 			if(opt_t2_boost) {

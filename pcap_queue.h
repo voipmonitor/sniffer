@@ -6,6 +6,7 @@
 #include <netdb.h>
 #include <pthread.h>
 #include <pcap.h>
+#include <semaphore.h>
 #include <deque>
 #include <queue>
 #include <string>
@@ -54,10 +55,19 @@ public:
 	}
 	size_t getUseItems() {
 		return(this->queueBlock->size());
-	}	
+	}
 	size_t getUseSize() {
 		ssize_t sizeOfBlocks = this->sizeOfBlocks;
 		return(max(sizeOfBlocks, (ssize_t)0));
+	}
+	void setUseSemSync(bool enable) {
+		this->queueBlock->setUseSemSync(enable);
+	}
+	inline unsigned int wait_for_data(unsigned int timeout_us, unsigned int counter = (unsigned int)-1) {
+		return(this->queueBlock->wait_for_data(timeout_us, counter));
+	}
+	inline unsigned int wait_for_free(unsigned int timeout_us, unsigned int counter = (unsigned int)-1) {
+		return(this->queueBlock->wait_for_free(timeout_us, counter));
 	}
 private:
 	void add_sizeOfBlocks(size_t size) {
@@ -148,6 +158,8 @@ public:
 		return(this->queueStore.size());
 	}
 	void init();
+	void setUseSemSync(bool enable);
+	unsigned int wait_for_data(unsigned int timeout_us, unsigned int counter = (unsigned int)-1);
 private:
 	pcap_file_store *findFileStoreById(u_int id);
 	void cleanupFileStore();
@@ -177,6 +189,8 @@ private:
 	u_int64_t lastTimeLogErrDiskIsFull;
 	u_int64_t lastTimeLogErrMemoryIsFull;
 	u_int64_t firstTimeLogErrMemoryIsFull;
+	bool useSemSync;
+	sem_t sem_filled;
 friend class PcapQueue_readFromFifo;
 };
 
@@ -1610,6 +1624,8 @@ private:
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
 	volatile int qring_sync;
+	sem_t sem_qring_free_count;
+	sem_t sem_qring_filled_count;
 	unsigned int readIndex;
 	unsigned int readIndexPos;
 	unsigned int readIndexCount;
@@ -1711,7 +1727,9 @@ protected:
 	int lastReadThreadsIndex_pcapStatString_interface;
 	u_int64_t lastTimeLogErrThread0BufferIsFull;
 private:
+	sem_t sem_blocks_available;
 	rqueue_quick<pcap_block_store*> *block_qring;
+friend class PcapQueue_readFromInterfaceThread;
 };
 
 class PcapQueue_readFromFifo : public PcapQueue {
@@ -2142,6 +2160,7 @@ public:
 		volatile int thread_index;
 		volatile int data_ready;
 		volatile int processing;
+		volatile bool signal_done;
 		void null() {
 			batch = NULL;
 			start = 0;
@@ -2150,6 +2169,7 @@ public:
 			thread_index = 0;
 			data_ready = 0;
 			processing = 0;
+			signal_done = false;
 		}
 	};
 	struct s_next_thread {
@@ -2157,26 +2177,41 @@ public:
 		pthread_t thread_handle;
 		pstat_data thread_pstat_data[2][2];
 		s_next_thread_data next_data;
-		sem_t sem_sync[2];
+		sem_t sem_sync;
+		bool sem_sync_inited;
+		sem_t sem_done;
+		bool sem_done_inited;
 		volatile int terminate;
 		void null() {
 			thread_id = 0;
 			thread_handle = 0;
 			memset(thread_pstat_data, 0, sizeof(thread_pstat_data));
 			next_data.null();
-			memset(sem_sync, 0, sizeof(sem_sync));
+			memset(&sem_sync, 0, sizeof(sem_sync));
+			sem_sync_inited = false;
+			memset(&sem_done, 0, sizeof(sem_done));
+			sem_done_inited = false;
 			terminate = 0;
 		}
 		void sem_init() {
-			extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
-			for(int i = 0; i < opt_process_rtp_packets_hash_next_thread_sem_sync; i++) {
-				::sem_init(&sem_sync[i], 0, 0);
+			extern int opt_pcap_queue_output_next_thread_sem_sync;
+			if(opt_pcap_queue_output_next_thread_sem_sync >= 1) {
+				::sem_init(&sem_sync, 0, 0);
+				sem_sync_inited = true;
+			}
+			if(opt_pcap_queue_output_next_thread_sem_sync == 2) {
+				::sem_init(&sem_done, 0, 0);
+				sem_done_inited = true;
 			}
 		}
 		void sem_term() {
-			extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
-			for(int i = 0; i < opt_process_rtp_packets_hash_next_thread_sem_sync; i++) {
-				sem_destroy(&sem_sync[i]);
+			if(sem_sync_inited) {
+				sem_destroy(&sem_sync);
+				sem_sync_inited = false;
+			}
+			if(sem_done_inited) {
+				sem_destroy(&sem_done);
+				sem_done_inited = false;
 			}
 		}
 	};
@@ -2234,6 +2269,7 @@ private:
 		}
 		return(false);
 	}
+	void flushDownstream();
 	#if SNIFFER_THREADS_EXT
 	inline void tm_inc_packets_out(sHeaderPacketPQout *hp) {
 		if(sverb.sniffer_threads_ext > 1 && thread_data) {
@@ -2251,6 +2287,8 @@ private:
 	unsigned qring_push_index_count;
 	sBatchHP *qring_active_push_item;
 	u_int64_t qring_active_push_item_limit_us;
+	sem_t sem_qring_free_count;
+	sem_t sem_qring_filled_count;
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
@@ -2268,6 +2306,7 @@ private:
 	volatile int next_threads_count;
 	volatile int next_threads_count_mod;
 	s_next_thread next_threads[MAX_PRE_PROCESS_PACKET_NEXT_THREADS];
+	sem_t sem_items_ready;
 	volatile int8_t *items_flag;
 	u_int8_t *items_index;
 	u_int8_t *items_thread_index;

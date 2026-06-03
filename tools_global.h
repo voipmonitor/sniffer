@@ -15,6 +15,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <semaphore.h>
 #include <sys/syscall.h>
 #include <unicode/ucnv.h> 
 #include <json.h>
@@ -218,9 +219,31 @@ inline void usleep(unsigned int useconds, unsigned int counter) {
 }
 #endif
 #ifdef CLOUD_ROUTER_CLIENT
-#define USLEEP(us) usleep(us, __FILE__, __LINE__);
+#define USLEEP(us) usleep(us, (unsigned int)-1, __FILE__, __LINE__);
 #define USLEEP_C(us, c) usleep(us, c, __FILE__, __LINE__);
-inline unsigned int usleep(unsigned int useconds, unsigned int counter, const char *file, int line) {
+#define USLEEP_SEM(us, sem) usleep(us, (unsigned int)-1, __FILE__, __LINE__, sem);
+#define USLEEP_C_SEM(us, c, sem) usleep(us, c, __FILE__, __LINE__, sem);
+#define USLEEP_SEM_CONSUME(us, sem) usleep(us, (unsigned int)-1, __FILE__, __LINE__, sem, true);
+#define USLEEP_C_SEM_CONSUME(us, c, sem) usleep(us, c, __FILE__, __LINE__, sem, true);
+#define SEM_TIMEDWAIT_US(sem, us) sem_timedwait_us(sem, us)
+#define SEM_TIMEDWAIT_MS(sem, ms) sem_timedwait_us(sem, (unsigned int)((u_int64_t)(ms) * 1000ULL))
+
+inline int sem_timedwait_us(sem_t *sem, unsigned int timeout_us, unsigned int *actual_us_out = NULL) {
+	struct timespec ts;
+	clock_gettime(CLOCK_REALTIME, &ts);
+	unsigned long long nsec_add = (unsigned long long)timeout_us * 1000ULL;
+	ts.tv_nsec += nsec_add;
+	ts.tv_sec += ts.tv_nsec / 1000000000ULL;
+	ts.tv_nsec = ts.tv_nsec % 1000000000ULL;
+	u_int64_t start_us = actual_us_out ? getTimeUS() : 0;
+	int rslt = sem_timedwait(sem, &ts);
+	if(actual_us_out) {
+		*actual_us_out = (unsigned int)(getTimeUS() - start_us);
+	}
+	return(rslt);
+}
+
+inline unsigned int usleep(unsigned int useconds, unsigned int counter, const char *file, int line, sem_t *sem = NULL, bool sem_consume = false) {
 	extern unsigned int opt_usleep_force;
 	if(opt_usleep_force) {
 		useconds = opt_usleep_force;
@@ -233,7 +256,7 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 	extern double opt_usleep_progressive_index;
 	extern bool opt_usleep_mod_enable;
 	#if defined(__x86_64__) || defined(__i386__)
-	if(opt_usleep_mod_enable && useconds <= 100 && counter != (unsigned int)-1) {
+	if(!sem && opt_usleep_mod_enable && useconds <= 100 && counter != (unsigned int)-1) {
 		extern unsigned opt_usleep_mod_pause_spin_limit;
 		extern unsigned opt_usleep_mod_sched_yield_spin_limit;
 		if(counter < opt_usleep_mod_pause_spin_limit) {
@@ -247,7 +270,7 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 		}
 	}
 	#endif
- 	unsigned int rslt_useconds = useconds;
+	unsigned int rslt_useconds = useconds;
 	extern double last_traffic;
 	if((opt_usleep_progressive || last_traffic < 100) && useconds < 5000 && counter != (unsigned int)-1) {
 		unsigned int useconds_min = 0;
@@ -291,34 +314,19 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 		}
 	}
 	u_int64_t start_us = getTimeUS();
-	usleep(rslt_useconds);
+	if(sem) {
+		if(sem_timedwait_us(sem, rslt_useconds) == 0 && !sem_consume) {
+			sem_post(sem);
+		}
+	} else {
+		usleep(rslt_useconds);
+	}
 	unsigned int actual_us = (unsigned int)(getTimeUS() - start_us);
 	#if SNIFFER_THREADS_EXT
 	extern sVerbose sverb;
-	if(sverb.sniffer_threads_ext) {
+	if(!sem && sverb.sniffer_threads_ext) {
 		void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line);
 		usleep_stats_add(actual_us, !opt_usleep_progressive || counter == (unsigned int)-1, file, line);
-	}
-	#endif
-	return(actual_us);
-}
-inline unsigned int usleep(unsigned int useconds, const char *file, int line) {
-	extern unsigned int opt_usleep_force;
-	if(opt_usleep_force) {
-		useconds = opt_usleep_force;
-	}
-	extern unsigned int opt_usleep_minimal;
-	if(opt_usleep_minimal && useconds < opt_usleep_minimal) {
-		useconds = opt_usleep_minimal;
-	}
-	u_int64_t start_us = getTimeUS();
-	usleep(useconds);
-	unsigned int actual_us = (unsigned int)(getTimeUS() - start_us);
-	#if SNIFFER_THREADS_EXT
-	extern sVerbose sverb;
-	if(sverb.sniffer_threads_ext) {
-		void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line);
-		usleep_stats_add(actual_us, 1, file, line);
 	}
 	#endif
 	return(actual_us);

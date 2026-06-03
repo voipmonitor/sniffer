@@ -4217,10 +4217,8 @@ public:
 
 #if HEAP_ITEM_STACK_TYPE_VOID
 
-#if not DETACH_X_MOD_OLDVER
 #define HEAP_ITEM_STACK_TLS true
 #define HEAP_ITEM_STACK_TLS_MAX_SLOTS 50
-#endif
 
 class cHeapItemsPointerStack {
 private:
