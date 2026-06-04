@@ -223,12 +223,16 @@ inline void usleep(unsigned int useconds, unsigned int counter) {
 #define USLEEP_C(us, c) usleep(us, c, __FILE__, __LINE__);
 #define USLEEP_SEM(us, sem) usleep(us, (unsigned int)-1, __FILE__, __LINE__, sem);
 #define USLEEP_C_SEM(us, c, sem) usleep(us, c, __FILE__, __LINE__, sem);
-#define USLEEP_SEM_CONSUME(us, sem) usleep(us, (unsigned int)-1, __FILE__, __LINE__, sem, true);
-#define USLEEP_C_SEM_CONSUME(us, c, sem) usleep(us, c, __FILE__, __LINE__, sem, true);
 #define SEM_TIMEDWAIT_US(sem, us) sem_timedwait_us(sem, us)
 #define SEM_TIMEDWAIT_MS(sem, ms) sem_timedwait_us(sem, (unsigned int)((u_int64_t)(ms) * 1000ULL))
 
 inline int sem_timedwait_us(sem_t *sem, unsigned int timeout_us, unsigned int *actual_us_out = NULL) {
+	if(sem_trywait(sem) == 0) {
+		if(actual_us_out) {
+			*actual_us_out = 0;
+		}
+		return(0);
+	}
 	struct timespec ts;
 	clock_gettime(CLOCK_REALTIME, &ts);
 	unsigned long long nsec_add = (unsigned long long)timeout_us * 1000ULL;
@@ -243,7 +247,7 @@ inline int sem_timedwait_us(sem_t *sem, unsigned int timeout_us, unsigned int *a
 	return(rslt);
 }
 
-inline unsigned int usleep(unsigned int useconds, unsigned int counter, const char *file, int line, sem_t *sem = NULL, bool sem_consume = false) {
+inline unsigned int usleep(unsigned int useconds, unsigned int counter, const char *file, int line, sem_t *sem = NULL) {
 	extern unsigned int opt_usleep_force;
 	if(opt_usleep_force) {
 		useconds = opt_usleep_force;
@@ -313,9 +317,7 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 	}
 	unsigned int real_useconds = rslt_useconds;
 	if(sem) {
-		if(sem_timedwait_us(sem, rslt_useconds) == 0 && !sem_consume) {
-			sem_post(sem);
-		}
+		sem_timedwait_us(sem, rslt_useconds);
 	} else {
 		u_int64_t start_us = getTimeUS();
 		usleep(rslt_useconds);

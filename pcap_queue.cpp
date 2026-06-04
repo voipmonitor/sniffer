@@ -4691,7 +4691,7 @@ void PcapQueue_readFromInterfaceThread::cancelThread() {
 	hpii = this->prevThread->pop(); \
 	if(!hpii.header_packet) { \
 		extern int opt_pcap_queue_readfrominterface_qring_sem_sync; \
-		this->pop_usleep_sum += USLEEP_C_SEM_CONSUME(100, this->counter_pop_usleep++, \
+		this->pop_usleep_sum += USLEEP_C_SEM(100, this->counter_pop_usleep++, \
 			opt_pcap_queue_readfrominterface_qring_sem_sync ? &this->prevThread->sem_qring_filled_count : NULL); \
 		if(this->pop_usleep_sum > this->pop_usleep_sum_last_push + 100000) { \
 			this->prevThread->setForcePush(); \
@@ -6183,7 +6183,7 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 			block = this->prevThread->pop_block();
 			if(!block) {
 				extern int opt_pcap_queue_readfrominterface_qring_sem_sync;
-				this->pop_usleep_sum += USLEEP_C_SEM_CONSUME(20, this->counter_pop_usleep++,
+				this->pop_usleep_sum += USLEEP_C_SEM(20, this->counter_pop_usleep++,
 					opt_pcap_queue_readfrominterface_qring_sem_sync ? &this->prevThread->sem_qring_filled_count : NULL);
 				if(this->pop_usleep_sum > this->pop_usleep_sum_last_push + opt_pcap_queue_block_max_time_ms * 1000) {
 					this->prevThread->setForcePush();
@@ -7012,7 +7012,7 @@ void PcapQueue_readFromInterface::threadFunction_blocks() {
 			usleepCounter = 0;
 		} else {
 			extern int opt_pcap_queue_iface_blocks_available_sem_sync;
-			USLEEP_C_SEM_CONSUME(20, usleepCounter++,
+			USLEEP_C_SEM(20, usleepCounter++,
 					     opt_pcap_queue_iface_blocks_available_sem_sync ? &this->sem_blocks_available : NULL);
 		}
 	}
