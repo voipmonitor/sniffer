@@ -660,6 +660,7 @@ struct sPcapStatData {
 		vector_simple<double> cpu_rtp_rh_next;
 		vector_simple<double> cpu_rtp_rd;
 		double cpu_sum;
+		double cpu_sum_for_rrd;
 		int threads_count;
 		bool valid;
 		sT2() { memset((void*)this, 0, sizeof(*this)); }

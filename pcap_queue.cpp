@@ -1882,6 +1882,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 	
 	double t2cpu = this->getCpuUsagePerc(writeThread, pstatDataIndex);
 	double sum_t2cpu = 0;
+	double sum_t2cpu_for_rrd = 0;
 	if(t2cpu >= 0) {
 		if(isMirrorSender()) {
 			if(task == pcapStatLog) {
@@ -2211,6 +2212,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 					}
 				}
 			}
+			sum_t2cpu_for_rrd = sum_t2cpu;
 			int countRtpRhThreads = 0;
 			bool needAddRtpRhThread = false;
 			bool needRemoveRtpRhThread = false;
@@ -2343,6 +2345,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			}
 			if(task == pcapStatLog) {
 				stat_data.t2.cpu_sum = sum_t2cpu;
+				stat_data.t2.cpu_sum_for_rrd = sum_t2cpu_for_rrd;
 				stat_data.t2.threads_count = count_t2cpu;
 			}
 		}

@@ -1694,7 +1694,7 @@ string sPcapStatData::sT2::render(bool with_title) const {
 
 void sPcapStatData::sT2::rrd() const {
 	if(!valid) return;
-	rrd_set_value(RRD_VALUE_tCPU_t2, cpu_sum);
+	rrd_set_value(RRD_VALUE_tCPU_t2, cpu_sum_for_rrd);
 }
 
 void sPcapStatData::sT2::get_values(vector<sValue> &out) const {
