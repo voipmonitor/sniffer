@@ -2261,14 +2261,6 @@ public:
 		       this->next_threads[next_thread_index].thread_id);
 	}
 private:
-	bool isNextThreadsGt2Processing(int next_threads) {
-		for(int i = 2; i < next_threads; i++) {
-			if(this->next_threads[i].next_data.processing) {
-				return(true);
-			}
-		}
-		return(false);
-	}
 	void flushDownstream();
 	#if SNIFFER_THREADS_EXT
 	inline void tm_inc_packets_out(sHeaderPacketPQout *hp) {
@@ -2307,6 +2299,7 @@ private:
 	volatile int next_threads_count_mod;
 	s_next_thread next_threads[MAX_PRE_PROCESS_PACKET_NEXT_THREADS];
 	sem_t sem_items_ready;
+	volatile int active_threads_for_batch;
 	volatile int8_t *items_flag;
 	u_int8_t *items_index;
 	u_int8_t *items_thread_index;

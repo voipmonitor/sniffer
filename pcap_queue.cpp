@@ -9979,6 +9979,7 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 				    min(max(opt_pre_process_packets_next_thread_defrag, 0), min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) :
 				    0;
 	this->next_threads_count_mod = 0;
+	this->active_threads_for_batch = 0;
 	#if SNIFFER_THREADS_EXT
 	thread_data = NULL;
 	#endif
@@ -10304,6 +10305,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 				for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 					this->items_flag[batch_index] = 0;
 				}
+				__SYNC_SET_TO(this->active_threads_for_batch, _next_threads_count);
 				for(int i = 0; i < _next_threads_count; i++) {
 					this->next_threads[i].next_data.null();
 					if(_process_only_in_next_threads) {
@@ -10336,19 +10338,16 @@ void *PcapQueue_outputThread::outThreadFunction() {
 							}
 						}
 					} else {
-						while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
-						      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
+						unsigned int wait_counter = 0;
+						while(this->active_threads_for_batch > 0) {
 							if(completed < count &&
 							   this->items_flag[completed] != 0) {
 								this->processDetach_push(&batch->batch[completed]);
 								++completed;
+								wait_counter = 0;
 							} else {
 								extern unsigned int opt_sip_batch_sync_usleep;
-								if(opt_sip_batch_sync_usleep) {
-									USLEEP(opt_sip_batch_sync_usleep);
-								} else {
-									__ASM_PAUSE;
-								}
+								BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
 							}
 						}
 					}
@@ -10368,13 +10367,10 @@ void *PcapQueue_outputThread::outThreadFunction() {
 						}
 					} else {
 						for(int i = 0; i < _next_threads_count; i++) {
+							unsigned int wait_counter = 0;
 							while(this->next_threads[i].next_data.processing) {
 								extern unsigned int opt_sip_batch_sync_usleep;
-								if(opt_sip_batch_sync_usleep) {
-									USLEEP(opt_sip_batch_sync_usleep);
-								} else {
-									__ASM_PAUSE;
-								}
+								BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
 							}
 						}
 					}
@@ -10398,6 +10394,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 					}
 				}
 				#endif
+				__SYNC_SET_TO(this->active_threads_for_batch, _next_threads_count);
 				for(int i = 0; i < _next_threads_count; i++) {
 					this->next_threads[i].next_data.null();
 					if(_process_only_in_next_threads) {
@@ -10443,8 +10440,8 @@ void *PcapQueue_outputThread::outThreadFunction() {
 							}
 						}
 					} else {
-						while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
-						      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
+						unsigned int wait_counter = 0;
+						while(this->active_threads_for_batch > 0) {
 							if(completed < count &&
 							   this->items_flag[completed] != 0) {
 								bool destroy = false;
@@ -10462,13 +10459,10 @@ void *PcapQueue_outputThread::outThreadFunction() {
 									batch->batch[completed].destroy_or_unlock_blockstore();
 								}
 								++completed;
+								wait_counter = 0;
 							} else {
 								extern unsigned int opt_sip_batch_sync_usleep;
-								if(opt_sip_batch_sync_usleep) {
-									USLEEP(opt_sip_batch_sync_usleep);
-								} else {
-									__ASM_PAUSE;
-								}
+								BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
 							}
 						}
 					}
@@ -10486,13 +10480,10 @@ void *PcapQueue_outputThread::outThreadFunction() {
 						}
 					} else {
 						for(int i = 0; i < _next_threads_count; i++) {
+							unsigned int wait_counter = 0;
 							while(this->next_threads[i].next_data.processing) {
 								extern unsigned int opt_sip_batch_sync_usleep;
-								if(opt_sip_batch_sync_usleep) {
-									USLEEP(opt_sip_batch_sync_usleep);
-								} else {
-									__ASM_PAUSE;
-								}
+								BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
 							}
 						}
 					}
@@ -10532,6 +10523,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 						this->items_thread_index[batch_index] = 0;
 					}
 				}
+				__SYNC_SET_TO(this->active_threads_for_batch, _next_threads_count);
 				for(int i = 0; i < _next_threads_count; i++) {
 					this->next_threads[i].next_data.null();
 					if(_process_only_in_next_threads) {
@@ -10568,21 +10560,18 @@ void *PcapQueue_outputThread::outThreadFunction() {
 							}
 						}
 					} else {
-						while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
-						      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
+						unsigned int wait_counter = 0;
+						while(this->active_threads_for_batch > 0) {
 							if(completed < count &&
 							   this->items_flag[completed] != 0) {
 								if(this->items_flag[completed] > 0) {
 									this->processDefrag_push(&batch->batch[completed]);
 								}
 								++completed;
+								wait_counter = 0;
 							} else {
 								extern unsigned int opt_sip_batch_sync_usleep;
-								if(opt_sip_batch_sync_usleep) {
-									USLEEP(opt_sip_batch_sync_usleep);
-								} else {
-									__ASM_PAUSE;
-								}
+								BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
 							}
 						}
 					}
@@ -10600,13 +10589,10 @@ void *PcapQueue_outputThread::outThreadFunction() {
 						}
 					} else {
 						for(int i = 0; i < _next_threads_count; i++) {
+							unsigned int wait_counter = 0;
 							while(this->next_threads[i].next_data.processing) {
 								extern unsigned int opt_sip_batch_sync_usleep;
-								if(opt_sip_batch_sync_usleep) {
-									USLEEP(opt_sip_batch_sync_usleep);
-								} else {
-									__ASM_PAUSE;
-								}
+								BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
 							}
 						}
 					}
@@ -10785,6 +10771,7 @@ void *PcapQueue_outputThread::nextThreadFunction(int next_thread_index_plus) {
 				break;
 			}
 			next_thread_data->processing = 0;
+			__SYNC_DEC(this->active_threads_for_batch);
 			if(opt_pcap_queue_output_next_thread_sem_sync == 2 && next_thread->sem_done_inited &&
 			   next_thread_data->signal_done) {
 				sem_post(&next_thread->sem_done);

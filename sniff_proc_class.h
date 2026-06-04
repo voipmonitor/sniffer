@@ -1947,14 +1947,6 @@ private:
 	void termNextThread();
 	inline void processNextAction(packet_s_process *packetS);
 	void flushDownstream();
-	bool isNextThreadsGt2Processing(int next_threads) {
-		for(int i = 2; i < next_threads; i++) {
-			if(this->next_threads[i].next_data.processing) {
-				return(true);
-			}
-		}
-		return(false);
-	}
 	void lock_push() {
 		__SYNC_LOCK(this->_sync_push);
 	}
@@ -2007,6 +1999,7 @@ private:
 	volatile int next_threads_count_mod;
 	s_next_thread next_threads[MAX_PRE_PROCESS_PACKET_NEXT_THREADS];
 	sem_t sem_items_ready;
+	volatile int active_threads_for_batch;
 	volatile int next_threads_completed;
 	volatile int8_t *items_flag;
 	volatile int8_t *items_thread_index;
@@ -2420,14 +2413,6 @@ public:
 	static void unlockAddRtpRdThread() {
 		__SYNC_UNLOCK(_sync_add_rtp_rd_threads);
 	}
-	bool isNextThreadsGt2Processing(int process_rtp_packets_hash_next_threads) {
-		for(int i = 2; i < process_rtp_packets_hash_next_threads; i++) {
-			if(this->hash_next_threads[i].hash_data.processing) {
-				return(true);
-			}
-		}
-		return(false);
-	}
 	bool existsNextThread(int next_thread_index) {
 		return(next_thread_index < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS &&
 		       this->hash_next_threads[next_thread_index].thread_id);
@@ -2491,6 +2476,7 @@ private:
 	bool term_processRtp;
 	s_hash_next_thread hash_next_threads[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
 	sem_t sem_items_ready;
+	volatile int active_threads_for_batch;
 	volatile int8_t *hash_find_flag;
 	u_int32_t last_rtp_threads_push;
 	volatile int _sync_count;

@@ -524,6 +524,7 @@ double opt_usleep_progressive_index = 0;
 bool opt_usleep_mod_enable = false;
 unsigned opt_usleep_mod_pause_spin_limit = 100;
 unsigned opt_usleep_mod_sched_yield_spin_limit = 100;
+unsigned opt_batch_sync_wait_pause_spin_limit = 20;
 unsigned int opt_lock_calls_hash_usleep = 10;
 unsigned int opt_sip_batch_usleep = 10;
 unsigned int opt_sip_batch_sync_usleep = 10;
@@ -7891,6 +7892,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("usleep_mod_enable", &opt_usleep_mod_enable));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("usleep_mod_pause_spin_limit", &opt_usleep_mod_pause_spin_limit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("usleep_mod_sched_yield_spin_limit", &opt_usleep_mod_sched_yield_spin_limit));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("batch_sync_wait_pause_spin_limit", &opt_batch_sync_wait_pause_spin_limit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("lock_calls_hash_usleep", &opt_lock_calls_hash_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_batch_usleep", &opt_sip_batch_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_batch_sync_usleep", &opt_sip_batch_sync_usleep));

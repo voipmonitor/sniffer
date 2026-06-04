@@ -4,6 +4,8 @@
 
 #if defined(__x86_64__) || defined(__i386__)
 	#define __ASM_PAUSE __asm__ volatile ("pause")
+#elif defined(__aarch64__) || defined(__arm__)
+	#define __ASM_PAUSE __asm__ volatile ("yield")
 #else
 	#define __ASM_PAUSE
 #endif

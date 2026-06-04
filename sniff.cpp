@@ -10119,14 +10119,15 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 		this->next_threads[i].null();
 	}
 	this->next_threads_count = opt_t2_boost &&
-				   (typePreProcessThread == ppt_detach_x || 
-				    typePreProcessThread == ppt_detach || 
+				   (typePreProcessThread == ppt_detach_x ||
+				    typePreProcessThread == ppt_detach ||
 				    typePreProcessThread == ppt_sip ||
 				    typePreProcessThread == ppt_pp_find_call ||
 				    typePreProcessThread == ppt_pp_process_call) ?
 				    min(max(get_opt_pre_process_packets_next_thread(), 0), min(get_opt_pre_process_packets_next_thread_max(), MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) :
 				    0;
 	this->next_threads_count_mod = 0;
+	this->active_threads_for_batch = 0;
 	extern int opt_preprocess_packets_next_thread_sem_sync;
 	if(opt_preprocess_packets_next_thread_sem_sync == 2) {
 		sem_init(&this->sem_items_ready, 0, 0);
@@ -10476,6 +10477,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 				break;
 			}
 			next_thread_data->processing = 0;
+			__SYNC_DEC(this->active_threads_for_batch);
 			if(opt_preprocess_packets_next_thread_sem_sync == 2 && next_thread->sem_done_inited &&
 			   next_thread_data->signal_done) {
 				sem_post(&next_thread->sem_done);
@@ -10563,6 +10565,7 @@ void *PreProcessPacket::outThreadFunction() {
 					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 						this->items_flag[batch_index] = 0;
 					}
+					__SYNC_SET_TO(this->active_threads_for_batch, _next_threads_count);
 					for(int i = 0; i < _next_threads_count; i++) {
 						this->next_threads[i].next_data.null();
 						if(_process_only_in_next_threads) {
@@ -10599,8 +10602,8 @@ void *PreProcessPacket::outThreadFunction() {
 								}
 							}
 						} else {
-							while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
-							      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
+							unsigned int wait_counter = 0;
+							while(this->active_threads_for_batch > 0) {
 								if(completed < count &&
 								   this->items_flag[completed] != 0) {
 									#if SNIFFER_THREADS_EXT
@@ -10609,13 +10612,10 @@ void *PreProcessPacket::outThreadFunction() {
 									}
 									#endif
 									++completed;
+									wait_counter = 0;
 								} else {
 									extern unsigned int opt_sip_batch_sync_usleep;
-									if(opt_sip_batch_sync_usleep) {
-										USLEEP(opt_sip_batch_sync_usleep);
-									} else {
-										__ASM_PAUSE;
-									}
+									BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
 								}
 							}
 						}
@@ -10634,13 +10634,10 @@ void *PreProcessPacket::outThreadFunction() {
 							}
 						} else {
 							for(int i = 0; i < _next_threads_count; i++) {
+								unsigned int wait_counter = 0;
 								while(this->next_threads[i].next_data.processing) {
 									extern unsigned int opt_sip_batch_sync_usleep;
-									if(opt_sip_batch_sync_usleep) {
-										USLEEP(opt_sip_batch_sync_usleep);
-									} else {
-										__ASM_PAUSE;
-									}
+									BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
 								}
 							}
 						}
@@ -10698,6 +10695,7 @@ void *PreProcessPacket::outThreadFunction() {
 					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 						this->items_flag[batch_index] = 0;
 					}
+					__SYNC_SET_TO(this->active_threads_for_batch, _next_threads_count);
 					for(int i = 0; i < _next_threads_count; i++) {
 						this->next_threads[i].next_data.null();
 						if(_process_only_in_next_threads) {
@@ -10747,8 +10745,8 @@ void *PreProcessPacket::outThreadFunction() {
 								}
 							}
 						} else {
-							while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
-							      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
+							unsigned int wait_counter = 0;
+							while(this->active_threads_for_batch > 0) {
 								if(completed < count &&
 								   this->items_flag[completed] != 0) {
 									#if SNIFFER_THREADS_EXT
@@ -10769,13 +10767,10 @@ void *PreProcessPacket::outThreadFunction() {
 										}
 									}
 									++completed;
+									wait_counter = 0;
 								} else {
 									extern unsigned int opt_sip_batch_sync_usleep;
-									if(opt_sip_batch_sync_usleep) {
-										USLEEP(opt_sip_batch_sync_usleep);
-									} else {
-										__ASM_PAUSE;
-									}
+									BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
 								}
 							}
 						}
@@ -10794,13 +10789,10 @@ void *PreProcessPacket::outThreadFunction() {
 							}
 						} else {
 							for(int i = 0; i < _next_threads_count; i++) {
+								unsigned int wait_counter = 0;
 								while(this->next_threads[i].next_data.processing) {
 									extern unsigned int opt_sip_batch_sync_usleep;
-									if(opt_sip_batch_sync_usleep) {
-										USLEEP(opt_sip_batch_sync_usleep);
-									} else {
-										__ASM_PAUSE;
-									}
+									BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
 								}
 							}
 						}
@@ -10966,6 +10958,7 @@ void *PreProcessPacket::outThreadFunction() {
 						thread_index %= port_modulo;
 						this->items_thread_index[batch_index] = thread_index;
 					}
+					__SYNC_SET_TO(this->active_threads_for_batch, _next_threads_count);
 					for(int i = 0; i < _next_threads_count; i++) {
 						this->next_threads[i].next_data.null();
 						if(_process_only_in_next_threads) {
@@ -11006,8 +10999,8 @@ void *PreProcessPacket::outThreadFunction() {
 							}
 						}
 					} else {
-						while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
-						      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
+						unsigned int wait_counter = 0;
+						while(this->active_threads_for_batch > 0) {
 							if(completed < count &&
 							   this->items_flag[completed] != 0) {
 								#if SNIFFER_THREADS_EXT
@@ -11017,13 +11010,10 @@ void *PreProcessPacket::outThreadFunction() {
 								#endif
 								processNextAction(batch->batch[completed]);
 								++completed;
+								wait_counter = 0;
 							} else {
 								extern unsigned int opt_sip_batch_sync_usleep;
-								if(opt_sip_batch_sync_usleep) {
-									USLEEP(opt_sip_batch_sync_usleep);
-								} else {
-									__ASM_PAUSE;
-								}
+								BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
 							}
 						}
 					}
@@ -11049,13 +11039,10 @@ void *PreProcessPacket::outThreadFunction() {
 							}
 						} else {
 							for(int i = 0; i < _next_threads_count; i++) {
+								unsigned int wait_counter = 0;
 								while(this->next_threads[i].next_data.processing) {
 									extern unsigned int opt_sip_batch_sync_usleep;
-									if(opt_sip_batch_sync_usleep) {
-										USLEEP(opt_sip_batch_sync_usleep);
-									} else {
-										__ASM_PAUSE;
-									}
+									BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
 								}
 							}
 						}
@@ -11138,6 +11125,7 @@ void *PreProcessPacket::outThreadFunction() {
 							calltable->lock_calls_listMAP();
 							_lock_calls_listMAP = true;
 						}
+						__SYNC_SET_TO(this->active_threads_for_batch, _next_threads_count);
 						for(int i = 0; i < _next_threads_count; i++) {
 							this->next_threads[i].next_data.null(true);
 							if(_process_only_in_next_threads) {
@@ -11180,26 +11168,24 @@ void *PreProcessPacket::outThreadFunction() {
 									}
 								}
 							} else {
-								while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
-								      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
+								unsigned int wait_counter = 0;
+								while(this->active_threads_for_batch > 0) {
 									if(this->next_threads_completed == _next_threads_count &&
 									   _lock_calls_listMAP) {
 										calltable->unlock_calls_listMAP();
 										_lock_calls_listMAP = false;
 									}
-									packet_s_process *packetS = batch->batch[completed];
 									if(completed < count &&
-									   this->items_flag[completed] != 0 &&
-									   (packetS->call || packetS->call_created)) {
-										++completed;
-									} else {
-										extern unsigned int opt_sip_batch_sync_usleep;
-										if(opt_sip_batch_sync_usleep) {
-											USLEEP(opt_sip_batch_sync_usleep);
-										} else {
-											__ASM_PAUSE;
+									   this->items_flag[completed] != 0) {
+										packet_s_process *packetS = batch->batch[completed];
+										if(packetS->call || packetS->call_created) {
+											++completed;
+											wait_counter = 0;
+											continue;
 										}
 									}
+									extern unsigned int opt_sip_batch_sync_usleep;
+									BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
 								}
 							}
 						} else {
@@ -11230,13 +11216,10 @@ void *PreProcessPacket::outThreadFunction() {
 								}
 							} else {
 								for(int i = 0; i < _next_threads_count; i++) {
+									unsigned int wait_counter = 0;
 									while(this->next_threads[i].next_data.processing) {
 										extern unsigned int opt_sip_batch_sync_usleep;
-										if(opt_sip_batch_sync_usleep) {
-											USLEEP(opt_sip_batch_sync_usleep);
-										} else {
-											__ASM_PAUSE;
-										}
+										BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
 									}
 								}
 							}
@@ -11270,6 +11253,7 @@ void *PreProcessPacket::outThreadFunction() {
 							this->_process_FIND_CALL_push(batch->batch[batch_index]);
 						}
 					} else {
+						__SYNC_SET_TO(this->active_threads_for_batch, _next_threads_count);
 						for(int i = 0; i < _next_threads_count; i++) {
 							this->next_threads[i].next_data.null();
 							if(_process_only_in_next_threads) {
@@ -11301,21 +11285,19 @@ void *PreProcessPacket::outThreadFunction() {
 									}
 								}
 							} else {
-								while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
-								      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
-									packet_s_process *packetS = batch->batch[completed];
+								unsigned int wait_counter = 0;
+								while(this->active_threads_for_batch > 0) {
 									if(completed < count &&
-									   this->items_flag[completed] != 0 &&
-									   (packetS->call || packetS->call_created)) {
-										++completed;
-									} else {
-										extern unsigned int opt_sip_batch_sync_usleep;
-										if(opt_sip_batch_sync_usleep) {
-											USLEEP(opt_sip_batch_sync_usleep);
-										} else {
-											__ASM_PAUSE;
+									   this->items_flag[completed] != 0) {
+										packet_s_process *packetS = batch->batch[completed];
+										if(packetS->call || packetS->call_created) {
+											++completed;
+											wait_counter = 0;
+											continue;
 										}
 									}
+									extern unsigned int opt_sip_batch_sync_usleep;
+									BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
 								}
 							}
 						} else {
@@ -11335,13 +11317,10 @@ void *PreProcessPacket::outThreadFunction() {
 								}
 							} else {
 								for(int i = 0; i < _next_threads_count; i++) {
+									unsigned int wait_counter = 0;
 									while(this->next_threads[i].next_data.processing) {
 										extern unsigned int opt_sip_batch_sync_usleep;
-										if(opt_sip_batch_sync_usleep) {
-											USLEEP(opt_sip_batch_sync_usleep);
-										} else {
-											__ASM_PAUSE;
-										}
+										BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
 									}
 								}
 							}
@@ -11402,7 +11381,7 @@ void *PreProcessPacket::outThreadFunction() {
 				__SYNC_LOCK(this->_sync_count);
 				unsigned count = batch->count;
 				__SYNC_UNLOCK(this->_sync_count);
-				u_int32_t last_time_s = batch->batch[count - 1]->getTime_s();
+				u_int32_t last_time_s = count > 0 ? batch->batch[count - 1]->getTime_s() : 0;
 				nat_aliases_default.lock();
 				if(this->next_threads[0].thread_handle) {
 					unsigned completed = 0;
@@ -11419,6 +11398,7 @@ void *PreProcessPacket::outThreadFunction() {
 							this->items_thread_index[batch_index] = 0;
 						}
 					}
+					__SYNC_SET_TO(this->active_threads_for_batch, _next_threads_count);
 					for(int i = 0; i < _next_threads_count; i++) {
 						this->next_threads[i].next_data.null();
 						if(_process_only_in_next_threads) {
@@ -11457,8 +11437,8 @@ void *PreProcessPacket::outThreadFunction() {
 								}
 							}
 						} else {
-							while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
-							      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
+							unsigned int wait_counter = 0;
+							while(this->active_threads_for_batch > 0) {
 								if(completed < count &&
 								   this->items_flag[completed] != 0) {
 									#if SNIFFER_THREADS_EXT
@@ -11467,13 +11447,10 @@ void *PreProcessPacket::outThreadFunction() {
 									}
 									#endif
 									++completed;
+									wait_counter = 0;
 								} else {
 									extern unsigned int opt_sip_batch_sync_usleep;
-									if(opt_sip_batch_sync_usleep) {
-										USLEEP(opt_sip_batch_sync_usleep);
-									} else {
-										__ASM_PAUSE;
-									}
+									BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
 								}
 							}
 						}
@@ -11507,13 +11484,10 @@ void *PreProcessPacket::outThreadFunction() {
 							}
 						} else {
 							for(int i = 0; i < _next_threads_count; i++) {
+								unsigned int wait_counter = 0;
 								while(this->next_threads[i].next_data.processing) {
 									extern unsigned int opt_sip_batch_sync_usleep;
-									if(opt_sip_batch_sync_usleep) {
-										USLEEP(opt_sip_batch_sync_usleep);
-									} else {
-										__ASM_PAUSE;
-									}
+									BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
 								}
 							}
 						}
@@ -11729,8 +11703,12 @@ void PreProcessPacket::flushDownstream() {
 	case ppt_pp_rtp:
 		if(rtp_delay_queue__use) {
 			if(rtp_delay_queue_push_item) {
-				rtp_delay_queue.push(rtp_delay_queue_push_item);
-				rtp_delay_queue_last_time = rtp_delay_queue_push_item->batch[rtp_delay_queue_push_item->count - 1]->getTimeUS();
+				if(rtp_delay_queue_push_item->count > 0) {
+					rtp_delay_queue.push(rtp_delay_queue_push_item);
+					rtp_delay_queue_last_time = rtp_delay_queue_push_item->batch[rtp_delay_queue_push_item->count - 1]->getTimeUS();
+				} else {
+					delete rtp_delay_queue_push_item;
+				}
 				rtp_delay_queue_push_item = NULL;
 			}
 			_drain_expired_from_internal_rtp_delay_queue();
@@ -12463,6 +12441,9 @@ bool PreProcessPacket::_is_rtp_delay_queue_full() {
 		return(false);
 	}
 	batch_packet_s_time *front = rtp_delay_queue.front();
+	if(!front->count) {
+		return(false);
+	}
 	return(rtp_delay_queue_last_time >
 	       front->batch[front->count - 1]->getTimeUS() + (u_int64_t)rtp_delay_queue__max_length_ms * 1500);
 }
@@ -13192,6 +13173,7 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 	}
 	this->process_rtp_packets_hash_next_threads = max(opt_process_rtp_packets_hash_next_thread, 0);
 	this->process_rtp_packets_hash_next_threads_mod = 0;
+	this->active_threads_for_batch = 0;
 	if(type == hash && opt_process_rtp_packets_hash_next_thread_sem_sync == 2) {
 		sem_init(&this->sem_items_ready, 0, 0);
 	}
@@ -13437,6 +13419,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 				}
 			}
 			hash_thread_data->processing = 0;
+			__SYNC_DEC(this->active_threads_for_batch);
 			if(opt_process_rtp_packets_hash_next_thread_sem_sync == 2 && hash_thread->sem_done_inited &&
 			   hash_thread_data->signal_done) {
 				sem_post(&hash_thread->sem_done);
@@ -13479,6 +13462,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 					}
 				}
 			}
+			__SYNC_SET_TO(this->active_threads_for_batch, _process_rtp_packets_hash_next_threads);
 			for(int i = 0; i < _process_rtp_packets_hash_next_threads; i++) {
 				this->hash_next_threads[i].hash_data.null();
 				if(_find_hash_only_in_next_threads) {
@@ -13522,8 +13506,8 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 						}
 					}
 				} else {
-					while(this->hash_next_threads[0].hash_data.processing || this->hash_next_threads[1].hash_data.processing ||
-					      (_process_rtp_packets_hash_next_threads > 2 && this->isNextThreadsGt2Processing(_process_rtp_packets_hash_next_threads))) {
+					unsigned int wait_counter = 0;
+					while(this->active_threads_for_batch > 0) {
 						if(batch_index_distribute < count &&
 						   this->hash_find_flag[batch_index_distribute] != 0) {
 							packet_s_process_0 *packetS = batch->batch[batch_index_distribute];
@@ -13537,13 +13521,10 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 								this->rtp_packet_distr(packetS, _process_rtp_packets_distribute_threads_use);
 							}
 							++batch_index_distribute;
+							wait_counter = 0;
 						} else {
 							extern unsigned int opt_rtp_batch_usleep;
-							if(opt_rtp_batch_usleep) {
-								USLEEP(opt_rtp_batch_usleep);
-							} else {
-								__ASM_PAUSE;
-							}
+							BATCH_SYNC_WAIT(opt_rtp_batch_usleep, &wait_counter);
 						}
 					}
 				}
@@ -13585,13 +13566,10 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 					}
 				} else {
 					for(int i = 0; i < _process_rtp_packets_hash_next_threads; i++) {
+						unsigned int wait_counter = 0;
 						while(this->hash_next_threads[i].hash_data.processing) {
 							extern unsigned int opt_rtp_batch_usleep;
-							if(opt_rtp_batch_usleep) {
-								USLEEP(opt_rtp_batch_usleep);
-							} else {
-								__ASM_PAUSE;
-							}
+							BATCH_SYNC_WAIT(opt_rtp_batch_usleep, &wait_counter);
 						}
 					}
 				}

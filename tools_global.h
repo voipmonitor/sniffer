@@ -255,12 +255,11 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 	extern bool opt_usleep_progressive;
 	extern double opt_usleep_progressive_index;
 	extern bool opt_usleep_mod_enable;
-	#if defined(__x86_64__) || defined(__i386__)
 	if(!sem && opt_usleep_mod_enable && useconds <= 100 && counter != (unsigned int)-1) {
 		extern unsigned opt_usleep_mod_pause_spin_limit;
 		extern unsigned opt_usleep_mod_sched_yield_spin_limit;
 		if(counter < opt_usleep_mod_pause_spin_limit) {
-			__asm__ volatile ("pause");
+			__ASM_PAUSE;
 			return(0);
 		} else if(counter < opt_usleep_mod_pause_spin_limit + opt_usleep_mod_sched_yield_spin_limit) {
 			sched_yield();
@@ -269,7 +268,6 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 			counter -= opt_usleep_mod_pause_spin_limit + opt_usleep_mod_sched_yield_spin_limit;
 		}
 	}
-	#endif
 	unsigned int rslt_useconds = useconds;
 	extern double last_traffic;
 	if((opt_usleep_progressive || last_traffic < 100) && useconds < 5000 && counter != (unsigned int)-1) {
@@ -313,15 +311,16 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 			rslt_useconds = useconds_min;
 		}
 	}
-	u_int64_t start_us = getTimeUS();
+	unsigned int real_useconds = rslt_useconds;
 	if(sem) {
 		if(sem_timedwait_us(sem, rslt_useconds) == 0 && !sem_consume) {
 			sem_post(sem);
 		}
 	} else {
+		u_int64_t start_us = getTimeUS();
 		usleep(rslt_useconds);
+		real_useconds = (unsigned int)(getTimeUS() - start_us);
 	}
-	unsigned int real_useconds = (unsigned int)(getTimeUS() - start_us);
 	#if SNIFFER_THREADS_EXT
 	extern sVerbose sverb;
 	if(!sem && sverb.sniffer_threads_ext) {
@@ -331,6 +330,17 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 	#endif
 	return(real_useconds);
 }
+
+inline void batch_sync_wait(unsigned int timeout_us, unsigned int *counter, const char *file, int line) {
+	extern unsigned opt_batch_sync_wait_pause_spin_limit;
+	if(*counter < opt_batch_sync_wait_pause_spin_limit || timeout_us == 0) {
+		__ASM_PAUSE;
+	} else {
+		usleep(timeout_us, (unsigned int)-1, file, line);
+	}
+	++(*counter);
+}
+#define BATCH_SYNC_WAIT(us, c) batch_sync_wait(us, c, __FILE__, __LINE__);
 #endif
 
 
