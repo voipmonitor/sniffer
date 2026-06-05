@@ -485,9 +485,9 @@ public:
 	struct batch_packet_s_time {
 		inline batch_packet_s_time(unsigned max_count) {
 			batch = new FILE_LINE(0) packet_s_process*[max_count];
-			packet_batch_time_ms = new FILE_LINE(0) u_int64_t[max_count];
 			count = 0;
 			count_processed = 0;
+			batch_time_ms = 0;
 			this->max_count = max_count;
 		}
 		inline ~batch_packet_s_time() {
@@ -497,15 +497,13 @@ public:
 				delete batch[i];
 			}
 			delete [] batch;
-			delete [] packet_batch_time_ms;
 		}
 		inline void push(packet_s_process *packet) {
 			batch[count] = packet;
-			packet_batch_time_ms[count] = getTimeMS_rdtsc();
 			++count;
 		}
 		packet_s_process **batch;
-		u_int64_t *packet_batch_time_ms;
+		u_int64_t batch_time_ms;
 		volatile unsigned count;
 		volatile unsigned count_processed;
 		unsigned max_count;
@@ -1202,7 +1200,7 @@ public:
 						this->process_DIAMETER(_packetS);
 						break;
 					case ppt_pp_rtp:
-						this->process_RTP(_packetS);
+						this->process_RTP(_packetS, i == 0);
 						break;
 					case ppt_pp_other:
 						this->process_OTHER(_packetS);
@@ -1242,7 +1240,7 @@ public:
 				this->process_DIAMETER(packetS);
 				break;
 			case ppt_pp_rtp:
-				this->process_RTP(packetS);
+				this->process_RTP(packetS, true);
 				break;
 			case ppt_pp_other:
 				this->process_OTHER(packetS);
@@ -1912,7 +1910,7 @@ private:
 	void process_REGISTER(packet_s_process *packetS);
 	void process_SIP_OTHER(packet_s_process *packetS);
 	void process_DIAMETER(packet_s_process *packetS);
-	void process_RTP(packet_s_process_0 *packetS);
+	void process_RTP(packet_s_process_0 *packetS, bool maintain_delay_queue = false);
 	inline void _process_RTP(packet_s_process_0 *packetS);
 	inline void _push_to_internal_rtp_delay_queue(packet_s_process_0 *packetS);
 	inline void _drain_expired_from_internal_rtp_delay_queue();
