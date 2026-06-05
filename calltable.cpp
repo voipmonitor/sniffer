@@ -7254,10 +7254,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		vmPort ipv4_port[2], ipv6_port[2];
 		bool onlyConfirmed = opt_separate_storage_ipv6_ipv4_address == 2 || opt_separate_storage_ipv6_ipv4_address == 4;
 		bool onlyFirst = opt_separate_storage_ipv6_ipv4_address == 3 || opt_separate_storage_ipv6_ipv4_address == 4;
-		ipv4[0] = getSipcalleripFromInviteList(c_branch, &ipv4_port[0], NULL, NULL, onlyConfirmed, onlyFirst, 4);
-		ipv4[1] = getSipcalledipFromInviteList(c_branch, &ipv4_port[1], NULL, NULL, NULL, onlyConfirmed, onlyFirst, 4);
-		ipv6[0] = getSipcalleripFromInviteList(c_branch, &ipv6_port[0], NULL, NULL, onlyConfirmed, onlyFirst, 6);
-		ipv6[1] = getSipcalledipFromInviteList(c_branch, &ipv6_port[1], NULL, NULL, NULL, onlyConfirmed, onlyFirst, 6);
+		ipv4[0] = getSipcalleripFromInviteList(c_branch, &ipv4_port[0], NULL, NULL, onlyConfirmed, false, onlyFirst, 4);
+		ipv4[1] = getSipcalledipFromInviteList(c_branch, &ipv4_port[1], NULL, NULL, NULL, onlyConfirmed, false, onlyFirst, 4);
+		ipv6[0] = getSipcalleripFromInviteList(c_branch, &ipv6_port[0], NULL, NULL, onlyConfirmed, false, onlyFirst, 6);
+		ipv6[1] = getSipcalledipFromInviteList(c_branch, &ipv6_port[1], NULL, NULL, NULL, onlyConfirmed, false, onlyFirst, 6);
 		if(ipv4[0].isSet()) {
 			cdr.add(ipv4[0], "sipcallerip_v4", false, sqlDbSaveCall, sql_cdr_table);
 			cdr.add(ipv4_port[0].getPort(), "sipcallerport_v4");
@@ -9536,10 +9536,10 @@ void Call::prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch
 		vmPort ipv4_port[2], ipv6_port[2];
 		bool onlyConfirmed = opt_separate_storage_ipv6_ipv4_address == 2 || opt_separate_storage_ipv6_ipv4_address == 4;
 		bool onlyFirst = opt_separate_storage_ipv6_ipv4_address == 3 || opt_separate_storage_ipv6_ipv4_address == 4;
-		ipv4[0] = getSipcalleripFromInviteList(n_branch, &ipv4_port[0], NULL, NULL, onlyConfirmed, onlyFirst, 4);
-		ipv4[1] = getSipcalledipFromInviteList(n_branch, &ipv4_port[1], NULL, NULL, NULL, onlyConfirmed, onlyFirst, 4);
-		ipv6[0] = getSipcalleripFromInviteList(n_branch, &ipv6_port[0], NULL, NULL, onlyConfirmed, onlyFirst, 6);
-		ipv6[1] = getSipcalledipFromInviteList(n_branch, &ipv6_port[1], NULL, NULL, NULL, onlyConfirmed, onlyFirst, 6);
+		ipv4[0] = getSipcalleripFromInviteList(n_branch, &ipv4_port[0], NULL, NULL, onlyConfirmed, false, onlyFirst, 4);
+		ipv4[1] = getSipcalledipFromInviteList(n_branch, &ipv4_port[1], NULL, NULL, NULL, onlyConfirmed, false, onlyFirst, 4);
+		ipv6[0] = getSipcalleripFromInviteList(n_branch, &ipv6_port[0], NULL, NULL, onlyConfirmed, false, onlyFirst, 6);
+		ipv6[1] = getSipcalledipFromInviteList(n_branch, &ipv6_port[1], NULL, NULL, NULL, onlyConfirmed, false, onlyFirst, 6);
 		if(ipv4[0].isSet()) {
 			next_branch_row.add(ipv4[0], "sipcallerip_v4", false, sqlDbSaveCall, table.c_str());
 			next_branch_row.add(ipv4_port[0].getPort(), "sipcallerport_v4");
@@ -11001,7 +11001,8 @@ void Call::disableListeningBuffers() {
 
 vmIP Call::getSipcalleripFromInviteList(CallBranch *c_branch,
 					vmPort *sport, vmIP *saddr_encaps, u_int8_t *saddr_encaps_protocol, 
-					bool onlyConfirmed, bool /*onlyFirst*/, u_int8_t only_ipv) {
+					bool onlyConfirmed, bool skipRedirected,
+					bool /*onlyFirst*/, u_int8_t only_ipv) {
 	if(sport) {
 		sport->clear();
 	}
@@ -11011,7 +11012,7 @@ vmIP Call::getSipcalleripFromInviteList(CallBranch *c_branch,
 	if(saddr_encaps_protocol) {
 		*saddr_encaps_protocol = 0xFF;
 	}
-	if(!(c_branch->invite_sdaddr_bad_order || onlyConfirmed || only_ipv)) {
+	if(!(c_branch->invite_sdaddr_bad_order || onlyConfirmed || skipRedirected || only_ipv)) {
 		return(vmIP(0));
 	}
 	c_branch->invite_list_lock();
@@ -11039,6 +11040,7 @@ vmIP Call::getSipcalleripFromInviteList(CallBranch *c_branch,
 		}
 		vector<sInviteSD_Addr>::iterator iter = c_branch->invite_sdaddr.begin() + c_branch->invite_sdaddr_order[_index].order;
 		if((!onlyConfirmed || iter->confirmed) &&
+		   (!skipRedirected || !iter->redirect || iter->confirmed) &&
 		   (!only_ipv || iter->saddr.v() == only_ipv)) { 
 			ip = iter->saddr;
 			if(sport) {
@@ -11059,7 +11061,8 @@ vmIP Call::getSipcalleripFromInviteList(CallBranch *c_branch,
 
 vmIP Call::getSipcalledipFromInviteList(CallBranch *c_branch,
 					vmPort *dport, vmIP *daddr_encaps, u_int8_t *daddr_encaps_protocol, list<vmIPport> *proxies, 
-					bool onlyConfirmed, bool onlyFirst, u_int8_t only_ipv) {
+					bool onlyConfirmed, bool skipRedirected,
+					bool onlyFirst, u_int8_t only_ipv) {
 	if(dport) {
 		dport->clear();
 	}
@@ -11072,7 +11075,7 @@ vmIP Call::getSipcalledipFromInviteList(CallBranch *c_branch,
 	if(proxies) {
 		proxies->clear();
 	}
-	if(!(c_branch->invite_sdaddr_bad_order || onlyConfirmed || only_ipv)) {
+	if(!(c_branch->invite_sdaddr_bad_order || onlyConfirmed || skipRedirected || only_ipv)) {
 		return(vmIP(0));
 	}
 	c_branch->invite_list_lock();
@@ -11104,6 +11107,7 @@ vmIP Call::getSipcalledipFromInviteList(CallBranch *c_branch,
 		}
 		vector<sInviteSD_Addr>::iterator iter = c_branch->invite_sdaddr.begin() + c_branch->invite_sdaddr_order[_index].order;
 		if((!onlyConfirmed || iter->confirmed) &&
+		   (!skipRedirected || !iter->redirect || iter->confirmed) &&
 		   (!only_ipv || iter->daddr.v() == only_ipv)) { 
 			if(!_saddr.isSet() && !_daddr.isSet()) {
 				_saddr = iter->saddr;
@@ -11160,45 +11164,12 @@ void Call::prepareSipIpForSave(CallBranch *c_branch, set<vmIP> *proxies_undup) {
 	bool set_sipcalledip = false;
 	bool set_proxies = false;
 	 
-	if(c_branch->invite_sdaddr_bad_order) {
+	if(!set_sipcallerip && (!isAllInviteConfirmed(c_branch) || isAnyInviteRedirected(c_branch) || c_branch->invite_sdaddr_bad_order)) {
 		vmIP sipcallerip;
 		vmPort sipcallerport;
 		vmIP sipcallerip_encaps;
 		u_int8_t sipcallerip_encaps_prot;
-		sipcallerip = getSipcalleripFromInviteList(c_branch, &sipcallerport, &sipcallerip_encaps, &sipcallerip_encaps_prot, false);
-		if(sipcallerip.isSet()) {
-			set_sipcallerip = true;
-			c_branch->sipcallerip_rslt = sipcallerip;
-			c_branch->sipcallerport_rslt = sipcallerport;
-			c_branch->sipcallerip_encaps_rslt = sipcallerip_encaps;
-			c_branch->sipcallerip_encaps_prot_rslt = sipcallerip_encaps_prot;
-		}
-		vmIP sipcalledip;
-		vmPort sipcalledport;
-		vmIP sipcalledip_encaps;
-		u_int8_t sipcalledip_encaps_prot;
-		list<vmIPport> proxies;
-		for(int i = 0; i < 2; i++) {
-			sipcalledip = getSipcalledipFromInviteList(c_branch, &sipcalledport, &sipcalledip_encaps, &sipcalledip_encaps_prot, &proxies, i == 0);
-			if(sipcalledip.isSet()) {
-				set_sipcalledip = true;
-				c_branch->sipcalledip_rslt = sipcalledip;
-				c_branch->sipcalledport_rslt = sipcalledport;
-				c_branch->sipcalledip_encaps_rslt = sipcalledip_encaps;
-				c_branch->sipcalledip_encaps_prot_rslt = sipcalledip_encaps_prot;
-				vmIPport proxy_exclude(c_branch->sipcalledip_rslt, c_branch->sipcalledport_rslt);
-				c_branch->proxies_undup(proxies_undup, &proxies, &proxy_exclude);
-				set_proxies = true;
-				break;
-			}
-		}
-	}
-	if(!set_sipcallerip && !isAllInviteConfirmed(c_branch)) {
-		vmIP sipcallerip;
-		vmPort sipcallerport;
-		vmIP sipcallerip_encaps;
-		u_int8_t sipcallerip_encaps_prot;
-		sipcallerip = getSipcalleripFromInviteList(c_branch, &sipcallerport, &sipcallerip_encaps, &sipcallerip_encaps_prot, false);
+		sipcallerip = getSipcalleripFromInviteList(c_branch, &sipcallerport, &sipcallerip_encaps, &sipcallerip_encaps_prot, false, true);
 		if(sipcallerip.isSet()) {
 			set_sipcallerip = true;
 			c_branch->sipcallerip_rslt = sipcallerip;
@@ -11213,22 +11184,25 @@ void Call::prepareSipIpForSave(CallBranch *c_branch, set<vmIP> *proxies_undup) {
 		c_branch->sipcallerip_encaps_prot_rslt = getSipcallerip_encaps_prot(c_branch);
 		c_branch->sipcallerport_rslt = getSipcallerport(c_branch);
 	}
-	if(!set_sipcalledip && !isAllInviteConfirmed(c_branch)) {
-		vmIP sipcalledip_confirmed;
-		vmIP sipcalledip_encaps_confirmed;
-		u_int8_t sipcalledip_encaps_prot_confirmed;
-		vmPort sipcalledport_confirmed;
-		list<vmIPport> proxies;
-		sipcalledip_confirmed = getSipcalledipFromInviteList(c_branch, &sipcalledport_confirmed, &sipcalledip_encaps_confirmed, &sipcalledip_encaps_prot_confirmed, &proxies, true);
-		if(sipcalledip_confirmed.isSet()) {
-			set_sipcalledip = true;
-			c_branch->sipcalledip_rslt = sipcalledip_confirmed;
-			c_branch->sipcalledip_encaps_rslt = sipcalledip_encaps_confirmed.isSet() ? sipcalledip_encaps_confirmed : getSipcalledip_encaps(c_branch);
-			c_branch->sipcalledip_encaps_prot_rslt = sipcalledip_encaps_confirmed.isSet() ? sipcalledip_encaps_prot_confirmed : getSipcalledip_encaps_prot(c_branch);
-			c_branch->sipcalledport_rslt = sipcalledport_confirmed.isSet() ? sipcalledport_confirmed : getSipcalledport(c_branch);
-			vmIPport proxy_exclude(c_branch->sipcalledip_rslt, c_branch->sipcalledport_rslt);
-			c_branch->proxies_undup(proxies_undup, &proxies, &proxy_exclude);
-			set_proxies = true;
+	if(!set_sipcalledip && (!isAllInviteConfirmed(c_branch) || isAnyInviteRedirected(c_branch) || c_branch->invite_sdaddr_bad_order)) {
+		for(int i = 0; i < 2; i++) {
+			vmIP sipcalledip_confirmed;
+			vmIP sipcalledip_encaps_confirmed;
+			u_int8_t sipcalledip_encaps_prot_confirmed;
+			vmPort sipcalledport_confirmed;
+			list<vmIPport> proxies;
+			sipcalledip_confirmed = getSipcalledipFromInviteList(c_branch, &sipcalledport_confirmed, &sipcalledip_encaps_confirmed, &sipcalledip_encaps_prot_confirmed, &proxies, i == 0, true);
+			if(sipcalledip_confirmed.isSet()) {
+				set_sipcalledip = true;
+				c_branch->sipcalledip_rslt = sipcalledip_confirmed;
+				c_branch->sipcalledip_encaps_rslt = sipcalledip_encaps_confirmed.isSet() ? sipcalledip_encaps_confirmed : getSipcalledip_encaps(c_branch);
+				c_branch->sipcalledip_encaps_prot_rslt = sipcalledip_encaps_confirmed.isSet() ? sipcalledip_encaps_prot_confirmed : getSipcalledip_encaps_prot(c_branch);
+				c_branch->sipcalledport_rslt = sipcalledport_confirmed.isSet() ? sipcalledport_confirmed : getSipcalledport(c_branch);
+				vmIPport proxy_exclude(c_branch->sipcalledip_rslt, c_branch->sipcalledport_rslt);
+				c_branch->proxies_undup(proxies_undup, &proxies, &proxy_exclude);
+				set_proxies = true;
+				break;
+			}
 		}
 	}
 	if(!set_sipcalledip) {

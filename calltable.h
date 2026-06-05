@@ -500,6 +500,7 @@ public:
 	struct sInviteSD_Addr {
 		sInviteSD_Addr() {
 			confirmed = false;
+			redirect = false;
 			counter = 0;
 			counter_reverse = 0;
 		}
@@ -512,6 +513,7 @@ public:
 		vmPort sport;
 		vmPort dport;
 		bool confirmed;
+		bool redirect;
 		unsigned counter;
 		unsigned counter_reverse;
 		map<u_int32_t, u_int32_t> counter_by_cseq;
@@ -2467,11 +2469,35 @@ public:
 		}
 		return(c_branch->invite_sdaddr_all_confirmed);
 	}
-	
+	bool isAnyInviteConfirmed(CallBranch *c_branch) {
+		bool any_confirmed = false;
+		c_branch->invite_list_lock();
+		for(vector<sInviteSD_Addr>::iterator iter = c_branch->invite_sdaddr.begin(); iter != c_branch->invite_sdaddr.end(); iter++) {
+			if(iter->confirmed) {
+				any_confirmed = true;
+				break;
+			}
+		}
+		c_branch->invite_list_unlock();
+		return(any_confirmed);
+	}
+	bool isAnyInviteRedirected(CallBranch *c_branch) {
+		bool any_redirected = false;
+		c_branch->invite_list_lock();
+		for(vector<sInviteSD_Addr>::iterator iter = c_branch->invite_sdaddr.begin(); iter != c_branch->invite_sdaddr.end(); iter++) {
+			if(iter->redirect) {
+				any_redirected = true;
+				break;
+			}
+		}
+		c_branch->invite_list_unlock();
+		return(any_redirected);
+	}
+
 	vmIP getSipcalleripFromInviteList(CallBranch *c_branch, vmPort *sport = NULL, vmIP *saddr_encaps = NULL, u_int8_t *saddr_encaps_protocol = NULL, 
-					  bool onlyConfirmed = false, bool onlyFirst = false, u_int8_t only_ipv = 0);
+					  bool onlyConfirmed = false, bool skipRedirected = false, bool onlyFirst = false, u_int8_t only_ipv = 0);
 	vmIP getSipcalledipFromInviteList(CallBranch *c_branch, vmPort *dport = NULL, vmIP *daddr_encaps = NULL, u_int8_t *daddr_encaps_protocol = NULL, list<vmIPport> *proxies = NULL, 
-					  bool onlyConfirmed = false, bool onlyFirst = false, u_int8_t only_ipv = 0);
+					  bool onlyConfirmed = false, bool skipRedirected = false, bool onlyFirst = false, u_int8_t only_ipv = 0);
 	void prepareSipIpForSave(CallBranch *c_branch, set<vmIP> *proxies_undup);
 	
 	unsigned getMaxRetransmissionInvite(CallBranch *c_branch);

@@ -6034,6 +6034,13 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 					}
 					#endif
 				} else if(IS_SIP_RES3XX(packetS->sip_method)) {
+					c_branch->invite_list_lock();
+					map<vmIPportLink, unsigned>::iterator iter_index = c_branch->invite_sdaddr_map.find(vmIPportLink(packetS->daddr_(), packetS->dest_(), packetS->saddr_(), packetS->source_()));
+					if(iter_index != c_branch->invite_sdaddr_map.end() && iter_index->second < c_branch->invite_sdaddr.size()) {
+						vector<Call::sInviteSD_Addr>::iterator iter = c_branch->invite_sdaddr.begin() + iter_index->second;
+						iter->redirect = true;
+					}
+					c_branch->invite_list_unlock();
 					// remove all RTP  
 					call->removeFindTables(c_branch);
 					c_branch->ipport_n = 0;
