@@ -1692,6 +1692,10 @@ public:
 	}
 	inline bool is_fax_packet(struct packet_s_process_0 *packetS);
 	
+	inline bool isRtpPacketsInQueue() {
+		return(rtppacketsinqueue_in > rtppacketsinqueue_out);
+	}
+	
 	bool sighup;			//!< true if call is saving during sighup
 	
 	RTP *lastcallerrtp;		//!< last RTP stream from caller
@@ -1718,8 +1722,9 @@ public:
 	
 	sReg reg;
 	
-	volatile int rtppacketsinqueue;
-	
+	volatile u_int64_t rtppacketsinqueue_in __attribute__((aligned(64)));
+	volatile u_int64_t rtppacketsinqueue_out __attribute__((aligned(64)));
+
 	volatile int push_call_to_calls_queue;
 	volatile int push_register_to_registers_queue;
 	volatile int push_call_to_storing_cdr_queue;

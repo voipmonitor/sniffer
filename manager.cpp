@@ -3019,7 +3019,7 @@ int Mgmt_d_lc_all(Mgmt_params *params) {
 			       << setw(3) << right << c_branch->lastSIPresponseNum << "  "
 			       << call->fbasename << "  "
 			       << "hash_queue_counter: " << call->hash_queue_counter << ", "
-			       << "rtppacketsinqueue: " << call->rtppacketsinqueue << ", "
+			       << "rtppacketsinqueue: " << (int64_t)(call->rtppacketsinqueue_in - call->rtppacketsinqueue_out) << ", "
 			       << "useInListCalls: " << call->useInListCalls
 			       << endl;
 		}

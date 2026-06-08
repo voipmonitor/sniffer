@@ -819,7 +819,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	silencerecording = 0;
 	recordingpausedby182 = 0;
 	save_energylevels = false;
-	rtppacketsinqueue = 0;
+	rtppacketsinqueue_in = 0;
+	rtppacketsinqueue_out = 0;
 	
 	push_call_to_calls_queue = 0;
 	push_register_to_registers_queue = 0;
@@ -1207,7 +1208,7 @@ void Call::_addtocachequeue(string file) {
 
 void Call::setFlagForRemoveRTP() {
 	u_int64_t startTimeMS = getTimeMS_rdtsc();
-	while(rtppacketsinqueue > 0) {
+	while(isRtpPacketsInQueue()) {
 		if(!opt_t2_boost && rtp_threads) {
 			extern volatile int num_threads_active;
 			for(int i = 0; i < num_threads_active; i++) {
@@ -13649,8 +13650,8 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 			++call->attemptsClose;
 			if(!closeAll &&
 			   ((hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
-			    call->rtppacketsinqueue > 0 ||
-			    call->useInListCalls 
+			    call->isRtpPacketsInQueue() ||
+			    call->useInListCalls
 			    #if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
 			    || call->conference_active
 			    #endif
@@ -13947,8 +13948,8 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 				++call->attemptsClose;
 				if(!closeAll &&
 				   ((hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
-				    call->rtppacketsinqueue > 0 ||
-				    call->useInListCalls 
+				    call->isRtpPacketsInQueue() ||
+				    call->useInListCalls
 				    #if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
 				    || call->conference_active
 				    #endif
@@ -14134,7 +14135,7 @@ Calltable::cleanup_calls_separate_processing_rtp() {
 		if(closeCall) {
 			call->removeFindTables(NULL, true);
 			if((hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
-			   call->rtppacketsinqueue > 0) {
+			   call->isRtpPacketsInQueue()) {
 				closeCall = false;
 			}
 		}

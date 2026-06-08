@@ -3156,13 +3156,13 @@ inline void add_to_rtp_thread_queue(CallBranch *c_branch, packet_s_process_0 *pa
 			lastTimeSyslog = actTime;
 		}
 		if(preSyncRtp) {
-			__SYNC_DEC(c_branch->call->rtppacketsinqueue);
+			__SYNC_INC(c_branch->call->rtppacketsinqueue_out);
 		}
 		PACKET_S_PROCESS_DESTROY(&packetS);
 		return;
 	}
 	if(!preSyncRtp) {
-		__SYNC_INC(c_branch->call->rtppacketsinqueue);
+		__SYNC_INC(c_branch->call->rtppacketsinqueue_in);
 	}
 	rtp_read_thread *read_thread = &(rtp_threads[c_branch->call->thread_num]);
 	read_thread->push(c_branch, packetS, iscaller, find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_packet, threadIndex);
@@ -3225,7 +3225,7 @@ void *rtp_read_thread_func(void *arg) {
 				}
 				#endif
 				PACKET_S_PROCESS_PUSH_TO_STACK(&rtpp_pq->packet, 60 + read_thread->threadNum);
-				__SYNC_DEC(rtpp_pq->c_branch->call->rtppacketsinqueue);
+				__SYNC_INC(rtpp_pq->c_branch->call->rtppacketsinqueue_out);
 			}
 			#if RQUEUE_SAFE
 				__SYNC_NULL(batch->count);
@@ -7259,7 +7259,7 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 		}
 		if(!call_info->calls[call_info_index].use_sync) {
 			if(preSyncRtp) {
-				__SYNC_DEC(call_info->calls[call_info_index].c_branch->call->rtppacketsinqueue);
+				__SYNC_INC(call_info->calls[call_info_index].c_branch->call->rtppacketsinqueue_out);
 			}
 			if(packetS) {
 				packetS->blockstore_addflag(58 /*pb lock flag*/);
@@ -13833,7 +13833,7 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, unsigned *counters
 					packetS->call_info.calls[packetS->call_info.length].use_sync = false;
 					packetS->call_info.calls[packetS->call_info.length].multiple_calls = false;
 					packetS->call_info.calls[packetS->call_info.length].thread_num_rd = call->thread_num_rd;
-					__SYNC_INC(call->rtppacketsinqueue);
+					__SYNC_INC(call->rtppacketsinqueue_in);
 					__SYNC_INC(packetS->call_info.length);
 					if(packetS->call_info.length >= packet_s_process_calls_info::max_calls()) {
 						break;
