@@ -354,6 +354,9 @@ private:
 };
 
 
+#define PREFETCH_DETACH_X_DIST_STRUCT 8
+#define PREFETCH_DETACH_X_DIST_DATA 4
+
 class PreProcessPacket {
 public:
 	enum eTypePreProcessThread {
@@ -1642,6 +1645,25 @@ public:
 		       this->next_threads[next_thread_index].thread_id);
 	}
 private:
+	inline void prefetch_DETACH_X(pcap_queue_packet_data **in_batch, packet_s_plus_pointer **out_batch,
+				      unsigned batch_index, unsigned batch_index_end, unsigned batch_index_skip) {
+		#if PREFETCH_DETACH_X_DIST_STRUCT
+		unsigned i_struct = batch_index + PREFETCH_DETACH_X_DIST_STRUCT * batch_index_skip;
+		if(i_struct < batch_index_end) {
+			__builtin_prefetch(in_batch[i_struct], 0, 3);
+			__builtin_prefetch(out_batch[i_struct], 1, 3);
+		}
+		#endif
+		#if PREFETCH_DETACH_X_DIST_DATA
+		unsigned i_data = batch_index + PREFETCH_DETACH_X_DIST_DATA * batch_index_skip;
+		if(i_data < batch_index_end) {
+			pcap_queue_packet_data *pd = in_batch[i_data];
+			__builtin_prefetch(pd->hp.header, 0, 3);
+			__builtin_prefetch(pd->hp.packet + pd->header_ip_offset, 0, 3);
+			__builtin_prefetch(pd->hp.packet + pd->data_offset, 0, 3);
+		}
+		#endif
+	}
 	inline void process_DETACH_X_1(pcap_queue_packet_data *packet_data, packet_s_plus_pointer *packetS_detach) {
 		extern int opt_t2_boost;
 		extern char *sipportmatrix;

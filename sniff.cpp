@@ -10351,6 +10351,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 				for(unsigned batch_index = batch_index_start;
 				    batch_index < batch_index_end;
 				    batch_index += batch_index_skip) {
+					this->prefetch_DETACH_X(batch, qring_detach_active_push_item->batch, batch_index, batch_index_end, batch_index_skip);
 					this->process_DETACH_X_1(batch[batch_index], qring_detach_active_push_item->batch[batch_index]);
 					this->process_DETACH_X_2(qring_detach_active_push_item->batch[batch_index]);
 					this->items_flag[batch_index] = 1;
@@ -10627,9 +10628,11 @@ void *PreProcessPacket::outThreadFunction() {
 							}
 						}
 					} else {
+						unsigned batch_index_end = count / (_next_threads_count + 1);
 						for(unsigned batch_index = 0;
-						    batch_index < count / (_next_threads_count + 1);
+						    batch_index < batch_index_end;
 						    batch_index++) {
+							this->prefetch_DETACH_X(batch_detach_x->batch, qring_detach_active_push_item->batch, batch_index, batch_index_end, 1);
 							this->process_DETACH_X_1(batch_detach_x->batch[batch_index], qring_detach_active_push_item->batch[batch_index]);
 							this->process_DETACH_X_2(qring_detach_active_push_item->batch[batch_index]);
 						}
@@ -10658,6 +10661,7 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 				} else {
 					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+						this->prefetch_DETACH_X(batch_detach_x->batch, qring_detach_active_push_item->batch, batch_index, count, 1);
 						#if SNIFFER_THREADS_EXT
 						if(sverb.sniffer_threads_ext > 1 && thread_data) {
 							thread_data->inc_packets_out(tm_caplen[batch_index]);
