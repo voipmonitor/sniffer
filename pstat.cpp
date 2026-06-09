@@ -78,6 +78,77 @@ bool pstat_get_data(const int tid, pstat_data* result) {
 	return(true);
 }
 
+bool pstat_get_data_pid(const int pid, pstat_data* result, char *comm, unsigned comm_size) {
+	char stat_filepath[100];
+	snprintf(stat_filepath, sizeof(stat_filepath), "/proc/%u/stat", pid);
+	FILE *fpstat = fopen(stat_filepath, "r");
+	if(fpstat == NULL) {
+		#ifndef FREEBSD
+		if(!pstat_quietly_errors && errno != ENOENT) {
+			perror("pstat fopen error (/proc/[pid]/stat) ");
+		}
+		#endif
+		return(false);
+	}
+	char line[4096];
+	if(!fgets(line, sizeof(line), fpstat)) {
+		fclose(fpstat);
+		return(false);
+	}
+	fclose(fpstat);
+	char *comm_begin = strchr(line, '(');
+	char *comm_end = strrchr(line, ')');
+	if(!comm_begin || !comm_end || comm_end < comm_begin) {
+		return(false);
+	}
+	if(comm && comm_size) {
+		unsigned comm_length = comm_end - comm_begin - 1;
+		if(comm_length > comm_size - 1) {
+			comm_length = comm_size - 1;
+		}
+		memcpy(comm, comm_begin + 1, comm_length);
+		comm[comm_length] = 0;
+	}
+	memset(result, 0, sizeof(pstat_data));
+	long long int rss = 0;
+	if(sscanf(comm_end + 1,
+		  " %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %llu"
+		  "%llu %lld %lld %*d %*d %*d %*d %*u %llu %lld",
+			&result->utime_ticks, &result->stime_ticks,
+			&result->cutime_ticks, &result->cstime_ticks, &result->vsize,
+			&rss) < 2) {
+		return(false);
+	}
+	result->rss = rss * getpagesize();
+	return(true);
+}
+
+unsigned long long int pstat_get_total_cpu_time() {
+	FILE *fstat = fopen("/proc/stat", "r");
+	if(fstat == NULL) {
+		#ifndef FREEBSD
+		if(!pstat_quietly_errors && errno != ENOENT) {
+			perror("pstat fopen error (/proc/stat) ");
+		}
+		#endif
+		return(0);
+	}
+	unsigned long long int usertime, nicetime, systemtime, idletime;
+	unsigned long long int ioWait, irq, softIrq, steal, guest, guestnice;
+	if(fscanf(fstat,
+		  "cpu  %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu",
+			&usertime, &nicetime, &systemtime, &idletime,
+			&ioWait, &irq, &softIrq, &steal, &guest, &guestnice) == EOF) {
+		fclose(fstat);
+		return(0);
+	}
+	fclose(fstat);
+	unsigned long long int idlealltime = idletime + ioWait;
+	unsigned long long int systemalltime = systemtime + irq + softIrq;
+	unsigned long long int virtalltime = guest + guestnice;
+	return(usertime + nicetime + systemalltime + idlealltime + steal + virtalltime);
+}
+
 bool context_switches_get_data(const int tid, context_switches_data* result) {
 	char filepath[100]; 
 	snprintf(filepath, sizeof(filepath), "/proc/%u/task/%u/status", getpid(), tid);

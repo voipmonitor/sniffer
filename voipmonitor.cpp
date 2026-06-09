@@ -1481,6 +1481,10 @@ int opt_cpu_limit_new_thread_high = 80;
 int opt_cpu_limit_delete_thread = 5;
 int opt_cpu_limit_delete_t2sip_thread = 15;
 int opt_heap_limit_new_thread = 20;
+bool opt_threads_cpu_log = false;
+int opt_threads_cpu_log_min = 0;
+bool opt_other_processes_cpu_log = false;
+int opt_other_processes_cpu_log_min = 0;
 
 int opt_memory_purge_interval = 60;
 int opt_memory_purge_if_release_gt = 500;
@@ -5423,6 +5427,7 @@ int main_init_read() {
 		
 		uint64_t _counterLog = 0;
 		uint64_t _counterCpuCheck = 0;
+		cProcessMonitor processMonitor;
 		if(!sverb.pcap_stat_period) {
 			sverb.pcap_stat_period = verbosityE > 0 ? 1 : 10;
 		}
@@ -5447,11 +5452,17 @@ int main_init_read() {
 				if(sverb.memory_stat_log) {
 					printMemoryStat();
 				}
-				if(sverb.threads_cpu_log) {
+				if(sverb.threads_cpu_log || opt_threads_cpu_log) {
 					extern cThreadMonitor threadMonitor;
-					string log = threadMonitor.output(2, cThreadMonitor::_of_line);
+					string log = threadMonitor.output(2, cThreadMonitor::_of_line, opt_threads_cpu_log_min);
 					if(!log.empty()) {
 						syslog(LOG_NOTICE, "threads: %s", log.c_str());
+					}
+				}
+				if(sverb.other_processes_cpu_log || opt_other_processes_cpu_log) {
+					string log = processMonitor.output(cThreadMonitor::_of_line, opt_other_processes_cpu_log_min);
+					if(!log.empty()) {
+						syslog(LOG_NOTICE, "other processes: %s", log.c_str());
 					}
 				}
 				#if HAVE_LIBJEMALLOC
@@ -7501,6 +7512,10 @@ void cConfig::addConfigItems() {
 		addConfigItem(new FILE_LINE(0) cConfigItem_integer("heap_limit_new_thread", &opt_heap_limit_new_thread));
 		addConfigItem(new FILE_LINE(0) cConfigItem_integer("memory_purge_interval", &opt_memory_purge_interval));
 		addConfigItem(new FILE_LINE(0) cConfigItem_integer("memory_purge_if_release_gt", &opt_memory_purge_if_release_gt));
+		addConfigItem(new FILE_LINE(0) cConfigItem_yesno("threads_cpu_log", &opt_threads_cpu_log));
+		addConfigItem(new FILE_LINE(0) cConfigItem_integer("threads_cpu_log_min", &opt_threads_cpu_log_min));
+		addConfigItem(new FILE_LINE(0) cConfigItem_yesno("other_processes_cpu_log", &opt_other_processes_cpu_log));
+		addConfigItem(new FILE_LINE(0) cConfigItem_integer("other_processes_cpu_log_min", &opt_other_processes_cpu_log_min));
 	group("upgrade");
 		addConfigItem(new FILE_LINE(42349) cConfigItem_yesno("upgrade_try_http_if_https_fail", &opt_upgrade_try_http_if_https_fail));
 		addConfigItem(new FILE_LINE(42350) cConfigItem_string("curlproxy", opt_curlproxy, sizeof(opt_curlproxy)));
@@ -8537,6 +8552,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "disable_read_rtp")		sverb.disable_read_rtp = 1;
 	else if(verbParam == "thread_create")			sverb.thread_create = 1;
 	else if(verbParam == "threads_cpu_log")			sverb.threads_cpu_log = 1;
+	else if(verbParam == "other_processes_cpu_log")		sverb.other_processes_cpu_log = 1;
 	else if(verbParam == "timezones")			sverb.timezones = 1;
 	else if(verbParam == "tcpreplay")			sverb.tcpreplay = 1;
 	else if(verbParam == "abort_if_heap_full")		sverb.abort_if_heap_full = 1;

@@ -23,6 +23,8 @@ struct context_switches_data {
 
 
 bool pstat_get_data(const int tid, pstat_data* result);
+bool pstat_get_data_pid(const int pid, pstat_data* result, char *comm = NULL, unsigned comm_size = 0);
+unsigned long long int pstat_get_total_cpu_time();
 bool context_switches_get_data(const int tid, context_switches_data* result);
 void pstat_calc_cpu_usage_pct(const pstat_data* cur_usage,
 			      const pstat_data* last_usage,
