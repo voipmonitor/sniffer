@@ -4534,10 +4534,11 @@ private:
 		char description[100];
 		int tid;
 		double cpu_perc;
+		char state;
 		context_switches_data cs;
 		u_int64_t time_us;
-		bool operator < (const sDescrCpuPerc& other) const { 
-			return(this->cpu_perc > other.cpu_perc); 
+		bool operator < (const sDescrCpuPerc& other) const {
+			return(this->cpu_perc > other.cpu_perc);
 		}
 		#if SNIFFER_THREADS_EXT
 		u_int64_t usleep;
@@ -4616,6 +4617,7 @@ public:
 		int pid;
 		string comm;
 		double cpu_perc;
+		char state;
 		bool operator < (const sProcessCpuPerc& other) const {
 			return(this->cpu_perc > other.cpu_perc);
 		}
@@ -4624,6 +4626,8 @@ public:
 	string output(int outputFlags, int cpu_perc_min = 0);
 private:
 	map<int, sProcessStatData> processes;
+	cpu_times_data prev_cpu_times;
+	bool prev_cpu_times_valid;
 };
 
 class cCsv {

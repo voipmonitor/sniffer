@@ -225,6 +225,7 @@ inline void usleep(unsigned int useconds, unsigned int counter) {
 #define USLEEP_C_SEM(us, c, sem) usleep(us, c, __FILE__, __LINE__, sem);
 #define SEM_TIMEDWAIT_US(sem, us) sem_timedwait_us(sem, us)
 #define SEM_TIMEDWAIT_MS(sem, ms) sem_timedwait_us(sem, (unsigned int)((u_int64_t)(ms) * 1000ULL))
+#define BATCH_SYNC_WAIT(us, c) batch_sync_wait(us, c, __FILE__, __LINE__);
 
 inline int sem_timedwait_us(sem_t *sem, unsigned int timeout_us, unsigned int *actual_us_out = NULL) {
 	if(sem_trywait(sem) == 0) {
@@ -342,7 +343,6 @@ inline void batch_sync_wait(unsigned int timeout_us, unsigned int *counter, cons
 	}
 	++(*counter);
 }
-#define BATCH_SYNC_WAIT(us, c) batch_sync_wait(us, c, __FILE__, __LINE__);
 #endif
 
 

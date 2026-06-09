@@ -14,6 +14,7 @@ struct pstat_data {
     long long unsigned int vsize;	// virtual memory size in bytes
     long long unsigned int rss;		// resident set size in bytes
     long long unsigned int cpu_total_time;
+    char state;				// process state (R/S/D/...)
 };
 
 struct context_switches_data {
@@ -21,10 +22,19 @@ struct context_switches_data {
     long long unsigned int non_voluntary;
 };
 
+struct cpu_times_data {
+    long long unsigned int user;	// user + nice
+    long long unsigned int system;	// system + irq + softirq
+    long long unsigned int idle;
+    long long unsigned int iowait;
+    long long unsigned int total;
+};
+
 
 bool pstat_get_data(const int tid, pstat_data* result);
 bool pstat_get_data_pid(const int pid, pstat_data* result, char *comm = NULL, unsigned comm_size = 0);
 unsigned long long int pstat_get_total_cpu_time();
+bool pstat_get_cpu_times(cpu_times_data* result);
 bool context_switches_get_data(const int tid, context_switches_data* result);
 void pstat_calc_cpu_usage_pct(const pstat_data* cur_usage,
 			      const pstat_data* last_usage,

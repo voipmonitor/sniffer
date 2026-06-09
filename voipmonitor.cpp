@@ -514,6 +514,9 @@ int opt_pcap_queue_iface_block_qring_sem_sync = 0;
 int opt_pcap_queue_bypass_qring_sem_sync = 0;
 int opt_pcap_queue_iface_blocks_available_sem_sync = 0;
 int opt_pcap_queue_store_queue_sem_sync = 0;
+unsigned int opt_pcap_queue_readfrominterface_qring_usleep = 100;
+unsigned int opt_pcap_queue_readfrominterface_block_qring_usleep = 20;
+unsigned int opt_pcap_queue_iface_blocks_available_usleep = 20;
 int opt_preprocess_packets_qring_sem_sync = 0;
 int opt_preprocess_packets_next_thread_sem_sync = 2;
 int opt_preprocess_rtp_packets_qring_sem_sync = 0;
@@ -6792,6 +6795,9 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pcap_queue_bypass_qring_sem_sync", &opt_pcap_queue_bypass_qring_sem_sync));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pcap_queue_iface_blocks_available_sem_sync", &opt_pcap_queue_iface_blocks_available_sem_sync));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pcap_queue_store_queue_sem_sync", &opt_pcap_queue_store_queue_sem_sync));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_queue_readfrominterface_qring_usleep", &opt_pcap_queue_readfrominterface_qring_usleep));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_queue_readfrominterface_block_qring_usleep", &opt_pcap_queue_readfrominterface_block_qring_usleep));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_queue_iface_blocks_available_usleep", &opt_pcap_queue_iface_blocks_available_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("preprocess_packets_qring_sem_sync", &opt_preprocess_packets_qring_sem_sync));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("preprocess_packets_next_thread_sem_sync", &opt_preprocess_packets_next_thread_sem_sync))
 						->addValues("2:2"));
@@ -9730,6 +9736,15 @@ void set_context_config() {
 		opt_pcap_queue_bypass_qring_sem_sync = 1;
 		opt_pcap_queue_iface_blocks_available_sem_sync = 1;
 		opt_pcap_queue_store_queue_sem_sync = 1;
+		if(!CONFIG.isSet("pcap_queue_readfrominterface_qring_usleep")) {
+			opt_pcap_queue_readfrominterface_qring_usleep = 1000;
+		}
+		if(!CONFIG.isSet("pcap_queue_readfrominterface_block_qring_usleep")) {
+			opt_pcap_queue_readfrominterface_block_qring_usleep = 1000;
+		}
+		if(!CONFIG.isSet("pcap_queue_iface_blocks_available_usleep")) {
+			opt_pcap_queue_iface_blocks_available_usleep = 1000;
+		}
 	}
 	if(opt_use_sem_sync || opt_use_preprocess_packets_sem_sync) {
 		opt_preprocess_packets_qring_sem_sync = 1;
@@ -9741,8 +9756,11 @@ void set_context_config() {
 	}
 	if(opt_use_sem_sync || opt_use_rtp_read_thread_sync) {
 		opt_rtp_read_thread_qring_sem_sync = 1;
+		if(!CONFIG.isSet("rtp_qring_usleep")) {
+			rtp_qring_usleep = 1000;
+		}
 	}
-	
+
 	hash_modify_queue_length_ms = opt_t2_boost == 2 && (CONFIG.isSet("hash_queue_length_ms_high_traffic") || !CONFIG.isSet("hash_queue_length_ms")) ?
 					opt_hash_modify_queue_length_ms_high_traffic :
 					opt_hash_modify_queue_length_ms;

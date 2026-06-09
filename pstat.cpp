@@ -48,9 +48,10 @@ bool pstat_get_data(const int tid, pstat_data* result) {
 	}
 	memset(result, 0, sizeof(pstat_data));
 	long long int rss = 0;
-	if(fscanf(fpstat, 
-		  "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %llu"
+	if(fscanf(fpstat,
+		  "%*d %*s %c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %llu"
 		  "%llu %lld %lld %*d %*d %*d %*d %*u %llu %lld",
+			&result->state,
 			&result->utime_ticks, &result->stime_ticks,
 			&result->cutime_ticks, &result->cstime_ticks, &result->vsize,
 			&rss) == EOF) {
@@ -112,11 +113,12 @@ bool pstat_get_data_pid(const int pid, pstat_data* result, char *comm, unsigned 
 	memset(result, 0, sizeof(pstat_data));
 	long long int rss = 0;
 	if(sscanf(comm_end + 1,
-		  " %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %llu"
+		  " %c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %llu"
 		  "%llu %lld %lld %*d %*d %*d %*d %*u %llu %lld",
+			&result->state,
 			&result->utime_ticks, &result->stime_ticks,
 			&result->cutime_ticks, &result->cstime_ticks, &result->vsize,
-			&rss) < 2) {
+			&rss) < 3) {
 		return(false);
 	}
 	result->rss = rss * getpagesize();
@@ -147,6 +149,34 @@ unsigned long long int pstat_get_total_cpu_time() {
 	unsigned long long int systemalltime = systemtime + irq + softIrq;
 	unsigned long long int virtalltime = guest + guestnice;
 	return(usertime + nicetime + systemalltime + idlealltime + steal + virtalltime);
+}
+
+bool pstat_get_cpu_times(cpu_times_data* result) {
+	FILE *fstat = fopen("/proc/stat", "r");
+	if(fstat == NULL) {
+		#ifndef FREEBSD
+		if(!pstat_quietly_errors && errno != ENOENT) {
+			perror("pstat fopen error (/proc/stat) ");
+		}
+		#endif
+		return(false);
+	}
+	unsigned long long int usertime, nicetime, systemtime, idletime;
+	unsigned long long int ioWait, irq, softIrq, steal, guest, guestnice;
+	if(fscanf(fstat,
+		  "cpu  %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu",
+			&usertime, &nicetime, &systemtime, &idletime,
+			&ioWait, &irq, &softIrq, &steal, &guest, &guestnice) == EOF) {
+		fclose(fstat);
+		return(false);
+	}
+	fclose(fstat);
+	result->user = usertime + nicetime;
+	result->system = systemtime + irq + softIrq;
+	result->idle = idletime;
+	result->iowait = ioWait;
+	result->total = usertime + nicetime + systemtime + irq + softIrq + idletime + ioWait + steal;
+	return(true);
 }
 
 bool context_switches_get_data(const int tid, context_switches_data* result) {

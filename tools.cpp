@@ -9400,8 +9400,12 @@ string cThreadMonitor::output(int uid, int outputFlags, bool useSession) {
 string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags, int cpu_perc_min) {
 	int columns = 1;
 	double sum_cpu = 0;
+	int d_count = 0;
 	for(list<sDescrCpuPerc>::iterator iter_dp = descrPerc->begin(); iter_dp != descrPerc->end(); iter_dp++) {
 		sum_cpu += iter_dp->cpu_perc;
+		if(iter_dp->state == 'D') {
+			d_count++;
+		}
 	}
 	if(!(outputFlags & _of_no_sort)) {
 		descrPerc->sort();
@@ -9409,6 +9413,7 @@ string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags, i
 	if(outputFlags & _of_json) {
 		JsonExport json;
 		json.add("cpu_all", sum_cpu);
+		json.add("d_state_count", d_count);
 		json.add("cpu_count", get_cpu_count());
 		json.add("cpu_ht", get_cpu_ht());
 		double la_1, la_5, la_15;
@@ -9418,7 +9423,7 @@ string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags, i
 		json.add("la_15", la_15);
 		JsonExport *threads = json.addArray("threads");
 		for(list<sDescrCpuPerc>::iterator iter_dp = descrPerc->begin(); iter_dp != descrPerc->end(); iter_dp++) {
-			if(iter_dp->cpu_perc < cpu_perc_min) {
+			if(iter_dp->cpu_perc < cpu_perc_min && iter_dp->state != 'D') {
 				continue;
 			}
 			#if SNIFFER_THREADS_EXT
@@ -9431,6 +9436,9 @@ string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags, i
 			thread->add("description", iter_dp->description);
 			thread->add("tid", iter_dp->tid);
 			thread->add("cpu_perc", iter_dp->cpu_perc);
+			if(iter_dp->state) {
+				thread->add("state", string(1, iter_dp->state));
+			}
 			int sched_type = sched_getscheduler(iter_dp->tid);
 			sched_param sch_param;
 			sched_getparam(iter_dp->tid, &sch_param);
@@ -9474,7 +9482,7 @@ string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags, i
 	int counter = 0;
 	int maxDescrLength = 45;
 	for(list<sDescrCpuPerc>::iterator iter_dp = descrPerc->begin(); iter_dp != descrPerc->end(); iter_dp++) {
-		if(iter_dp->cpu_perc < cpu_perc_min) {
+		if(iter_dp->cpu_perc < cpu_perc_min && iter_dp->state != 'D') {
 			continue;
 		}
 		#if SNIFFER_THREADS_EXT
@@ -9578,8 +9586,11 @@ string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags, i
 				outStr << "; ";
 			}
 			outStr << string(iter_dp->description).substr(0, maxDescrLength)
-			       << " (" << iter_dp->tid << ") : "
+			       << " (" << iter_dp->tid << "): "
 			       << fixed << setprecision(1) << iter_dp->cpu_perc;
+			if(iter_dp->state == 'D') {
+				outStr << " D";
+			}
 			++counter;
 		}
 	}
@@ -9587,11 +9598,19 @@ string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags, i
 		if(counter % 2) {
 			outStr << endl;
 		}
-		outStr << "CPU ALL : " << setprecision(1) << setw(5) << sum_cpu << endl;
+		outStr << "CPU ALL : " << setprecision(1) << setw(5) << sum_cpu;
+		if(d_count) {
+			outStr << "  D:" << d_count;
+		}
+		outStr << endl;
 	} else {
 		ostringstream outStrComplete;
 		if(sum_cpu) {
-			outStrComplete << "ALL : " << fixed << setprecision(1) << sum_cpu << "; " << outStr.str();
+			outStrComplete << "ALL: " << fixed << setprecision(1) << sum_cpu;
+			if(d_count) {
+				outStrComplete << " D: " << d_count;
+			}
+			outStrComplete << "; " << outStr.str();
 			return(outStrComplete.str());
 		}
 	}
@@ -9642,6 +9661,10 @@ int cThreadMonitor::evalThreadStat(sThread *thread, sThreadStatData *stat, sDesc
 	strcpy_null_term(dp->description, thread->description.c_str());
 	dp->tid = thread->tid;
 	dp->cpu_perc = *cpu_perc > 0 ? *cpu_perc : 0;
+	dp->state = stat->pstat[0].state;
+	if(dp->state == 'D') {
+		++use_counter;
+	}
 	dp->cs = this->getContextSwitches(thread, stat);
 	dp->time_us = this->getTimeUS(thread, stat);
 	#if SNIFFER_THREADS_EXT
@@ -9672,6 +9695,8 @@ double cThreadMonitor::getCpuUsagePerc(sThread *thread, sThreadStatData *stat) {
 }
 
 cProcessMonitor::cProcessMonitor() {
+	memset(&prev_cpu_times, 0, sizeof(prev_cpu_times));
+	prev_cpu_times_valid = false;
 }
 
 string cProcessMonitor::output(int outputFlags, int cpu_perc_min) {
@@ -9693,7 +9718,7 @@ string cProcessMonitor::output(int outputFlags, int cpu_perc_min) {
 			continue;
 		}
 		int pid = atoi(de->d_name);
-		if(pid <= 0 || pid == self_pid) {
+		if(pid <= 0) {
 			continue;
 		}
 		char comm[256];
@@ -9715,7 +9740,9 @@ string cProcessMonitor::output(int outputFlags, int cpu_perc_min) {
 	}
 	int cpu_count = get_cpu_count();
 	list<sProcessCpuPerc> procPerc;
-	double sum_cpu = 0;
+	double sum_self = 0;
+	double sum_other = 0;
+	int d_count = 0;
 	map<int, sProcessStatData>::iterator iter = processes.begin();
 	while(iter != processes.end()) {
 		if(!iter->second.seen) {
@@ -9730,16 +9757,41 @@ string cProcessMonitor::output(int outputFlags, int cpu_perc_min) {
 				((double)(data->pstat_curr.utime_ticks + data->pstat_curr.stime_ticks -
 					  data->pstat_prev.utime_ticks - data->pstat_prev.stime_ticks) / total_time_diff) *
 				jiffytime * cpu_count;
-			if(cpu_perc > 0 || (outputFlags & cThreadMonitor::_of_all)) {
+			if(cpu_perc < 0) {
+				cpu_perc = 0;
+			}
+			if(iter->first == self_pid) {
+				sum_self += cpu_perc;
+			} else if(cpu_perc > 0 || data->pstat_curr.state == 'D' || (outputFlags & cThreadMonitor::_of_all)) {
 				sProcessCpuPerc pc;
 				pc.pid = iter->first;
 				pc.comm = data->comm;
-				pc.cpu_perc = cpu_perc > 0 ? cpu_perc : 0;
+				pc.cpu_perc = cpu_perc;
+				pc.state = data->pstat_curr.state;
+				if(pc.state == 'D') {
+					d_count++;
+				}
 				procPerc.push_back(pc);
-				sum_cpu += pc.cpu_perc;
+				sum_other += pc.cpu_perc;
 			}
 		}
 		iter++;
+	}
+	double sum_cpu = sum_self + sum_other;
+	double sys_us = 0, sys_sy = 0, sys_id = 0, sys_wa = 0;
+	bool sys_valid = false;
+	cpu_times_data cpu_times;
+	if(pstat_get_cpu_times(&cpu_times)) {
+		if(prev_cpu_times_valid && cpu_times.total > prev_cpu_times.total) {
+			double total_diff = cpu_times.total - prev_cpu_times.total;
+			sys_us = (double)(cpu_times.user - prev_cpu_times.user) / total_diff * 100 * cpu_count;
+			sys_sy = (double)(cpu_times.system - prev_cpu_times.system) / total_diff * 100 * cpu_count;
+			sys_id = (double)(cpu_times.idle - prev_cpu_times.idle) / total_diff * 100 * cpu_count;
+			sys_wa = (double)(cpu_times.iowait - prev_cpu_times.iowait) / total_diff * 100 * cpu_count;
+			sys_valid = true;
+		}
+		prev_cpu_times = cpu_times;
+		prev_cpu_times_valid = true;
 	}
 	if(!(outputFlags & cThreadMonitor::_of_no_sort)) {
 		procPerc.sort();
@@ -9747,6 +9799,15 @@ string cProcessMonitor::output(int outputFlags, int cpu_perc_min) {
 	if(outputFlags & cThreadMonitor::_of_json) {
 		JsonExport json;
 		json.add("cpu_all", sum_cpu);
+		json.add("cpu_self", sum_self);
+		json.add("cpu_other", sum_other);
+		json.add("d_state_count", d_count);
+		if(sys_valid) {
+			json.add("sys_us", sys_us);
+			json.add("sys_sy", sys_sy);
+			json.add("sys_id", sys_id);
+			json.add("sys_wa", sys_wa);
+		}
 		json.add("cpu_count", cpu_count);
 		double la_1, la_5, la_15;
 		getLoadAvg(&la_1, &la_5, &la_15);
@@ -9755,33 +9816,46 @@ string cProcessMonitor::output(int outputFlags, int cpu_perc_min) {
 		json.add("la_15", la_15);
 		JsonExport *processes_json = json.addArray("processes");
 		for(list<sProcessCpuPerc>::iterator iter_pc = procPerc.begin(); iter_pc != procPerc.end(); iter_pc++) {
-			if(iter_pc->cpu_perc < cpu_perc_min) {
+			if(iter_pc->cpu_perc < cpu_perc_min && iter_pc->state != 'D') {
 				continue;
 			}
 			JsonExport *process_json = processes_json->addObject(NULL);
 			process_json->add("comm", iter_pc->comm);
 			process_json->add("pid", iter_pc->pid);
 			process_json->add("cpu_perc", iter_pc->cpu_perc);
+			if(iter_pc->state) {
+				process_json->add("state", string(1, iter_pc->state));
+			}
 		}
 		return(json.getJson());
 	}
 	ostringstream outStr;
 	int counter = 0;
 	for(list<sProcessCpuPerc>::iterator iter_pc = procPerc.begin(); iter_pc != procPerc.end(); iter_pc++) {
-		if(iter_pc->cpu_perc < cpu_perc_min) {
+		if(iter_pc->cpu_perc < cpu_perc_min && iter_pc->state != 'D') {
 			continue;
 		}
 		if(counter) {
 			outStr << "; ";
 		}
 		outStr << iter_pc->comm
-		       << " (" << iter_pc->pid << ") : "
+		       << " (" << iter_pc->pid << "): "
 		       << fixed << setprecision(1) << iter_pc->cpu_perc;
+		if(iter_pc->state == 'D') {
+			outStr << " D";
+		}
 		counter++;
 	}
 	if(sum_cpu) {
 		ostringstream outStrComplete;
-		outStrComplete << "ALL : " << fixed << setprecision(1) << sum_cpu << "; " << outStr.str();
+		outStrComplete << fixed << setprecision(1) << "other: " << sum_other << " + self: " << sum_self << " = ALL: " << sum_cpu;
+		if(sys_valid) {
+			outStrComplete << setprecision(0) << " | sys us: " << sys_us << " sy: " << sys_sy << " (us+sy: " << (sys_us + sys_sy) << ") id: " << sys_id << " wa: " << sys_wa;
+		}
+		if(d_count) {
+			outStrComplete << " D: " << d_count;
+		}
+		outStrComplete << "; " << outStr.str();
 		return(outStrComplete.str());
 	}
 	return(outStr.str());
