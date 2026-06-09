@@ -95,6 +95,7 @@ extern bool opt_srtp_rtp_decrypt;
 extern bool opt_srtp_rtp_dtls_decrypt;
 extern bool opt_srtp_rtp_audio_decrypt;
 extern bool opt_srtp_rtp_dtmf_decrypt;
+extern bool opt_srtp_rtp_verify_tag;
 extern bool opt_srtp_rtcp_decrypt;
 extern int opt_savewav_force;
 extern int opt_save_sdp_ipport;
@@ -2070,31 +2071,32 @@ bool Call::read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscal
 #if not EXPERIMENTAL_LITE_RTP_MOD
 
 void Call::_read_rtp_srtp(CallBranch *c_branch, packet_s_process_0 *packetS, RTP *rtp, int iscaller, bool new_rtp) {
+	bool srtp_decrypt_full = opt_srtp_rtp_decrypt ||
+				 (opt_srtp_rtp_dtmf_decrypt && rtp->codec == PAYLOAD_TELEVENT) ||
+				 (opt_srtp_rtp_dtls_decrypt && (exists_srtp_fingerprint || !exists_srtp_crypto_config)) ||
+				 (opt_srtp_rtp_audio_decrypt && enable_audio_any(this)) ||
+				 opt_saveRAW || opt_savewav_force;
 	if((new_rtp ||
 	    (!rtp->srtp_decrypt &&
 	     rtp->find_by_dest &&
 	     (rtp->call_ipport_n_orig != c_branch->ipport_n ||
 	      (opt_srtp_rtp_dtmf_decrypt && rtp->codec == PAYLOAD_TELEVENT)))) &&
-	   (opt_srtp_rtp_decrypt || 
-	    (opt_srtp_rtp_dtmf_decrypt && rtp->codec == PAYLOAD_TELEVENT) ||
-	    (opt_srtp_rtp_dtls_decrypt && (exists_srtp_fingerprint || !exists_srtp_crypto_config)) ||
-	    (opt_srtp_rtp_audio_decrypt && enable_audio_any(this)) || 
-	    opt_saveRAW || opt_savewav_force)) {
+	   (srtp_decrypt_full || opt_srtp_rtp_verify_tag)) {
 		int index_call_ip_port_by_src = get_index_by_ip_port_by_src(c_branch, packetS->saddr_(), packetS->source_(), iscaller);
 		if(opt_srtp_rtp_local_instances) {
 			if((index_call_ip_port_by_src >= 0 && c_branch->ip_port[index_call_ip_port_by_src].srtp) ||
 			   (rtp->index_call_ip_port >= 0 && c_branch->ip_port[rtp->index_call_ip_port].srtp) ||
 			   (rtp->index_call_ip_port_other_side >= 0 && c_branch->ip_port[rtp->index_call_ip_port_other_side].srtp)) {
 				RTPsecure *rtp_secure = new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
-										   this, c_branch, index_call_ip_port_by_src, true);
+										   this, c_branch, index_call_ip_port_by_src, true, !srtp_decrypt_full);
 				rtp->setSRtpDecrypt(rtp_secure, -1, true);
 			}
 		} else {
 			if(index_call_ip_port_by_src >= 0 && c_branch->ip_port[index_call_ip_port_by_src].srtp) {
 				if(!rtp_secure_map[index_call_ip_port_by_src]) {
-					rtp_secure_map[index_call_ip_port_by_src] = 
+					rtp_secure_map[index_call_ip_port_by_src] =
 						new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
-									   this, c_branch, index_call_ip_port_by_src);
+									   this, c_branch, index_call_ip_port_by_src, false, !srtp_decrypt_full);
 					if(sverb.log_srtp_callid && !log_srtp_callid) {
 						syslog(LOG_INFO, "SRTP exists in call %s", call_id.c_str());
 						log_srtp_callid = true;
@@ -2123,12 +2125,12 @@ void Call::_read_rtp_srtp(CallBranch *c_branch, packet_s_process_0 *packetS, RTP
 			}
 		}
 		if(srtp_index_ip_port >= 0) {
+			rtp->is_srtp = true;
 			list<srtp_crypto_config> *srtp_crypto_config_list = c_branch->ip_port[srtp_index_ip_port].srtp_crypto_config_list;
 			if(srtp_crypto_config_list && srtp_crypto_config_list->size()) {
 				for(list<srtp_crypto_config>::iterator iter = srtp_crypto_config_list->begin(); iter != srtp_crypto_config_list->end(); iter++) {
 					int tag_size = RTPsecure::getTagSize(iter->suite.c_str());
 					if(tag_size > 0) {
-						rtp->is_srtp = true;
 						rtp->srtp_auth_tag_size = tag_size;
 						break;
 					}
@@ -6983,7 +6985,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(opt_srtp_rtp_local_instances) {
 		for(int i = 0; i < rtp_size(); i++) {
 			RTP *rtp_i = rtp_stream_by_index(i);
-			if(rtp_i->srtp_decrypt && !rtp_i->probably_unencrypted_payload && 
+			if(rtp_i->srtp_decrypt && !rtp_i->srtp_decrypt->isVerifyOnly() && !rtp_i->probably_unencrypted_payload &&
 			   rtp_i->stats.received > 0 && !rtp_i->srtp_decrypt->isOK_decrypt_rtp(10)) {
 				cdr_flags |= CDR_SRTP_WITHOUT_KEY;
 				if(sverb.dtls && ssl_sessionkey_enable()) {

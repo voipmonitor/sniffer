@@ -880,6 +880,7 @@ private:
 	int srtp_decrypt_index_call_ip_port;
 	bool is_srtp;
 	unsigned srtp_auth_tag_size;
+	bool srtp_tag_verified;
 	
 	sRSA rsa;
 	

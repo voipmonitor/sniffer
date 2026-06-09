@@ -48,6 +48,7 @@ extern int opt_saveGRAPH;	//save GRAPH data?
 extern bool opt_srtp_rtp_decrypt;
 extern bool opt_srtp_rtp_dtls_decrypt;
 extern bool opt_srtp_rtp_dtmf_decrypt;
+extern int opt_srtp_rtp_verify_tag_max_attempts;
 extern int opt_jitterbuffer_f1;            // turns off/on jitterbuffer simulator to compute MOS score mos_f1
 extern int opt_jitterbuffer_f2;            // turns off/on jitterbuffer simulator to compute MOS score mos_f2
 extern int opt_jitterbuffer_adapt;         // turns off/on jitterbuffer simulator to compute MOS score mos_adapt
@@ -441,7 +442,8 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	srtp_decrypt_index_call_ip_port = -1;
 	is_srtp = false;
 	srtp_auth_tag_size = 0;
-	
+	srtp_tag_verified = false;
+
 	energylevels = NULL;
 	energylevels_last_seq = 0;
 	energylevels_via_jb = false;
@@ -1395,13 +1397,36 @@ bool RTP::read(CallBranch *c_branch,
 			}
 		}
 		++decrypt_rtp_attempt[0];
-		if(opt_srtp_rtp_decrypt || 
-		   (opt_srtp_rtp_dtmf_decrypt && codec == PAYLOAD_TELEVENT) ||
-		   (opt_srtp_rtp_dtls_decrypt && srtp_decrypt->is_dtls())
-		   #if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
-		   || use_channel_record
-		   #endif
-		   ) {
+		if(srtp_decrypt->isVerifyOnly()) {
+			if(!srtp_tag_verified && decrypt_rtp_attempt[0] <= (unsigned)opt_srtp_rtp_verify_tag_max_attempts) {
+				if(srtp_decrypt->need_prepare_decrypt()) {
+					srtp_decrypt->prepare_decrypt(saddr, daddr, sport, dport, false, pcap_header_us);
+				}
+				if(decrypt_sync) {
+					__SYNC_LOCK(*decrypt_sync);
+				}
+				unsigned verify_data_len = *len;
+				unsigned verify_payload_len = payload_len;
+				if(srtp_decrypt->decrypt_rtp(data, &verify_data_len, payload_data, &verify_payload_len, pcap_header_us,
+							     saddr, daddr, sport, dport, this)) {
+					is_srtp = true;
+					srtp_auth_tag_size = srtp_decrypt->tag_size();
+					srtp_tag_verified = true;
+				}
+				if(decrypt_sync) {
+					__SYNC_UNLOCK(*decrypt_sync);
+				}
+				if(!srtp_tag_verified && !probably_unencrypted_payload && is_unencrypted_payload(payload_data, payload_len)) {
+					probably_unencrypted_payload = true;
+				}
+			}
+		} else if(opt_srtp_rtp_decrypt ||
+			  (opt_srtp_rtp_dtmf_decrypt && codec == PAYLOAD_TELEVENT) ||
+			  (opt_srtp_rtp_dtls_decrypt && srtp_decrypt->is_dtls())
+			  #if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
+			  || use_channel_record
+			  #endif
+			  ) {
 			if(!decrypt_rtp_attempt[1]) {
 				if(sverb.dtls && ssl_sessionkey_enable()) {
 					string log_str;
@@ -1440,9 +1465,9 @@ bool RTP::read(CallBranch *c_branch,
 			this->len = *len;
 		}
 	} else {
-		if(is_srtp && srtp_auth_tag_size && payload_len > (int)srtp_auth_tag_size) {
-			payload_len -= srtp_auth_tag_size;
-			this->len -= srtp_auth_tag_size;
+		if(is_srtp && srtp_auth_tag_size && !probably_unencrypted_payload &&
+		   stats.received <= (unsigned)opt_srtp_rtp_verify_tag_max_attempts && is_unencrypted_payload(payload_data, payload_len)) {
+			probably_unencrypted_payload = true;
 		}
 		if(owner && owner->dtls &&
 		   sverb.dtls && ssl_sessionkey_enable()) {
@@ -1454,6 +1479,12 @@ bool RTP::read(CallBranch *c_branch,
 				++owner->dtls->debug_flags[0];
 			}
 		}
+	}
+
+	if(is_srtp && srtp_auth_tag_size && payload_len > (int)srtp_auth_tag_size && !probably_unencrypted_payload &&
+	   (!srtp_decrypt || srtp_decrypt->isVerifyOnly())) {
+		payload_len -= srtp_auth_tag_size;
+		this->len -= srtp_auth_tag_size;
 	}
 
 	if(getVersion() != 2) {

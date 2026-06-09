@@ -145,7 +145,7 @@ public:
 		#endif
 	};
 public:
-	RTPsecure(eMode mode, class Call *call, class CallBranch *c_branch, int index_ip_port, bool local = false);
+	RTPsecure(eMode mode, class Call *call, class CallBranch *c_branch, int index_ip_port, bool local = false, bool verify_only = false);
 	~RTPsecure();
 	bool setCryptoConfig(u_int64_t time_us);
 	bool addCryptoConfig(unsigned tag, const char *suite, const char *sdes, u_int64_t from_time_us);
@@ -166,6 +166,9 @@ public:
 	void clearError();
 	bool isOK() {
 		return(error == err_na);
+	}
+	bool isVerifyOnly() {
+		return(verify_only);
 	}
 	bool isOK_decrypt_rtp(unsigned failed_tolerance = 0) {
 		return(decrypt_rtp_ok > 0 || decrypt_rtp_failed <= failed_tolerance);
@@ -251,6 +254,7 @@ private:
 	CallBranch *c_branch;
 	int index_ip_port;
 	bool local;
+	bool verify_only;
 	vector<sCryptoConfig> cryptoConfigVector;
 	unsigned cryptoConfigCallSize;
 	unsigned cryptoConfigActiveIndex;

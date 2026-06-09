@@ -236,6 +236,8 @@ bool opt_srtp_rtp_decrypt = false;
 bool opt_srtp_rtp_dtls_decrypt = true;
 bool opt_srtp_rtp_audio_decrypt = false;
 bool opt_srtp_rtp_dtmf_decrypt = false;
+bool opt_srtp_rtp_verify_tag = false;
+int opt_srtp_rtp_verify_tag_max_attempts = 10;
 bool opt_srtp_rtcp_decrypt = true;
 bool opt_srtp_rtp_local_instances = true;
 bool opt_srtp_use_all_keys = false;
@@ -6963,6 +6965,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_dtls", &opt_srtp_rtp_dtls_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_audio", &opt_srtp_rtp_audio_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_dtmf", &opt_srtp_rtp_dtmf_decrypt));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_verify_tag", &opt_srtp_rtp_verify_tag));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("srtp_rtp_verify_tag_max_attempts", &opt_srtp_rtp_verify_tag_max_attempts));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtcp", &opt_srtp_rtcp_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_use_all_keys", &opt_srtp_use_all_keys));
 					expert();
@@ -9767,6 +9771,15 @@ void set_context_config() {
 	if(opt_dup_check_type != _dedup_na && opt_pcap_queue_use_blocks && (is_receiver() || is_server())) {
 		opt_receiver_check_id_sensor = false;
 		syslog(LOG_NOTICE, "disabling receiver_check_id_sensor because set deduplicate in server/receiver mode");
+	}
+
+	if(opt_srtp_rtp_verify_tag && opt_use_libsrtp) {
+		opt_srtp_rtp_verify_tag = false;
+		syslog(LOG_NOTICE, "disabling srtp_rtp_verify_tag because it is supported only with native srtp mode (libsrtp = no)");
+	}
+	if(opt_srtp_rtp_verify_tag && !opt_srtp_rtp_local_instances) {
+		opt_srtp_rtp_verify_tag = false;
+		syslog(LOG_NOTICE, "disabling srtp_rtp_verify_tag because it requires srtp_rtp_local_instances");
 	}
 	
 	if(getThreadingMode() < 2 && 

@@ -88,7 +88,7 @@ bool RTPsecure::sCryptoConfig::keyDecode() {
 	return(true);
 }
 
-RTPsecure::RTPsecure(eMode mode, Call *call, CallBranch *c_branch, int index_ip_port, bool local) {
+RTPsecure::RTPsecure(eMode mode, Call *call, CallBranch *c_branch, int index_ip_port, bool local, bool verify_only) {
 	#if HAVE_LIBSRTP
 		this->mode = mode;
 	#else
@@ -101,6 +101,7 @@ RTPsecure::RTPsecure(eMode mode, Call *call, CallBranch *c_branch, int index_ip_
 	this->c_branch = c_branch;
 	this->index_ip_port = index_ip_port;
 	this->local = local;
+	this->verify_only = verify_only;
 	cryptoConfigCallSize = 0;
 	cryptoConfigActiveIndex = 0;
 	rtcp_index = 0;
@@ -329,7 +330,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 	if(rtp) {
 		if(*payload_len > tag_size()) {
 			++rtp->counter_packets;
-			if(mode == mode_native ?
+			if((verify_only || mode == mode_native) ?
 			    decrypt_rtp_native(data, data_len, payload, payload_len) :
 			    decrypt_rtp_libsrtp(data, data_len, payload, payload_len)) {
 				#if not EXPERIMENTAL_LITE_RTP_MOD
@@ -380,7 +381,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 					++rtp->counter_packets;
 					counter_packet_inc = true;
 				}
-				bool rslt_decrypt = mode == mode_native ?
+				bool rslt_decrypt = (verify_only || mode == mode_native) ?
 						     decrypt_rtp_native(data, data_len, payload, payload_len) :
 						     decrypt_rtp_libsrtp(data, data_len, payload, payload_len);
 				if(!rslt_decrypt) {
@@ -471,9 +472,11 @@ bool RTPsecure::decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *pay
 				return(false);
 			}
 		}
-		memcpy(payload, decrypted, decrypted_len);
-		*data_len -= tag_size();
-		*payload_len -= tag_size();
+		if(!verify_only) {
+			memcpy(payload, decrypted, decrypted_len);
+			*data_len -= tag_size();
+			*payload_len -= tag_size();
+		}
 		rtp_seq = seq;
 		rtp_roc = roc;
 		rtp_roc_ok[cryptoConfigActiveIndex] = true;
@@ -508,12 +511,14 @@ bool RTPsecure::decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *pay
 			}
 		}
 		//hexdump(data, *data_len - tag_size());
-		if(!rtpDecrypt(payload, *payload_len - tag_size(), seq, ssrc)) {
-			//cout << rtp->counter_packets << " err (decrypt)" << endl;
-			return(false);
+		if(!verify_only) {
+			if(!rtpDecrypt(payload, *payload_len - tag_size(), seq, ssrc)) {
+				//cout << rtp->counter_packets << " err (decrypt)" << endl;
+				return(false);
+			}
+			*data_len -= tag_size();
+			*payload_len -= tag_size();
 		}
-		*data_len -= tag_size();
-		*payload_len -= tag_size();
 	}
 	//cout << rtp->counter_packets << " ok" << endl;
 	//hexdump(data, *data_len - tag_size());
