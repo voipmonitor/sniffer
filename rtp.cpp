@@ -439,6 +439,8 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	srtp_decrypt = NULL;
 	srtp_decrypt_local = false;
 	srtp_decrypt_index_call_ip_port = -1;
+	is_srtp = false;
+	srtp_auth_tag_size = 0;
 	
 	energylevels = NULL;
 	energylevels_last_seq = 0;
@@ -1437,8 +1439,13 @@ bool RTP::read(CallBranch *c_branch,
 			}
 			this->len = *len;
 		}
-	} else if(owner && owner->dtls) {
-		 if(sverb.dtls && ssl_sessionkey_enable()) {
+	} else {
+		if(is_srtp && srtp_auth_tag_size && payload_len > (int)srtp_auth_tag_size) {
+			payload_len -= srtp_auth_tag_size;
+			this->len -= srtp_auth_tag_size;
+		}
+		if(owner && owner->dtls &&
+		   sverb.dtls && ssl_sessionkey_enable()) {
 			if(!owner->dtls->debug_flags[0]) {
 				string log_str;
 				log_str += string("error (potentialy missing srtp_decrypt instance) decrypt_rtp for call: ") + (owner ? owner->call_id : "unknown");

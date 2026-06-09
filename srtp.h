@@ -174,6 +174,7 @@ public:
 		return(decrypt_rtcp_ok > 0 || decrypt_rtcp_failed == 0);
 	}
 	static bool isOkCryptoSuite(const char *crypto_suite);
+	static int getTagSize(const char *crypto_suite);
 private:
 	bool init();
 	bool init_native();

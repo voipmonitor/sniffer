@@ -686,6 +686,19 @@ bool RTPsecure::isOkCryptoSuite(const char *crypto_suite) {
 
 }
 
+int RTPsecure::getTagSize(const char *crypto_suite) {
+	#if HAVE_LIBGNUTLS
+	if(crypto_suite && *crypto_suite) {
+		for(unsigned i = 0; i < sizeof(srtp_crypto_suites) / sizeof(srtp_crypto_suites[0]); i++) {
+			if(crypto_suite == srtp_crypto_suites[i].crypro_suite) {
+				return(srtp_crypto_suites[i].tag_size);
+			}
+		}
+	}
+	#endif
+	return(-1);
+}
+
 bool RTPsecure::init() {
 	if(rtp && rtcp) {
 		return(true);

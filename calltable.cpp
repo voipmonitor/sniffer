@@ -2090,8 +2090,7 @@ void Call::_read_rtp_srtp(CallBranch *c_branch, packet_s_process_0 *packetS, RTP
 				rtp->setSRtpDecrypt(rtp_secure, -1, true);
 			}
 		} else {
-			if(index_call_ip_port_by_src >= 0 &&
-			   c_branch->ip_port[index_call_ip_port_by_src].srtp) {
+			if(index_call_ip_port_by_src >= 0 && c_branch->ip_port[index_call_ip_port_by_src].srtp) {
 				if(!rtp_secure_map[index_call_ip_port_by_src]) {
 					rtp_secure_map[index_call_ip_port_by_src] = 
 						new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
@@ -2102,6 +2101,38 @@ void Call::_read_rtp_srtp(CallBranch *c_branch, packet_s_process_0 *packetS, RTP
 					}
 				}
 				rtp->setSRtpDecrypt(rtp_secure_map[index_call_ip_port_by_src], index_call_ip_port_by_src);
+			}
+		}
+	}
+	if(new_rtp ||
+	   (!rtp->is_srtp &&
+	    rtp->find_by_dest)) {
+		int srtp_index_ip_port = -1;
+		int index_call_ip_port_by_src = get_index_by_ip_port_by_src(c_branch, packetS->saddr_(), packetS->source_(), iscaller);
+		if(opt_srtp_rtp_local_instances) {
+			if(index_call_ip_port_by_src >= 0 && c_branch->ip_port[index_call_ip_port_by_src].srtp) {
+				srtp_index_ip_port = index_call_ip_port_by_src;
+			} else if(rtp->index_call_ip_port >= 0 && c_branch->ip_port[rtp->index_call_ip_port].srtp) {
+				srtp_index_ip_port = rtp->index_call_ip_port;
+			} else if(rtp->index_call_ip_port_other_side >= 0 && c_branch->ip_port[rtp->index_call_ip_port_other_side].srtp) {
+				srtp_index_ip_port = rtp->index_call_ip_port_other_side;
+			}
+		} else {
+			if(index_call_ip_port_by_src >= 0 && c_branch->ip_port[index_call_ip_port_by_src].srtp) {
+				srtp_index_ip_port = index_call_ip_port_by_src;
+			}
+		}
+		if(srtp_index_ip_port >= 0) {
+			list<srtp_crypto_config> *srtp_crypto_config_list = c_branch->ip_port[srtp_index_ip_port].srtp_crypto_config_list;
+			if(srtp_crypto_config_list && srtp_crypto_config_list->size()) {
+				for(list<srtp_crypto_config>::iterator iter = srtp_crypto_config_list->begin(); iter != srtp_crypto_config_list->end(); iter++) {
+					int tag_size = RTPsecure::getTagSize(iter->suite.c_str());
+					if(tag_size > 0) {
+						rtp->is_srtp = true;
+						rtp->srtp_auth_tag_size = tag_size;
+						break;
+					}
+				}
 			}
 		}
 	}
