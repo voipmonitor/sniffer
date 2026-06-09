@@ -9345,7 +9345,7 @@ void cThreadMonitor::setSchedPolPriority(int indexPstat) {
 	}
 }
 
-string cThreadMonitor::output(int indexPstat, int outputFlags) {
+string cThreadMonitor::output(int indexPstat, int outputFlags, int cpu_perc_min) {
 	list<sDescrCpuPerc> descrPerc;
 	u_int64_t time_us = ::getTimeUS();
 	tm_lock();
@@ -9359,7 +9359,7 @@ string cThreadMonitor::output(int indexPstat, int outputFlags) {
 		}
 	}
 	tm_unlock();
-	return(output(&descrPerc, outputFlags));
+	return(output(&descrPerc, outputFlags, cpu_perc_min));
 }
 
 // Session-based output method
@@ -9397,7 +9397,7 @@ string cThreadMonitor::output(int uid, int outputFlags, bool useSession) {
 	return(output(&descrPerc, outputFlags));
 }
 
-string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags) {
+string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags, int cpu_perc_min) {
 	int columns = 1;
 	double sum_cpu = 0;
 	for(list<sDescrCpuPerc>::iterator iter_dp = descrPerc->begin(); iter_dp != descrPerc->end(); iter_dp++) {
@@ -9418,6 +9418,9 @@ string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags) {
 		json.add("la_15", la_15);
 		JsonExport *threads = json.addArray("threads");
 		for(list<sDescrCpuPerc>::iterator iter_dp = descrPerc->begin(); iter_dp != descrPerc->end(); iter_dp++) {
+			if(iter_dp->cpu_perc < cpu_perc_min) {
+				continue;
+			}
 			#if SNIFFER_THREADS_EXT
 			if((outputFlags & _of_only_traffic) &&
 			   !(iter_dp->traffic.packets_cnt_in > 0 || iter_dp->traffic.packets_cnt_out > 0)) {
@@ -9471,6 +9474,9 @@ string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags) {
 	int counter = 0;
 	int maxDescrLength = 45;
 	for(list<sDescrCpuPerc>::iterator iter_dp = descrPerc->begin(); iter_dp != descrPerc->end(); iter_dp++) {
+		if(iter_dp->cpu_perc < cpu_perc_min) {
+			continue;
+		}
 		#if SNIFFER_THREADS_EXT
 		if((outputFlags & _of_only_traffic) &&
 		   !(iter_dp->traffic.packets_cnt_in > 0 || iter_dp->traffic.packets_cnt_out > 0)) {
@@ -9663,6 +9669,122 @@ double cThreadMonitor::getCpuUsagePerc(sThread *thread, sThreadStatData *stat) {
 		return(ucpu_usage + scpu_usage);
 	}
 	return(-1);
+}
+
+cProcessMonitor::cProcessMonitor() {
+}
+
+string cProcessMonitor::output(int outputFlags, int cpu_perc_min) {
+	unsigned long long int total_cpu_time = pstat_get_total_cpu_time();
+	if(!total_cpu_time) {
+		return("");
+	}
+	int self_pid = getpid();
+	DIR *dp = opendir("/proc");
+	if(!dp) {
+		return("");
+	}
+	for(map<int, sProcessStatData>::iterator iter = processes.begin(); iter != processes.end(); iter++) {
+		iter->second.seen = false;
+	}
+	dirent *de;
+	while((de = readdir(dp)) != NULL) {
+		if(de->d_name[0] < '0' || de->d_name[0] > '9') {
+			continue;
+		}
+		int pid = atoi(de->d_name);
+		if(pid <= 0 || pid == self_pid) {
+			continue;
+		}
+		char comm[256];
+		pstat_data pstat;
+		if(!pstat_get_data_pid(pid, &pstat, comm, sizeof(comm))) {
+			continue;
+		}
+		pstat.cpu_total_time = total_cpu_time;
+		sProcessStatData *data = &processes[pid];
+		data->pstat_prev = data->pstat_curr;
+		data->pstat_curr = pstat;
+		data->comm = comm;
+		data->seen = true;
+	}
+	closedir(dp);
+	static double jiffytime = 0;
+	if(jiffytime == 0) {
+		jiffytime = 1.0 / sysconf(_SC_CLK_TCK) * 100;
+	}
+	int cpu_count = get_cpu_count();
+	list<sProcessCpuPerc> procPerc;
+	double sum_cpu = 0;
+	map<int, sProcessStatData>::iterator iter = processes.begin();
+	while(iter != processes.end()) {
+		if(!iter->second.seen) {
+			processes.erase(iter++);
+			continue;
+		}
+		sProcessStatData *data = &iter->second;
+		if(data->pstat_prev.cpu_total_time &&
+		   data->pstat_curr.cpu_total_time > data->pstat_prev.cpu_total_time) {
+			unsigned long long int total_time_diff = data->pstat_curr.cpu_total_time - data->pstat_prev.cpu_total_time;
+			double cpu_perc = 100 *
+				((double)(data->pstat_curr.utime_ticks + data->pstat_curr.stime_ticks -
+					  data->pstat_prev.utime_ticks - data->pstat_prev.stime_ticks) / total_time_diff) *
+				jiffytime * cpu_count;
+			if(cpu_perc > 0 || (outputFlags & cThreadMonitor::_of_all)) {
+				sProcessCpuPerc pc;
+				pc.pid = iter->first;
+				pc.comm = data->comm;
+				pc.cpu_perc = cpu_perc > 0 ? cpu_perc : 0;
+				procPerc.push_back(pc);
+				sum_cpu += pc.cpu_perc;
+			}
+		}
+		iter++;
+	}
+	if(!(outputFlags & cThreadMonitor::_of_no_sort)) {
+		procPerc.sort();
+	}
+	if(outputFlags & cThreadMonitor::_of_json) {
+		JsonExport json;
+		json.add("cpu_all", sum_cpu);
+		json.add("cpu_count", cpu_count);
+		double la_1, la_5, la_15;
+		getLoadAvg(&la_1, &la_5, &la_15);
+		json.add("la_1", la_1);
+		json.add("la_5", la_5);
+		json.add("la_15", la_15);
+		JsonExport *processes_json = json.addArray("processes");
+		for(list<sProcessCpuPerc>::iterator iter_pc = procPerc.begin(); iter_pc != procPerc.end(); iter_pc++) {
+			if(iter_pc->cpu_perc < cpu_perc_min) {
+				continue;
+			}
+			JsonExport *process_json = processes_json->addObject(NULL);
+			process_json->add("comm", iter_pc->comm);
+			process_json->add("pid", iter_pc->pid);
+			process_json->add("cpu_perc", iter_pc->cpu_perc);
+		}
+		return(json.getJson());
+	}
+	ostringstream outStr;
+	int counter = 0;
+	for(list<sProcessCpuPerc>::iterator iter_pc = procPerc.begin(); iter_pc != procPerc.end(); iter_pc++) {
+		if(iter_pc->cpu_perc < cpu_perc_min) {
+			continue;
+		}
+		if(counter) {
+			outStr << "; ";
+		}
+		outStr << iter_pc->comm
+		       << " (" << iter_pc->pid << ") : "
+		       << fixed << setprecision(1) << iter_pc->cpu_perc;
+		counter++;
+	}
+	if(sum_cpu) {
+		ostringstream outStrComplete;
+		outStrComplete << "ALL : " << fixed << setprecision(1) << sum_cpu << "; " << outStr.str();
+		return(outStrComplete.str());
+	}
+	return(outStr.str());
 }
 
 context_switches_data cThreadMonitor::getContextSwitches(sThread *thread, sThreadStatData *stat) {

@@ -4564,11 +4564,11 @@ public:
 	sThread *getSelfThread();
 	static sThread *getSelfThreadData();
 	void setSchedPolPriority(int indexPstat);
-	string output(int indexPstat, int outputFlags);
+	string output(int indexPstat, int outputFlags, int cpu_perc_min = 0);
 	string output(int uid, int outputFlags, bool useSession);  // session-based version
 	void cleanupSessions(u_int64_t max_age_us = 120000000ULL);  // 120 sec default
 private:
-	string output(list<sDescrCpuPerc> *descrPerc, int outputFlags);
+	string output(list<sDescrCpuPerc> *descrPerc, int outputFlags, int cpu_perc_min = 0);
 	double getCpuUsagePerc(sThread *thread, sThreadStatData *stat);
 	context_switches_data getContextSwitches(sThread *thread, sThreadStatData *stat);
 	u_int64_t getUsleep(sThread *thread, sThreadStatData *stat);
@@ -4597,6 +4597,33 @@ private:
 	map<int, sSession*> sessions;  // uid -> session
 	volatile int _sync;
 	volatile int _sync_sessions;
+};
+
+class cProcessMonitor {
+public:
+	struct sProcessStatData {
+		sProcessStatData() {
+			memset(&pstat_curr, 0, sizeof(pstat_curr));
+			memset(&pstat_prev, 0, sizeof(pstat_prev));
+			seen = false;
+		}
+		pstat_data pstat_curr;
+		pstat_data pstat_prev;
+		string comm;
+		bool seen;
+	};
+	struct sProcessCpuPerc {
+		int pid;
+		string comm;
+		double cpu_perc;
+		bool operator < (const sProcessCpuPerc& other) const {
+			return(this->cpu_perc > other.cpu_perc);
+		}
+	};
+	cProcessMonitor();
+	string output(int outputFlags, int cpu_perc_min = 0);
+private:
+	map<int, sProcessStatData> processes;
 };
 
 class cCsv {
