@@ -4445,7 +4445,6 @@ public:
 			memset(cs, 0, sizeof(cs));
 			last_time_us[0] = 0;
 			last_time_us[1] = 0;
-			#if SNIFFER_THREADS_EXT
 			u_int64_t time_us = ::getTimeUS();
 			usleep_sum_last = 0;
 			packets_cnt_in_last = 0;
@@ -4454,16 +4453,12 @@ public:
 			packets_size_out_last = 0;
 			packets_last_time_us = time_us;
 			buffer_push_cnt_all_last = 0;
-			buffer_push_cnt_full_last = 0;
-			buffer_push_cnt_full_loop_last = 0;
 			buffer_push_sum_usleep_full_loop_last = 0;
 			buffer_push_last_time_us = time_us;
-			#endif
 		}
 		pstat_data pstat[2];
 		context_switches_data cs[2];
 		u_int64_t last_time_us[2];
-		#if SNIFFER_THREADS_EXT
 		u_int64_t usleep_sum_last;
 		u_int64_t packets_cnt_in_last;
 		u_int64_t packets_cnt_out_last;
@@ -4471,11 +4466,8 @@ public:
 		u_int64_t packets_size_out_last;
 		u_int64_t packets_last_time_us;
 		u_int64_t buffer_push_cnt_all_last;
-		u_int64_t buffer_push_cnt_full_last;
-		u_int64_t buffer_push_cnt_full_loop_last;
 		u_int64_t buffer_push_sum_usleep_full_loop_last;
 		u_int64_t buffer_push_last_time_us;
-		#endif
 	};
 	struct sThread {
 		int tid;
@@ -4483,7 +4475,6 @@ public:
 		string description;
 		int orig_scheduler;
 		int orig_priority;
-		#if SNIFFER_THREADS_EXT
 		volatile u_int64_t usleep_sum;
 		volatile u_int64_t packets_cnt_in;
 		volatile u_int64_t packets_cnt_out;
@@ -4498,14 +4489,34 @@ public:
 			packets_cnt_out += cnt;
 		}
 		volatile u_int64_t buffer_push_cnt_all;
-		volatile u_int64_t buffer_push_cnt_full;
-		volatile u_int64_t buffer_push_cnt_full_loop;
 		volatile u_int64_t buffer_push_sum_usleep_full_loop;
-		#endif
 		sThreadStatData stat[5];
+		static void buffer_push_account_all(sThread *thread_data) {
+			extern sVerbose sverb;
+			if(sverb.sniffer_threads_ext && thread_data) {
+				++thread_data->buffer_push_cnt_all;
+			}
+		}
+		static u_int64_t buffer_push_account_sem_full_begin(sThread *thread_data) {
+			extern sVerbose sverb;
+			if(sverb.sniffer_threads_ext && thread_data) {
+				return(::getTimeUS());
+			}
+			return(0);
+		}
+		static void buffer_push_account_sem_full_end(sThread *thread_data, u_int64_t us_start) {
+			if(us_start && thread_data) {
+				thread_data->buffer_push_sum_usleep_full_loop += ::getTimeUS() - us_start;
+			}
+		}
+		static void buffer_push_account_busy_full(sThread *thread_data, unsigned us) {
+			extern sVerbose sverb;
+			if(sverb.sniffer_threads_ext && thread_data) {
+				thread_data->buffer_push_sum_usleep_full_loop += us;
+			}
+		}
 	};
 private:
-	#if SNIFFER_THREADS_EXT
 	struct sTraffic {
 		sTraffic() {
 			memset((void*)this, 0, sizeof(*this));
@@ -4526,7 +4537,6 @@ private:
 		u_int64_t sum_usleep_full_loop;
 		u_int64_t time_us;
 	};
-	#endif
 	struct sDescrCpuPerc {
 		sDescrCpuPerc() {
 			memset((void*)this, 0, sizeof(*this));
@@ -4540,11 +4550,9 @@ private:
 		bool operator < (const sDescrCpuPerc& other) const {
 			return(this->cpu_perc > other.cpu_perc);
 		}
-		#if SNIFFER_THREADS_EXT
 		u_int64_t usleep;
 		sTraffic traffic;
 		sBufferPush buffer_push;
-		#endif
 	};
 	struct sSession {
 		sSession() : last_access_us(0) {}
@@ -4565,19 +4573,17 @@ public:
 	sThread *getSelfThread();
 	static sThread *getSelfThreadData();
 	void setSchedPolPriority(int indexPstat);
-	string output(int indexPstat, int outputFlags, int cpu_perc_min = 0);
-	string output(int uid, int outputFlags, bool useSession);  // session-based version
+	string output(int indexPstat, int outputFlags, int cpu_perc_min = 0, int columns = 1);
+	string output(int uid, int outputFlags, bool useSession, int columns = 1);  // session-based version
 	void cleanupSessions(u_int64_t max_age_us = 120000000ULL);  // 120 sec default
 private:
-	string output(list<sDescrCpuPerc> *descrPerc, int outputFlags, int cpu_perc_min = 0);
+	string output(list<sDescrCpuPerc> *descrPerc, int outputFlags, int cpu_perc_min = 0, int columns = 1);
 	double getCpuUsagePerc(sThread *thread, sThreadStatData *stat);
 	context_switches_data getContextSwitches(sThread *thread, sThreadStatData *stat);
 	u_int64_t getUsleep(sThread *thread, sThreadStatData *stat);
 	u_int64_t getTimeUS(sThread *thread, sThreadStatData *stat);
-	#if SNIFFER_THREADS_EXT
 	bool evalTraffic(sThread *thread, sTraffic *traffic, sThreadStatData *stat, u_int64_t time_us);
 	bool evalBufferPush(sThread *thread, sBufferPush *buffer_push, sThreadStatData *stat, u_int64_t time_us);
-	#endif
 	int evalThreadStat(sThread *thread, sThreadStatData *stat, sDescrCpuPerc *dp, int outputFlags, u_int64_t time_us, double *cpu_perc);
 	sSession* getOrCreateSession(int uid);
 	sThreadStatData* getOrCreateSessionThreadData(sSession *session, int tid);

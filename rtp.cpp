@@ -1098,24 +1098,25 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 	 * last packet and current packet
 	 */
 
-	// relative time difference calculated from packet sequence 
+	// relative time difference calculated from packet sequence
 	u_int32_t sequencems = (frame->seqno - last_seq) * packetization;
 
-	/* difference (in ms) between timestamps in packet header and rtp timestamps. this should 
-	 * be ideally equal to zero. Negative values mean that packet arrives earlier and positive 
-	 * values indicates that packet was late 
-	 */
-	long double transit = (timeval_subtract(&tsdiff, header_ts, s->lastTimeRecJ) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0) - ((double)getTimestamp() - s->lastTimeStampJ)/(double)samplerate/1000;
-	
-	/* and now if there is bigger (lets say one second) timestamp difference (calculated from packet headers) 
-	 * between two last packets and transit time is equel or smaller than sequencems (with 200ms toleration), 
+	/* and now if there is bigger (lets say one second) timestamp difference (calculated from packet headers)
+	 * between two last packets and transit time is equel or smaller than sequencems (with 200ms toleration),
 	 * it was silence and manually mark the frame which indicates to not count interpolated frame and resynchronize jitterbuffer
 	 */
-	if( msdiff > 1000 and (transit <= (sequencems + 200)) ) {
-		// check if the last frame was CNG or the last frame was DTMF - force mark bit
-		if(lastcng or (lastframetype == AST_FRAME_DTMF)) {
-			if(verbosity > 4) printf("jitterbuffer: manually marking packet, msdiff(%d) > 1000 and transit (%Lf) <= ((sequencems(%u) + 200)\n", msdiff, transit, sequencems);
-			frame->marker = 1;
+	if(msdiff > 1000) {
+		/* difference (in ms) between timestamps in packet header and rtp timestamps. this should
+		 * be ideally equal to zero. Negative values mean that packet arrives earlier and positive
+		 * values indicates that packet was late
+		 */
+		long double transit = (timeval_subtract(&tsdiff, header_ts, s->lastTimeRecJ) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0) - ((double)getTimestamp() - s->lastTimeStampJ)/(double)samplerate/1000;
+		if(transit <= sequencems + 200) {
+			// check if the last frame was CNG or the last frame was DTMF - force mark bit
+			if(lastcng || lastframetype == AST_FRAME_DTMF) {
+				if(verbosity > 4) printf("jitterbuffer: manually marking packet, msdiff(%d) > 1000 and transit (%Lf) <= ((sequencems(%u) + 200)\n", msdiff, transit, sequencems);
+				frame->marker = 1;
+			}
 		}
 	}
 	

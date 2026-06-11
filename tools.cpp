@@ -9239,17 +9239,13 @@ void cThreadMonitor::registerThread(int tid, const char *description) {
 	thread->description = description;
 	thread->orig_scheduler = -1;
 	thread->orig_priority = -1;
-	#if SNIFFER_THREADS_EXT
 	thread->usleep_sum = 0;
 	thread->packets_cnt_in = 0;
 	thread->packets_cnt_out = 0;
 	thread->packets_size_in = 0;
 	thread->packets_size_out = 0;
 	thread->buffer_push_cnt_all = 0;
-	thread->buffer_push_cnt_full = 0;
-	thread->buffer_push_cnt_full_loop = 0;
 	thread->buffer_push_sum_usleep_full_loop = 0;
-	#endif
 	tm_lock();
 	threads[thread->tid] = thread;
 	tm_unlock();
@@ -9260,11 +9256,9 @@ void cThreadMonitor::unregisterThread(int tid) {
 	map<int, sThread*>::iterator iter = threads.find(tid);
 	if(iter != threads.end()) {
 		bool enable_sniffer_threads_ext = false;
-		#if SNIFFER_THREADS_EXT
 		if(sverb.sniffer_threads_ext) {
 			enable_sniffer_threads_ext = true;
 		}
-		#endif
 		if(!enable_sniffer_threads_ext) {
 			delete iter->second;
 		}
@@ -9345,7 +9339,7 @@ void cThreadMonitor::setSchedPolPriority(int indexPstat) {
 	}
 }
 
-string cThreadMonitor::output(int indexPstat, int outputFlags, int cpu_perc_min) {
+string cThreadMonitor::output(int indexPstat, int outputFlags, int cpu_perc_min, int columns) {
 	list<sDescrCpuPerc> descrPerc;
 	u_int64_t time_us = ::getTimeUS();
 	tm_lock();
@@ -9359,14 +9353,14 @@ string cThreadMonitor::output(int indexPstat, int outputFlags, int cpu_perc_min)
 		}
 	}
 	tm_unlock();
-	return(output(&descrPerc, outputFlags, cpu_perc_min));
+	return(output(&descrPerc, outputFlags, cpu_perc_min, columns));
 }
 
 // Session-based output method
-string cThreadMonitor::output(int uid, int outputFlags, bool useSession) {
+string cThreadMonitor::output(int uid, int outputFlags, bool useSession, int columns) {
 	if(!useSession || uid <= 0) {
 		// Fallback to legacy method with slot 0
-		return output(0, outputFlags);
+		return output(0, outputFlags, 0, columns);
 	}
 
 	// Clean up old sessions periodically
@@ -9394,11 +9388,10 @@ string cThreadMonitor::output(int uid, int outputFlags, bool useSession) {
 	sessions_unlock();
 	tm_unlock();
 	
-	return(output(&descrPerc, outputFlags));
+	return(output(&descrPerc, outputFlags, 0, columns));
 }
 
-string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags, int cpu_perc_min) {
-	int columns = 1;
+string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags, int cpu_perc_min, int columns) {
 	double sum_cpu = 0;
 	int d_count = 0;
 	for(list<sDescrCpuPerc>::iterator iter_dp = descrPerc->begin(); iter_dp != descrPerc->end(); iter_dp++) {
@@ -9426,12 +9419,10 @@ string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags, i
 			if(iter_dp->cpu_perc < cpu_perc_min && iter_dp->state != 'D') {
 				continue;
 			}
-			#if SNIFFER_THREADS_EXT
 			if((outputFlags & _of_only_traffic) &&
 			   !(iter_dp->traffic.packets_cnt_in > 0 || iter_dp->traffic.packets_cnt_out > 0)) {
 				continue;
 			}
-			#endif
 			JsonExport *thread = threads->addObject(NULL);
 			thread->add("description", iter_dp->description);
 			thread->add("tid", iter_dp->tid);
@@ -9452,7 +9443,6 @@ string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags, i
 			if(iter_dp->cs.voluntary) {
 				thread->add("cs_ratio", (double)iter_dp->cs.non_voluntary / iter_dp->cs.voluntary);
 			}
-			#if SNIFFER_THREADS_EXT
 			if(iter_dp->usleep && iter_dp->time_us) {
 				thread->add("usleep_perc", (double)iter_dp->usleep / iter_dp->time_us * 100);
 			}
@@ -9466,15 +9456,12 @@ string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags, i
 				traffic->add("time_us", iter_tr->time_us);
 			}
 			sBufferPush *iter_bp = &iter_dp->buffer_push;
-			if(iter_bp->cnt_all > 0 || iter_bp->cnt_full_loop > 0) {
+			if(iter_bp->cnt_all > 0) {
 				JsonExport *buffer_push = thread->addObject("buffer_push");
 				buffer_push->add("cnt_all", iter_bp->cnt_all);
-				buffer_push->add("cnt_full", iter_bp->cnt_full);
-				buffer_push->add("cnt_full_loop", iter_bp->cnt_full_loop);
 				buffer_push->add("sum_usleep_full_loop", iter_bp->sum_usleep_full_loop);
 				buffer_push->add("time_us", iter_bp->time_us);
 			}
-			#endif
 		}
 		return(json.getJson());
 	}
@@ -9485,12 +9472,10 @@ string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags, i
 		if(iter_dp->cpu_perc < cpu_perc_min && iter_dp->state != 'D') {
 			continue;
 		}
-		#if SNIFFER_THREADS_EXT
 		if((outputFlags & _of_only_traffic) &&
 		   !(iter_dp->traffic.packets_cnt_in > 0 || iter_dp->traffic.packets_cnt_out > 0)) {
 			continue;
 		}
-		#endif
 		if(!(outputFlags & _of_line)) {
 			outStr << fixed
 			       << setw(maxDescrLength) << left << string(iter_dp->description).substr(0, maxDescrLength)
@@ -9536,7 +9521,6 @@ string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags, i
 			} else {
 				outStr << setw(10) << " ";
 			}
-			#if SNIFFER_THREADS_EXT
 			if(sverb.sniffer_threads_ext) {
 				// usleep
 				outStr << "  ";
@@ -9545,6 +9529,14 @@ string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags, i
 					       << ((double)iter_dp->usleep / iter_dp->time_us * 100) << "% ";
 				} else {
 					outStr << setw(10) << " ";
+				}
+				// buffer push
+				outStr << "  ";
+				sBufferPush *iter_bp = &iter_dp->buffer_push;
+				if(iter_bp->cnt_all > 0) {
+				       outStr << "bf" << right << setw(6) << setprecision(1) << ((double)iter_bp->sum_usleep_full_loop / iter_bp->time_us * 100) << "%";
+				} else {
+					outStr << setw(9) << " ";
 				}
 				if(sverb.sniffer_threads_ext > 1) {
 					// traffic
@@ -9560,20 +9552,7 @@ string cThreadMonitor::output(list<sDescrCpuPerc> *descrPerc, int outputFlags, i
 						outStr << setw(32) << " ";
 					}
 				}
-				// buffer push
-				outStr << "  ";
-				sBufferPush *iter_bp = &iter_dp->buffer_push;
-				if(iter_bp->cnt_all > 0) {
-				       outStr << "bf" << right << setw(7) << setprecision(2) << ((double)iter_bp->cnt_full / iter_bp->cnt_all * 100) << "%"
-					      << " " << right << setw(7) << setprecision(2) << ((double)iter_bp->sum_usleep_full_loop / iter_bp->time_us * 100) << "%";
-				} else if(iter_bp->cnt_full_loop > 0) {
-				       outStr << "bf" << right << setw(8) << "FULL"
-					      << " " << right << setw(7) << setprecision(2) << ((double)iter_bp->sum_usleep_full_loop / iter_bp->time_us * 100) << "%";
-				} else {
-					outStr << setw(19) << " ";
-				}
 			}
-			#endif
 			//
 			++counter;
 			if(!(counter % columns)) {
@@ -9667,7 +9646,6 @@ int cThreadMonitor::evalThreadStat(sThread *thread, sThreadStatData *stat, sDesc
 	}
 	dp->cs = this->getContextSwitches(thread, stat);
 	dp->time_us = this->getTimeUS(thread, stat);
-	#if SNIFFER_THREADS_EXT
 	dp->usleep = this->getUsleep(thread, stat);
 	if(evalTraffic(thread, &dp->traffic, stat, time_us)) {
 		++use_counter;
@@ -9675,7 +9653,6 @@ int cThreadMonitor::evalThreadStat(sThread *thread, sThreadStatData *stat, sDesc
 	if(evalBufferPush(thread, &dp->buffer_push, stat, time_us)) {
 		++use_counter;
 	}
-	#endif
 	return(use_counter);
 }
 
@@ -9873,13 +9850,11 @@ context_switches_data cThreadMonitor::getContextSwitches(sThread *thread, sThrea
 	return(rslt);
 }
 
-#if SNIFFER_THREADS_EXT
 u_int64_t cThreadMonitor::getUsleep(sThread *thread, sThreadStatData *stat) {
 	u_int64_t rslt = thread->usleep_sum - stat->usleep_sum_last;
 	stat->usleep_sum_last = thread->usleep_sum;
 	return(rslt);
 }
-#endif
 
 u_int64_t cThreadMonitor::getTimeUS(sThread *thread, sThreadStatData *stat) {
 	if(stat->last_time_us[0]) {
@@ -9891,7 +9866,6 @@ u_int64_t cThreadMonitor::getTimeUS(sThread *thread, sThreadStatData *stat) {
 		0);
 }
 
-#if SNIFFER_THREADS_EXT
 bool cThreadMonitor::evalTraffic(sThread *thread, sTraffic *traffic, sThreadStatData *stat, u_int64_t time_us) {
 	bool rslt = false;
 	if(thread->packets_cnt_in > 0 || thread->packets_cnt_out > 0) {
@@ -9916,14 +9890,10 @@ bool cThreadMonitor::evalBufferPush(sThread *thread, sBufferPush *buffer_push, s
 	bool rslt = false;
 	if(thread->buffer_push_cnt_all > 0) {
 		buffer_push->cnt_all = thread->buffer_push_cnt_all - stat->buffer_push_cnt_all_last;
-		buffer_push->cnt_full = thread->buffer_push_cnt_full - stat->buffer_push_cnt_full_last;
-		buffer_push->cnt_full_loop = thread->buffer_push_cnt_full_loop - stat->buffer_push_cnt_full_loop_last;
 		buffer_push->sum_usleep_full_loop = thread->buffer_push_sum_usleep_full_loop - stat->buffer_push_sum_usleep_full_loop_last;
-		if(buffer_push->cnt_all > 0 || buffer_push->cnt_full > 0 || buffer_push->cnt_full_loop > 0) {
+		if(buffer_push->cnt_all > 0) {
 			buffer_push->time_us = time_us - stat->buffer_push_last_time_us;
 			stat->buffer_push_cnt_all_last = thread->buffer_push_cnt_all;
-			stat->buffer_push_cnt_full_last = thread->buffer_push_cnt_full;
-			stat->buffer_push_cnt_full_loop_last = thread->buffer_push_cnt_full_loop;
 			stat->buffer_push_sum_usleep_full_loop_last = thread->buffer_push_sum_usleep_full_loop;
 			rslt = true;
 		}
@@ -9931,7 +9901,6 @@ bool cThreadMonitor::evalBufferPush(sThread *thread, sBufferPush *buffer_push, s
 	stat->buffer_push_last_time_us = time_us;
 	return(rslt);
 }
-#endif
 
 
 void cCsv::sRow::dump() {

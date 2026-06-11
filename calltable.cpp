@@ -2144,11 +2144,15 @@ bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
  
 	removeRTP_ifSetFlag();
  
+	vmIP packet_saddr = packetS->saddr_();
+	vmIP packet_daddr = packetS->daddr_();
+	vmPort packet_source = packetS->source_();
+	vmPort packet_dest = packetS->dest_();
 	if(iscaller < 0) {
-		if(this->is_sipcaller(c_branch, packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_()) || 
-		   this->is_sipcalled(c_branch, packetS->daddr_(), packetS->dest_(), packetS->saddr_(), packetS->source_()) ||
-		   this->is_sipcaller(c_branch, packetS->saddr_(), packetS->source_(), 0, 0) || 
-		   this->is_sipcalled(c_branch, packetS->daddr_(), packetS->dest_(), 0, 0)) {
+		if(this->is_sipcaller(c_branch, packet_saddr, packet_source, packet_daddr, packet_dest) ||
+		   this->is_sipcalled(c_branch, packet_daddr, packet_dest, packet_saddr, packet_source) ||
+		   this->is_sipcaller(c_branch, packet_saddr, packet_source, 0, 0) ||
+		   this->is_sipcalled(c_branch, packet_daddr, packet_dest, 0, 0)) {
 			iscaller = 1;
 		} else {
 			iscaller = 0;
@@ -2256,7 +2260,7 @@ bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 					}
 				}
 			}
-			if(rtp_i->eqAddrPort(packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_())) {
+			if(rtp_i->eqAddrPort(packet_saddr, packet_daddr, packet_source, packet_dest)) {
 				//if(verbosity > 1) printf("found seq[%u] saddr[%u] dport[%u]\n", tmprtp.getSeqNum(), packetS->saddr_(), packetS->dest_());
 				// found 
 			 
@@ -2341,11 +2345,11 @@ read:
 						
 						if(rtp_i->index_call_ip_port >= 0) {
 							evProcessRtpStream(c_branch, rtp_i->index_call_ip_port, rtp_i->index_call_ip_port_by_dest,
-									   packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), packetS->header_pt->ts.tv_sec);
+									   packet_saddr, packet_source, packet_daddr, packet_dest, packetS->header_pt->ts.tv_sec);
 						}
 						if(find_by_dest ?
-						    rtp_i->prev_sport.isSet() && rtp_i->prev_sport != packetS->source_() :
-						    rtp_i->prev_dport.isSet() && rtp_i->prev_dport != packetS->dest_()) {
+						    rtp_i->prev_sport.isSet() && rtp_i->prev_sport != packet_source :
+						    rtp_i->prev_dport.isSet() && rtp_i->prev_dport != packet_dest) {
 							rtp_i->change_src_port = true;
 						}
 						if(rtp_i->iscaller) {
@@ -2362,7 +2366,7 @@ read:
 						u_int32_t datalen = packetS->datalen_();
 						bool decrypt_ok = packetS->flags.s.decrypt_ok;
 						if(rtp_i->read(c_branch,
-							       (u_char*)packetS->data_(), packetS->header_ip_(), &datalen, packetS->header_pt, packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(),
+							       (u_char*)packetS->data_(), packetS->header_ip_(), &datalen, packetS->header_pt, packet_saddr, packet_daddr, packet_source, packet_dest,
 							       packetS->sensor_id_(), packetS->sensor_ip, ifname, &decrypt_ok, &packetS->decrypt_sync)) {
 							rtp_read_rslt = true;
 							if(stream_in_multiple_calls) {
@@ -2374,8 +2378,8 @@ read:
 							rtp_i->rtp_stream_analysis_output();
 						}
 						packetS->set_datalen_(datalen);
-						rtp_i->prev_sport = packetS->source_();
-						rtp_i->prev_dport = packetS->dest_();
+						rtp_i->prev_sport = packet_source;
+						rtp_i->prev_dport = packet_dest;
 						if(rtp_i->iscaller) {
 							lastcallerrtp = rtp_i;
 						} else {
@@ -2390,7 +2394,7 @@ read:
 						} else {
 							for(int j = 0; j < rtp_size(); j++) { RTP *rtp_j = rtp_stream_by_index(j);
 								if(rtp_j->ssrc2 == curSSRC &&
-								   rtp_j->eqAddrPort(packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_()) &&
+								   rtp_j->eqAddrPort(packet_saddr, packet_daddr, packet_source, packet_dest) &&
 								   rtp_j->payload2 == curpayload) {
 									 i = j;
 									 rtp_i = rtp_j;
@@ -7969,7 +7973,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			if(ipfix_qos_streams_ab[i]->Mos > 0) {
 				cdr.add(LIMIT_TINYINT_UNSIGNED((int)round((double)ipfix_qos_streams_ab[i]->Mos/10)), c+"_mos_f2_mult10");
 			}
-			int ticks_bycodec;
+			int ticks_bycodec = 8;
 			if(opt_ipfix_qos_fill_jitter) {
 				ticks_bycodec = get_ticks_bycodec(ipfix_qos_streams_ab[i]->CodecType);
 				cdr.add(LIMIT_SMALLINT_UNSIGNED(round((double)ipfix_qos_streams_ab[i]->RtpMaxJitter / ticks_bycodec)), c+"_maxjitter");

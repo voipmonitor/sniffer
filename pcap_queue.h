@@ -1090,10 +1090,8 @@ protected:
 	pstat_data writeThreadPstatData[2][2];
 	pstat_data nextThreadsPstatData[PCAP_QUEUE_NEXT_THREADS_MAX][2][2];
 	bool initAllReadThreadsFinished;
-	#if SNIFFER_THREADS_EXT
 	cThreadMonitor::sThread *thread_data_main;
 	cThreadMonitor::sThread *thread_data_write;
-	#endif
 protected:
 	class PcapQueue_readFromFifo *instancePcapFifo;
 private:
@@ -1668,9 +1666,7 @@ private:
 	unsigned long long sumPacketsSize[3];
 	bool prepareHeaderPacketPool; // experimental option
 	pcap_dispatch_data dispatch_data;
-	#if SNIFFER_THREADS_EXT
 	cThreadMonitor::sThread *thread_data;
-	#endif
 	#if DEBUG_PB_BLOCKS_SEQUENCE
 	u_int64_t pb_blocks_sequence_last;
 	#endif
@@ -2263,13 +2259,11 @@ public:
 	}
 private:
 	void flushDownstream();
-	#if SNIFFER_THREADS_EXT
 	inline void tm_inc_packets_out(sHeaderPacketPQout *hp) {
 		if(sverb.sniffer_threads_ext > 1 && thread_data) {
 			thread_data->inc_packets_out(hp->header->get_caplen());
 		}
 	}
-	#endif
 private:
 	eTypeOutputThread typeOutputThread;
 	PcapQueue_readFromFifo *pcapQueue;
@@ -2308,9 +2302,7 @@ private:
 	unsigned push_thread;
 	u_int64_t last_race_log[2];
 	#endif
-	#if SNIFFER_THREADS_EXT
 	cThreadMonitor::sThread *thread_data;
-	#endif
 friend inline void *_PcapQueue_outputThread_outThreadFunction(void *arg);
 };
 

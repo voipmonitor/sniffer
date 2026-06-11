@@ -4823,11 +4823,19 @@ int Mgmt_sniffer_threads(Mgmt_params *params) {
 	if(uid_str) {
 		uid = atoi(uid_str + 4);
 	}
+	int columns = 1;
+	const char *columns_str = strstr(params->buf, "columns=");
+	if(columns_str) {
+		columns = atoi(columns_str + 8);
+		if(columns < 1) {
+			columns = 1;
+		}
+	}
 	string threads;
 	if(uid > 0) {
-		threads = threadMonitor.output(uid, outputFlags, true);
+		threads = threadMonitor.output(uid, outputFlags, true, columns);
 	} else {
-		threads = threadMonitor.output(1, outputFlags);
+		threads = threadMonitor.output(1, outputFlags, 0, columns);
 	}
 	return(params->sendString(&threads));
 }

@@ -1178,7 +1178,6 @@ void usleep_stats_add(unsigned int useconds, unsigned int useconds_real, bool fi
 		++usleepStats[id];
 		__SYNC_UNLOCK(usleepStatsSync);
 	}
-	#if SNIFFER_THREADS_EXT
 	if(sverb.sniffer_threads_ext) {
 		static __thread cThreadMonitor::sThread *thread = NULL;
 		if(!thread) {
@@ -1188,7 +1187,6 @@ void usleep_stats_add(unsigned int useconds, unsigned int useconds_real, bool fi
 			thread->usleep_sum += useconds_real;
 		}
 	}
-	#endif
 }
 
 string usleep_stats(unsigned int useconds_lt) {

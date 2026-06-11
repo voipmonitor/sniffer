@@ -5108,7 +5108,7 @@ int main_init_read() {
 			for(int i = 0; i < num_threads_max; i++) {
 				size_t _rtp_qring_length = rtp_qring_length ? 
 								rtp_qring_length :
-								rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet_pcap_queue);
+								rtpthreadbuffer * 1024 * 1024 / (sizeof(pcap_pkthdr_plus) + 250);
 				rtp_threads[i].init(i + 1, _rtp_qring_length);
 				if(i < num_threads_active) {
 					rtp_threads[i].alloc_qring();
@@ -9727,7 +9727,17 @@ void set_context_config() {
 			opt_usleep_progressive = false;
 		}
 	}
-	
+
+	if(opt_t2_boost) {
+		int boost_mult = opt_t2_boost == 2 ? 5 : 2;
+		if(!CONFIG.isSet("rtpthread-buffer")) {
+			rtpthreadbuffer *= boost_mult;
+		}
+		if(!CONFIG.isSet("rtp_qring_batch_length")) {
+			rtp_qring_batch_length *= boost_mult;
+		}
+	}
+
 	if(opt_use_sem_sync || opt_use_pcap_queue_sem_sync) {
 		opt_pcap_queue_output_qring_sem_sync = 1;
 		opt_pcap_queue_output_next_thread_sem_sync = 2;

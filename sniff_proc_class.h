@@ -757,53 +757,26 @@ public:
 	}
 	inline pcap_queue_packet_data *push_packet_detach_x__get_pointer() {
 		if(!qring_push_index) {
-			#if SNIFFER_THREADS_EXT
-			if(sverb.sniffer_threads_ext && thread_data) {
-				++thread_data->buffer_push_cnt_all;
-			}
-			#endif
+			cThreadMonitor::sThread::buffer_push_account_all(thread_data);
 			extern int opt_preprocess_packets_qring_sem_sync;
 			if(opt_preprocess_packets_qring_sem_sync) {
-				#if SNIFFER_THREADS_EXT
 				if(sem_trywait(&this->sem_qring_free_count) == -1) {
-					if(sverb.sniffer_threads_ext && thread_data) {
-						++thread_data->buffer_push_cnt_full;
-					}
+					u_int64_t us_start = cThreadMonitor::sThread::buffer_push_account_sem_full_begin(thread_data);
 					sem_wait(&this->sem_qring_free_count);
+					cThreadMonitor::sThread::buffer_push_account_sem_full_end(thread_data, us_start);
 				}
-				#else
-				sem_wait(&this->sem_qring_free_count);
-				#endif
 			} else {
+				extern unsigned int opt_preprocess_packets_qring_push_usleep;
 				unsigned int usleepCounter = 0;
 				while(this->qring_detach_x[this->writeit]->used != 0) {
-					if(usleepCounter == 0) {
-						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data) {
-							++thread_data->buffer_push_cnt_full;
-						}
-						#endif
-					}
-					#if SNIFFER_THREADS_EXT
-					if(sverb.sniffer_threads_ext && thread_data) {
-						++thread_data->buffer_push_cnt_full_loop;
-					}
-					#endif
-					extern unsigned int opt_preprocess_packets_qring_push_usleep;
+					unsigned us = 0;
 					if(opt_preprocess_packets_qring_push_usleep) {
-						#if SNIFFER_THREADS_EXT
-						unsigned us =
-						#endif
-						USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
-						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data) {
-							thread_data->buffer_push_sum_usleep_full_loop += us;
-						}
-						#endif
+						us = USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
 					} else {
 						__ASM_PAUSE;
 						++usleepCounter;
 					}
+					cThreadMonitor::sThread::buffer_push_account_busy_full(thread_data, us);
 				}
 			}
 			qring_push_index = this->writeit + 1;
@@ -844,53 +817,26 @@ public:
 	}
 	inline packet_s *push_packet_detach__get_pointer() {
 		if(!qring_push_index) {
-			#if SNIFFER_THREADS_EXT
-			if(sverb.sniffer_threads_ext && thread_data) {
-				++thread_data->buffer_push_cnt_all;
-			}
-			#endif
+			cThreadMonitor::sThread::buffer_push_account_all(thread_data);
 			extern int opt_preprocess_packets_qring_sem_sync;
 			if(opt_preprocess_packets_qring_sem_sync) {
-				#if SNIFFER_THREADS_EXT
 				if(sem_trywait(&this->sem_qring_free_count) == -1) {
-					if(sverb.sniffer_threads_ext && thread_data) {
-						++thread_data->buffer_push_cnt_full;
-					}
+					u_int64_t us_start = cThreadMonitor::sThread::buffer_push_account_sem_full_begin(thread_data);
 					sem_wait(&this->sem_qring_free_count);
+					cThreadMonitor::sThread::buffer_push_account_sem_full_end(thread_data, us_start);
 				}
-				#else
-				sem_wait(&this->sem_qring_free_count);
-				#endif
 			} else {
+				extern unsigned int opt_preprocess_packets_qring_push_usleep;
 				unsigned int usleepCounter = 0;
 				while(this->qring_detach[this->writeit]->used != 0) {
-					if(usleepCounter == 0) {
-						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data) {
-							++thread_data->buffer_push_cnt_full;
-						}
-						#endif
-					}
-					#if SNIFFER_THREADS_EXT
-					if(sverb.sniffer_threads_ext && thread_data) {
-						++thread_data->buffer_push_cnt_full_loop;
-					}
-					#endif
-					extern unsigned int opt_preprocess_packets_qring_push_usleep;
+					unsigned us = 0;
 					if(opt_preprocess_packets_qring_push_usleep) {
-						#if SNIFFER_THREADS_EXT
-						unsigned us =
-						#endif
-						USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
-						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data) {
-							thread_data->buffer_push_sum_usleep_full_loop += us;
-						}
-						#endif
+						us = USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
 					} else {
 						__ASM_PAUSE;
 						++usleepCounter;
 					}
+					cThreadMonitor::sThread::buffer_push_account_busy_full(thread_data, us);
 				}
 			}
 			qring_push_index = this->writeit + 1;
@@ -969,53 +915,26 @@ public:
 	}
 	inline void push_packet_detach__active__prepare() {
 		if(!qring_push_index) {
-			#if SNIFFER_THREADS_EXT
-			if(sverb.sniffer_threads_ext && thread_data) {
-				++thread_data->buffer_push_cnt_all;
-			}
-			#endif
+			cThreadMonitor::sThread::buffer_push_account_all(thread_data);
 			extern int opt_preprocess_packets_qring_sem_sync;
 			if(opt_preprocess_packets_qring_sem_sync) {
-				#if SNIFFER_THREADS_EXT
 				if(sem_trywait(&this->sem_qring_free_count) == -1) {
-					if(sverb.sniffer_threads_ext && thread_data) {
-						++thread_data->buffer_push_cnt_full;
-					}
+					u_int64_t us_start = cThreadMonitor::sThread::buffer_push_account_sem_full_begin(thread_data);
 					sem_wait(&this->sem_qring_free_count);
+					cThreadMonitor::sThread::buffer_push_account_sem_full_end(thread_data, us_start);
 				}
-				#else
-				sem_wait(&this->sem_qring_free_count);
-				#endif
 			} else {
+				extern unsigned int opt_preprocess_packets_qring_push_usleep;
 				unsigned int usleepCounter = 0;
 				while(this->qring_detach[this->writeit]->used != 0) {
-					if(usleepCounter == 0) {
-						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data) {
-							++thread_data->buffer_push_cnt_full;
-						}
-						#endif
-					}
-					#if SNIFFER_THREADS_EXT
-					if(sverb.sniffer_threads_ext && thread_data) {
-						++thread_data->buffer_push_cnt_full_loop;
-					}
-					#endif
-					extern unsigned int opt_preprocess_packets_qring_push_usleep;
+					unsigned us = 0;
 					if(opt_preprocess_packets_qring_push_usleep) {
-						#if SNIFFER_THREADS_EXT
-						unsigned us =
-						#endif
-						USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
-						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data) {
-							thread_data->buffer_push_sum_usleep_full_loop += us;
-						}
-						#endif
+						us = USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
 					} else {
 						__ASM_PAUSE;
 						++usleepCounter;
 					}
+					cThreadMonitor::sThread::buffer_push_account_busy_full(thread_data, us);
 				}
 			}
 			qring_push_index = this->writeit + 1;
@@ -1073,24 +992,15 @@ public:
 			_lock = true;
 		}
 		if(this->outThreadState == 2) {
-			#if SNIFFER_THREADS_EXT
-			if(sverb.sniffer_threads_ext && thread_data) {
-				++thread_data->buffer_push_cnt_all;
-			}
-			#endif
+			cThreadMonitor::sThread::buffer_push_account_all(thread_data);
 			if(!qring_push_index) {
 				extern int opt_preprocess_packets_qring_sem_sync;
 				if(opt_preprocess_packets_qring_sem_sync) {
-					#if SNIFFER_THREADS_EXT
 					if(sem_trywait(&this->sem_qring_free_count) == -1) {
-						if(sverb.sniffer_threads_ext && thread_data) {
-							++thread_data->buffer_push_cnt_full;
-						}
+						u_int64_t us_start = cThreadMonitor::sThread::buffer_push_account_sem_full_begin(thread_data);
 						sem_wait(&this->sem_qring_free_count);
+						cThreadMonitor::sThread::buffer_push_account_sem_full_end(thread_data, us_start);
 					}
-					#else
-					sem_wait(&this->sem_qring_free_count);
-					#endif
 					if(is_terminating()) {
 						this->packetS_destroy(packetS);
 						if(_lock) {
@@ -1108,33 +1018,15 @@ public:
 							}
 							return(false);
 						}
-						if(usleepCounter == 0) {
-							#if SNIFFER_THREADS_EXT
-							if(sverb.sniffer_threads_ext && thread_data) {
-								++thread_data->buffer_push_cnt_full;
-							}
-							#endif
-						}
-						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data) {
-							++thread_data->buffer_push_cnt_full_loop;
-						}
-						#endif
 						extern unsigned int opt_preprocess_packets_qring_push_usleep;
+						unsigned us = 0;
 						if(opt_preprocess_packets_qring_push_usleep) {
-							#if SNIFFER_THREADS_EXT
-							unsigned us =
-							#endif
-							USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
-							#if SNIFFER_THREADS_EXT
-							if(sverb.sniffer_threads_ext && thread_data) {
-								thread_data->buffer_push_sum_usleep_full_loop += us;
-							}
-							#endif
+							us = USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
 						} else {
 							__ASM_PAUSE;
 							++usleepCounter;
 						}
+						cThreadMonitor::sThread::buffer_push_account_busy_full(thread_data, us);
 					}
 				}
 				qring_push_index = this->writeit + 1;
@@ -2053,9 +1945,7 @@ private:
 	u_int64_t rtp_delay_queue_push_item_limit_us;
 	batch_packet_s_time* rtp_delay_queue_pop_item;
 	u_int64_t rtp_delay_queue_last_time;
-	#if SNIFFER_THREADS_EXT
 	cThreadMonitor::sThread *thread_data;
-	#endif
 friend inline void *_PreProcessPacket_outThreadFunction(void *arg);
 friend inline void *_PreProcessPacket_nextThreadFunction(void *arg);
 friend class TcpReassemblySip;
@@ -2295,23 +2185,14 @@ public:
 		extern bool use_push_batch_limit_ms;
 		u_int64_t time_us = use_push_batch_limit_ms ? packetS->getTimeUS() : 0;
 		if(!qring_push_index) {
-			#if SNIFFER_THREADS_EXT
-			if(sverb.sniffer_threads_ext && thread_data) {
-				++thread_data->buffer_push_cnt_all;
-			}
-			#endif
+			cThreadMonitor::sThread::buffer_push_account_all(thread_data);
 			extern int opt_preprocess_rtp_packets_qring_sem_sync;
 			if(opt_preprocess_rtp_packets_qring_sem_sync) {
-				#if SNIFFER_THREADS_EXT
 				if(sem_trywait(&this->sem_qring_free_count) == -1) {
-					if(sverb.sniffer_threads_ext && thread_data) {
-						++thread_data->buffer_push_cnt_full;
-					}
+					u_int64_t us_start = cThreadMonitor::sThread::buffer_push_account_sem_full_begin(thread_data);
 					sem_wait(&this->sem_qring_free_count);
+					cThreadMonitor::sThread::buffer_push_account_sem_full_end(thread_data, us_start);
 				}
-				#else
-				sem_wait(&this->sem_qring_free_count);
-				#endif
 				if(is_terminating()) {
 					PACKET_S_PROCESS_DESTROY(&packetS);
 					return;
@@ -2323,33 +2204,15 @@ public:
 						PACKET_S_PROCESS_DESTROY(&packetS);
 						return;
 					}
-					if(usleepCounter == 0) {
-						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data) {
-							++thread_data->buffer_push_cnt_full;
-						}
-						#endif
-					}
-					#if SNIFFER_THREADS_EXT
-					if(sverb.sniffer_threads_ext && thread_data) {
-						++thread_data->buffer_push_cnt_full_loop;
-					}
-					#endif
 					extern unsigned int opt_process_rtp_packets_qring_push_usleep;
+					unsigned us = 0;
 					if(opt_process_rtp_packets_qring_push_usleep) {
-						#if SNIFFER_THREADS_EXT
-						unsigned us =
-						#endif
-						USLEEP_C(opt_process_rtp_packets_qring_push_usleep, usleepCounter++);
-						#if SNIFFER_THREADS_EXT
-						if(sverb.sniffer_threads_ext && thread_data) {
-							thread_data->buffer_push_sum_usleep_full_loop += us;
-						}
-						#endif
+						us = USLEEP_C(opt_process_rtp_packets_qring_push_usleep, usleepCounter++);
 					} else {
 						__ASM_PAUSE;
 						++usleepCounter;
 					}
+					cThreadMonitor::sThread::buffer_push_account_busy_full(thread_data, us);
 				}
 			}
 			qring_push_index = this->writeit + 1;
@@ -2506,9 +2369,7 @@ private:
 	#endif
 	volatile u_int32_t calls;
 	static volatile int _sync_add_rtp_rd_threads;
-	#if SNIFFER_THREADS_EXT
 	cThreadMonitor::sThread *thread_data;
-	#endif
 	u_int32_t last_rtp_rh_thread_operation_at;
 	static u_int32_t last_rtp_rd_thread_operation_at;
 friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
