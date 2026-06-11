@@ -1571,16 +1571,7 @@ bool Call::refresh_data_ip_port(CallBranch *c_branch,
 				}
 				c_branch->ip_port[i].sdp_flags = sdp_flags;
 				c_branch->ip_port[i].ptime = ptime;
-				calltable->lock_calls_hash();
-				node_call_rtp *n_call = calltable->hashfind_by_ip_port(addr, port, false);
-				if(n_call) {
-					for(; n_call; n_call = n_call->next) {
-						if(n_call->c_branch == c_branch) {
-							n_call->sdp_flags = sdp_flags;
-						}
-					}
-				}
-				calltable->unlock_calls_hash();
+				calltable->hashRefresh(addr, port, c_branch, sdp_flags);
 			}
 			if(sdp_flags.protocol == sdp_proto_srtp) {
 				c_branch->ip_port[i].setSrtp();
@@ -11863,7 +11854,9 @@ void Calltable::hashAdd(vmIP addr, vmPort port, u_int64_t time_us, CallBranch *c
 		lock_hash_modify_queue();
 		hash_modify_queue.push_back(hmd);
 		++c_branch->call->hash_queue_counter;
-		_applyHashModifyQueue(true);
+		if(opt_t2_boost != 2) {
+			_applyHashModifyQueue(true);
+		}
 		unlock_hash_modify_queue();
 	} else {
 		_hashAdd(addr, port, TIME_US_TO_S(time_us), c_branch, iscaller, is_rtcp, sdp_flags, type_addr);
@@ -11873,6 +11866,37 @@ void Calltable::hashAdd(vmIP addr, vmPort port, u_int64_t time_us, CallBranch *c
 	
 }
  
+void Calltable::hashRefresh(vmIP addr, vmPort port, CallBranch *c_branch, s_sdp_flags sdp_flags) {
+	if(hash_modify_queue_length_ms) {
+		sHashModifyData hmd;
+		hmd.oper = hmo_refresh;
+		hmd.addr = addr;
+		hmd.port = port;
+		hmd.c_branch = c_branch;
+		hmd.sdp_flags = sdp_flags;
+		hmd.use_hash_queue_counter = false;
+		lock_hash_modify_queue();
+		hash_modify_queue.push_back(hmd);
+		if(opt_t2_boost != 2) {
+			_applyHashModifyQueue(true);
+		}
+		unlock_hash_modify_queue();
+	} else {
+		lock_calls_hash();
+		_hashRefresh(addr, port, c_branch, sdp_flags);
+		unlock_calls_hash();
+	}
+}
+
+inline void Calltable::_hashRefresh(vmIP addr, vmPort port, CallBranch *c_branch, s_sdp_flags sdp_flags) {
+	node_call_rtp *n_call = hashfind_by_ip_port(addr, port, false);
+	for(; n_call; n_call = n_call->next) {
+		if(n_call->c_branch == c_branch) {
+			n_call->sdp_flags = sdp_flags;
+		}
+	}
+}
+
 inline node_call_rtp *create_node_call() {
 	node_call_rtp *node;
 	#if SEPARATE_HEAP_FOR_HASHTABLE
@@ -12153,7 +12177,9 @@ void Calltable::hashRemove(CallBranch *c_branch, vmIP addr, vmPort port, bool rt
 		if(useHashQueueCounter) {
 			++c_branch->call->hash_queue_counter;
 		}
-		_applyHashModifyQueue(true);
+		if(opt_t2_boost != 2) {
+			_applyHashModifyQueue(true);
+		}
 		unlock_hash_modify_queue();
 	} else {
 		_hashRemove(c_branch, addr, port, rtcp, ignore_rtcp_check);
@@ -12207,7 +12233,9 @@ Calltable::hashRemove(CallBranch *c_branch, bool useHashQueueCounter) {
 		if(useHashQueueCounter) {
 			++c_branch->call->hash_queue_counter;
 		}
-		_applyHashModifyQueue(true);
+		if(opt_t2_boost != 2) {
+			_applyHashModifyQueue(true);
+		}
 		unlock_hash_modify_queue();
 		return(-1);
 	} else {
@@ -12280,6 +12308,9 @@ void Calltable::_applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash) {
 					break;
 				case hmo_remove_call:
 					_hashRemove(iter->c_branch, false);
+					break;
+				case hmo_refresh:
+					_hashRefresh(iter->addr, iter->port, iter->c_branch, iter->sdp_flags);
 					break;
 				}
 				if(iter->use_hash_queue_counter) {

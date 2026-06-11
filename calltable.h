@@ -3424,7 +3424,8 @@ private:
 	enum eHashModifyOper {
 		hmo_add,
 		hmo_remove,
-		hmo_remove_call
+		hmo_remove_call,
+		hmo_refresh
 	};
 	struct sHashModifyData {
 		eHashModifyOper oper;
@@ -4034,6 +4035,8 @@ public:
 	void hashAdd(vmIP addr, vmPort port, u_int64_t time_us, CallBranch *c_branch, int iscaller, int isrtcp, s_sdp_flags sdp_flags, u_int8_t type_addr = 0);
 	inline void _hashAdd(vmIP addr, vmPort port, long int time_s, CallBranch *c_branch, int iscaller, int isrtcp, s_sdp_flags sdp_flags, u_int8_t type_addr = 0, bool use_lock = true);
 	void _hashAddExt(vmIP addr, vmPort port, long int time_s, CallBranch *c_branch, int iscaller, int isrtcp, s_sdp_flags sdp_flags, u_int8_t type_addr = 0, bool use_lock = true);
+	void hashRefresh(vmIP addr, vmPort port, CallBranch *c_branch, s_sdp_flags sdp_flags);
+	inline void _hashRefresh(vmIP addr, vmPort port, CallBranch *c_branch, s_sdp_flags sdp_flags);
 
 	/**
 	 * @brief find call

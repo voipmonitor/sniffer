@@ -11473,7 +11473,7 @@ void *PreProcessPacket::outThreadFunction() {
 					batch->used = 0;
 				#endif
 				_process_packet__cleanup_calls(NULL, last_time_s, __FILE__, __LINE__);
-				if(hash_modify_queue_length_ms) {
+				if(opt_t2_boost != 2 && hash_modify_queue_length_ms) {
 					calltable->applyHashModifyQueue(true);
 				}
 			}
@@ -11644,7 +11644,7 @@ void PreProcessPacket::flushDownstream() {
 		break;
 	case ppt_pp_process_call:
 		_process_packet__cleanup_calls(NULL, 0, __FILE__, __LINE__);
-		if(hash_modify_queue_length_ms) {
+		if(opt_t2_boost != 2 && hash_modify_queue_length_ms) {
 			calltable->applyHashModifyQueue(true);
 		}
 		break;
@@ -13174,6 +13174,9 @@ void *ProcessRtpPacket::outThreadFunction() {
 	unsigned int usleepCounter = 0;
 	u_int64_t usleepSumTimeForPushBatch = 0;
 	while(!this->term_processRtp) {
+		if(opt_t2_boost == 2 && this->type == hash) {
+			calltable->applyHashModifyQueue(true);
+		}
 		if(this->process_rtp_packets_hash_next_threads_mod && this->type == hash) {
 			if(this->process_rtp_packets_hash_next_threads_mod > 0) {
 				createNextHashThread();
