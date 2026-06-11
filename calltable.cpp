@@ -12251,12 +12251,12 @@ Calltable::hashRemoveForce(CallBranch *c_branch) {
 
 int Calltable::_hashRemove(CallBranch *c_branch, bool use_lock) {
 	int removeCounter = 0;
-	if (use_lock) lock_calls_hash();
 	#if CHECK_HASHTABLE_FOR_ALL_CALLS
 	if(c_branch->rtp_ip_port_counter_add) {
 	#else
 	if(c_branch->rtp_ip_port_counter) {
 	#endif
+		if (use_lock) lock_calls_hash();
 		node_call_rtp_ip_port *node = NULL, *prev_node = NULL;
 		node_call_rtp *node_call = NULL, *prev_node_call = NULL;
 		for(int h = 0; h < MAXNODE; h++) {
@@ -12280,8 +12280,9 @@ int Calltable::_hashRemove(CallBranch *c_branch, bool use_lock) {
 				}
 			}
 		}
+		c_branch->rtp_ip_port_counter = 0;
+		if (use_lock) unlock_calls_hash();
 	}
-	if (use_lock) unlock_calls_hash();
 	return(removeCounter);
 }
 

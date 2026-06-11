@@ -1629,7 +1629,8 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t seq, u_int32_t next_seq, 
 					if(!stream->ok(false, true, max_seq,
 						       0, 0, 0,
 						       NULL, enableDebug,
-						       stream->min_seq)) {
+						       stream->min_seq) ||
+					   !stream->ok_packets.size()) {
 						break;
 					}
 					for(unsigned i = 0; i < stream->ok_packets.size(); i++) {
@@ -1915,12 +1916,13 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t seq, u_int32_t next_seq, 
 							}
 							TcpReassemblyStream *prevStream = findStreamByMaxNextSeq(streams[streams.size() - 1]->min_seq);
 							if(prevStream) {
-								if((reassembly->enableSmartCompleteData &&
-								    prevStream->isSetCompleteData() && prevStream->is_ok) ||
-								   prevStream->ok(false, true, prevStream->max_next_seq,
-										  0, 0, 0,
-										  NULL, enableDebug,
-										  prevStream->min_seq)) {
+								if(((reassembly->enableSmartCompleteData &&
+								     prevStream->isSetCompleteData() && prevStream->is_ok) ||
+								    prevStream->ok(false, true, prevStream->max_next_seq,
+										   0, 0, 0,
+										   NULL, enableDebug,
+										   prevStream->min_seq)) &&
+								   prevStream->ok_packets.size()) {
 									streams.push_back(prevStream);
 								} else {
 									prevStream->clearCompleteData();
