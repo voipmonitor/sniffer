@@ -1879,16 +1879,7 @@ public:
 	string conference_referred_by;
 	sCseq conference_referred_by_cseq;
 	u_int64_t conference_referred_by_ok_time;
-	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
-	string main_conference_call_id;
-	string conference_user_entity;
-	u_int64_t conference_connect_time;
-	u_int64_t conference_disconnect_time;
-	volatile int conference_active;
-	map<string, Call*> conference_legs;
-	#else
 	map<sConferenceLegId, sConferenceLegs*> conference_legs;
-	#endif
 	volatile int conference_legs_sync;
 	eSrvccFlag srvcc_flag;
 	string srvcc_call_id;
@@ -3410,6 +3401,95 @@ struct sChartsCallData {
 */
 
 class Calltable {
+public:
+	enum eCleanupCallsState {
+		 _cc_na,
+		 _cc_start,
+		 _cc_begin,
+		 _cc_begin_finish,
+		 _cc_load_all_calls,
+		 _cc_load_all_calls_finish,
+		 _cc_process_calls,
+		 _cc_process_calls_finish,
+		 _cc_remove_calls_from_map,
+		 _cc_remove_calls_from_map_finish,
+		 _cc_close_calls,
+		 _cc_close_calls_finish,
+		 _cc_goto_end,
+		 _cc_end,
+		 _cc_end_finish,
+	};
+	struct sCleanupCallsStat {
+		u_int32_t all;
+		u_int32_t close_destroy_at;
+		u_int32_t close_bye_timeout;
+		u_int32_t close_rtp_timeout;
+		u_int32_t close_sipwithoutrtp_timeout;
+		u_int32_t close_absolute_timeout;
+		u_int32_t close_zombie_timeout;
+		u_int32_t close_oneway_timeout;
+		u_int32_t close_max_sip_packets;
+		u_int32_t close_max_invite_packets;
+		u_int32_t in_preprocess_issue;
+		u_int32_t sp_sent_close_call;
+		u_int32_t sp_arrived_rtp_streams;
+		u_int32_t rejected_hash_or_rtppacketsinqueue;
+		u_int32_t rejected_set_stop_processing;
+		u_int32_t rejected_wait_for_stop_processing;
+		u_int32_t ok;
+		sCleanupCallsStat() {
+			memset(this, 0, sizeof(*this));
+		}
+		string str() {
+			ostringstream str;
+			if(all) {
+				str << "*** cleanup calls stat - begin ***" << endl;
+				str << "all " << all << endl;
+				if(close_destroy_at) str << "close_destroy_at " << close_destroy_at << endl;
+				if(close_bye_timeout) str << "close_bye_timeout " << close_bye_timeout << endl;
+				if(close_rtp_timeout) str << "close_rtp_timeout " << close_rtp_timeout << endl;
+				if(close_sipwithoutrtp_timeout) str << "close_sipwithoutrtp_timeout " << close_sipwithoutrtp_timeout << endl;
+				if(close_absolute_timeout) str << "close_absolute_timeout " << close_absolute_timeout << endl;
+				if(close_zombie_timeout) str << "close_zombie_timeout " << close_zombie_timeout << endl;
+				if(close_oneway_timeout) str << "close_oneway_timeout " << close_oneway_timeout << endl;
+				if(close_max_sip_packets) str << "close_max_sip_packets " << close_max_sip_packets << endl;
+				if(close_max_invite_packets) str << "close_max_invite_packets " << close_max_invite_packets << endl;
+				if(in_preprocess_issue) str << "in_preprocess_issue " << in_preprocess_issue << endl;
+				if(sp_sent_close_call) str << "sp_sent_close_call " << sp_sent_close_call << endl;
+				if(sp_arrived_rtp_streams) str << "sp_arrived_rtp_streams " << sp_arrived_rtp_streams << endl;
+				if(rejected_hash_or_rtppacketsinqueue) str << "rejected_hash_or_rtppacketsinqueue " << rejected_hash_or_rtppacketsinqueue << endl;
+				if(rejected_set_stop_processing) str << "rejected_set_stop_processing " << rejected_set_stop_processing << endl;
+				if(rejected_wait_for_stop_processing) str << "rejected_wait_for_stop_processing " << rejected_wait_for_stop_processing << endl;
+				if(ok) str << "ok " << ok << endl;
+				str << "*** cleanup calls stat - end ***" << endl;
+			}
+			return(str.str());
+		}
+		void print() {
+			string stat_str = str();
+			if(stat_str.length()) {
+				cout << stat_str;
+			}
+		}
+	};
+	struct sCleanupCallsData {
+		bool closeAll;
+		u_int32_t packet_time_s;
+		Call **allCalls;
+		unsigned allCallsCount;
+		unsigned allCallsMax;
+		Call **closeCalls;
+		unsigned closeCallsCount;
+		unsigned rejectedCallsCount;
+		sCleanupCallsStat stat;
+		volatile eCleanupCallsState state;
+		sCleanupCallsData() {
+			init();
+		}
+		void init() { 
+			memset((void*)this, 0, sizeof(*this));
+		}
+	};
 private:
 	struct sAudioQueueThread {
 		sAudioQueueThread(int thread_index) {
@@ -3536,7 +3616,6 @@ public:
 	map<string, Call*> calls_diameter_from_sip_listMAP;
 	map<string, Call*> calls_diameter_to_sip_listMAP;
 	map<string, Call*> calls_diameter_callid_listMAP;
-	map<string, Call*> conference_calls_map;
 	map<string, Call*> registers_listMAP;
 	map<d_item<vmIP>, Call*> skinny_ipTuples;
 	map<unsigned int, Call*> skinny_partyID;
@@ -3622,13 +3701,6 @@ public:
 		extern unsigned int opt_lock_calls_usleep;
 		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_diameter_callid_listMAP, opt_lock_calls_usleep);
 	}
-	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
-	void lock_conference_calls_map() {
-		extern unsigned int opt_lock_calls_usleep;
-		__SYNC_LOCK_USLEEP(this->_sync_lock_conference_calls_map, opt_lock_calls_usleep);
-		/*pthread_mutex_lock(&calls_listMAPlock);*/
-	}
-	#endif
 	void lock_registers_listMAP() {
 		extern unsigned int opt_lock_calls_usleep;
 		__SYNC_LOCK_USLEEP(this->_sync_lock_registers_listMAP, opt_lock_calls_usleep);
@@ -3672,9 +3744,6 @@ public:
 	void unlock_calls_diameter_from_sip_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_diameter_from_sip_listMAP); }
 	void unlock_calls_diameter_to_sip_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_diameter_to_sip_listMAP); }
 	void unlock_calls_diameter_callid_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_diameter_callid_listMAP); }
-	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
-	void unlock_conference_calls_map() { __SYNC_UNLOCK(this->_sync_lock_conference_calls_map); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ }
-	#endif
 	void unlock_registers_listMAP() { __SYNC_UNLOCK(this->_sync_lock_registers_listMAP); /*pthread_mutex_unlock(&registers_listMAPlock);*/ }
 	void unlock_skinny_maps() { __SYNC_UNLOCK(this->_sync_lock_skinny_maps); }
 	void unlock_ss7_listMAP() { __SYNC_UNLOCK(this->_sync_lock_ss7_listMAP); }
@@ -4022,6 +4091,13 @@ public:
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
 	int cleanup_calls(bool closeAll, u_int32_t packet_time_s = 0, const char *file = NULL, int line = 0);
+	void cleanup_calls__begin(sCleanupCallsData *cc_data);
+	void cleanup_calls__load_all_calls(sCleanupCallsData *cc_data);
+	void cleanup_calls__process_calls(sCleanupCallsData *cc_data);
+	void cleanup_calls__remove_calls_from_map(sCleanupCallsData *cc_data);
+	void cleanup_calls__close_calls(sCleanupCallsData *cc_data);
+	void cleanup_calls__end(sCleanupCallsData *cc_data);
+	
 	#if EXPERIMENTAL_SEPARATE_PROCESSSING
 	void cleanup_calls_separate_processing_rtp();
 	#endif
@@ -4222,9 +4298,6 @@ private:
 	volatile int _sync_lock_calls_diameter_from_sip_listMAP;
 	volatile int _sync_lock_calls_diameter_to_sip_listMAP;
 	volatile int _sync_lock_calls_diameter_callid_listMAP;
-	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
-	volatile int _sync_lock_conference_calls_map;
-	#endif
 	volatile int _sync_lock_registers_listMAP;
 	volatile int _sync_lock_calls_queue;
 	volatile int _sync_lock_calls_audioqueue;

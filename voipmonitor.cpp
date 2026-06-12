@@ -1225,6 +1225,8 @@ int opt_t2_boost_call_threads = 3;
 int opt_t2_boost_pb_detach_thread = 0;
 bool opt_t2_boost_pcap_dispatch = false;
 int opt_t2_boost_high_traffic_limit = 1000;
+bool opt_t2_boost_ht_hash_queue_in_rh = false;
+bool opt_t2_boost_ht_cleanup_calls_in_find_thread = false;
 int opt_storing_cdr_max_next_threads = 3;
 bool opt_processing_limitations = false;
 int opt_processing_limitations_heap_high_limit = 50;
@@ -1298,6 +1300,9 @@ pthread_t cleanup_calls_separate_processing_thread;
 int cleanup_calls_separate_processing_tid;
 bool cleanup_calls_separate_processing_terminating;
 #endif
+
+Calltable::sCleanupCallsData cc_data;
+pthread_t cleanup_calls_thread;
 
 pthread_t scanpcapdir_thread;
 pthread_t defered_service_fork_thread;
@@ -2354,6 +2359,59 @@ void *moving_cache( void */*dummy*/ ) {
 	return NULL;
 }
 
+void *cleanup_calls(void *) {
+	u_int64_t last_cleanup_ms = getTimeMS_rdtsc();
+	while(!is_terminating()) {
+		switch(cc_data.state) {
+		case Calltable::_cc_na:
+			{
+			u_int64_t now_ms = getTimeMS_rdtsc();
+			if(now_ms > last_cleanup_ms + (u_int64_t)cleanup_calls_period() * 1000) {
+				last_cleanup_ms = now_ms;
+				cc_data.init();
+				cc_data.packet_time_s = getTimeS();
+				__sync_synchronize();
+				cc_data.state = Calltable::_cc_start;
+			}
+			}
+			break;
+		case Calltable::_cc_start:
+			cc_data.state = Calltable::_cc_begin;
+			calltable->cleanup_calls__begin(&cc_data);
+			cc_data.state = Calltable::_cc_begin_finish;
+			break;
+		case Calltable::_cc_load_all_calls_finish:
+			__sync_synchronize();
+			if(cc_data.allCalls) {
+				cc_data.state = Calltable::_cc_process_calls;
+				calltable->cleanup_calls__process_calls(&cc_data);
+				__sync_synchronize();
+				cc_data.state = Calltable::_cc_process_calls_finish;
+			} else {
+				cc_data.state = Calltable::_cc_goto_end;
+			}
+			break;
+		case Calltable::_cc_remove_calls_from_map_finish:
+			cc_data.state = Calltable::_cc_close_calls;
+			calltable->cleanup_calls__close_calls(&cc_data);
+			cc_data.state = Calltable::_cc_close_calls_finish;
+			break;
+		case Calltable::_cc_goto_end:
+		case Calltable::_cc_close_calls_finish:
+			cc_data.state = Calltable::_cc_end;
+			calltable->cleanup_calls__end(&cc_data);
+			cc_data.state = Calltable::_cc_end_finish;
+			break;
+		case Calltable::_cc_end_finish:
+			cc_data.state = Calltable::_cc_na;
+			break;
+		default:
+			break;
+		}
+		usleep(1000);
+	}
+	return(NULL);
+}
 
 void *defered_service_fork(void *) {
 	dns_lookup_common_hostnames();
@@ -4811,6 +4869,11 @@ int main_init_read() {
 		preProcessPacketCallX_count = opt_t2_boost_call_threads;
 	}
 	calltable = new FILE_LINE(42013) Calltable(sqlDbInit);
+	if(opt_t2_boost_ht_cleanup_calls_in_find_thread) {
+		vm_pthread_create("cleanup_calls",
+				  &cleanup_calls_thread, NULL, cleanup_calls, NULL, __FILE__, __LINE__);
+	}
+	
 	createTranscribe();
 	#if DEBUG_ASYNC_TAR_WRITE
 	destroy_calls_info = new FILE_LINE(0) cDestroyCallsInfo(2e6);
@@ -6459,6 +6522,8 @@ void cConfig::addConfigItems() {
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("t2_boost_pb_detach_thread", &opt_t2_boost_pb_detach_thread))
 						->addValues("two:2"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_pcap_dispatch", &opt_t2_boost_pcap_dispatch));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_ht_hash_queue_in_rh", &opt_t2_boost_ht_hash_queue_in_rh));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_ht_cleanup_calls_in_find_thread", &opt_t2_boost_ht_cleanup_calls_in_find_thread));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("storing_cdr_max_next_threads", &opt_storing_cdr_max_next_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("storing_cdr_maximum_cdr_per_iteration", &opt_storing_cdr_maximum_cdr_per_iteration));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("processing_limitations", &opt_processing_limitations));
@@ -9736,6 +9801,10 @@ void set_context_config() {
 		if(!CONFIG.isSet("rtp_qring_batch_length")) {
 			rtp_qring_batch_length *= boost_mult;
 		}
+	}
+	if(opt_t2_boost != 2) {
+		opt_t2_boost_ht_hash_queue_in_rh = 0;
+		opt_t2_boost_ht_cleanup_calls_in_find_thread = 0;
 	}
 
 	if(opt_use_sem_sync || opt_use_pcap_queue_sem_sync) {

@@ -276,6 +276,8 @@ extern bool opt_active_call_info;
 extern int opt_rtpfromsdp_onlysip;
 extern int opt_rtpfromsdp_onlysip_skinny;
 extern int opt_t2_boost;
+extern bool opt_t2_boost_ht_hash_queue_in_rh;
+extern bool opt_t2_boost_ht_cleanup_calls_in_find_thread;
 unsigned int glob_ssl_calls = 0;
 extern int opt_bye_timeout;
 extern int opt_bye_confirmed_timeout;
@@ -5442,11 +5444,6 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 						cout << call->conference_referred_by << endl;
 						cout << endl;
 						#endif
-						#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
-						calltable->lock_conference_calls_map();
-						calltable->conference_calls_map[call->conference_endpoint_entity] = call;
-						calltable->unlock_conference_calls_map();
-						#endif
 					}
 				}
 			}
@@ -5560,19 +5557,11 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 		}
 		if(opt_conference_processing) {
 			__SYNC_LOCK_USLEEP(call->conference_legs_sync, 10);
-			#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
-			for(map<string, Call*>::iterator iter = call->conference_legs.begin(); iter != call->conference_legs.end(); iter++) {
-				if(!iter->second->conference_disconnect_time) {
-					iter->second->conference_disconnect_time = packetS->getTimeUS();
-				}
-			}
-			#else
 			for(map<Call::sConferenceLegId, Call::sConferenceLegs*>::iterator iter = call->conference_legs.begin(); iter != call->conference_legs.end(); iter++) {
 				if(iter->second->isConnect()) {
 					iter->second->setDisconnectTime(packetS->getTimeUS());
 				}
 			}
-			#endif
 			__SYNC_UNLOCK(call->conference_legs_sync);
 		}
 	} else if(packetS->sip_method == CANCEL) {
@@ -5686,25 +5675,6 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 						cout << endl;
 						#endif
 						__SYNC_LOCK_USLEEP(call->conference_legs_sync, 10);
-						#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
-						calltable->lock_conference_calls_map();
-						map<string, Call*>::iterator iter = calltable->conference_calls_map.find(endpoint_entity);
-						if(iter != calltable->conference_calls_map.end()) {
-							Call *leg = iter->second;
-							if(status != "disconnected") {
-								leg->conference_active = true;
-								if(!leg->conference_connect_time) {
-									leg->main_conference_call_id = call->call_id;
-									leg->conference_user_entity = user_entity;
-									leg->conference_connect_time = packet_time_us;
-								}
-							} else if(!leg->conference_disconnect_time) {
-								leg->conference_disconnect_time = packet_time_us;
-							}
-							call->conference_legs[endpoint_entity] = leg;
-						}
-						calltable->unlock_conference_calls_map();
-						#else
 						Call::sConferenceLegs *legs = NULL;
 						Call::sConferenceLegId legId;
 						legId.user_entity = user_entity;
@@ -5727,7 +5697,6 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 								}
 							}
 						}
-						#endif
 						__SYNC_UNLOCK(call->conference_legs_sync);
 					}
 				}
@@ -9337,6 +9306,26 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 }
 
 
+void _process_packet__cleanup_calls_in_find_thread() {
+	extern Calltable::sCleanupCallsData cc_data;
+	switch(cc_data.state) {
+	case Calltable::_cc_begin_finish:
+		cc_data.state = Calltable::_cc_load_all_calls;
+		calltable->cleanup_calls__load_all_calls(&cc_data);
+		__sync_synchronize();
+		cc_data.state = Calltable::_cc_load_all_calls_finish;
+		break;
+	case Calltable::_cc_process_calls_finish:
+		__sync_synchronize();
+		cc_data.state = Calltable::_cc_remove_calls_from_map;
+		calltable->cleanup_calls__remove_calls_from_map(&cc_data);
+		cc_data.state = Calltable::_cc_remove_calls_from_map_finish;
+		break;
+	default:
+		break;
+	}
+}
+
 void _process_packet__cleanup_calls(packet_s *packetS, u_int32_t time_s, const char *file, int line) {
 	process_packet__cleanup_calls(packetS, time_s, file, line);
 	u_int32_t actTimeS = getTimeS_rdtsc();
@@ -10531,6 +10520,9 @@ void *PreProcessPacket::outThreadFunction() {
 		if(this->typePreProcessThread == ppt_sip) {
 			_parse_packet_global_process_packet.refreshIfNeed();
 		}
+		if(this->typePreProcessThread == ppt_pp_find_call && opt_t2_boost_ht_cleanup_calls_in_find_thread) {
+			_process_packet__cleanup_calls_in_find_thread();
+		}
 		extern int opt_preprocess_packets_qring_sem_sync;
 		if(opt_preprocess_packets_qring_sem_sync) {
 			extern unsigned int opt_push_batch_limit_ms;
@@ -11472,8 +11464,10 @@ void *PreProcessPacket::outThreadFunction() {
 					batch->count = 0;
 					batch->used = 0;
 				#endif
-				_process_packet__cleanup_calls(NULL, last_time_s, __FILE__, __LINE__);
-				if(opt_t2_boost != 2 && hash_modify_queue_length_ms) {
+				if(!opt_t2_boost_ht_cleanup_calls_in_find_thread) {
+					_process_packet__cleanup_calls(NULL, last_time_s, __FILE__, __LINE__);
+				}
+				if(!opt_t2_boost_ht_hash_queue_in_rh && hash_modify_queue_length_ms) {
 					calltable->applyHashModifyQueue(true);
 				}
 			}
@@ -11643,8 +11637,10 @@ void PreProcessPacket::flushDownstream() {
 		preProcessPacket[ppt_pp_sip_other]->push_batch();
 		break;
 	case ppt_pp_process_call:
-		_process_packet__cleanup_calls(NULL, 0, __FILE__, __LINE__);
-		if(opt_t2_boost != 2 && hash_modify_queue_length_ms) {
+		if(!opt_t2_boost_ht_cleanup_calls_in_find_thread) {
+			_process_packet__cleanup_calls(NULL, 0, __FILE__, __LINE__);
+		}
+		if(!opt_t2_boost_ht_hash_queue_in_rh && hash_modify_queue_length_ms) {
 			calltable->applyHashModifyQueue(true);
 		}
 		break;
@@ -11819,7 +11815,9 @@ void PreProcessPacket::push_batch_nothread() {
 		}
 		break;
 	case ppt_pp_process_call:
-		_process_packet__cleanup_calls(NULL, 0, __FILE__, __LINE__);
+		if(!opt_t2_boost_ht_cleanup_calls_in_find_thread) {
+			_process_packet__cleanup_calls(NULL, 0, __FILE__, __LINE__);
+		}
 		break;
 	case ppt_pp_register:
 		_process_packet__cleanup_registers(NULL);
@@ -13174,7 +13172,7 @@ void *ProcessRtpPacket::outThreadFunction() {
 	unsigned int usleepCounter = 0;
 	u_int64_t usleepSumTimeForPushBatch = 0;
 	while(!this->term_processRtp) {
-		if(opt_t2_boost == 2 && this->type == hash) {
+		if(opt_t2_boost_ht_hash_queue_in_rh && this->type == hash) {
 			calltable->applyHashModifyQueue(true);
 		}
 		if(this->process_rtp_packets_hash_next_threads_mod && this->type == hash) {

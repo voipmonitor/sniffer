@@ -250,6 +250,7 @@ extern bool opt_cdr_partition_by_hours;
 extern int opt_t2_boost;
 extern int opt_t2_boost_call_find_threads;
 extern int opt_t2_boost_call_threads;
+extern bool opt_t2_boost_ht_hash_queue_in_rh;
 extern bool opt_time_precision_in_ms;
 
 extern cBilling *billing;
@@ -945,11 +946,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	conference_is_main_leg = false;
 	conference_is_leg = false;
 	conference_referred_by_ok_time = 0;
-	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
-	conference_connect_time = 0;
-	conference_disconnect_time = 0;
-	conference_active = 0;
-	#endif
 	conference_legs_sync = 0;
 	srvcc_flag = _srvcc_na;
 	
@@ -1363,11 +1359,9 @@ Call::~Call(){
 		registers_counter_dec();
 	}
 	
-	#if not CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
 	for(map<sConferenceLegId, sConferenceLegs*>::iterator iter = conference_legs.begin(); iter != conference_legs.end(); iter++) {
 		delete iter->second;
 	}
-	#endif
 	
 	dtls_keys_clear();
 	
@@ -11713,9 +11707,6 @@ Calltable::Calltable(SqlDb *sqlDb) {
 	_sync_lock_calls_diameter_from_sip_listMAP = 0;
 	_sync_lock_calls_diameter_to_sip_listMAP = 0;
 	_sync_lock_calls_diameter_callid_listMAP = 0;
-	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
-	_sync_lock_conference_calls_map = 0;
-	#endif
 	_sync_lock_registers_listMAP = 0;
 	_sync_lock_calls_queue = 0;
 	_sync_lock_calls_audioqueue = 0;
@@ -11854,7 +11845,7 @@ void Calltable::hashAdd(vmIP addr, vmPort port, u_int64_t time_us, CallBranch *c
 		lock_hash_modify_queue();
 		hash_modify_queue.push_back(hmd);
 		++c_branch->call->hash_queue_counter;
-		if(opt_t2_boost != 2) {
+		if(!opt_t2_boost_ht_hash_queue_in_rh) {
 			_applyHashModifyQueue(true);
 		}
 		unlock_hash_modify_queue();
@@ -11877,7 +11868,7 @@ void Calltable::hashRefresh(vmIP addr, vmPort port, CallBranch *c_branch, s_sdp_
 		hmd.use_hash_queue_counter = false;
 		lock_hash_modify_queue();
 		hash_modify_queue.push_back(hmd);
-		if(opt_t2_boost != 2) {
+		if(!opt_t2_boost_ht_hash_queue_in_rh) {
 			_applyHashModifyQueue(true);
 		}
 		unlock_hash_modify_queue();
@@ -12177,7 +12168,7 @@ void Calltable::hashRemove(CallBranch *c_branch, vmIP addr, vmPort port, bool rt
 		if(useHashQueueCounter) {
 			++c_branch->call->hash_queue_counter;
 		}
-		if(opt_t2_boost != 2) {
+		if(!opt_t2_boost_ht_hash_queue_in_rh) {
 			_applyHashModifyQueue(true);
 		}
 		unlock_hash_modify_queue();
@@ -12233,7 +12224,7 @@ Calltable::hashRemove(CallBranch *c_branch, bool useHashQueueCounter) {
 		if(useHashQueueCounter) {
 			++c_branch->call->hash_queue_counter;
 		}
-		if(opt_t2_boost != 2) {
+		if(!opt_t2_boost_ht_hash_queue_in_rh) {
 			_applyHashModifyQueue(true);
 		}
 		unlock_hash_modify_queue();
@@ -13405,60 +13396,6 @@ Calltable::add_mgcp(sMgcpRequest *request, u_int64_t time_us, vmIP saddr, vmPort
  * ic currtime = 0, save it immediatly
 */
 
-struct sCleanupCallsStat {
-	sCleanupCallsStat() {
-		memset(this, 0, sizeof(*this));
-	}
-	string str() {
-		ostringstream str;
-		if(all) {
-			str << "*** cleanup calls stat - begin ***" << endl;
-			str << "all " << all << endl;
-			if(close_destroy_at) str << "close_destroy_at " << close_destroy_at << endl;
-			if(close_bye_timeout) str << "close_bye_timeout " << close_bye_timeout << endl;
-			if(close_rtp_timeout) str << "close_rtp_timeout " << close_rtp_timeout << endl;
-			if(close_sipwithoutrtp_timeout) str << "close_sipwithoutrtp_timeout " << close_sipwithoutrtp_timeout << endl;
-			if(close_absolute_timeout) str << "close_absolute_timeout " << close_absolute_timeout << endl;
-			if(close_zombie_timeout) str << "close_zombie_timeout " << close_zombie_timeout << endl;
-			if(close_oneway_timeout) str << "close_oneway_timeout " << close_oneway_timeout << endl;
-			if(close_max_sip_packets) str << "close_max_sip_packets " << close_max_sip_packets << endl;
-			if(close_max_invite_packets) str << "close_max_invite_packets " << close_max_invite_packets << endl;
-			if(in_preprocess_issue) str << "in_preprocess_issue " << in_preprocess_issue << endl;
-			if(sp_sent_close_call) str << "sp_sent_close_call " << sp_sent_close_call << endl;
-			if(sp_arrived_rtp_streams) str << "sp_arrived_rtp_streams " << sp_arrived_rtp_streams << endl;
-			if(rejected_hash_or_rtppacketsinqueue) str << "rejected_hash_or_rtppacketsinqueue " << rejected_hash_or_rtppacketsinqueue << endl;
-			if(rejected_set_stop_processing) str << "rejected_set_stop_processing " << rejected_set_stop_processing << endl;
-			if(rejected_wait_for_stop_processing) str << "rejected_wait_for_stop_processing " << rejected_wait_for_stop_processing << endl;
-			if(ok) str << "ok " << ok << endl;
-			str << "*** cleanup calls stat - end ***" << endl;
-		}
-		return(str.str());
-	}
-	void print() {
-		string stat_str = str();
-		if(stat_str.length()) {
-			cout << stat_str;
-		}
-	}
-	u_int32_t all;
-	u_int32_t close_destroy_at;
-	u_int32_t close_bye_timeout;
-	u_int32_t close_rtp_timeout;
-	u_int32_t close_sipwithoutrtp_timeout;
-	u_int32_t close_absolute_timeout;
-	u_int32_t close_zombie_timeout;
-	u_int32_t close_oneway_timeout;
-	u_int32_t close_max_sip_packets;
-	u_int32_t close_max_invite_packets;
-	u_int32_t in_preprocess_issue;
-	u_int32_t sp_sent_close_call;
-	u_int32_t sp_arrived_rtp_streams;
-	u_int32_t rejected_hash_or_rtppacketsinqueue;
-	u_int32_t rejected_set_stop_processing;
-	u_int32_t rejected_wait_for_stop_processing;
-	u_int32_t ok;
-};
-
 int
 Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *file, int line ) {
  
@@ -13468,17 +13405,11 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 	}
 	#endif
  
-	u_int64_t currTimeMS = getTimeMS_rdtsc();
-	u_int32_t currTimeS = currTimeMS / 1000;
-	u_int64_t beginTimeMS = currTimeMS;
-	bool isReadFromFile = is_read_from_file();
-	bool usePacketTime = isReadFromFile || opt_safe_cleanup_calls == 2;
+	u_int64_t beginTimeMS = getTimeMS_rdtsc();
 	
 	if(!packet_time_s && opt_safe_cleanup_calls == 2 && !closeAll) {
 		return(0);
 	}
-	
-	sCleanupCallsStat stat;
 	
 	if(sverb.cleanup_calls) {
 		cout << "*** cleanup_calls begin";
@@ -13501,6 +13432,34 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 		syslog(LOG_NOTICE, "call Calltable::cleanup_calls");
 	}
 	
+	sCleanupCallsData cc_data;
+	cc_data.closeAll = closeAll;
+	cc_data.packet_time_s = packet_time_s;
+	
+	cleanup_calls__begin(&cc_data);
+	cleanup_calls__load_all_calls(&cc_data);
+	if(!cc_data.allCalls) {
+		return(0);
+	}
+	cleanup_calls__process_calls(&cc_data);
+	cleanup_calls__remove_calls_from_map(&cc_data);
+	cleanup_calls__close_calls(&cc_data);
+	
+	if(closeAll && is_terminating()) {
+		extern int terminated_cleanup_calls;
+		terminated_cleanup_calls = 1;
+		syslog(LOG_NOTICE, "terminated - cleanup calls");
+	}
+	
+	if(sverb.cleanup_calls) {
+		cout << "*** cleanup_calls end "
+		     << setprecision(3) << (getTimeMS_rdtsc() - beginTimeMS) / 1000. << "s" << endl;
+	}
+	
+	return cc_data.rejectedCallsCount;
+}
+
+void Calltable::cleanup_calls__begin(sCleanupCallsData *cc_data) {
 	if(opt_processing_limitations && opt_processing_limitations_active_calls_cache &&
 	   opt_processing_limitations_active_calls_cache_type == 1) {
 		u_int64_t now_ms = getTimeMS();
@@ -13517,54 +13476,52 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 		}
 		__SYNC_UNLOCK(active_calls_cache_sync);
 	}
-	
-	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
-	if(opt_conference_processing) {
-		calltable->lock_conference_calls_map();
+}
+
+void Calltable::cleanup_calls__load_all_calls(sCleanupCallsData *cc_data) {
+	cc_data->allCallsMax = getCountCalls();
+	if(!cc_data->allCallsMax) {
+		return;
 	}
-	#endif
-	
-	#if not CLEANUP_CALLS_MOD_OLDVER
-	
-	unsigned allCallsMax = getCountCalls();
-	if(!allCallsMax) {
-		return 0;
-	}
-	allCallsMax += allCallsMax / 4;
-	Call **allCalls = new FILE_LINE(0) Call*[allCallsMax];
-	unsigned allCallsCount = 0;
-	
+	cc_data->allCallsMax += cc_data->allCallsMax / 4;
+	cc_data->allCalls = new FILE_LINE(0) Call*[cc_data->allCallsMax];
+	cc_data->allCallsCount = 0;
 	lock_calls_listMAP();
 	if(!opt_call_id_alternative[0]) {
 		for(map<string, Call*>::iterator iter = calls_listMAP.begin(); iter != calls_listMAP.end(); iter++) {
-			allCalls[allCallsCount++] = iter->second;
-			if(allCallsCount >= allCallsMax) break;
+			cc_data->allCalls[cc_data->allCallsCount++] = iter->second;
+			if(cc_data->allCallsCount >= cc_data->allCallsMax) break;
 		}
 	} else {
 		for(list<Call*>::iterator iter = calltable->calls_list.begin(); iter != calltable->calls_list.end(); iter++) {
-			allCalls[allCallsCount++] = *iter;
-			if(allCallsCount >= allCallsMax) break;
+			cc_data->allCalls[cc_data->allCallsCount++] = *iter;
+			if(cc_data->allCallsCount >= cc_data->allCallsMax) break;
 		}
 	 
 	}
-	if(calls_by_stream_callid_listMAP.size() && allCallsCount < allCallsMax - 1) {
+	if(calls_by_stream_callid_listMAP.size() && cc_data->allCallsCount < cc_data->allCallsMax - 1) {
 		for(map<sStreamIds2, Call*>::iterator iter = calls_by_stream_callid_listMAP.begin(); iter != calls_by_stream_callid_listMAP.end(); iter++) {
-			allCalls[allCallsCount++] = iter->second;
-			if(allCallsCount >= allCallsMax) break;
+			cc_data->allCalls[cc_data->allCallsCount++] = iter->second;
+			if(cc_data->allCallsCount >= cc_data->allCallsMax) break;
 		}
 	}
 	unlock_calls_listMAP();
-	
-	Call **closeCalls = new FILE_LINE(0) Call*[allCallsMax];
-	unsigned closeCallsCount = 0;
-	int rejectedCalls_count = 0;
-	
-	for(unsigned iCalls = 0; iCalls < allCallsCount; iCalls++) {
-		Call *call = allCalls[iCalls];
+}
+
+void Calltable::cleanup_calls__process_calls(sCleanupCallsData *cc_data) {
+	u_int64_t currTimeMS = getTimeMS_rdtsc();
+	u_int32_t currTimeS = currTimeMS / 1000;
+	bool isReadFromFile = is_read_from_file();
+	bool usePacketTime = isReadFromFile || opt_safe_cleanup_calls == 2;
+	cc_data->closeCalls = new FILE_LINE(0) Call*[cc_data->allCallsMax];
+	cc_data->closeCallsCount = 0;
+	cc_data->rejectedCallsCount = 0;
+	for(unsigned iCalls = 0; iCalls < cc_data->allCallsCount; iCalls++) {
+		Call *call = cc_data->allCalls[iCalls];
 		CallBranch *c_branch = call->branch_main();
-		++stat.all;
-		u_int32_t currTimeS_unshift = usePacketTime && packet_time_s ?
-					       packet_time_s :
+		++cc_data->stat.all;
+		u_int32_t currTimeS_unshift = usePacketTime && cc_data->packet_time_s ?
+					       cc_data->packet_time_s :
 					       call->unshiftSystemTime_s(currTimeS);
 		if(verbosity > 2) {
 			call->dump();
@@ -13574,7 +13531,7 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 		}
 		// rtptimeout seconds of inactivity will save this call and remove from call table
 		bool closeCall = false;
-		if(closeAll || call->force_close) {
+		if(cc_data->closeAll || call->force_close) {
 			closeCall = true;
 			if(!isReadFromFile) {
 				call->force_terminate = true;
@@ -13592,12 +13549,12 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 			  ) {
 			if(call->destroy_call_at != 0 && call->destroy_call_at <= currTimeS_unshift) {
 				closeCall = true;
-				++stat.close_destroy_at;
+				++cc_data->stat.close_destroy_at;
 			} else if((call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currTimeS_unshift) ||
 				  (call->destroy_call_at_bye_confirmed != 0 && call->destroy_call_at_bye_confirmed <= currTimeS_unshift)) {
 				closeCall = true;
 				call->bye_timeout_exceeded = true;
-				++stat.close_bye_timeout;
+				++cc_data->stat.close_bye_timeout;
 			} else if(
 				  #if EXPERIMENTAL_SEPARATE_PROCESSSING
 				  separate_processing() != cSeparateProcessing::_sip &&
@@ -13606,29 +13563,29 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 				  currTimeS_unshift > call->get_last_packet_time_s() + rtptimeout) {
 				closeCall = true;
 				call->rtp_timeout_exceeded = true;
-				++stat.close_rtp_timeout;
+				++cc_data->stat.close_rtp_timeout;
 			} else if(!call->first_rtp_time_us &&
 				  currTimeS_unshift > call->get_first_packet_time_s() + sipwithoutrtptimeout) {
 				closeCall = true;
 				call->sipwithoutrtp_timeout_exceeded = true;
-				++stat.close_sipwithoutrtp_timeout;
+				++cc_data->stat.close_sipwithoutrtp_timeout;
 			} else if(currTimeS_unshift > call->get_first_packet_time_s() + absolute_timeout) {
 				closeCall = true;
 				call->absolute_timeout_exceeded = true;
-				++stat.close_absolute_timeout;
+				++cc_data->stat.close_absolute_timeout;
 			} else if(currTimeS_unshift > call->get_first_packet_time_s() + 300 &&
 				  !c_branch->seenRES18X && !c_branch->seenRES2XX && !call->first_rtp_time_us) {
 				closeCall = true;
 				call->zombie_timeout_exceeded = true;
-				++stat.close_zombie_timeout;
+				++cc_data->stat.close_zombie_timeout;
 			} else if(opt_max_sip_packets_in_call > 0 && call->sip_packets_counter > opt_max_sip_packets_in_call) {
 				closeCall = true;
 				call->max_sip_packets_exceeded = true;
-				++stat.close_max_sip_packets;
+				++cc_data->stat.close_max_sip_packets;
 			} else if(opt_max_invite_packets_in_call > 0 && call->invite_packets_counter > opt_max_invite_packets_in_call) {
 				closeCall = true;
 				call->max_invite_packets_exceeded = true;
-				++stat.close_max_invite_packets;
+				++cc_data->stat.close_max_invite_packets;
 			}
 			if(!closeCall &&
 			   (c_branch->oneway == 1 && currTimeS_unshift > call->get_last_packet_time_s() + opt_onewaytimeout)) {
@@ -13650,13 +13607,13 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 				*/
 				closeCall = true;
 				call->oneway_timeout_exceeded = true;
-				++stat.close_oneway_timeout;
+				++cc_data->stat.close_oneway_timeout;
 			}
 		} else {
-			++stat.in_preprocess_issue;
+			++cc_data->stat.in_preprocess_issue;
 		}
 		if(closeCall) {
-			if(opt_enable_fraud && !closeAll) {
+			if(opt_enable_fraud && !cc_data->closeAll) {
 				fraudEndCall(call, call->unshiftSystemTime_ms(currTimeMS));
 			}
 			if(sverb.cleanup_calls_log) {
@@ -13705,10 +13662,10 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 						      packet_time_s ? packet_time_s * 1000000ull :  currTimeMS * 1000ull);
 					call->sp_sent_close_call = true;
 					closeCall = false;
-					++stat.sp_sent_close_call;
+					++cc_data->stat.sp_sent_close_call;
 				} else if(!call->sp_arrived_rtp_streams) {
 					closeCall =  false;
-					++stat.sp_arrived_rtp_streams;
+					++cc_data->stat.sp_arrived_rtp_streams;
 				}
 			} else {
 				call->removeFindTables(NULL, true);
@@ -13717,33 +13674,29 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 				call->removeFindTables(NULL, true);
 			#endif
 			++call->attemptsClose;
-			if(!closeAll &&
+			if(!cc_data->closeAll &&
 			   ((hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
 			    call->isRtpPacketsInQueue() ||
-			    call->useInListCalls
-			    #if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
-			    || call->conference_active
-			    #endif
-			   )) {
+			    call->useInListCalls)) {
 				closeCall = false;
-				++rejectedCalls_count;
-				++stat.rejected_hash_or_rtppacketsinqueue;
+				++cc_data->rejectedCallsCount;
+				++cc_data->stat.rejected_hash_or_rtppacketsinqueue;
 			}
-			if(opt_safe_cleanup_calls && !opt_quick_save_cdr && !closeAll && closeCall) {
+			if(opt_safe_cleanup_calls && !opt_quick_save_cdr && !cc_data->closeAll && closeCall) {
 				if(!call->stopProcessing) {
 					call->stopProcessing = true;
 					call->stopProcessingAt_s = currTimeS;
 					closeCall = false;
-					++rejectedCalls_count;
-					++stat.rejected_set_stop_processing;;
+					++cc_data->rejectedCallsCount;
+					++cc_data->stat.rejected_set_stop_processing;;
 					/*
 					cout << " *** set stop processing" << endl;
 					*/
 				} else if(currTimeS < call->stopProcessingAt_s + (opt_safe_cleanup_calls == 2 ? 15 : 5) ||
 					  (opt_safe_cleanup_calls == 2 && TIME_US_TO_S(call->first_packet_time_us) / 60 >= currTimeS_unshift / 60)) {
 					closeCall = false;
-					++rejectedCalls_count;
-					++stat.rejected_wait_for_stop_processing;
+					++cc_data->rejectedCallsCount;
+					++cc_data->stat.rejected_wait_for_stop_processing;
 					/*
 					cout << " *** wait for stop processing" << endl;
 					*/
@@ -13755,7 +13708,7 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 			}
 		}
 		if(closeCall) {
-			++stat.ok;
+			++cc_data->stat.ok;
 			#if DEBUG_PACKET_COUNT
 			extern map<string, Call*> __xmap_cleanup_calls;
 			extern volatile int __xmap_sync;
@@ -13766,12 +13719,19 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 			if(call->listening_worker_run) {
 				*call->listening_worker_run = 0;
 			}
-			closeCalls[closeCallsCount++] = call;
+			cc_data->closeCalls[cc_data->closeCallsCount++] = call;
 			call->setClosed();
 		}
 	}
+	delete [] cc_data->allCalls;
 	
-	if(closeCallsCount) {
+	if(sverb.cleanup_calls_stat) {
+		cc_data->stat.print();
+	}
+}
+
+void Calltable::cleanup_calls__remove_calls_from_map(sCleanupCallsData *cc_data) {
+	if(cc_data->closeCallsCount) {
 		lock_calls_listMAP();
 		if(!opt_call_id_alternative[0]) {
 			for(map<string, Call*>::iterator iter = calls_listMAP.begin(); iter != calls_listMAP.end(); ) {
@@ -13800,15 +13760,15 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 			}
 		}
 		if(opt_call_id_alternative[0]) {
-			for(unsigned i = 0; i < closeCallsCount; i++) {
-				if(!closeCalls[i]->typeIs(MGCP)) {
-					closeCalls[i]->removeCallIdMap();
+			for(unsigned i = 0; i < cc_data->closeCallsCount; i++) {
+				if(!cc_data->closeCalls[i]->typeIs(MGCP)) {
+					cc_data->closeCalls[i]->removeCallIdMap();
 				}
 			}
 		}
 		unlock_calls_listMAP();
-		for(unsigned i = 0; i < closeCallsCount; i++) {
-			Call *call = closeCalls[i];
+		for(unsigned i = 0; i < cc_data->closeCallsCount; i++) {
+			Call *call = cc_data->closeCalls[i];
 			if(!call->typeIs(MGCP)) {
 				call->removeMergeCalls();
 			} else {
@@ -13817,304 +13777,12 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 			}
 		}
 	}
+}
 
-	#else // CLEANUP_CALLS_MOD_OLDVER
-	 
-	unsigned closeCallsMax = getCountCalls();
-	if(!closeCallsMax) {
-		return 0;
-	}
-	closeCallsMax += closeCallsMax / 4;
-	Call **closeCalls = new FILE_LINE(0) Call*[closeCallsMax];
-	unsigned closeCallsCount = 0;
-	
-	int rejectedCalls_count = 0;
-	for(int passTypeCall = 0; passTypeCall < 2; passTypeCall++) {
-		int typeCall = passTypeCall == 0 ? INVITE : MGCP;
-		map<string, Call*> *_calls_listMAP = NULL;
-		list<Call*>::iterator callIT1;
-		map<string, Call*>::iterator callMAPIT1;
-		map<sStreamIds2, Call*>::iterator callMAPIT2;
-		if(typeCall == INVITE) {
-			if(opt_call_id_alternative[0]) {
-				lock_calls_listMAP();
-				callIT1 = calltable->calls_list.begin();
-			} else {
-				lock_calls_listMAP();
-				_calls_listMAP = &calls_listMAP;
-				callMAPIT1 = _calls_listMAP->begin();
-			}
-		} else {
-			lock_calls_listMAP();
-			callMAPIT2 = calltable->calls_by_stream_callid_listMAP.begin();
-		}
-		while(typeCall == INVITE ? 
-		       (opt_call_id_alternative[0] ?
-			 callIT1 != calltable->calls_list.end() :
-			 callMAPIT1 != _calls_listMAP->end()) : 
-		       callMAPIT2 != calltable->calls_by_stream_callid_listMAP.end()) {
-			Call* call;
-			if(typeCall == INVITE) {
-				call = opt_call_id_alternative[0] ? *callIT1 : callMAPIT1->second;
-			} else {
-				call = (*callMAPIT2).second;
-			}
-			CallBranch *c_branch = call->branch_main();
-			++stat.all;
-			u_int32_t currTimeS_unshift = usePacketTime && packet_time_s ?
-						       packet_time_s :
-						       call->unshiftSystemTime_s(currTimeS);
-			if(verbosity > 2) {
-				call->dump();
-			}
-			if(verbosity && verbosityE > 1) {
-				syslog(LOG_NOTICE, "Calltable::cleanup - try callid %s", call->call_id.c_str());
-			}
-			// rtptimeout seconds of inactivity will save this call and remove from call table
-			bool closeCall = false;
-			if(closeAll || call->force_close) {
-				closeCall = true;
-				if(!isReadFromFile) {
-					call->force_terminate = true;
-				}
-			} else if(call->typeIs(SKINNY_NEW) ||
-				  call->typeIs(MGCP) ||
-				  #if PROCESS_PACKETS_INDIC_MOD_1
-				  call->get_created_at() < TIME_S_TO_US(currTimeS - 1)
-				  #else
-				  call->in_preprocess_queue_before_process_packet <= 0 ||
-				  (!isReadFromFile &&
-				   (call->in_preprocess_queue_before_process_packet_at[0] && call->in_preprocess_queue_before_process_packet_at[0] < currTimeS_unshift - 300 &&
-				    call->in_preprocess_queue_before_process_packet_at[1] && call->in_preprocess_queue_before_process_packet_at[1] < (getTimeMS_rdtsc() / 1000) - 300))
-				  #endif
-				  ) {
-				if(call->destroy_call_at != 0 && call->destroy_call_at <= currTimeS_unshift) {
-					closeCall = true;
-					++stat.close_destroy_at;
-				} else if((call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currTimeS_unshift) ||
-					  (call->destroy_call_at_bye_confirmed != 0 && call->destroy_call_at_bye_confirmed <= currTimeS_unshift)) {
-					closeCall = true;
-					call->bye_timeout_exceeded = true;
-					++stat.close_bye_timeout;
-				} else if(
-					  #if EXPERIMENTAL_SEPARATE_PROCESSSING
-					  separate_processing() != cSeparateProcessing::_sip &&
-					  #endif
-					  call->first_rtp_time_us &&
-					  currTimeS_unshift > call->get_last_packet_time_s() + rtptimeout) {
-					closeCall = true;
-					call->rtp_timeout_exceeded = true;
-					++stat.close_rtp_timeout;
-				} else if(!call->first_rtp_time_us &&
-					  currTimeS_unshift > call->get_first_packet_time_s() + sipwithoutrtptimeout) {
-					closeCall = true;
-					call->sipwithoutrtp_timeout_exceeded = true;
-					++stat.close_sipwithoutrtp_timeout;
-				} else if(currTimeS_unshift > call->get_first_packet_time_s() + absolute_timeout) {
-					closeCall = true;
-					call->absolute_timeout_exceeded = true;
-					++stat.close_absolute_timeout;
-				} else if(currTimeS_unshift > call->get_first_packet_time_s() + 300 &&
-					  !c_branch->seenRES18X && !c_branch->seenRES2XX && !call->first_rtp_time_us) {
-					closeCall = true;
-					call->zombie_timeout_exceeded = true;
-					++stat.close_zombie_timeout;
-				} else if(opt_max_sip_packets_in_call > 0 && call->sip_packets_counter > opt_max_sip_packets_in_call) {
-					closeCall = true;
-					call->max_sip_packets_exceeded = true;
-					++stat.close_max_sip_packets;
-				} else if(opt_max_invite_packets_in_call > 0 && call->invite_packets_counter > opt_max_invite_packets_in_call) {
-					closeCall = true;
-					call->max_invite_packets_exceeded = true;
-					++stat.close_max_invite_packets;
-				}
-				if(!closeCall &&
-				   (c_branch->oneway == 1 && currTimeS_unshift > call->get_last_packet_time_s() + opt_onewaytimeout)) {
-					/*
-					if(abs(call->time_shift_ms) > 2000) {
-						cout << " *** " << call->call_id << endl
-						     << " * time_shift_ms : " << call->time_shift_ms << endl
-						     << " * packet_time_s : " << packet_time_s << endl
-						     << " * currTimeS : " << currTimeS << endl
-						     << " * currTimeS_unshift : " << currTimeS_unshift << endl
-						     << " * call->get_last_packet_time_s() : " << call->get_last_packet_time_s() << endl
-						     << " * currTimeS_unshift - currTimeS : " << (int64_t)currTimeS_unshift - (int64_t)currTimeS << endl
-						     << " * currTimeS_unshift - call->get_last_packet_time_s() : " << (int64_t)currTimeS_unshift - (int64_t)call->get_last_packet_time_s() << endl
-						     << " * call->get_last_packet_time_us() - call->first_packet_time_us : " << (int64_t)call->get_last_packet_time_us() - (int64_t)call->first_packet_time_us << endl
-						     //<< " * " << currTimeS - call->_time / 1000 << endl
-						     << " * packet_time_s - call->first_packet_time_us : " << (int64_t)packet_time_s - (int64_t)call->first_packet_time_us / 1000000 << endl
-						     << " * getTimeMS_rdtsc() - currTimeMS : " << (int64_t)getTimeMS_rdtsc() - (int64_t)currTimeMS << endl;
-					}
-					*/
-					closeCall = true;
-					call->oneway_timeout_exceeded = true;
-					++stat.close_oneway_timeout;
-				}
-			} else {
-				++stat.in_preprocess_issue;
-			}
-			if(closeCall) {
-				if(opt_enable_fraud && !closeAll) {
-					fraudEndCall(call, call->unshiftSystemTime_ms(currTimeMS));
-				}
-				if(sverb.cleanup_calls_log) {
-					ostringstream str;
-					str << " *** closeCall " << call->call_id
-					    << " " << (call->destroy_call_at != 0 && call->destroy_call_at <= currTimeS_unshift ?
-							"destroy_call_at" :
-						       call->bye_timeout_exceeded ?
-							"bye timeout" :
-						       call->rtp_timeout_exceeded ?
-							"rtp timeout" :
-						       call->sipwithoutrtp_timeout_exceeded ?
-							"sip without rtp" :
-						       call->absolute_timeout_exceeded ?
-							"absolute timeout" :
-						       call->zombie_timeout_exceeded ?
-							"zombie timeout" :
-						       call->oneway_timeout_exceeded ?
-							"oneway timeout" :
-							"other");
-					if(call->stopProcessing) {
-						str << " / stop processing";
-					}
-					#if EXPERIMENTAL_SEPARATE_PROCESSSING
-					if(separate_processing()) {
-						if(call->sp_sent_close_call) {
-							str << " / sent close";
-						}
-						if(call->sp_arrived_rtp_streams) {
-							str << " / arrived rtp streams";
-						}
-					}
-					#endif
-					cout << str.str() << endl;
-				}
-				#if EXPERIMENTAL_SEPARATE_PROCESSSING
-				if(separate_processing()) {
-					if(!call->sp_sent_close_call) {
-						sendCloseCall(call->call_id.c_str(), 
-							      call->first_packet_time_us, 
-							      call->flags,
-							      call->sipwithoutrtp_timeout_exceeded ||
-							      call->zombie_timeout_exceeded ? 
-							       cSeparateProcessing::_destroy_call_if_not_exists_rtp :
-							       cSeparateProcessing::_destroy_call, 
-							      packet_time_s ? packet_time_s * 1000000ull :  currTimeMS * 1000ull);
-						call->sp_sent_close_call = true;
-						closeCall = false;
-						++stat.sp_sent_close_call;
-					} else if(!call->sp_arrived_rtp_streams) {
-						closeCall =  false;
-						++stat.sp_arrived_rtp_streams;
-					}
-				} else {
-					call->removeFindTables(NULL, true);
-				}
-				#else
-					call->removeFindTables(NULL, true);
-				#endif
-				++call->attemptsClose;
-				if(!closeAll &&
-				   ((hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
-				    call->isRtpPacketsInQueue() ||
-				    call->useInListCalls
-				    #if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
-				    || call->conference_active
-				    #endif
-				   )) {
-					closeCall = false;
-					++rejectedCalls_count;
-					++stat.rejected_hash_or_rtppacketsinqueue;
-				}
-				if(opt_safe_cleanup_calls && !opt_quick_save_cdr && !closeAll && closeCall) {
-					if(!call->stopProcessing) {
-						call->stopProcessing = true;
-						call->stopProcessingAt_s = currTimeS;
-						closeCall = false;
-						++rejectedCalls_count;
-						++stat.rejected_set_stop_processing;;
-						/*
-						cout << " *** set stop processing" << endl;
-						*/
-					} else if(currTimeS < call->stopProcessingAt_s + (opt_safe_cleanup_calls == 2 ? 15 : 5) ||
-						  (opt_safe_cleanup_calls == 2 && TIME_US_TO_S(call->first_packet_time_us) / 60 >= currTimeS_unshift / 60)) {
-						closeCall = false;
-						++rejectedCalls_count;
-						++stat.rejected_wait_for_stop_processing;
-						/*
-						cout << " *** wait for stop processing" << endl;
-						*/
-					} else {
-						/*
-						cout << " *** ok for stop processing" << endl;
-						*/
-					}
-				}
-			}
-			if(closeCall) {
-			 
-				++stat.ok;
-
-				#if DEBUG_PACKET_COUNT
-				extern map<string, Call*> __xmap_cleanup_calls;
-				extern volatile int __xmap_sync;
-				__SYNC_LOCK(__xmap_sync);
-				__xmap_cleanup_calls[call->call_id] = call;
-				__SYNC_UNLOCK(__xmap_sync);
-				#endif
-			 
-				if(call->listening_worker_run) {
-					*call->listening_worker_run = 0;
-				}
-				if(closeCallsCount < closeCallsMax) {
-					closeCalls[closeCallsCount++] = call;
-				}
-				if(typeCall == INVITE) {
-					if(opt_call_id_alternative[0]) {
-						calls_list.erase(callIT1++);
-						call->removeCallIdMap();
-					} else {
-						_calls_listMAP->erase(callMAPIT1++);
-					}
-					call->removeMergeCalls();
-				} else {
-					calls_by_stream_callid_listMAP.erase(callMAPIT2++);
-					mgcpCleanupTransactions(call);
-					mgcpCleanupStream(call);
-				}
-			} else {
-				if(typeCall == INVITE) {
-					if(opt_call_id_alternative[0]) {
-						++callIT1;
-					} else {
-						++callMAPIT1;
-					}
-				} else {
-					++callMAPIT2;
-				}
-			}
-		}
-		if(typeCall == INVITE) {
-			if(opt_call_id_alternative[0]) {
-				unlock_calls_listMAP();
-			} else {
-				unlock_calls_listMAP();
-			}
-		} else {
-			unlock_calls_listMAP();
-		}
-	}
-	
-	#endif // CLEANUP_CALLS_MOD_OLDVER
-	
-	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
-	if(opt_conference_processing) {
-		calltable->unlock_conference_calls_map();
-	}
-	#endif
-	for(unsigned i = 0; i < closeCallsCount; i++) {
-		Call *call = closeCalls[i];
+void Calltable::cleanup_calls__close_calls(sCleanupCallsData *cc_data) {
+	u_int64_t currTimeMS = getTimeMS_rdtsc();
+	for(unsigned i = 0; i < cc_data->closeCallsCount; i++) {
+		Call *call = cc_data->closeCalls[i];
 		if(verbosity && verbosityE > 1) {
 			syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
 		}
@@ -14122,13 +13790,13 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 			call->moveDiameterPacketsToPcap();
 		}
 		// Close RTP dump file ASAP to save file handles
-		if(closeAll && is_terminating()) {
+		if(cc_data->closeAll && is_terminating()) {
 			call->getPcap()->close();
 			call->getPcapSip()->close();
 		}
 		call->getPcapRtp()->close();
 
-		if(closeAll) {
+		if(cc_data->closeAll) {
 			/* we are saving calls because of terminating SIGTERM and we dont know 
 			 * if the call ends successfully or not. So we dont want to confuse monitoring
 			 * applications which reports unterminated calls so mark this call as sighup */
@@ -14139,7 +13807,7 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 		// we have to close all raw files as there can be data in buffers 
 		call->closeRawFiles();
 		
-		if(opt_enable_fraud && !closeAll) {
+		if(opt_enable_fraud && !cc_data->closeAll) {
 			fraudEndCall(call, call->unshiftSystemTime_ms(currTimeMS));
 		}
 		extern u_int64_t counter_calls_clean;
@@ -14147,8 +13815,8 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 	}
 	/* move call to queue for mysql processing */
 	lock_calls_queue();
-	for(unsigned i = 0; i < closeCallsCount; i++) {
-		Call *call = closeCalls[i];
+	for(unsigned i = 0; i < cc_data->closeCallsCount; i++) {
+		Call *call = cc_data->closeCalls[i];
 		if(call->push_call_to_calls_queue) {
 			syslog(LOG_WARNING,"try to duplicity push call %s / %i to calls_queue", call->call_id.c_str(), call->getTypeBase());
 		} else {
@@ -14157,28 +13825,17 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 		}
 	}
 	unlock_calls_queue();
-	
-	delete [] closeCalls;
-	#if not CLEANUP_CALLS_MOD_OLDVER
-	delete [] allCalls;
-	#endif
-	
-	if(closeAll && is_terminating()) {
-		extern int terminated_cleanup_calls;
-		terminated_cleanup_calls = 1;
-		syslog(LOG_NOTICE, "terminated - cleanup calls");
+	delete [] cc_data->closeCalls;
+}
+
+void Calltable::cleanup_calls__end(sCleanupCallsData *cc_data) {
+	extern int opt_destroy_calls_period;
+	extern unsigned long process_packet__last_destroy_calls;
+	u_int32_t actTimeS = getTimeS_rdtsc();
+	if(actTimeS - process_packet__last_destroy_calls >= (unsigned)opt_destroy_calls_period) {
+		calltable->destroyCallsIfPcapsClosed();
+		process_packet__last_destroy_calls = actTimeS;
 	}
-	
-	if(sverb.cleanup_calls) {
-		cout << "*** cleanup_calls end "
-		     << setprecision(3) << (getTimeMS_rdtsc() - beginTimeMS) / 1000. << "s" << endl;
-	}
-	
-	if(sverb.cleanup_calls_stat) {
-		stat.print();
-	}
-	
-	return rejectedCalls_count;
 }
 
 #if EXPERIMENTAL_SEPARATE_PROCESSSING
