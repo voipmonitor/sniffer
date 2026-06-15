@@ -2221,7 +2221,9 @@ public:
 	}
 	void addNextThread();
 	void removeNextThread();
-	inline void push(sHeaderPacketPQout *hp);
+	inline __attribute__((always_inline)) void push(sHeaderPacketPQout *hp);
+	bool _push__new_batch(u_int64_t time_us, sHeaderPacketPQout *hp);
+	void _push__push_batch();
 	void push_batch();
 	static void *_outThreadFunction(void *arg);
 	void *outThreadFunction();

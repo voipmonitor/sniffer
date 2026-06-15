@@ -587,7 +587,7 @@ public:
 public:
 	PreProcessPacket(eTypePreProcessThread typePreProcessThread, unsigned idPreProcessThread = 0);
 	~PreProcessPacket();
-	inline void push_packet(
+	inline __attribute__((always_inline)) void push_packet(
 				u_int16_t header_ip_offset,
 				u_int16_t header_ip_encaps_offset,
 				u_int16_t data_offset,
@@ -619,7 +619,7 @@ public:
 			this->unlock_push();
 		}
 	}
-	inline void push_packet(
+	inline __attribute__((always_inline)) void push_packet(
 				#if USE_PACKET_NUMBER
 				u_int64_t packet_number,
 				#endif
@@ -2157,7 +2157,7 @@ public:
 public:
 	ProcessRtpPacket(eType type, int indexThread);
 	~ProcessRtpPacket();
-	inline void push_packet(packet_s_process_0 *packetS) {
+	inline __attribute__((always_inline)) void push_packet(packet_s_process_0 *packetS) {
 		#if EXPERIMENTAL_CHECK_TID_IN_PUSH
 		static __thread unsigned _tid = 0;
 		if(!_tid) {
@@ -2185,67 +2185,19 @@ public:
 		extern bool use_push_batch_limit_ms;
 		u_int64_t time_us = use_push_batch_limit_ms ? packetS->getTimeUS() : 0;
 		if(!qring_push_index) {
-			cThreadMonitor::sThread::buffer_push_account_all(thread_data);
-			extern int opt_preprocess_rtp_packets_qring_sem_sync;
-			if(opt_preprocess_rtp_packets_qring_sem_sync) {
-				if(sem_trywait(&this->sem_qring_free_count) == -1) {
-					u_int64_t us_start = cThreadMonitor::sThread::buffer_push_account_sem_full_begin(thread_data);
-					sem_wait(&this->sem_qring_free_count);
-					cThreadMonitor::sThread::buffer_push_account_sem_full_end(thread_data, us_start);
-				}
-				if(is_terminating()) {
-					PACKET_S_PROCESS_DESTROY(&packetS);
-					return;
-				}
-			} else {
-				unsigned int usleepCounter = 0;
-				while(this->qring[this->writeit]->used != 0) {
-					if(is_terminating()) {
-						PACKET_S_PROCESS_DESTROY(&packetS);
-						return;
-					}
-					extern unsigned int opt_process_rtp_packets_qring_push_usleep;
-					unsigned us = 0;
-					if(opt_process_rtp_packets_qring_push_usleep) {
-						us = USLEEP_C(opt_process_rtp_packets_qring_push_usleep, usleepCounter++);
-					} else {
-						__ASM_PAUSE;
-						++usleepCounter;
-					}
-					cThreadMonitor::sThread::buffer_push_account_busy_full(thread_data, us);
-				}
+			if(!_push_packet__new_batch(time_us, &packetS)) {
+				return;
 			}
-			qring_push_index = this->writeit + 1;
-			qring_push_index_count = 0;
-			qring_active_push_item = this->qring[qring_push_index - 1];
-			extern unsigned int opt_push_batch_limit_ms;
-			qring_active_push_item_limit_us = use_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
 		}
 		qring_active_push_item->batch[qring_push_index_count] = packetS;
 		++qring_push_index_count;
 		if(qring_push_index_count == qring_active_push_item->max_count ||
 		   time_us > qring_active_push_item_limit_us) {
-			#if RQUEUE_SAFE
-				__SYNC_SET_TO_LOCK(qring_active_push_item->count, qring_push_index_count, this->_sync_count);
-				__SYNC_SET(qring_active_push_item->used);
-				__SYNC_INCR(this->writeit, this->qring_length);
-			#else
-				qring_active_push_item->count = qring_push_index_count;
-				qring_active_push_item->used = 1;
-				if((this->writeit + 1) == this->qring_length) {
-					this->writeit = 0;
-				} else {
-					this->writeit++;
-				}
-			#endif
-			extern int opt_preprocess_rtp_packets_qring_sem_sync;
-			if(opt_preprocess_rtp_packets_qring_sem_sync) {
-				sem_post(&this->sem_qring_filled_count);
-			}
-			qring_push_index = 0;
-			qring_push_index_count = 0;
+			_push_packet__push_batch();
 		}
 	}
+	bool _push_packet__new_batch(u_int64_t time_us, packet_s_process_0 **packetS_ref);
+	void _push_packet__push_batch();
 	inline void push_batch() {
 		#if EXPERIMENTAL_CHECK_TID_IN_PUSH
 		static __thread unsigned _tid = 0;

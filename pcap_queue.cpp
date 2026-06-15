@@ -10064,65 +10064,78 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 		hp->block_store->lock_packet(hp->block_store_index, 1 /*pb lock flag*/);
 		hp->block_store_locked = true;
 	}
-	extern int opt_pcap_queue_output_qring_sem_sync;
 	if(!qring_push_index) {
-		cThreadMonitor::sThread::buffer_push_account_all(thread_data);
-		if(opt_pcap_queue_output_qring_sem_sync) {
-			if(sem_trywait(&this->sem_qring_free_count) == -1) {
-				u_int64_t us_start = cThreadMonitor::sThread::buffer_push_account_sem_full_begin(thread_data);
-				sem_wait(&this->sem_qring_free_count);
-				cThreadMonitor::sThread::buffer_push_account_sem_full_end(thread_data, us_start);
-			}
-			if(is_terminating() || this->terminatingThread) {
-				hp->destroy_or_unlock_blockstore();
-				return;
-			}
-		} else {
-			unsigned int usleepCounter = 0;
-			while(this->qring[this->writeit]->used != 0) {
-				if(is_terminating() || this->terminatingThread) {
-					hp->destroy_or_unlock_blockstore();
-					return;
-				}
-				extern unsigned int opt_sip_batch_usleep;
-				unsigned us = 0;
-				if(opt_sip_batch_usleep) {
-					us = USLEEP_C(opt_sip_batch_usleep, usleepCounter++);
-				} else {
-					__ASM_PAUSE;
-				}
-				cThreadMonitor::sThread::buffer_push_account_busy_full(thread_data, us);
-			}
+		if(!_push__new_batch(time_us, hp)) {
+			return;
 		}
-		qring_push_index = this->writeit + 1;
-		qring_push_index_count = 0;
-		qring_active_push_item = qring[qring_push_index - 1];
-		extern unsigned int opt_push_batch_limit_ms;
-		qring_active_push_item_limit_us = use_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
 	}
 	qring_active_push_item->batch[qring_push_index_count] = *hp;
 	++qring_push_index_count;
 	if(qring_push_index_count == qring_active_push_item->max_count ||
 	   time_us > qring_active_push_item_limit_us) {
-		#if RQUEUE_SAFE
-		__SYNC_SET_TO(qring_active_push_item->count, qring_push_index_count);
-		__SYNC_SET(qring_active_push_item->used);
-		__SYNC_INCR(this->writeit, this->qring_length);
-		#else
-		qring_active_push_item->count = qring_push_index_count;
-		qring_active_push_item->used = 1;
-		if((this->writeit + 1) == this->qring_length) {
-			this->writeit = 0;
-		} else {
-			this->writeit++;
-		}
-		#endif
-		if(opt_pcap_queue_output_qring_sem_sync) {
-			sem_post(&this->sem_qring_filled_count);
-		}
-		qring_push_index = 0;
-		qring_push_index_count = 0;
+		_push__push_batch();
 	}
+}
+
+bool PcapQueue_outputThread::_push__new_batch(u_int64_t time_us, sHeaderPacketPQout *hp) {
+	cThreadMonitor::sThread::buffer_push_account_all(thread_data);
+	extern int opt_pcap_queue_output_qring_sem_sync;
+	if(opt_pcap_queue_output_qring_sem_sync) {
+		if(sem_trywait(&this->sem_qring_free_count) == -1) {
+			u_int64_t us_start = cThreadMonitor::sThread::buffer_push_account_sem_full_begin(thread_data);
+			sem_wait(&this->sem_qring_free_count);
+			cThreadMonitor::sThread::buffer_push_account_sem_full_end(thread_data, us_start);
+		}
+		if(is_terminating() || this->terminatingThread) {
+			hp->destroy_or_unlock_blockstore();
+			return(false);
+		}
+	} else {
+		unsigned int usleepCounter = 0;
+		while(this->qring[this->writeit]->used != 0) {
+			if(is_terminating() || this->terminatingThread) {
+				hp->destroy_or_unlock_blockstore();
+				return(false);
+			}
+			extern unsigned int opt_sip_batch_usleep;
+			unsigned us = 0;
+			if(opt_sip_batch_usleep) {
+				us = USLEEP_C(opt_sip_batch_usleep, usleepCounter++);
+			} else {
+				__ASM_PAUSE;
+			}
+			cThreadMonitor::sThread::buffer_push_account_busy_full(thread_data, us);
+		}
+	}
+	extern bool use_push_batch_limit_ms;
+	extern unsigned int opt_push_batch_limit_ms;
+	qring_push_index = this->writeit + 1;
+	qring_push_index_count = 0;
+	qring_active_push_item = qring[qring_push_index - 1];
+	qring_active_push_item_limit_us = use_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
+	return(true);
+}
+
+void PcapQueue_outputThread::_push__push_batch() {
+	#if RQUEUE_SAFE
+	__SYNC_SET_TO(qring_active_push_item->count, qring_push_index_count);
+	__SYNC_SET(qring_active_push_item->used);
+	__SYNC_INCR(this->writeit, this->qring_length);
+	#else
+	qring_active_push_item->count = qring_push_index_count;
+	qring_active_push_item->used = 1;
+	if((this->writeit + 1) == this->qring_length) {
+		this->writeit = 0;
+	} else {
+		this->writeit++;
+	}
+	#endif
+	extern int opt_pcap_queue_output_qring_sem_sync;
+	if(opt_pcap_queue_output_qring_sem_sync) {
+		sem_post(&this->sem_qring_filled_count);
+	}
+	qring_push_index = 0;
+	qring_push_index_count = 0;
 }
 
 void PcapQueue_outputThread::push_batch() {

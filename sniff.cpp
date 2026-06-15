@@ -7451,7 +7451,9 @@ inline bool call_confirmation_for_rtp_processing(Call *call, call_rtp *call_rtp,
 	return(false);
 }
 
-bool process_packet_rtp(packet_s_process_0 *packetS) {
+static bool _process_packet_rtp(packet_s_process_0 *packetS);
+
+inline __attribute__((always_inline)) bool process_packet_rtp(packet_s_process_0 *packetS) {
 	if(!opt_t2_boost_direct_rtp) {
 		packetS->blockstore_addflag(21 /*pb lock flag*/);
 		if(packetS->datalen_() <= 2) { // && (htons(*(unsigned int*)data) & 0xC000) == 0x8000) { // disable condition - failure for udptl (fax)
@@ -7475,120 +7477,123 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 		packetS->blockstore_addflag(23 /*pb lock flag*/);
 		processRtpPacketHash->push_packet(packetS);
 		return(true);
-	} else {
-		packetS->blockstore_addflag(24 /*pb lock flag*/);
-		packetS->init2_rtp();
-		packet_s_process_calls_info *call_info = packet_s_process_calls_info::create();
-		call_info->length = 0;
-		call_info->find_by_dest = false;
-		calltable->lock_calls_hash();
-		node_call_rtp *n_call = NULL;
-		if((n_call = calltable->hashfind_by_ip_port(packetS->daddr_(), packetS->dest_(), false))) {
-			call_info->find_by_dest = true;
-			packetS->blockstore_addflag(25 /*pb lock flag*/);
-		} else {
-			n_call = calltable->hashfind_by_ip_port(packetS->saddr_(), packetS->source_(), false);
-			packetS->blockstore_addflag(26 /*pb lock flag*/);
-		}
-		if(!n_call && opt_sdp_use_candidate_srflx) {
-			n_call = calltable->hashfind_by_ip_port(packetS->saddr_(), packetS->dest_(), false, ip_port_call_info::_ta_sdp_candidate);
-			if(!n_call) {
-				n_call = calltable->hashfind_by_ip_port(packetS->daddr_(), packetS->source_(), false, ip_port_call_info::_ta_sdp_candidate);
-				if(n_call) {
-					call_info->find_by_dest = true;
-				}
-			}
-		}
-		if(n_call) {
-			unsigned counter_rtp_only_packets = 0;
-			bool use_dtls_queue = false;
-			++counter_rtp_packets[0];
-			for (; n_call != NULL; n_call = n_call->next) {
-				call_rtp *call_rtp = n_call;
-				CallBranch *c_branch = call_rtp->c_branch;
-				Call *call = c_branch->call;
-				if(call_confirmation_for_rtp_processing(call, call_rtp, c_branch, call_info, packetS)) {
-					/*
-					if(packetS->getTimeUS() < (call->first_packet_time * 1000000ull + call->first_packet_usec) + (0 * 60 + 0) * 1000000ull) {
-						continue;
-					}
-					*/
-					++counter_rtp_packets[1];
-					if(!call_rtp->is_rtcp) {
-						++counter_rtp_only_packets;
-					}
-					if(ENABLE_DTLS_QUEUE &&
-					   call_rtp->sdp_flags.protocol == sdp_proto_srtp &&
-					   !call->existsSrtpCryptoConfig() &&
-					   call->existsSrtpFingerprint() &&
-					   !use_dtls_queue &&
-					   !call->dtls_queue_move) {
-						if(dtls_queue.existsContent()) {
-							dtls_queue.lock();
-							if(dtls_queue.existsLink(packetS) && !packetS->insert_packets) {
-								dtls_queue.moveToPacket(packetS, opt_ssl_dtls_queue_keep);
-								call->dtls_queue_move = true;
-							}
-							dtls_queue.unlock();
-							use_dtls_queue = true;
-						}
-					}
-					packetS->blockstore_addflag(27 /*pb lock flag*/);
-					call_info->calls[call_info->length].c_branch = c_branch;
-					call_info->calls[call_info->length].iscaller = call_rtp->iscaller;
-					call_info->calls[call_info->length].is_rtcp = call_rtp->is_rtcp;
-					call_info->calls[call_info->length].sdp_flags = call_rtp->sdp_flags;
-					if(call->use_rtcp_mux && !call_info->calls[call_info->length].sdp_flags.rtcp_mux) {
-						s_sdp_flags *sdp_flags_other_side = call_info->find_by_dest ?
-										     calltable->get_sdp_flags_in_hashfind_by_ip_port(call, c_branch, packetS->saddr_(), packetS->source_(), false) :
-										     calltable->get_sdp_flags_in_hashfind_by_ip_port(call, c_branch, packetS->daddr_(), packetS->dest_(), false);
-						if(sdp_flags_other_side && sdp_flags_other_side->rtcp_mux) {
-							call_info->calls[call_info->length].sdp_flags.rtcp_mux = true;
-						}
-					}
-					call_info->calls[call_info->length].use_sync = false;
-					call_info->calls[call_info->length].multiple_calls = false;
-					call_info->calls[call_info->length].thread_num_rd = call->thread_num_rd;
-					__SYNC_INC(call_info->length);
-					if(call_info->length >= packet_s_process_calls_info::max_calls()) {
-						break;
-					}
-				}
-			}
-			if(counter_rtp_only_packets > 1
-			   #if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-			   && !packetS->audiocodes
-			   #endif
-			   ) {
-				for(int i = 0; i < call_info->length; i++) {
-					if(!call_info->calls[i].is_rtcp) {
-						call_info->calls[i].multiple_calls = true;
-					}
-				}
-			}
-		}
-		calltable->unlock_calls_hash();
-		if(call_info->length) {
-			if(call_info->length > 1) {
-				packetS->set_reuse_counter_with_insert_packets(call_info->length,
-									       call_info->length - (opt_ssl_dtls_queue_keep || opt_ssl_enable_dtls_queue == 2 ? 1 : 0));
-			}
-			process_packet__rtp_call_info(call_info, packetS);
-			packet_s_process_calls_info::free(call_info);
-			return(true);
-		} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
-			dtls_queue.push(packetS, opt_ssl_dtls_queue_keep, true);
-			packet_s_process_calls_info::free(call_info);
-			return(true);
-		} else if(opt_rtpnosip) {
-			process_packet__rtp_nosip(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), 
-						  packetS->data_(), packetS->datalen_(), packetS->dataoffset_(),
-						  packetS->header_pt, packetS->packet, packetS->pflags.get_tcp(), packetS->header_ip_(),
-						  packetS->block_store, packetS->block_store_index, packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip,
-						  get_pcap_handle(packetS->handle_index));
-		}
-		packet_s_process_calls_info::free(call_info);
 	}
+	return(_process_packet_rtp(packetS));
+}
+
+bool _process_packet_rtp(packet_s_process_0 *packetS) {
+	packetS->blockstore_addflag(24 /*pb lock flag*/);
+	packetS->init2_rtp();
+	packet_s_process_calls_info *call_info = packet_s_process_calls_info::create();
+	call_info->length = 0;
+	call_info->find_by_dest = false;
+	calltable->lock_calls_hash();
+	node_call_rtp *n_call = NULL;
+	if((n_call = calltable->hashfind_by_ip_port(packetS->daddr_(), packetS->dest_(), false))) {
+		call_info->find_by_dest = true;
+		packetS->blockstore_addflag(25 /*pb lock flag*/);
+	} else {
+		n_call = calltable->hashfind_by_ip_port(packetS->saddr_(), packetS->source_(), false);
+		packetS->blockstore_addflag(26 /*pb lock flag*/);
+	}
+	if(!n_call && opt_sdp_use_candidate_srflx) {
+		n_call = calltable->hashfind_by_ip_port(packetS->saddr_(), packetS->dest_(), false, ip_port_call_info::_ta_sdp_candidate);
+		if(!n_call) {
+			n_call = calltable->hashfind_by_ip_port(packetS->daddr_(), packetS->source_(), false, ip_port_call_info::_ta_sdp_candidate);
+			if(n_call) {
+				call_info->find_by_dest = true;
+			}
+		}
+	}
+	if(n_call) {
+		unsigned counter_rtp_only_packets = 0;
+		bool use_dtls_queue = false;
+		++counter_rtp_packets[0];
+		for (; n_call != NULL; n_call = n_call->next) {
+			call_rtp *call_rtp = n_call;
+			CallBranch *c_branch = call_rtp->c_branch;
+			Call *call = c_branch->call;
+			if(call_confirmation_for_rtp_processing(call, call_rtp, c_branch, call_info, packetS)) {
+				/*
+				if(packetS->getTimeUS() < (call->first_packet_time * 1000000ull + call->first_packet_usec) + (0 * 60 + 0) * 1000000ull) {
+					continue;
+				}
+				*/
+				++counter_rtp_packets[1];
+				if(!call_rtp->is_rtcp) {
+					++counter_rtp_only_packets;
+				}
+				if(ENABLE_DTLS_QUEUE &&
+				   call_rtp->sdp_flags.protocol == sdp_proto_srtp &&
+				   !call->existsSrtpCryptoConfig() &&
+				   call->existsSrtpFingerprint() &&
+				   !use_dtls_queue &&
+				   !call->dtls_queue_move) {
+					if(dtls_queue.existsContent()) {
+						dtls_queue.lock();
+						if(dtls_queue.existsLink(packetS) && !packetS->insert_packets) {
+							dtls_queue.moveToPacket(packetS, opt_ssl_dtls_queue_keep);
+							call->dtls_queue_move = true;
+						}
+						dtls_queue.unlock();
+						use_dtls_queue = true;
+					}
+				}
+				packetS->blockstore_addflag(27 /*pb lock flag*/);
+				call_info->calls[call_info->length].c_branch = c_branch;
+				call_info->calls[call_info->length].iscaller = call_rtp->iscaller;
+				call_info->calls[call_info->length].is_rtcp = call_rtp->is_rtcp;
+				call_info->calls[call_info->length].sdp_flags = call_rtp->sdp_flags;
+				if(call->use_rtcp_mux && !call_info->calls[call_info->length].sdp_flags.rtcp_mux) {
+					s_sdp_flags *sdp_flags_other_side = call_info->find_by_dest ?
+									     calltable->get_sdp_flags_in_hashfind_by_ip_port(call, c_branch, packetS->saddr_(), packetS->source_(), false) :
+									     calltable->get_sdp_flags_in_hashfind_by_ip_port(call, c_branch, packetS->daddr_(), packetS->dest_(), false);
+					if(sdp_flags_other_side && sdp_flags_other_side->rtcp_mux) {
+						call_info->calls[call_info->length].sdp_flags.rtcp_mux = true;
+					}
+				}
+				call_info->calls[call_info->length].use_sync = false;
+				call_info->calls[call_info->length].multiple_calls = false;
+				call_info->calls[call_info->length].thread_num_rd = call->thread_num_rd;
+				__SYNC_INC(call_info->length);
+				if(call_info->length >= packet_s_process_calls_info::max_calls()) {
+					break;
+				}
+			}
+		}
+		if(counter_rtp_only_packets > 1
+		   #if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+		   && !packetS->audiocodes
+		   #endif
+		   ) {
+			for(int i = 0; i < call_info->length; i++) {
+				if(!call_info->calls[i].is_rtcp) {
+					call_info->calls[i].multiple_calls = true;
+				}
+			}
+		}
+	}
+	calltable->unlock_calls_hash();
+	if(call_info->length) {
+		if(call_info->length > 1) {
+			packetS->set_reuse_counter_with_insert_packets(call_info->length,
+								       call_info->length - (opt_ssl_dtls_queue_keep || opt_ssl_enable_dtls_queue == 2 ? 1 : 0));
+		}
+		process_packet__rtp_call_info(call_info, packetS);
+		packet_s_process_calls_info::free(call_info);
+		return(true);
+	} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
+		dtls_queue.push(packetS, opt_ssl_dtls_queue_keep, true);
+		packet_s_process_calls_info::free(call_info);
+		return(true);
+	} else if(opt_rtpnosip) {
+		process_packet__rtp_nosip(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(),
+					  packetS->data_(), packetS->datalen_(), packetS->dataoffset_(),
+					  packetS->header_pt, packetS->packet, packetS->pflags.get_tcp(), packetS->header_ip_(),
+					  packetS->block_store, packetS->block_store_index, packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip,
+					  get_pcap_handle(packetS->handle_index));
+	}
+	packet_s_process_calls_info::free(call_info);
 	return(false);
 }
 
@@ -13161,6 +13166,68 @@ ProcessRtpPacket::~ProcessRtpPacket() {
 		sem_destroy(&this->sem_items_ready);
 	}
 	delete [] this->hash_find_flag;
+}
+
+bool ProcessRtpPacket::_push_packet__new_batch(u_int64_t time_us, packet_s_process_0 **packetS_ref) {
+	cThreadMonitor::sThread::buffer_push_account_all(thread_data);
+	extern int opt_preprocess_rtp_packets_qring_sem_sync;
+	if(opt_preprocess_rtp_packets_qring_sem_sync) {
+		if(sem_trywait(&this->sem_qring_free_count) == -1) {
+			u_int64_t us_start = cThreadMonitor::sThread::buffer_push_account_sem_full_begin(thread_data);
+			sem_wait(&this->sem_qring_free_count);
+			cThreadMonitor::sThread::buffer_push_account_sem_full_end(thread_data, us_start);
+		}
+		if(is_terminating()) {
+			PACKET_S_PROCESS_DESTROY(packetS_ref);
+			return(false);
+		}
+	} else {
+		unsigned int usleepCounter = 0;
+		while(this->qring[this->writeit]->used != 0) {
+			if(is_terminating()) {
+				PACKET_S_PROCESS_DESTROY(packetS_ref);
+				return(false);
+			}
+			extern unsigned int opt_process_rtp_packets_qring_push_usleep;
+			unsigned us = 0;
+			if(opt_process_rtp_packets_qring_push_usleep) {
+				us = USLEEP_C(opt_process_rtp_packets_qring_push_usleep, usleepCounter++);
+			} else {
+				__ASM_PAUSE;
+				++usleepCounter;
+			}
+			cThreadMonitor::sThread::buffer_push_account_busy_full(thread_data, us);
+		}
+	}
+	extern bool use_push_batch_limit_ms;
+	extern unsigned int opt_push_batch_limit_ms;
+	qring_push_index = this->writeit + 1;
+	qring_push_index_count = 0;
+	qring_active_push_item = this->qring[qring_push_index - 1];
+	qring_active_push_item_limit_us = use_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
+	return(true);
+}
+
+void ProcessRtpPacket::_push_packet__push_batch() {
+	#if RQUEUE_SAFE
+		__SYNC_SET_TO_LOCK(qring_active_push_item->count, qring_push_index_count, this->_sync_count);
+		__SYNC_SET(qring_active_push_item->used);
+		__SYNC_INCR(this->writeit, this->qring_length);
+	#else
+		qring_active_push_item->count = qring_push_index_count;
+		qring_active_push_item->used = 1;
+		if((this->writeit + 1) == this->qring_length) {
+			this->writeit = 0;
+		} else {
+			this->writeit++;
+		}
+	#endif
+	extern int opt_preprocess_rtp_packets_qring_sem_sync;
+	if(opt_preprocess_rtp_packets_qring_sem_sync) {
+		sem_post(&this->sem_qring_filled_count);
+	}
+	qring_push_index = 0;
+	qring_push_index_count = 0;
 }
 
 void *ProcessRtpPacket::outThreadFunction() {
