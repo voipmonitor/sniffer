@@ -4023,6 +4023,18 @@ public:
 		unlock_skinny_maps();
 		return(active);
 	}
+	bool all_skinny_callstate_onhook(Call *call) {
+		bool all_onhook = true;
+		lock_skinny_maps();
+		for(map<d_item<vmIP>, int>::iterator it = call->skinny_last_callstate_by_ip.begin(); it != call->skinny_last_callstate_by_ip.end(); ++it) {
+			if(it->second != SKINNY_ONHOOK) {
+				all_onhook = false;
+				break;
+			}
+		}
+		unlock_skinny_maps();
+		return(all_onhook);
+	}
 	Call *find_by_skinny_ipTuples(vmIP saddr, vmIP daddr) {
 		Call *rslt_call = NULL;
 		lock_calls_listMAP();

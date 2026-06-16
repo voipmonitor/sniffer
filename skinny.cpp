@@ -1368,7 +1368,7 @@ Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap
 	// add saddr|daddr into map
 	Call *old_call = calltable->find_by_skinny_ipTuples(c_branch->sipcallerip[0], c_branch->sipcalledip[0]);
 	calltable->add_to_skinny_ipTuples(c_branch->sipcallerip[0], c_branch->sipcalledip[0], call, true);
-	if(old_call && old_call != call) {
+	if(old_call && old_call != call && calltable->all_skinny_callstate_onhook(old_call)) {
 		old_call->set_destroy_call_at(header->ts.tv_sec, 5);
 		old_call->removeFindTables(NULL, true);
 	}
@@ -1547,6 +1547,11 @@ Call *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 			}
 			if(call->destroy_call_at) {
 				call->destroy_call_at = 0;
+			}
+			if(!c_branch->sipcallerdip_reverse &&
+			   saddr == c_branch->sipcallerip[0] &&
+			   c_branch->sipcalledip[0].isSet() && daddr != c_branch->sipcalledip[0]) {
+				call->setSipcalledip(c_branch, daddr, vmIP(0), 0xFF, dest);
 			}
 			break;
 		case SKINNY_BUSY:
