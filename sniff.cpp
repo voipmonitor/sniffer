@@ -276,8 +276,9 @@ extern bool opt_active_call_info;
 extern int opt_rtpfromsdp_onlysip;
 extern int opt_rtpfromsdp_onlysip_skinny;
 extern int opt_t2_boost;
-extern bool opt_t2_boost_ht_hash_queue_in_rh;
-extern bool opt_t2_boost_ht_cleanup_calls_in_find_thread;
+extern bool opt_t2_boost_ht_hash_queue;
+extern bool opt_t2_boost_ht_cleanup_calls;
+extern bool opt_t2_boost_ht_cleanup_registers;
 unsigned int glob_ssl_calls = 0;
 extern int opt_bye_timeout;
 extern int opt_bye_confirmed_timeout;
@@ -6618,10 +6619,12 @@ void process_packet_sip_register(packet_s_process *packetS) {
 	const char *logPacketSipMethodCallDescr = NULL;
 
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
-	process_packet__cleanup_registers(packetS);
-	if(packetS->getTime_s() - process_packet__last_destroy_registers >= 2) {
-		calltable->destroyRegistersIfPcapsClosed();
-		process_packet__last_destroy_registers = packetS->getTime_s();
+	if(!opt_t2_boost_ht_cleanup_registers) {
+		process_packet__cleanup_registers(packetS);
+		if(packetS->getTime_s() - process_packet__last_destroy_registers >= 2) {
+			calltable->destroyRegistersIfPcapsClosed();
+			process_packet__last_destroy_registers = packetS->getTime_s();
+		}
 	}
 
 	++counter_sip_register_packets;
@@ -9311,7 +9314,7 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 }
 
 
-void _process_packet__cleanup_calls_in_find_thread() {
+void _process_packet__cleanup_calls__new() {
 	extern Calltable::sCleanupCallsData cc_data;
 	switch(cc_data.state) {
 	case Calltable::_cc_begin_finish:
@@ -9325,6 +9328,26 @@ void _process_packet__cleanup_calls_in_find_thread() {
 		cc_data.state = Calltable::_cc_remove_calls_from_map;
 		calltable->cleanup_calls__remove_calls_from_map(&cc_data);
 		cc_data.state = Calltable::_cc_remove_calls_from_map_finish;
+		break;
+	default:
+		break;
+	}
+}
+
+void _process_packet__cleanup_registers__new() {
+	extern Calltable::sCleanupRegistersData cr_data;
+	switch(cr_data.state) {
+	case Calltable::_cr_begin_finish:
+		cr_data.state = Calltable::_cr_load_all_registers;
+		calltable->cleanup_registers__load_all_registers(&cr_data);
+		__sync_synchronize();
+		cr_data.state = Calltable::_cr_load_all_registers_finish;
+		break;
+	case Calltable::_cr_process_registers_finish:
+		__sync_synchronize();
+		cr_data.state = Calltable::_cr_remove_registers_from_map;
+		calltable->cleanup_registers__remove_registers_from_map(&cr_data);
+		cr_data.state = Calltable::_cr_remove_registers_from_map_finish;
 		break;
 	default:
 		break;
@@ -10525,8 +10548,11 @@ void *PreProcessPacket::outThreadFunction() {
 		if(this->typePreProcessThread == ppt_sip) {
 			_parse_packet_global_process_packet.refreshIfNeed();
 		}
-		if(this->typePreProcessThread == ppt_pp_find_call && opt_t2_boost_ht_cleanup_calls_in_find_thread) {
-			_process_packet__cleanup_calls_in_find_thread();
+		if(this->typePreProcessThread == ppt_pp_find_call && opt_t2_boost_ht_cleanup_calls) {
+			_process_packet__cleanup_calls__new();
+		}
+		if(this->typePreProcessThread == ppt_pp_register && opt_t2_boost_ht_cleanup_registers) {
+			_process_packet__cleanup_registers__new();
 		}
 		extern int opt_preprocess_packets_qring_sem_sync;
 		if(opt_preprocess_packets_qring_sem_sync) {
@@ -11469,10 +11495,10 @@ void *PreProcessPacket::outThreadFunction() {
 					batch->count = 0;
 					batch->used = 0;
 				#endif
-				if(!opt_t2_boost_ht_cleanup_calls_in_find_thread) {
+				if(!opt_t2_boost_ht_cleanup_calls) {
 					_process_packet__cleanup_calls(NULL, last_time_s, __FILE__, __LINE__);
 				}
-				if(!opt_t2_boost_ht_hash_queue_in_rh && hash_modify_queue_length_ms) {
+				if(!opt_t2_boost_ht_hash_queue && hash_modify_queue_length_ms) {
 					calltable->applyHashModifyQueue(true);
 				}
 			}
@@ -11642,15 +11668,17 @@ void PreProcessPacket::flushDownstream() {
 		preProcessPacket[ppt_pp_sip_other]->push_batch();
 		break;
 	case ppt_pp_process_call:
-		if(!opt_t2_boost_ht_cleanup_calls_in_find_thread) {
+		if(!opt_t2_boost_ht_cleanup_calls) {
 			_process_packet__cleanup_calls(NULL, 0, __FILE__, __LINE__);
 		}
-		if(!opt_t2_boost_ht_hash_queue_in_rh && hash_modify_queue_length_ms) {
+		if(!opt_t2_boost_ht_hash_queue && hash_modify_queue_length_ms) {
 			calltable->applyHashModifyQueue(true);
 		}
 		break;
 	case ppt_pp_register:
-		_process_packet__cleanup_registers(NULL);
+		if(!opt_t2_boost_ht_cleanup_registers) {
+			_process_packet__cleanup_registers(NULL);
+		}
 		break;
 	case ppt_pp_sip_other:
 		break;
@@ -11820,12 +11848,14 @@ void PreProcessPacket::push_batch_nothread() {
 		}
 		break;
 	case ppt_pp_process_call:
-		if(!opt_t2_boost_ht_cleanup_calls_in_find_thread) {
+		if(!opt_t2_boost_ht_cleanup_calls) {
 			_process_packet__cleanup_calls(NULL, 0, __FILE__, __LINE__);
 		}
 		break;
 	case ppt_pp_register:
-		_process_packet__cleanup_registers(NULL);
+		if(!opt_t2_boost_ht_cleanup_registers) {
+			_process_packet__cleanup_registers(NULL);
+		}
 		break;
 	case ppt_pp_sip_other:
 		break;
@@ -13239,7 +13269,7 @@ void *ProcessRtpPacket::outThreadFunction() {
 	unsigned int usleepCounter = 0;
 	u_int64_t usleepSumTimeForPushBatch = 0;
 	while(!this->term_processRtp) {
-		if(opt_t2_boost_ht_hash_queue_in_rh && this->type == hash) {
+		if(opt_t2_boost_ht_hash_queue && this->type == hash) {
 			calltable->applyHashModifyQueue(true);
 		}
 		if(this->process_rtp_packets_hash_next_threads_mod && this->type == hash) {

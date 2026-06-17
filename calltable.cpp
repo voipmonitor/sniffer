@@ -250,7 +250,7 @@ extern bool opt_cdr_partition_by_hours;
 extern int opt_t2_boost;
 extern int opt_t2_boost_call_find_threads;
 extern int opt_t2_boost_call_threads;
-extern bool opt_t2_boost_ht_hash_queue_in_rh;
+extern bool opt_t2_boost_ht_hash_queue;
 extern bool opt_time_precision_in_ms;
 
 extern cBilling *billing;
@@ -11845,7 +11845,7 @@ void Calltable::hashAdd(vmIP addr, vmPort port, u_int64_t time_us, CallBranch *c
 		lock_hash_modify_queue();
 		hash_modify_queue.push_back(hmd);
 		++c_branch->call->hash_queue_counter;
-		if(!opt_t2_boost_ht_hash_queue_in_rh) {
+		if(!opt_t2_boost_ht_hash_queue) {
 			_applyHashModifyQueue(true);
 		}
 		unlock_hash_modify_queue();
@@ -11868,7 +11868,7 @@ void Calltable::hashRefresh(vmIP addr, vmPort port, CallBranch *c_branch, s_sdp_
 		hmd.use_hash_queue_counter = false;
 		lock_hash_modify_queue();
 		hash_modify_queue.push_back(hmd);
-		if(!opt_t2_boost_ht_hash_queue_in_rh) {
+		if(!opt_t2_boost_ht_hash_queue) {
 			_applyHashModifyQueue(true);
 		}
 		unlock_hash_modify_queue();
@@ -12168,7 +12168,7 @@ void Calltable::hashRemove(CallBranch *c_branch, vmIP addr, vmPort port, bool rt
 		if(useHashQueueCounter) {
 			++c_branch->call->hash_queue_counter;
 		}
-		if(!opt_t2_boost_ht_hash_queue_in_rh) {
+		if(!opt_t2_boost_ht_hash_queue) {
 			_applyHashModifyQueue(true);
 		}
 		unlock_hash_modify_queue();
@@ -12224,7 +12224,7 @@ Calltable::hashRemove(CallBranch *c_branch, bool useHashQueueCounter) {
 		if(useHashQueueCounter) {
 			++c_branch->call->hash_queue_counter;
 		}
-		if(!opt_t2_boost_ht_hash_queue_in_rh) {
+		if(!opt_t2_boost_ht_hash_queue) {
 			_applyHashModifyQueue(true);
 		}
 		unlock_hash_modify_queue();
@@ -13912,11 +13912,6 @@ Calltable::cleanup_calls_separate_processing_rtp() {
 int
 Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
  
-	u_int64_t currTimeMS = getTimeMS_rdtsc();
-	u_int32_t currTimeS = currTimeMS / 1000;
-	bool isReadFromFile = is_read_from_file();
-	bool usePacketTime = isReadFromFile || opt_safe_cleanup_calls == 2;
-
 	if(!packet_time_s && opt_safe_cleanup_calls == 2 && !closeAll) {
 		return(0);
 	}
@@ -13924,13 +13919,60 @@ Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
 	if(verbosity && verbosityE > 1) {
 		syslog(LOG_NOTICE, "call Calltable::cleanup_registers");
 	}
+	
+	sCleanupRegistersData cr_data;
+	cr_data.closeAll = closeAll;
+	cr_data.packet_time_s = packet_time_s;
+	
+	cleanup_registers__begin(&cr_data);
+	cleanup_registers__load_all_registers(&cr_data);
+	if(!cr_data.allRegisters) {
+		return(0);
+	}
+	cleanup_registers__process_registers(&cr_data);
+	cleanup_registers__remove_registers_from_map(&cr_data);
+	cleanup_registers__close_registers(&cr_data);
+	
+	if(closeAll && is_terminating()) {
+		extern int terminated_cleanup_registers;
+		terminated_cleanup_registers = 1;
+		syslog(LOG_NOTICE, "terminated - cleanup registers");
+	}
+	
+	return 0;
+}
 
+void Calltable::cleanup_registers__begin(sCleanupRegistersData */*cr_data*/) {
+}
+
+void Calltable::cleanup_registers__load_all_registers(sCleanupRegistersData *cr_data) {
+	cr_data->allRegistersMax = registers_listMAP.size();
+	if(!cr_data->allRegistersMax) {
+		return;
+	}
+	cr_data->allRegistersMax += cr_data->allRegistersMax / 4;
+	cr_data->allRegisters = new FILE_LINE(0) Call*[cr_data->allRegistersMax];
+	cr_data->allRegistersCount = 0;
 	lock_registers_listMAP();
-	for (map<string, Call*>::iterator registerMAPIT = registers_listMAP.begin(); registerMAPIT != registers_listMAP.end();) {
-		Call *reg = (*registerMAPIT).second;
+	for(map<string, Call*>::iterator iter = registers_listMAP.begin(); iter != registers_listMAP.end(); iter++) {
+		cr_data->allRegisters[cr_data->allRegistersCount++] = iter->second;
+		if(cr_data->allRegistersCount >= cr_data->allRegistersMax) break;
+	}
+	unlock_registers_listMAP();
+}
+
+void Calltable::cleanup_registers__process_registers(sCleanupRegistersData *cr_data) {
+	u_int64_t currTimeMS = getTimeMS_rdtsc();
+	u_int32_t currTimeS = currTimeMS / 1000;
+	bool isReadFromFile = is_read_from_file();
+	bool usePacketTime = isReadFromFile || opt_safe_cleanup_calls == 2;
+	cr_data->closeRegisters = new FILE_LINE(0) Call*[cr_data->allRegistersMax];
+	cr_data->closeregistersCount = 0;
+	for(unsigned iRegisters = 0; iRegisters < cr_data->allRegistersCount; iRegisters++) {
+		Call *reg = cr_data->allRegisters[iRegisters];
 		CallBranch *r_branch = reg->branch_main();
-		u_int32_t currTimeS_unshift = usePacketTime && packet_time_s ?
-					       packet_time_s :
+		u_int32_t currTimeS_unshift = usePacketTime && cr_data->packet_time_s ?
+					       cr_data->packet_time_s :
 					       reg->unshiftSystemTime_s(currTimeS);
 		if(verbosity > 2) {
 			reg->dump();
@@ -13938,9 +13980,8 @@ Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
 		if(verbosity && verbosityE > 1) {
 			syslog(LOG_NOTICE, "Calltable::cleanup - try callid %s", reg->call_id.c_str());
 		}
-		// rtptimeout seconds of inactivity will save this call and remove from call table
 		bool closeReg = false;
-		if(closeAll || reg->force_close) {
+		if(cr_data->closeAll || reg->force_close) {
 			closeReg = true;
 			if(!isReadFromFile) {
 				reg->force_terminate = true;
@@ -13963,7 +14004,7 @@ Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
 			}
 		}
 		if(closeReg) {
-			if(opt_safe_cleanup_calls && !opt_quick_save_cdr && !closeAll && closeReg) {
+			if(opt_safe_cleanup_calls && !opt_quick_save_cdr && !cr_data->closeAll && closeReg) {
 				if(!reg->stopProcessing) {
 					reg->stopProcessing = true;
 					reg->stopProcessingAt_s = currTimeS;
@@ -13974,71 +14015,107 @@ Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
 			}
 		}
 		if(closeReg) {
-			if(verbosity && verbosityE > 1) {
-				syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", reg->call_id.c_str());
+			cr_data->closeRegisters[cr_data->closeregistersCount++] = reg;
+			reg->setClosed();
+		}
+	}
+	delete [] cr_data->allRegisters;
+}
+
+void Calltable::cleanup_registers__remove_registers_from_map(sCleanupRegistersData *cr_data) {
+	if(cr_data->closeregistersCount) {
+		lock_registers_listMAP();
+		for(map<string, Call*>::iterator iter = registers_listMAP.begin(); iter != registers_listMAP.end(); ) {
+			if(iter->second->isClosed()) {
+				registers_listMAP.erase(iter++);
+			} else {
+				iter++;
 			}
-			if(opt_enable_diameter) {
-				reg->moveDiameterPacketsToPcap();
+		}
+		unlock_registers_listMAP();
+	}
+}
+
+void Calltable::cleanup_registers__close_registers(sCleanupRegistersData *cr_data) {
+	u_int64_t currTimeMS = getTimeMS_rdtsc();
+	for(unsigned i = 0; i < cr_data->closeregistersCount; i++) {
+		Call *reg = cr_data->closeRegisters[i];
+		CallBranch *r_branch = reg->branch_main();
+		if(verbosity && verbosityE > 1) {
+			syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", reg->call_id.c_str());
+		}
+		if(opt_enable_diameter) {
+			reg->moveDiameterPacketsToPcap();
+		}
+		// Close RTP dump file ASAP to save file handles
+		if(cr_data->closeAll && is_terminating()) {
+			reg->getPcap()->close();
+			reg->getPcapSip()->close();
+		}
+		if(cr_data->closeAll) {
+			/* we are saving calls because of terminating SIGTERM and we dont know 
+			 * if the call ends successfully or not. So we dont want to confuse monitoring
+			 * applications which reports unterminated calls so mark this call as sighup */
+			reg->sighup = true;
+			if(verbosity > 2)
+				syslog(LOG_NOTICE, "Set call->sighup\n");
+		}
+		if(enable_register_engine) {
+			extern Registers registers;
+			if(reg->reg.msgcount <= 1 ||
+			   !r_branch->lastSIPresponseNum ||
+			   r_branch->lastSIPresponseNum == 401 || r_branch->lastSIPresponseNum == 403 || r_branch->lastSIPresponseNum == 404) {
+				reg->reg.regstate = rs_Failed;
 			}
-			// Close RTP dump file ASAP to save file handles
-			if(closeAll && is_terminating()) {
-				reg->getPcap()->close();
-				reg->getPcapSip()->close();
+			if(reg->reg.regstate != rs_Failed ||
+			   !opt_register_timeout_disable_save_failed) {
+				registers.add(reg);
 			}
-			if(closeAll) {
-				/* we are saving calls because of terminating SIGTERM and we dont know 
-				 * if the call ends successfully or not. So we dont want to confuse monitoring
-				 * applications which reports unterminated calls so mark this call as sighup */
-				reg->sighup = true;
-				if(verbosity > 2)
-					syslog(LOG_NOTICE, "Set call->sighup\n");
-			}
-			/* move call to queue for mysql processing */
+			reg->getPcap()->close();
+			reg->getPcapSip()->close();
+		}
+		if(opt_enable_fraud && !cr_data->closeAll) {
+			fraudEndCall(reg, reg->unshiftSystemTime_ms(currTimeMS));
+		}
+		extern u_int64_t counter_registers_clean;
+		++counter_registers_clean;
+	}
+	/* move registers to queue for mysql processing */
+	if(enable_register_engine) {
+		lock_registers_deletequeue();
+		for(unsigned i = 0; i < cr_data->closeregistersCount; i++) {
+			Call *reg = cr_data->closeRegisters[i];
 			if(reg->push_register_to_registers_queue) {
 				syslog(LOG_WARNING,"try to duplicity push call %s to registers_queue", reg->call_id.c_str());
 			} else {
 				reg->push_register_to_registers_queue = 1;
-				if(enable_register_engine) {
-					extern Registers registers;
-					if(reg->reg.msgcount <= 1 || 
-					   !r_branch->lastSIPresponseNum ||
-					   r_branch->lastSIPresponseNum == 401 || r_branch->lastSIPresponseNum == 403 || r_branch->lastSIPresponseNum == 404) {
-						reg->reg.regstate = rs_Failed;
-					}
-					if(reg->reg.regstate != rs_Failed ||
-					   !opt_register_timeout_disable_save_failed) {
-						registers.add(reg);
-					}
-					reg->getPcap()->close();
-					reg->getPcapSip()->close();
-					lock_registers_deletequeue();
-					registers_deletequeue.push_back(reg);
-					unlock_registers_deletequeue();
-				} else {
-					lock_registers_queue();
-					registers_queue.push_back(reg);
-					unlock_registers_queue();
-				}
+				registers_deletequeue.push_back(reg);
 			}
-			registers_listMAP.erase(registerMAPIT++);
-			if(opt_enable_fraud && !closeAll) {
-				fraudEndCall(reg, reg->unshiftSystemTime_ms(currTimeMS));
-			}
-			extern u_int64_t counter_registers_clean;
-			++counter_registers_clean;
-		} else {
-			++registerMAPIT;
 		}
+		unlock_registers_deletequeue();
+	} else {
+		lock_registers_queue();
+		for(unsigned i = 0; i < cr_data->closeregistersCount; i++) {
+			Call *reg = cr_data->closeRegisters[i];
+			if(reg->push_register_to_registers_queue) {
+				syslog(LOG_WARNING,"try to duplicity push call %s to registers_queue", reg->call_id.c_str());
+			} else {
+				reg->push_register_to_registers_queue = 1;
+				registers_queue.push_back(reg);
+			}
+		}
+		unlock_registers_queue();
 	}
-	unlock_registers_listMAP();
-	
-	if(closeAll && is_terminating()) {
-		extern int terminated_cleanup_registers;
-		terminated_cleanup_registers = 1;
-		syslog(LOG_NOTICE, "terminated - cleanup registers");
+	delete [] cr_data->closeRegisters;
+}
+
+void Calltable::cleanup_registers__end(sCleanupRegistersData */*cr_data*/) {
+	extern unsigned long process_packet__last_destroy_registers;
+	u_int32_t actTimeS = getTimeS_rdtsc();
+	if(actTimeS - process_packet__last_destroy_registers >= 2) {
+		destroyRegistersIfPcapsClosed();
+		process_packet__last_destroy_registers = actTimeS;
 	}
-	
-	return 0;
 }
 
 int Calltable::cleanup_ss7(bool closeAll, u_int32_t packet_time_s) {

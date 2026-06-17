@@ -3403,21 +3403,38 @@ struct sChartsCallData {
 class Calltable {
 public:
 	enum eCleanupCallsState {
-		 _cc_na,
-		 _cc_start,
-		 _cc_begin,
-		 _cc_begin_finish,
-		 _cc_load_all_calls,
-		 _cc_load_all_calls_finish,
-		 _cc_process_calls,
-		 _cc_process_calls_finish,
-		 _cc_remove_calls_from_map,
-		 _cc_remove_calls_from_map_finish,
-		 _cc_close_calls,
-		 _cc_close_calls_finish,
-		 _cc_goto_end,
-		 _cc_end,
-		 _cc_end_finish,
+		_cc_na,
+		_cc_start,
+		_cc_begin,
+		_cc_begin_finish,
+		_cc_load_all_calls,
+		_cc_load_all_calls_finish,
+		_cc_process_calls,
+		_cc_process_calls_finish,
+		_cc_remove_calls_from_map,
+		_cc_remove_calls_from_map_finish,
+		_cc_close_calls,
+		_cc_close_calls_finish,
+		_cc_goto_end,
+		_cc_end,
+		_cc_end_finish
+	};
+	enum eCleanupRegistersState {
+		_cr_na,
+		_cr_start,
+		_cr_begin,
+		_cr_begin_finish,
+		_cr_load_all_registers,
+		_cr_load_all_registers_finish,
+		_cr_process_registers,
+		_cr_process_registers_finish,
+		_cr_remove_registers_from_map,
+		_cr_remove_registers_from_map_finish,
+		_cr_close_registers,
+		_cr_close_registers_finish,
+		_cr_goto_end,
+		_cr_end,
+		_cr_end_finish
 	};
 	struct sCleanupCallsStat {
 		u_int32_t all;
@@ -3484,6 +3501,22 @@ public:
 		sCleanupCallsStat stat;
 		volatile eCleanupCallsState state;
 		sCleanupCallsData() {
+			init();
+		}
+		void init() { 
+			memset((void*)this, 0, sizeof(*this));
+		}
+	};
+	struct sCleanupRegistersData {
+		bool closeAll;
+		u_int32_t packet_time_s;
+		Call **allRegisters;
+		unsigned allRegistersCount;
+		unsigned allRegistersMax;
+		Call **closeRegisters;
+		unsigned closeregistersCount;
+		volatile eCleanupRegistersState state;
+		sCleanupRegistersData() {
 			init();
 		}
 		void init() { 
@@ -4114,6 +4147,12 @@ public:
 	void cleanup_calls_separate_processing_rtp();
 	#endif
 	int cleanup_registers(bool closeAll, u_int32_t packet_time_s = 0);
+	void cleanup_registers__begin(sCleanupRegistersData *cr_data);
+	void cleanup_registers__load_all_registers(sCleanupRegistersData *cr_data);
+	void cleanup_registers__process_registers(sCleanupRegistersData *cr_data);
+	void cleanup_registers__remove_registers_from_map(sCleanupRegistersData *cr_data);
+	void cleanup_registers__close_registers(sCleanupRegistersData *cr_data);
+	void cleanup_registers__end(sCleanupRegistersData *cr_data);
 	int cleanup_ss7(bool closeAll, u_int32_t packet_time_s = 0);
 
 	/**
