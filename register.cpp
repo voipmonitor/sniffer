@@ -101,6 +101,9 @@ struct RegisterFields {
 };
 
 SqlDb *sqlDbSaveRegister = NULL;
+volatile int sqlDbSaveRegister_sync = 0;
+
+static void createSqlDbSaveRegister();
 
 
 RegisterId::RegisterId(Register *reg) {
@@ -182,10 +185,7 @@ void RegisterFailedCount::saveToDb(u_int32_t time_interval) {
 	if(opt_nocdr) {
 		return;
 	}
-	if(!sqlDbSaveRegister) {
-		sqlDbSaveRegister = createSqlObject();
-		sqlDbSaveRegister->setEnableSqlStringInContent(true);
-	}
+	createSqlDbSaveRegister();
 	if(count > count_saved) {
 		string register_table = "register_time_info";
 		SqlDb_row reg;
@@ -308,10 +308,7 @@ void RegisterActive::saveToDb(u_int32_t time_s) {
 	if(opt_nocdr) {
 		return;
 	}
-	if(!sqlDbSaveRegister) {
-		sqlDbSaveRegister = createSqlObject();
-		sqlDbSaveRegister->setEnableSqlStringInContent(true);
-	}
+	createSqlDbSaveRegister();
 	map<int, u_int32_t> count;
 	registers.getCountActiveBySensors(&count);
 	for(map<int, u_int32_t>::iterator iter = count.begin(); iter != count.end(); iter++) {
@@ -1096,10 +1093,7 @@ void Register::saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState,
 		registers_info = outStr.str();
 	}
 	u_int8_t saved = false;
-	if(!sqlDbSaveRegister) {
-		sqlDbSaveRegister = createSqlObject();
-		sqlDbSaveRegister->setEnableSqlStringInContent(true);
-	}
+	createSqlDbSaveRegister();
 	switch(typeSaveState) {
 	case _ss_init:
 	case _ss_reset:
@@ -1881,4 +1875,17 @@ void initRegistersDb(SqlDb *sqlDb) {
 
 void termRegisters() {
 	registers.stopTimer();
+}
+
+
+void createSqlDbSaveRegister() {
+	if(!sqlDbSaveRegister) {
+		__SYNC_LOCK(sqlDbSaveRegister_sync);
+		if(!sqlDbSaveRegister) {
+			SqlDb *_sqlDbSaveRegister = createSqlObject();
+			_sqlDbSaveRegister->setEnableSqlStringInContent(true);
+			sqlDbSaveRegister = _sqlDbSaveRegister;
+		}
+		__SYNC_UNLOCK(sqlDbSaveRegister_sync);
+	}
 }

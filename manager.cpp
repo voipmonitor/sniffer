@@ -5330,6 +5330,17 @@ int Mgmt_thread(Mgmt_params *params) {
 				return(params->sendString("ok\n"));
 			}
 		}
+	} else if(!strcasecmp(thread_params[0], "sip_register")) {
+		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
+		if(preProcessPacket[PreProcessPacket::ppt_pp_register]) {
+			if(!strcasecmp(thread_params[1], "add")) {
+				preProcessPacket[PreProcessPacket::ppt_pp_register]->addNextThread();
+				return(params->sendString("ok\n"));
+			} else if(!strcasecmp(thread_params[1], "remove")) {
+				preProcessPacket[PreProcessPacket::ppt_pp_register]->removeNextThread();
+				return(params->sendString("ok\n"));
+			}
+		}
 	} else if(!strcasecmp(thread_params[0], "ac")) {
 		extern AsyncClose *asyncClose;
 		if(asyncClose) {

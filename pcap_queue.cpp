@@ -2144,7 +2144,8 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 						    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_detach ||
 						    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip ||
 						    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_find_call ||
-						    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_process_call)) {
+						    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_process_call ||
+						    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_register)) {
 							static int do_add_thread_counter[PreProcessPacket::ppt_end_base];
 							static int do_remove_thread_counter[PreProcessPacket::ppt_end_base];
 							ostringstream debugStr;

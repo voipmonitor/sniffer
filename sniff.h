@@ -905,6 +905,7 @@ struct packet_s_process : public packet_s_process_0 {
 	u_int32_t sipDataLen;
 	char callid[128];
 	char *callid_long;
+	u_int16_t callid_len;
 	vector<string> *callid_alternative;
 	int sip_method;
 	sCseq cseq;
@@ -952,6 +953,7 @@ struct packet_s_process : public packet_s_process_0 {
 		sipDataLen = 0;
 		callid[0] = 0;
 		callid_long = NULL;
+		callid_len = 0;
 		callid_alternative = NULL;
 		sip_method = -1;
 		cseq.null();
@@ -997,6 +999,7 @@ struct packet_s_process : public packet_s_process_0 {
 			strncpy(callid, callid_input, callid_length);
 			callid[callid_length] = 0;
 		}
+		callid_len = callid_length;
 	}
 	void set_callid_alternative(char *callid, unsigned callid_length) {
 		if(!callid_alternative) {
@@ -1021,34 +1024,25 @@ struct packet_s_process : public packet_s_process_0 {
 	inline char *get_callid() {
 		return(callid_long ? callid_long : callid);
 	}
-	inline u_int8_t get_callid_sipextx_index() {
-		extern int preProcessPacketCallX_count;
-		char *_callid = callid_long ? callid_long : callid;
-		unsigned length = 0;
-		while(length < 6 && _callid[length]) {
-			++length;
-		}
-		if(length == 6) {
-			return((((unsigned int)_callid[0] * (unsigned int)_callid[1]) ^
-				((unsigned int)_callid[2] * (unsigned int)_callid[3]) ^
-				((unsigned int)_callid[4] * (unsigned int)_callid[5])) % preProcessPacketCallX_count);
-		} else {
-			return((unsigned int)_callid[0] % preProcessPacketCallX_count);
-		}
-	}
 	inline u_int32_t get_callid_hash() {
 		char *_callid = callid_long ? callid_long : callid;
-		unsigned length = 0;
-		while(length < 6 && _callid[length]) {
-			++length;
+		unsigned len = callid_len;
+		if(!len) {
+			return(0);
 		}
-		if(length == 6) {
-			return(((u_int32_t)_callid[0] * (u_int32_t)_callid[1]) ^
-			       ((u_int32_t)_callid[2] * (u_int32_t)_callid[3]) ^
-			       ((u_int32_t)_callid[4] * (u_int32_t)_callid[5]));
-		} else {
-			return((u_int32_t)_callid[0]);
+		if(!callid_long && len >= sizeof(callid)) {
+			len = sizeof(callid) - 1;
 		}
+		u_int32_t hash = len;
+		hash = hash * 31 + (u_char)_callid[0];
+		hash = hash * 31 + (u_char)_callid[len >> 2];
+		hash = hash * 31 + (u_char)_callid[len >> 1];
+		hash = hash * 31 + (u_char)_callid[len - 1];
+		hash *= 2654435761u;
+		hash ^= hash >> 15;
+		hash *= 2246822519u;
+		hash ^= hash >> 13;
+		return(hash);
 	}
 	inline void register_child_packet(packet_s_process *child) {
 		if(!child_packets) {

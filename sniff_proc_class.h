@@ -1126,7 +1126,7 @@ public:
 				this->process_PROCESS_CALL(packetS, 0, true);
 				break;
 			case ppt_pp_register:
-				this->process_REGISTER(packetS);
+				this->process_REGISTER(packetS, true);
 				break;
 			case ppt_pp_sip_other:
 				this->process_SIP_OTHER(packetS);
@@ -1821,7 +1821,7 @@ private:
 	void process_FIND_CALL(packet_s_process *packetS);
 	void _process_FIND_CALL_push(packet_s_process *packetS);
 	void process_PROCESS_CALL(packet_s_process *packetS, int threadIndex = 0, bool callCleanupCalls = false, bool batch_process = false);
-	void process_REGISTER(packet_s_process *packetS);
+	void process_REGISTER(packet_s_process *packetS, bool callCleanupRegisters = false);
 	void process_SIP_OTHER(packet_s_process *packetS);
 	void process_DIAMETER(packet_s_process *packetS);
 	void process_RTP(packet_s_process_0 *packetS, bool maintain_delay_queue = false);
@@ -1869,6 +1869,7 @@ private:
 		extern int opt_pre_process_packets_next_thread;
 		extern int opt_pre_process_packets_next_thread_find_call;
 		extern int opt_pre_process_packets_next_thread_process_call;
+		extern int opt_pre_process_packets_next_thread_register;
 		return(typePreProcessThread == ppt_detach_x || 
 		       typePreProcessThread == ppt_detach || 
 		       typePreProcessThread == ppt_sip ? 
@@ -1877,6 +1878,8 @@ private:
 			opt_pre_process_packets_next_thread_find_call :
 		       typePreProcessThread == ppt_pp_process_call ?
 			opt_pre_process_packets_next_thread_process_call :
+		       typePreProcessThread == ppt_pp_register ?
+			opt_pre_process_packets_next_thread_register :
 			-1);
 	}
 	int get_opt_pre_process_packets_next_thread_max() {

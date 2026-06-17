@@ -185,6 +185,7 @@ extern volatile int process_rtp_packets_distribute_threads_use;
 extern int opt_pre_process_packets_next_thread;
 extern int opt_pre_process_packets_next_thread_find_call;
 extern int opt_pre_process_packets_next_thread_process_call;
+extern int opt_pre_process_packets_next_thread_register;
 extern int opt_pre_process_packets_next_thread_max;
 extern int opt_process_rtp_packets_hash_next_thread;
 extern int opt_process_rtp_packets_hash_next_thread_max;
@@ -4601,7 +4602,7 @@ void fillSciPacketInfo(packet_s_process *packetS, int sip_method, sSciPacketInfo
 
 static inline void process_packet__parse_rtcpxr(CallBranch *c_branch, packet_s_process *packetS, timeval tv);
 static inline void process_packet__cleanup_calls(packet_s *packetS, u_int32_t time_s, const char *file, int line);
-static inline void process_packet__cleanup_registers(packet_s *packetS);
+static inline void process_packet__cleanup_registers(packet_s *packetS, u_int32_t time_s = 0);
 static inline void process_packet__cleanup_ss7(packet_s *packetS);
 static inline int process_packet__parse_sip_method(packet_s_process *packetS, bool check_end_space, bool *sip_response);
 static inline bool process_packet__parse_cseq(sCseq *cseq, char *cseqstr, unsigned int cseqlen);
@@ -6624,15 +6625,6 @@ void process_packet_sip_register(packet_s_process *packetS) {
 	bool prematureRegisterResponsesProcess = false;
 	const char *logPacketSipMethodCallDescr = NULL;
 
-	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
-	if(!opt_t2_boost_ht_cleanup_registers) {
-		process_packet__cleanup_registers(packetS);
-		if(packetS->getTime_s() - process_packet__last_destroy_registers >= 2) {
-			calltable->destroyRegistersIfPcapsClosed();
-			process_packet__last_destroy_registers = packetS->getTime_s();
-		}
-	}
-
 	++counter_sip_register_packets;
 
 	if(opt_enable_fraud && isFraudReady()) {
@@ -7888,13 +7880,13 @@ inline void process_packet__cleanup_calls(packet_s *packetS, u_int32_t time_s, c
 
 }
 
-inline void process_packet__cleanup_registers(packet_s *packetS) {
+inline void process_packet__cleanup_registers(packet_s *packetS, u_int32_t time_s) {
 	u_int64_t actTimeS = getTimeS_rdtsc();
 	if(actTimeS - process_packet__last_cleanup_registers < 10) {
 		return;
 	}
 	if(packetS || opt_safe_cleanup_calls != 2) {
-		calltable->cleanup_registers(false, packetS ? packetS->getTime_s() : 0);
+		calltable->cleanup_registers(false, packetS ? packetS->getTime_s() : time_s);
 		if(enable_register_engine) {
 			extern Registers registers;
 			registers.cleanup(false, 30);
@@ -9369,8 +9361,8 @@ void _process_packet__cleanup_calls(packet_s *packetS, u_int32_t time_s, const c
 	}
 }
 
-void _process_packet__cleanup_registers(packet_s *packetS) {
-	process_packet__cleanup_registers(packetS);
+void _process_packet__cleanup_registers(packet_s *packetS, u_int32_t time_s = 0) {
+	process_packet__cleanup_registers(packetS, time_s);
 	u_int32_t timeS = getTimeS_rdtsc();
 	if(timeS - process_packet__last_destroy_registers >= 2) {
 		calltable->destroyRegistersIfPcapsClosed();
@@ -10151,7 +10143,8 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 				    typePreProcessThread == ppt_detach ||
 				    typePreProcessThread == ppt_sip ||
 				    typePreProcessThread == ppt_pp_find_call ||
-				    typePreProcessThread == ppt_pp_process_call) ?
+				    typePreProcessThread == ppt_pp_process_call ||
+				    typePreProcessThread == ppt_pp_register) ?
 				    min(max(get_opt_pre_process_packets_next_thread(), 0), min(get_opt_pre_process_packets_next_thread_max(), MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) :
 				    0;
 	this->next_threads_count_mod = 0;
@@ -10502,6 +10495,21 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 					}
 				} }
 				break;
+			case ppt_pp_register: {
+				packet_s_process **batch = (packet_s_process**)next_thread_data->batch;
+				for(unsigned batch_index = 0;
+				    batch_index < batch_index_end;
+				    batch_index += batch_index_skip) {
+					if(!this->items_flag[batch_index] &&
+					   this->items_thread_index[batch_index] == next_thread_data->thread_index) {
+						this->process_REGISTER(batch[batch_index]);
+						this->items_flag[batch_index] = 1;
+						if(opt_preprocess_packets_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
+							sem_post(&this->sem_items_ready);
+						}
+					}
+				} }
+				break;
 			default:
 				break;
 			}
@@ -10543,7 +10551,8 @@ void *PreProcessPacket::outThreadFunction() {
 		    this->typePreProcessThread == ppt_detach ||
 		    this->typePreProcessThread == ppt_sip ||
 		    this->typePreProcessThread == ppt_pp_find_call ||
-		    this->typePreProcessThread == ppt_pp_process_call)) {
+		    this->typePreProcessThread == ppt_pp_process_call ||
+		    this->typePreProcessThread == ppt_pp_register)) {
 			if(this->next_threads_count_mod > 0) {
 				createNextThread();
 			} else if(this->next_threads_count_mod < 0) {
@@ -11508,6 +11517,129 @@ void *PreProcessPacket::outThreadFunction() {
 					calltable->applyHashModifyQueue(true);
 				}
 			}
+		} else if(this->typePreProcessThread == ppt_pp_register) {
+			if(this->qring[this->readit]->used == 1) {
+				exists_used = true;
+				batch = this->qring[this->readit];
+				u_int32_t tm_caplen[batch->count];
+				if(sverb.sniffer_threads_ext > 1 && thread_data) {
+					for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
+						tm_caplen[batch_index] = batch->batch[batch_index]->header_pt->caplen;
+						thread_data->inc_packets_in(tm_caplen[batch_index]);
+					}
+				}
+				__SYNC_LOCK(this->_sync_count);
+				unsigned count = batch->count;
+				__SYNC_UNLOCK(this->_sync_count);
+				u_int32_t last_time_s = count > 0 ? batch->batch[count - 1]->getTime_s() : 0;
+				if(this->next_threads[0].thread_handle) {
+					unsigned completed = 0;
+					int _next_threads_count = this->next_threads_count;
+					bool _process_only_in_next_threads = _next_threads_count > 1;
+					int thread_index_modulo = _process_only_in_next_threads ? _next_threads_count : _next_threads_count + 1;
+					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+						this->items_flag[batch_index] = 0;
+						this->items_thread_index[batch_index] = batch->batch[batch_index]->get_callid_hash() % thread_index_modulo;
+					}
+					__SYNC_SET_TO(this->active_threads_for_batch, _next_threads_count);
+					for(int i = 0; i < _next_threads_count; i++) {
+						this->next_threads[i].next_data.null();
+						if(_process_only_in_next_threads) {
+							this->next_threads[i].next_data.start = 0;
+							this->next_threads[i].next_data.end = count;
+							this->next_threads[i].next_data.skip = 1;
+							this->next_threads[i].next_data.thread_index = i;
+						} else {
+							this->next_threads[i].next_data.start = 0;
+							this->next_threads[i].next_data.end = count;
+							this->next_threads[i].next_data.skip = 1;
+							this->next_threads[i].next_data.thread_index = i + 1;
+						}
+						this->next_threads[i].next_data.batch = batch->batch;
+						this->next_threads[i].next_data.signal_done = !_process_only_in_next_threads;
+						this->next_threads[i].next_data.processing = 1;
+						if(opt_preprocess_packets_next_thread_sem_sync) {
+							sem_post(&this->next_threads[i].sem_sync);
+						} else {
+							this->next_threads[i].next_data.data_ready = 1;
+						}
+					}
+					if(_process_only_in_next_threads) {
+						if(opt_preprocess_packets_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
+							while(completed < count) {
+								if(this->items_flag[completed] != 0) {
+									if(sverb.sniffer_threads_ext > 1 && thread_data) {
+										thread_data->inc_packets_out(tm_caplen[completed]);
+									}
+									++completed;
+									sem_trywait(&this->sem_items_ready);
+								} else {
+									sem_wait(&this->sem_items_ready);
+								}
+							}
+						} else {
+							unsigned int wait_counter = 0;
+							while(this->active_threads_for_batch > 0) {
+								if(completed < count &&
+								   this->items_flag[completed] != 0) {
+									if(sverb.sniffer_threads_ext > 1 && thread_data) {
+										thread_data->inc_packets_out(tm_caplen[completed]);
+									}
+									++completed;
+									wait_counter = 0;
+								} else {
+									extern unsigned int opt_sip_batch_sync_usleep;
+									BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
+								}
+							}
+						}
+					} else {
+						for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+							if(this->items_thread_index[batch_index] == 0) {
+								if(sverb.sniffer_threads_ext > 1 && thread_data) {
+									thread_data->inc_packets_out(tm_caplen[batch_index]);
+								}
+								this->process_REGISTER(batch->batch[batch_index]);
+							}
+						}
+					}
+					if(!_process_only_in_next_threads) {
+						if(opt_preprocess_packets_next_thread_sem_sync == 2) {
+							for(int i = 0; i < _next_threads_count; i++) {
+								sem_wait(&this->next_threads[i].sem_done);
+							}
+						} else {
+							for(int i = 0; i < _next_threads_count; i++) {
+								unsigned int wait_counter = 0;
+								while(this->next_threads[i].next_data.processing) {
+									extern unsigned int opt_sip_batch_sync_usleep;
+									BATCH_SYNC_WAIT(opt_sip_batch_sync_usleep, &wait_counter);
+								}
+							}
+						}
+					}
+				} else {
+					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+						if(sverb.sniffer_threads_ext > 1 && thread_data) {
+							thread_data->inc_packets_out(tm_caplen[batch_index]);
+						}
+						this->process_REGISTER(batch->batch[batch_index]);
+					}
+				}
+				#if RQUEUE_SAFE
+					if(batch_length_high_traffic_need && batch->max_count < opt_batch_length_sip_high_traffic) {
+						batch->realloc(opt_batch_length_sip_high_traffic);
+					}
+					__SYNC_NULL(batch->count);
+					__SYNC_NULL(batch->used);
+				#else
+					batch->count = 0;
+					batch->used = 0;
+				#endif
+				if(!opt_t2_boost_ht_cleanup_registers) {
+					_process_packet__cleanup_registers(NULL, last_time_s);
+				}
+			}
 		} else {
 			if(this->qring[this->readit]->used == 1) {
 				exists_used = true;
@@ -11568,7 +11700,7 @@ void *PreProcessPacket::outThreadFunction() {
 							this->process_PROCESS_CALL(packetS, 0, true);
 							break;
 						case ppt_pp_register:
-							this->process_REGISTER(packetS);
+							this->process_REGISTER(packetS, true);
 							break;
 						case ppt_pp_sip_other:
 							this->process_SIP_OTHER(packetS);
@@ -12381,7 +12513,7 @@ void PreProcessPacket::process_PROCESS_CALL(packet_s_process *packetS, int threa
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 10 + threadIndex);
 }
 
-void PreProcessPacket::process_REGISTER(packet_s_process *packetS) {
+void PreProcessPacket::process_REGISTER(packet_s_process *packetS, bool callCleanupRegisters) {
 	if(packetS->typeContentIsSip() && packetS->is_register()) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
@@ -12391,6 +12523,9 @@ void PreProcessPacket::process_REGISTER(packet_s_process *packetS) {
 		} else if(livesnifferfilterUseSipTypes.u_register) {
 			save_live_packet(packetS);
 		}
+	}
+	if(callCleanupRegisters) {
+		_process_packet__cleanup_registers(packetS);
 	}
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 1);
 }

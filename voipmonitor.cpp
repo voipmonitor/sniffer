@@ -480,6 +480,7 @@ volatile int process_rtp_packets_distribute_threads_use = 0;
 int opt_pre_process_packets_next_thread = -1;
 int opt_pre_process_packets_next_thread_find_call = -1;
 int opt_pre_process_packets_next_thread_process_call = -1;
+int opt_pre_process_packets_next_thread_register = -1;
 int opt_pre_process_packets_next_thread_detach = -1;
 int opt_pre_process_packets_next_thread_detach2 = -1;
 int opt_pre_process_packets_next_thread_defrag = -1;
@@ -6893,6 +6894,9 @@ void cConfig::addConfigItems() {
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread_process_call", &opt_pre_process_packets_next_thread_process_call))
 						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
 						->addValues("yes:1|y:1|no:0|n:0"));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread_register", &opt_pre_process_packets_next_thread_register))
+						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
+						->addValues("yes:1|y:1|no:0|n:0"));
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread_detach", &opt_pre_process_packets_next_thread_detach))
 						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
 						->addValues("yes:1|y:1|no:0|n:0"));
@@ -10198,6 +10202,9 @@ void set_context_config() {
 		}
 		if(!CONFIG.isSet("pre_process_packets_next_thread_process_call")) {
 			opt_pre_process_packets_next_thread_process_call = opt_pre_process_packets_next_thread;
+		}
+		if(!CONFIG.isSet("pre_process_packets_next_thread_register")) {
+			opt_pre_process_packets_next_thread_register = opt_pre_process_packets_next_thread;
 		}
 		if(!CONFIG.isSet("pre_process_packets_next_thread_detach")) {
 			opt_pre_process_packets_next_thread_detach = opt_pre_process_packets_next_thread;
