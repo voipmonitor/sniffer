@@ -9875,6 +9875,8 @@ void set_context_config() {
 	}
 	if(opt_t2_boost != 2) {
 		opt_t2_boost_ht_hash_queue = 0;
+	}
+	if(!opt_t2_boost) {
 		opt_t2_boost_ht_cleanup_calls = 0;
 		opt_t2_boost_ht_cleanup_registers = 0;
 	}
