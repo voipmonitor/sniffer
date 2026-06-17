@@ -2723,9 +2723,13 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 	}
 	
 	vmIP ip;
+	// a session-level c= exists only before the first media line; restrict the search to
+	// that region so a media-level c= is never mistaken for the session default (RFC 4566 §5.7)
+	char *first_media_line = (char*)memmem(sdp_text, sdp_text_len, "\nm=", 3);
+	size_t session_region_len = first_media_line ? (size_t)(first_media_line - sdp_text) : sdp_text_len;
 	int v6_i = VM_IPV6_B && packetS->saddr_().is_v6() ? 0 : 1;
 	for(int i = 0; i < (VM_IPV6_B ? 2 : 1); i++) {
-		s = _gettag(sdp_text, sdp_text_len,
+		s = _gettag(sdp_text, session_region_len,
 			    i == v6_i ? "c=IN IP6 " : "c=IN IP4 ",
 			    &l);
 		if(l > 0) {
@@ -2870,7 +2874,7 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 		
 		sdp_media_data_item->sdp_flags.protocol = sdp_protocol;
 		
-		if(sdp_media_i > 0) {
+		{  // read media-level c= for every media, including index 0 (a media-level c= overrides the session default; RFC 4566 §5.7)
 			s = _gettag(sdp_media_text, sdp_media_text_len,
 				    packetS->saddr_().is_v6() ? "c=IN IP6 " : "c=IN IP4 ",
 				    &l);
