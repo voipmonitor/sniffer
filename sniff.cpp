@@ -2723,26 +2723,7 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 		call->siprec = true;
 	}
 	
-	vmIP ip;
-	// a session-level c= exists only before the first media line; restrict the search to
-	// that region so a media-level c= is never mistaken for the session default (RFC 4566 §5.7)
-	char *first_media_line = (char*)memmem(sdp_text, sdp_text_len, "\nm=", 3);
-	size_t session_region_len = first_media_line ? (size_t)(first_media_line - sdp_text) : sdp_text_len;
-	int v6_i = VM_IPV6_B && packetS->saddr_().is_v6() ? 0 : 1;
-	for(int i = 0; i < (VM_IPV6_B ? 2 : 1); i++) {
-		s = _gettag(sdp_text, session_region_len,
-			    i == v6_i ? "c=IN IP6 " : "c=IN IP4 ",
-			    &l);
-		if(l > 0) {
-			char ip_str[IP_STR_MAX_LENGTH];
-			unsigned ip_length = MIN(l, IP_STR_MAX_LENGTH - 1);
-			memcpy(ip_str, s, ip_length);
-			ip_str[ip_length] = 0;
-			ip.setFromString(ip_str);
-			break;
-		}
-	}
-	
+	vmIP ip_c_in_default;
 	unsigned sdp_media_start_max = 10;
 	unsigned sdp_media_start_count = 0;
 	char *sdp_media_start[sdp_media_start_max];
@@ -2750,11 +2731,30 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 	e_sdp_media_type sdp_media_type[sdp_media_start_max];
 	vmPort sdp_media_port[sdp_media_start_max];
 	char *sdp_text_pointer = sdp_text;
+	unsigned sdp_media_start_i = 0; 
 	while(sdp_media_start_count < sdp_media_start_max && sdp_text_pointer < sdp_text + sdp_text_len) {
 		s = _gettag(sdp_text_pointer,
 			    sdp_text_len - (sdp_text_pointer - sdp_text), 
 			    "\nm=", &l);
 		if(l > 0) {
+			if(!sdp_media_start_i) {
+				int v6_i = VM_IPV6_B && packetS->saddr_().is_v6() ? 0 : 1;
+				for(int i = 0; i < (VM_IPV6_B ? 2 : 1); i++) {
+					unsigned long l_c_in;
+					char *s_c_in = _gettag(sdp_text, s - sdp_text,
+							       i == v6_i ? "c=IN IP6 " : "c=IN IP4 ",
+							       &l_c_in);
+					if(l_c_in > 0) {
+						char ip_str[IP_STR_MAX_LENGTH];
+						unsigned ip_length = MIN(l_c_in, IP_STR_MAX_LENGTH - 1);
+						memcpy(ip_str, s_c_in, ip_length);
+						ip_str[ip_length] = 0;
+						ip_c_in_default.setFromString(ip_str);
+						break;
+					}
+				}
+			}
+			++sdp_media_start_i;
 			if(sdp_media_start_count > 0 && !sdp_media_stop[sdp_media_start_count - 1]) {
 				sdp_media_stop[sdp_media_start_count - 1] = s;
 			}
@@ -2869,15 +2869,16 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 			sdp_media_data_item = new FILE_LINE(0) s_sdp_media_data;
 		}
 		
-		sdp_media_data_item->ip = ip;
+		sdp_media_data_item->ip = ip_c_in_default;
 		sdp_media_data_item->port = sdp_media_port[sdp_media_i];
 		sdp_media_data_item->sdp_flags.media_type = sdp_media_type[sdp_media_i];
 		
 		sdp_media_data_item->sdp_flags.protocol = sdp_protocol;
 		
-		{  // read media-level c= for every media, including index 0 (a media-level c= overrides the session default; RFC 4566 §5.7)
+		int v6_i = VM_IPV6_B && packetS->saddr_().is_v6() ? 0 : 1;
+		for(int i = 0; i < (VM_IPV6_B ? 2 : 1); i++) {
 			s = _gettag(sdp_media_text, sdp_media_text_len,
-				    packetS->saddr_().is_v6() ? "c=IN IP6 " : "c=IN IP4 ",
+				    i == v6_i ? "c=IN IP6 " : "c=IN IP4 ",
 				    &l);
 			if(l > 0) {
 				char ip_str[IP_STR_MAX_LENGTH];
@@ -2887,6 +2888,7 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 				vmIP ip;
 				if(ip.setFromString(ip_str)) {
 					sdp_media_data_item->ip = ip;
+					break;
 				}
 			}
 		}
