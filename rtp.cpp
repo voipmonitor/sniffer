@@ -1123,7 +1123,7 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 	if(opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap &&
 	   msdiff >= opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap &&
 	   frame->seqno == ROT_SEQ(last_seq + 1) &&
-	   frame->ts > _last_ts && frame->ts - _last_ts == packetization) {
+	   frame->ts > _last_ts && (int)(frame->ts - _last_ts) < packetization * 2) {
 		frame->marker = 1;
 	}
 
