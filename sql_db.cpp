@@ -18,6 +18,7 @@
 
 #ifndef FREEBSD
 #include <sys/inotify.h>
+#include <poll.h>
 #endif
 
 #include "tools.h"
@@ -4357,6 +4358,7 @@ MySqlStore::MySqlStore(const char *host, const char *user, const char *password,
 	this->enableTerminatingIfEmpty = false;
 	this->enableTerminatingIfSqlError = false;
 	this->_sync_qfiles = 0;
+	this->_sync_loadFromQFilesThreadData = 0;
 	this->qfilesCheckperiodThread = 0;
 	this->qfilesINotifyThread = 0;
 }
@@ -4392,11 +4394,27 @@ MySqlStore::~MySqlStore() {
 		clearAllQFiles();
 	}
 	if(loadFromQFileConfig.enableAny()) {
-		for(map<int, LoadFromQFilesThreadData>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
-			if(iter->second.thread) {
-				pthread_join(iter->second.thread, NULL);
+		if(this->qfilesINotifyThread) {
+			pthread_join(this->qfilesINotifyThread, NULL);
+			this->qfilesINotifyThread = 0;
+		}
+		vector<pthread_t> threads;
+		lock_loadFromQFilesThreadData();
+		for(map<int, LoadFromQFilesThreadData*>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
+			if(iter->second && iter->second->thread) {
+				threads.push_back(iter->second->thread);
 			}
 		}
+		unlock_loadFromQFilesThreadData();
+		for(vector<pthread_t>::iterator iter = threads.begin(); iter != threads.end(); iter++) {
+			pthread_join(*iter, NULL);
+		}
+		lock_loadFromQFilesThreadData();
+		for(map<int, LoadFromQFilesThreadData*>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
+			delete iter->second;
+		}
+		loadFromQFilesThreadData.clear();
+		unlock_loadFromQFilesThreadData();
 	}
 }
 
@@ -4699,25 +4717,34 @@ void MySqlStore::setInotifyReadyForLoadFromQFile(bool iNotifyReady) {
 	}
 }
 
-void MySqlStore::addLoadFromQFile(int id_main, const char *name, 
+void MySqlStore::addLoadFromQFile(int id_main, const char *name,
 				  int storeThreads, int storeConcatLimit,
 				  MySqlStore *store) {
-	LoadFromQFilesThreadData threadData;
-	threadData.id_main = id_main;
-	threadData.name = name;
-	threadData.storeThreads = storeThreads > 0 ? storeThreads : getMaxThreadsForStoreId(id_main);
-	threadData.storeThreadsSet = storeThreads > 0 ? true : isSetMaxThreadsForStoreId(id_main);
-	threadData.storeConcatLimit = storeConcatLimit > 0 ? storeConcatLimit : getConcatLimitForStoreId(id_main);
-	threadData.store = store;
+	LoadFromQFilesThreadData *threadData = new FILE_LINE(0) LoadFromQFilesThreadData;
+	threadData->id_main = id_main;
+	threadData->name = name;
+	threadData->storeThreads = storeThreads > 0 ? storeThreads : getMaxThreadsForStoreId(id_main);
+	threadData->storeThreadsSet = storeThreads > 0 ? true : isSetMaxThreadsForStoreId(id_main);
+	threadData->storeConcatLimit = storeConcatLimit > 0 ? storeConcatLimit : getConcatLimitForStoreId(id_main);
+	threadData->store = store;
+	lock_loadFromQFilesThreadData();
 	loadFromQFilesThreadData[id_main] = threadData;
+	pthread_t *thread = &threadData->thread;
+	unlock_loadFromQFilesThreadData();
 	LoadFromQFilesThreadInfo *threadInfo = new FILE_LINE(29005) LoadFromQFilesThreadInfo;
 	threadInfo->store = this;
 	threadInfo->id_main = id_main;
 	vm_pthread_create(("query cache - load " + intToString(id_main)).c_str(),
-			  &loadFromQFilesThreadData[id_main].thread, NULL, this->threadLoadFromQFiles, threadInfo, __FILE__, __LINE__);
+			  thread, NULL, this->threadLoadFromQFiles, threadInfo, __FILE__, __LINE__);
 }
 
 bool MySqlStore::fillQFiles(int id_main) {
+	lock_loadFromQFilesThreadData();
+	LoadFromQFilesThreadData *qThreadData = loadFromQFilesThreadData[id_main];
+	unlock_loadFromQFilesThreadData();
+	if(!qThreadData) {
+		return(false);
+	}
 	DIR* dp = opendir(loadFromQFileConfig.getDirectory().c_str());
 	if(!dp) {
 		return(false);
@@ -4729,7 +4756,7 @@ bool MySqlStore::fillQFiles(int id_main) {
 		if(strncmp(de->d_name, prefix, strlen(prefix))) continue;
 		QFileData qfileData = parseQFilename(de->d_name);
 		if(qfileData.id_main) {
-			loadFromQFilesThreadData[qfileData.id_main].addFile(qfileData.time, de->d_name);
+			qThreadData->addFile(qfileData.time, de->d_name);
 		}
 	}
 	closedir(dp);
@@ -4739,14 +4766,20 @@ bool MySqlStore::fillQFiles(int id_main) {
 string MySqlStore::getMinQFile(int id_main) {
 	if(loadFromQFileConfig.inotify) {
 		string qfilename;
-		loadFromQFilesThreadData[id_main].lock();
-		map<u_int64_t, string>::iterator iter = loadFromQFilesThreadData[id_main].qfiles_load.begin();
-		if(iter != loadFromQFilesThreadData[id_main].qfiles_load.end() &&
+		lock_loadFromQFilesThreadData();
+		LoadFromQFilesThreadData *qThreadData = loadFromQFilesThreadData[id_main];
+		unlock_loadFromQFilesThreadData();
+		if(!qThreadData) {
+			return("");
+		}
+		qThreadData->lock();
+		map<u_int64_t, string>::iterator iter = qThreadData->qfiles_load.begin();
+		if(iter != qThreadData->qfiles_load.end() &&
 		   (getTimeMS() - iter->first) > (unsigned)loadFromQFileConfig.period * 2 * 1000) {
 			qfilename = iter->second;
-			loadFromQFilesThreadData[id_main].qfiles_load.erase(iter);
+			qThreadData->qfiles_load.erase(iter);
 		}
-		loadFromQFilesThreadData[id_main].unlock();
+		qThreadData->unlock();
 		if(!qfilename.empty()) {
 			return(loadFromQFileConfig.getDirectory() + "/" + qfilename);
 		}
@@ -4806,6 +4839,15 @@ bool MySqlStore::loadFromQFile(const char *filename, int id_main, bool onlyCheck
 		unlink(filename);
 		return(false);
 	}
+	LoadFromQFilesThreadData *qThreadData = NULL;
+	if(!onlyCheck) {
+		lock_loadFromQFilesThreadData();
+		qThreadData = loadFromQFilesThreadData[id_main];
+		unlock_loadFromQFilesThreadData();
+		if(!qThreadData) {
+			return(false);
+		}
+	}
 	#if TEST_SERVER_STORE_SPEED
 	do {
 	#endif
@@ -4859,7 +4901,7 @@ bool MySqlStore::loadFromQFile(const char *filename, int id_main, bool onlyCheck
 				int next_threads_limit = 100;
 				int id_2 = 0;
 				ssize_t id_2_minSize = -1;
-				for(int i = 0; i < loadFromQFilesThreadData[id_main].storeThreads; i++) {
+				for(int i = 0; i < qThreadData->storeThreads; i++) {
 					int qtSize = this->getSize(id_main, i);
 					if(i == 0) {
 						first_thread_qtSize = qtSize;
@@ -4879,16 +4921,16 @@ bool MySqlStore::loadFromQFile(const char *filename, int id_main, bool onlyCheck
 						id_2_minSize = qtSize;
 					}
 				}
-				if(id_2 && !loadFromQFilesThreadData[id_main].storeThreadsSet &&
+				if(id_2 && !qThreadData->storeThreadsSet &&
 				   first_thread_qtSize < next_threads_limit && (!next_threads_exists || !next_threads_filled)) {
 					id_2 = 0;
 				}
 				if(!check(id_main, id_2)) {
-					find(id_main, id_2, loadFromQFilesThreadData[id_main].store);
+					find(id_main, id_2, qThreadData->store);
 					setEnableTerminatingIfEmpty(id_main, id_2, true);
 					setEnableTerminatingIfSqlError(id_main, id_2, true);
-					if(loadFromQFilesThreadData[id_main].storeConcatLimit) {
-						setConcatLimit(id_main, id_2, loadFromQFilesThreadData[id_main].storeConcatLimit);
+					if(qThreadData->storeConcatLimit) {
+						setConcatLimit(id_main, id_2, qThreadData->storeConcatLimit);
 					}
 				}
 				/*if(sverb.qfiles) {
@@ -4933,15 +4975,24 @@ bool MySqlStore::loadFromQFile(const char *filename, int id_main, bool onlyCheck
 
 void MySqlStore::addFileFromINotify(const char *filename) {
 	while(!loadFromQFileConfig.inotify_ready) {
+		if(is_terminating()) {
+			return;
+		}
 		USLEEP(100000);
 	}
 	QFileData qfileData = parseQFilename(filename);
 	if(qfileData.id_main) {
+		lock_loadFromQFilesThreadData();
+		LoadFromQFilesThreadData *qThreadData = loadFromQFilesThreadData[qfileData.id_main];
+		unlock_loadFromQFilesThreadData();
+		if(!qThreadData) {
+			return;
+		}
 		if(sverb.qfiles) {
-			cout << "*** INOTIFY QFILE " << filename 
+			cout << "*** INOTIFY QFILE " << filename
 			     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
 		}
-		loadFromQFilesThreadData[qfileData.id_main].addFile(qfileData.time, qfileData.filename.c_str());
+		qThreadData->addFile(qfileData.time, qfileData.filename.c_str());
 	}
 }
 
@@ -4966,13 +5017,24 @@ string MySqlStore::getLoadFromQFilesStat(bool processes) {
 	outStr << fixed;
 	int counter = 0;
 	if(!processes) {
-		for(map<int, LoadFromQFilesThreadData>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
-			int countQFiles = getCountQFiles(iter->second.id_main);
+		vector<QFileStatItem> qFileStatList;
+		lock_loadFromQFilesThreadData();
+		for(map<int, LoadFromQFilesThreadData*>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
+			if(iter->second) {
+				QFileStatItem item;
+				item.id_main = iter->second->id_main;
+				item.name = iter->second->name;
+				qFileStatList.push_back(item);
+			}
+		}
+		unlock_loadFromQFilesThreadData();
+		for(vector<QFileStatItem>::iterator iter = qFileStatList.begin(); iter != qFileStatList.end(); iter++) {
+			int countQFiles = getCountQFiles(iter->id_main);
 			if(countQFiles > 0) {
 				if(counter) {
 					outStr << ", ";
 				}
-				outStr << iter->second.name << ": " << countQFiles;
+				outStr << iter->name << ": " << countQFiles;
 				++counter;
 			}
 		}
@@ -4997,12 +5059,23 @@ string MySqlStore::getLoadFromQFilesStat(bool processes) {
 
 void MySqlStore::getLoadFromQFilesStat(vector<sLoadFromQFilesStatItem> *items, bool processes) {
 	if(!processes) {
-		for(map<int, LoadFromQFilesThreadData>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
-			int countQFiles = getCountQFiles(iter->second.id_main);
+		vector<QFileStatItem> qFileStatList;
+		lock_loadFromQFilesThreadData();
+		for(map<int, LoadFromQFilesThreadData*>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
+			if(iter->second) {
+				QFileStatItem item;
+				item.id_main = iter->second->id_main;
+				item.name = iter->second->name;
+				qFileStatList.push_back(item);
+			}
+		}
+		unlock_loadFromQFilesThreadData();
+		for(vector<QFileStatItem>::iterator iter = qFileStatList.begin(); iter != qFileStatList.end(); iter++) {
+			int countQFiles = getCountQFiles(iter->id_main);
 			if(countQFiles > 0) {
 				sLoadFromQFilesStatItem item;
-				item.id_main = iter->second.id_main;
-				item.id_main_str = iter->second.name;
+				item.id_main = iter->id_main;
+				item.id_main_str = iter->name;
 				item.count = countQFiles;
 				items->push_back(item);
 			}
@@ -5027,8 +5100,16 @@ void MySqlStore::getLoadFromQFilesStat(vector<sLoadFromQFilesStatItem> *items, b
 
 unsigned MySqlStore::getLoadFromQFilesCount() {
 	unsigned count = 0;
-	for(map<int, LoadFromQFilesThreadData>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
-		count += getCountQFiles(iter->second.id_main);
+	vector<int> id_main_list;
+	lock_loadFromQFilesThreadData();
+	for(map<int, LoadFromQFilesThreadData*>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
+		if(iter->second) {
+			id_main_list.push_back(iter->second->id_main);
+		}
+	}
+	unlock_loadFromQFilesThreadData();
+	for(vector<int>::iterator iter = id_main_list.begin(); iter != id_main_list.end(); iter++) {
+		count += getCountQFiles(*iter);
 	}
 	return(count);
 }
@@ -5625,11 +5706,17 @@ void *MySqlStore::threadLoadFromQFiles(void *arg) {
 			USLEEP(250000);
 		} else {
 			extern int opt_query_cache_speed;
+			me->lock_loadFromQFilesThreadData();
+			LoadFromQFilesThreadData *qThreadData = me->loadFromQFilesThreadData[id_main];
+			me->unlock_loadFromQFilesThreadData();
+			if(!qThreadData) {
+				continue;
+			}
 			while((me->isCloud() ?
 				(me->getSize(id_main, -1) > me->getConcatLimit(id_main, -1)) :
-			       opt_query_cache_speed ? 
-			        (me->getCountActive(id_main) >= me->loadFromQFilesThreadData[id_main].storeThreads) :
-			        (me->getSize(id_main, -1) > 0)) && 
+			       opt_query_cache_speed ?
+			        (me->getCountActive(id_main) >= qThreadData->storeThreads) :
+			        (me->getSize(id_main, -1) > 0)) &&
 			      !is_terminating()) {
 				USLEEP(100000);
 			}
@@ -5664,6 +5751,14 @@ void *MySqlStore::threadINotifyQFiles(void *arg) {
 	ssize_t watchBuffMaxLen = 1024 * (sizeof(inotify_event) + 256);
 	char *watchBuff =  new FILE_LINE(29009) char[watchBuffMaxLen];
 	while(!is_terminating()) {
+		pollfd fds;
+		fds.fd = inotifyDescriptor;
+		fds.events = POLLIN;
+		fds.revents = 0;
+		int rsltPoll = poll(&fds, 1, 250);
+		if(rsltPoll <= 0) {
+			continue;
+		}
 		ssize_t watchBuffLen = read(inotifyDescriptor, watchBuff, watchBuffMaxLen);
 		if(watchBuffLen > (ssize_t)sizeof(inotify_event)) {
 			if(watchBuffLen == watchBuffMaxLen) {
@@ -5692,7 +5787,6 @@ void *MySqlStore::threadINotifyQFiles(void *arg) {
 #endif
 	return(NULL);
 }
-
 
 SqlDb *createSqlObject(int connectId) {
 	SqlDb *sqlDb = NULL;

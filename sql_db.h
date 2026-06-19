@@ -1189,6 +1189,10 @@ private:
 		int id_main;
 		u_int64_t time;
 	};
+	struct QFileStatItem {
+		int id_main;
+		string name;
+	};
 public:
 	MySqlStore(const char *host, const char *user, const char *password, const char *database, u_int16_t port, const char *socket,
 		   const char *cloud_host = NULL, const char *cloud_token = NULL, bool cloud_router = true, mysqlSSLOptions *mySSLOpt = NULL);
@@ -1279,6 +1283,12 @@ private:
 	void unlock_qfiles() {
 		__SYNC_UNLOCK(this->_sync_qfiles);
 	}
+	void lock_loadFromQFilesThreadData() {
+		__SYNC_LOCK_USLEEP(this->_sync_loadFromQFilesThreadData, 10);
+	}
+	void unlock_loadFromQFilesThreadData() {
+		__SYNC_UNLOCK(this->_sync_loadFromQFilesThreadData);
+	}
 	bool idIsNotCharts(int id) {
 		return(!idIsCharts(id) && !idIsChartsRemote(id));
 	}
@@ -1310,7 +1320,8 @@ private:
 	map<int, QFile*> qfiles;
 	volatile int _sync_qfiles;
 	pthread_t qfilesCheckperiodThread;
-	map<int, LoadFromQFilesThreadData> loadFromQFilesThreadData;
+	map<int, LoadFromQFilesThreadData*> loadFromQFilesThreadData;
+	volatile int _sync_loadFromQFilesThreadData;
 	pthread_t qfilesINotifyThread;
 };
 
