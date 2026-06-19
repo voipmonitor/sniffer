@@ -1178,7 +1178,29 @@ u_int32_t Register::getStateFrom_s() {
 	return(state_from);
 }
 
-bool Register::getDataRow(RecordArray *rec) {
+void Register::setDataRowCountry(RecordArray *rec) {
+	if(!opt_register_country_code) {
+		return;
+	}
+	CountryDetectApplyReload();
+	vmIP sipcallerip = rec->fields[rf_sipcallerip].get_ip();
+	vmIP sipcalledip = rec->fields[rf_sipcalledip].get_ip();
+	const char *num_from = rec->fields[rf_from_num].get_string();
+	const char *num_to = rec->fields[rf_to_num].get_string();
+	if(opt_register_country_code == 2) {
+		rec->fields[rf_sipcallerip_country_code].set(getCountryIdByIP(sipcallerip));
+		rec->fields[rf_sipcalledip_country_code].set(getCountryIdByIP(sipcalledip));
+		rec->fields[rf_from_num_country_code].set(getCountryIdByPhoneNumber(num_from, sipcallerip));
+		rec->fields[rf_to_num_country_code].set(getCountryIdByPhoneNumber(num_to, sipcalledip));
+	} else {
+		rec->fields[rf_sipcallerip_country_code].set(getCountryByIP(sipcallerip, true).c_str());
+		rec->fields[rf_sipcalledip_country_code].set(getCountryByIP(sipcalledip, true).c_str());
+		rec->fields[rf_from_num_country_code].set(getCountryByPhoneNumber(num_from, sipcallerip, true).c_str());
+		rec->fields[rf_to_num_country_code].set(getCountryByPhoneNumber(num_to, sipcalledip, true).c_str());
+	}
+}
+
+bool Register::getDataRow(RecordArray *rec, bool setCountry) {
 	lock_states();
 	RegisterState *state = getLastState();
 	if(!state) {
@@ -1240,19 +1262,8 @@ bool Register::getDataRow(RecordArray *rec) {
 		rec->fields[rf_vlan].set(state->vlan);
 	}
 	rec->fields[rf_is_sipalg_detected].set(states_state.isSipAlg());
-	if(opt_register_country_code) {
-		CountryDetectApplyReload();
-		if(opt_register_country_code == 2) {
-			rec->fields[rf_sipcallerip_country_code].set(getCountryIdByIP(sipcallerip));
-			rec->fields[rf_sipcalledip_country_code].set(getCountryIdByIP(sipcalledip));
-			rec->fields[rf_from_num_country_code].set(getCountryIdByPhoneNumber(num_from.c_str(), sipcallerip));
-			rec->fields[rf_to_num_country_code].set(getCountryIdByPhoneNumber(num_to.c_str(), sipcalledip));
-		} else {
-			rec->fields[rf_sipcallerip_country_code].set(getCountryByIP(sipcallerip, true).c_str());
-			rec->fields[rf_sipcalledip_country_code].set(getCountryByIP(sipcalledip, true).c_str());
-			rec->fields[rf_from_num_country_code].set(getCountryByPhoneNumber(num_from.c_str(), sipcallerip, true).c_str());
-			rec->fields[rf_to_num_country_code].set(getCountryByPhoneNumber(num_to.c_str(), sipcalledip, true).c_str());
-		}
+	if(setCountry) {
+		setDataRowCountry(rec);
 	}
 	unlock_states();
 	return(true);
@@ -1653,7 +1664,7 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 	list<RecordArray> records;
 	for(unsigned i = 0; i < list_registers_count; i++) {
 		RecordArray rec(rf__max);
-		if(list_registers[i]->getDataRow(&rec)) {
+		if(list_registers[i]->getDataRow(&rec, false)) {
 			rec.sortBy = sortById;
 			rec.sortBy2 = rf_id;
 			records.push_back(rec);
@@ -1662,7 +1673,13 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 	delete [] list_registers;
 	
 	unlock_registers_erase();
-	
+
+	if(opt_register_country_code) {
+		for(list<RecordArray>::iterator iter_rec = records.begin(); iter_rec != records.end(); iter_rec++) {
+			Register::setDataRowCountry(&(*iter_rec));
+		}
+	}
+
 	//u_int64_t run_time_2 = getTimeMS_rdtsc();
 	//cout << " *** Registers::getDataTableJson 2 " << (run_time_2 - run_time_1) << endl;
 	

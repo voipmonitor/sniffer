@@ -265,7 +265,8 @@ public:
 	inline bool stateIsOK();
 	inline int getIdSensor();
 	inline u_int32_t getStateFrom_s();
-	inline bool getDataRow(RecordArray *rec);
+	inline bool getDataRow(RecordArray *rec, bool setCountry = true);
+	static void setDataRowCountry(RecordArray *rec);
 	string typeSaveStateToString(eTypeSaveState typeSaveState);
 	void lock_states() {
 		__SYNC_LOCK(_sync_states);
