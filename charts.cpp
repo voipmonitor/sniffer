@@ -1213,6 +1213,7 @@ cChartInterval::cChartInterval(eChartTypeUse typeUse) {
 	last_store_at_real = real_time;
 	counter_add = 0;
 	sync_interval = 0;
+	processing_counter = 0;
 	switch(typeUse) {
 	case _chartTypeUse_chartCache:
 		memset(&chart, 0, sizeof(chart));
@@ -2463,10 +2464,12 @@ void cCharts::add(sChartsCallData *call, void *callData, cFiltersCache *filtersC
 			interval->setInterval_chart(interval_begin, interval_begin + 60);
 			intervals[interval_begin] = interval;
 		}
+		interval->inc_processing();
 		unlock_intervals();
 		interval->add_chart(call, interval_counter, interval_counter == 0, interval_counter == intervals_begin.size() - 1, interval_counter == 0,
 				    calltime_us, callend_us,
 				    &filters_map);
+		interval->dec_processing();
 		++interval_counter;
 	}
 }
@@ -2542,9 +2545,10 @@ void cCharts::cleanup(bool forceAll) {
 	}
 	lock_intervals();
 	for(map<u_int32_t, cChartInterval*>::iterator iter = intervals.begin(); iter != intervals.end(); ) {
-		if(forceAll ||
-		   ((first_interval > iter->first && first_interval - iter->first > intervalExpiration) &&
-		    (real_time > max(iter->second->created_at_real, iter->second->last_use_at_real) && real_time - max(iter->second->created_at_real, iter->second->last_use_at_real) > intervalExpiration))) {
+		if(!iter->second->is_processing() &&
+		   (forceAll ||
+		    ((first_interval > iter->first && first_interval - iter->first > intervalExpiration) &&
+		     (real_time > max(iter->second->created_at_real, iter->second->last_use_at_real) && real_time - max(iter->second->created_at_real, iter->second->last_use_at_real) > intervalExpiration)))) {
 			delete iter->second;
 			intervals.erase(iter++);
 		} else {
@@ -2734,10 +2738,12 @@ void cCdrStat::add(sChartsCallData *call) {
 		} else {
 			interval->init_stat(src, dst);
 		}
+		interval->inc_processing();
 		unlock_intervals();
 		interval->add_stat(call, interval_counter, interval_counter == 0, interval_iter_s == callend_interval_s, interval_counter == 0,
 				   callbegin_us, callend_us,
 				   src, dst);
+		interval->dec_processing();
 		++interval_counter;
 	}
 }
@@ -2794,9 +2800,10 @@ void cCdrStat::cleanup(bool forceAll) {
 	}
 	lock_intervals();
 	for(map<u_int32_t, cChartInterval*>::iterator iter = intervals.begin(); iter != intervals.end(); ) {
-		if(forceAll ||
-		   ((first_interval > iter->first && first_interval - iter->first > intervalExpiration) &&
-		    (real_time > max(iter->second->created_at_real, iter->second->last_use_at_real) && real_time - max(iter->second->created_at_real, iter->second->last_use_at_real) > intervalExpiration))) {
+		if(!iter->second->is_processing() &&
+		   (forceAll ||
+		    ((first_interval > iter->first && first_interval - iter->first > intervalExpiration) &&
+		     (real_time > max(iter->second->created_at_real, iter->second->last_use_at_real) && real_time - max(iter->second->created_at_real, iter->second->last_use_at_real) > intervalExpiration)))) {
 			delete iter->second;
 			intervals.erase(iter++);
 		} else {
@@ -3088,8 +3095,10 @@ void cCdrProblems::add(sChartsCallData *call) {
 			} else {
 				interval->init_problems(src, dst);
 			}
+			interval->inc_processing();
 			unlock_intervals();
 			interval->add_problems(call, src, dst);
+			interval->dec_processing();
 		}
 	}
 	extern int opt_cdr_problems_list_ip_refresh_interval;
@@ -3150,9 +3159,10 @@ void cCdrProblems::cleanup(bool forceAll) {
 	}
 	lock_intervals();
 	for(map<u_int32_t, cChartInterval*>::iterator iter = intervals.begin(); iter != intervals.end(); ) {
-		if(forceAll ||
-		   ((first_interval > iter->first && first_interval - iter->first > intervalExpiration) &&
-		    (real_time > max(iter->second->created_at_real, iter->second->last_use_at_real) && real_time - max(iter->second->created_at_real, iter->second->last_use_at_real) > intervalExpiration))) {
+		if(!iter->second->is_processing() &&
+		   (forceAll ||
+		    ((first_interval > iter->first && first_interval - iter->first > intervalExpiration) &&
+		     (real_time > max(iter->second->created_at_real, iter->second->last_use_at_real) && real_time - max(iter->second->created_at_real, iter->second->last_use_at_real) > intervalExpiration)))) {
 			delete iter->second;
 			intervals.erase(iter++);
 		} else {
@@ -3457,10 +3467,12 @@ void cCdrSummary::add(sChartsCallData *call) {
 		} else {
 			interval->init_summary(sum_id, sum_nc_id);
 		}
+		interval->inc_processing();
 		unlock_intervals();
 		interval->add_summary(call, interval_counter, interval_counter == 0, interval_iter_s == callend_interval_s, interval_counter == 0,
 				      callbegin_us, callend_us,
 				      sum_id, sum_nc_id);
+		interval->dec_processing();
 		++interval_counter;
 	}
 }
@@ -3517,9 +3529,10 @@ void cCdrSummary::cleanup(bool forceAll) {
 	}
 	lock_intervals();
 	for(map<u_int32_t, cChartInterval*>::iterator iter = intervals.begin(); iter != intervals.end(); ) {
-		if(forceAll ||
-		   ((first_interval > iter->first && first_interval - iter->first > intervalExpiration) &&
-		    (real_time > max(iter->second->created_at_real, iter->second->last_use_at_real) && real_time - max(iter->second->created_at_real, iter->second->last_use_at_real) > intervalExpiration))) {
+		if(!iter->second->is_processing() &&
+		   (forceAll ||
+		    ((first_interval > iter->first && first_interval - iter->first > intervalExpiration) &&
+		     (real_time > max(iter->second->created_at_real, iter->second->last_use_at_real) && real_time - max(iter->second->created_at_real, iter->second->last_use_at_real) > intervalExpiration)))) {
 			delete iter->second;
 			intervals.erase(iter++);
 		} else {
