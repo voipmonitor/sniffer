@@ -76,8 +76,8 @@ struct sIPFixSipOut_next {
 	u_int16_t TPos;			// r.uint16,
 	u_int8_t SrcIP[4];		// new r.Array(r.uint8, 4),
 	u_int8_t DstIP[4];		// new r.Array(r.uint8, 4),
-	u_int16_t DstPort;		// r.uint16,
 	u_int16_t SrcPort;		// r.uint16,
+	u_int16_t DstPort;		// r.uint16,
 	u_int16_t UDPLen;		// r.uint16,
 	u_int16_t SipMsgLen;		// r.uint16,
 	char _SipMsg;			// new r.String('SipMsgLen', 'utf8')
@@ -177,8 +177,8 @@ struct sIPFixSipIn {
 	u_int16_t TPos;			// r.uint16,
 	u_int8_t SrcIP[4];		// new r.Array(r.uint8, 4),
 	u_int8_t DstIP[4];		// new // r.Array(r.uint8, 4),
-	u_int16_t DstPort;		// r.uint16,
 	u_int16_t SrcPort;		// r.uint16,
+	u_int16_t DstPort;		// r.uint16,
 	u_int16_t UDPLen;		// r.uint16,
 	u_int16_t SipMsgLen;		// r.uint16,
 	char _SipMsg;			// new r.String('SipMsgLen', 'utf8')
