@@ -1834,14 +1834,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			this->connecting = false;
 			return(false);
 		}
-		extern bool opt_mysql_reconnect;
-		if(opt_mysql_reconnect) {
-			bool reconnect = 1;
-			mysql_options(this->hMysql, MYSQL_OPT_RECONNECT, &reconnect);
-		}
 		extern bool opt_mysql_use_init_command;
-		bool use_init_command = opt_mysql_use_init_command;
-		bool init_command_fallback_attempted = false;
 		string connect_via_str;
 		for(int connectPass = 0; connectPass < 2; connectPass++) {
 			if(connectPass) {
@@ -1853,63 +1846,6 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				mysql_close(this->hMysqlConn);
 			}
 			this->hMysql = mysql_init(NULL);
-			bool enabledSSL = false;
-#ifdef MYSQL_WITHOUT_SSL_SUPPORT
-			if ((this->conn_sslkey && strlen(this->conn_sslkey)) || 
-			    (this->conn_sslcert && strlen(this->conn_sslcert)) || 
-			    (this->conn_sslcacert && strlen(this->conn_sslcacert)) ||
-			    (this->conn_sslcapath && strlen(this->conn_sslcapath)) || 
-			    this->conn_sslciphers.length()) {
-				syslog(LOG_WARNING, "Mysql SSL options was not recognized in the mysql library so SSL/TLS connection to the Mysql server will not work.");
-			}
-#else
-			if (this->conn_sslkey && strlen(this->conn_sslkey) && 
-			    this->conn_sslcert && strlen(this->conn_sslcert)) {
-				mysql_options(this->hMysql, MYSQL_OPT_SSL_KEY, this->conn_sslkey);
-				mysql_options(this->hMysql, MYSQL_OPT_SSL_CERT, this->conn_sslcert);
-				enabledSSL = true;
-			}
-			if (this->conn_sslcacert && strlen(this->conn_sslcacert)) {
-				mysql_options(this->hMysql, MYSQL_OPT_SSL_CA, this->conn_sslcacert);
-				enabledSSL = true;
-			}
-			if (this->conn_sslcapath && strlen(this->conn_sslcapath)) {
-				mysql_options(this->hMysql, MYSQL_OPT_SSL_CAPATH, this->conn_sslcapath);
-				enabledSSL = true;
-			}
-			if (this->conn_sslciphers.length()) {
-				mysql_options(this->hMysql, MYSQL_OPT_SSL_CIPHER, this->conn_sslciphers.c_str());
-			}
-			if (enabledSSL) {
-				#if LIBMYSQL_VERSION_ID < 80000
-				my_bool forceSSL = true;
-				mysql_options(this->hMysql, MYSQL_OPT_SSL_ENFORCE, &forceSSL);
-				#else
-				unsigned int forceSSL = SSL_MODE_REQUIRED;
-				mysql_options(this->hMysql, MYSQL_OPT_SSL_MODE, &forceSSL);
-				#endif
-				syslog(LOG_INFO, "Enabling SSL/TLS for mysql connection.");
-			}
-#endif
-			#if LIBMYSQL_VERSION_ID < 80000
-			if(!enabledSSL && this->conn_disable_secure_auth) {
-				int arg = 0;
-				mysql_options(this->hMysql, MYSQL_SECURE_AUTH, &arg);
-			}
-			#endif
-			extern unsigned int opt_mysql_connect_timeout;
-			if(opt_mysql_connect_timeout) {
-				mysql_options(this->hMysql, MYSQL_OPT_CONNECT_TIMEOUT, &opt_mysql_connect_timeout);
-			}
-			if(use_init_command) {
-				mysql_options(this->hMysql, MYSQL_INIT_COMMAND,
-					      "SET character_set_client = 'utf8',"
-					      " character_set_connection = 'utf8',"
-					      " character_set_results = 'utf8',"
-					      " collation_connection = 'utf8_general_ci',"
-					      " sql_mode = '',"
-					      " group_concat_max_len = 100000000");
-			}
 			bool isLocalhost = conn_server_ip == "localhost" || conn_server_ip == "127.0.0.1";
 			for(int connectLocalhostPass = (isLocalhost ? (!this->conn_socket.empty() ? 0 : 1) : 2); connectLocalhostPass <= 2; ++connectLocalhostPass) {
 				const char *_host = 
@@ -1922,12 +1858,13 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 					connectLocalhostPass == 0 ? this->conn_socket.c_str() : 
 					connectLocalhostPass == 1 ? (const char*)NULL : 
 								    (const char*)NULL;
+				set_connect_options();
 				this->hMysqlConn = mysql_real_connect(
 							this->hMysql,
 							_host,
 							this->conn_user.c_str(),
 							this->conn_password.c_str(),
-							(use_init_command && !createDb) ? this->conn_database.c_str() : (const char*)NULL,
+							(opt_mysql_use_init_command && !createDb) ? this->conn_database.c_str() : (const char*)NULL,
 							this->conn_port ? this->conn_port : opt_mysql_port,
 							_socket,
 							CLIENT_MULTI_RESULTS | (opt_mysql_client_compress ? CLIENT_COMPRESS : 0));
@@ -1939,7 +1876,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				}
 			}
 			if(!this->hMysqlConn) {
-				if(use_init_command && !init_command_fallback_attempted) {
+				if(opt_mysql_use_init_command) {
 					unsigned int err = mysql_errno(this->hMysql);
 					if(err == ER_PARSE_ERROR ||
 					   err == ER_UNKNOWN_CHARACTER_SET ||
@@ -1947,8 +1884,6 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 					   err == ER_UNKNOWN_SYSTEM_VARIABLE ||
 					   err == ER_WRONG_VALUE_FOR_VAR ||
 					   err == ER_UNKNOWN_COLLATION) {
-						use_init_command = false;
-						init_command_fallback_attempted = true;
 						opt_mysql_use_init_command = false;
 						syslog(LOG_WARNING, "MYSQL_INIT_COMMAND failed (error %u: %s) - falling back to legacy init; option 'mysql_use_init_command' auto-disabled for this process",
 						       err, mysql_error(this->hMysql));
@@ -2013,7 +1948,8 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			bool rslt = true;
 			this->mysqlThreadId = mysql_thread_id(this->hMysql);
 			sql_disable_next_attempt_if_error = 1;
-			if(!use_init_command) {
+			check_connect_options();
+			if(!opt_mysql_use_init_command) {
 				if(!this->query("SET NAMES UTF8")) {
 					rslt = false;
 				}
@@ -2024,13 +1960,13 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				this->query(string("SET time_zone = '") + opt_mysql_timezone + "'");
 			}
 			sql_noerror = 0;
-			if(!use_init_command) {
+			if(!opt_mysql_use_init_command) {
 				if(!this->query("SET sql_mode = ''") ||
 				   !this->query("SET group_concat_max_len = 100000000")) {
 					rslt = false;
 				}
 			}
-			if(createDb || !use_init_command) {
+			if(createDb || !opt_mysql_use_init_command) {
 				char tmp[1024];
 				if(createDb) {
 					if(this->getDbMajorVersion() >= 5 and
@@ -2097,6 +2033,96 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 	this->connecting = false;
 	cLogSensor::end(logs);
 	return(false);
+}
+
+void SqlDb_mysql::set_connect_options() {
+	extern bool opt_mysql_reconnect;
+	if(opt_mysql_reconnect) {
+		bool reconnect = 1;
+		mysql_options(this->hMysql, MYSQL_OPT_RECONNECT, &reconnect);
+	}
+	bool enabledSSL = false;
+#ifdef MYSQL_WITHOUT_SSL_SUPPORT
+	if ((this->conn_sslkey && strlen(this->conn_sslkey)) || 
+	    (this->conn_sslcert && strlen(this->conn_sslcert)) || 
+	    (this->conn_sslcacert && strlen(this->conn_sslcacert)) ||
+	    (this->conn_sslcapath && strlen(this->conn_sslcapath)) || 
+	    this->conn_sslciphers.length()) {
+		syslog(LOG_WARNING, "Mysql SSL options was not recognized in the mysql library so SSL/TLS connection to the Mysql server will not work.");
+	}
+#else
+	if (this->conn_sslkey && strlen(this->conn_sslkey) && 
+	    this->conn_sslcert && strlen(this->conn_sslcert)) {
+		mysql_options(this->hMysql, MYSQL_OPT_SSL_KEY, this->conn_sslkey);
+		mysql_options(this->hMysql, MYSQL_OPT_SSL_CERT, this->conn_sslcert);
+		enabledSSL = true;
+	}
+	if (this->conn_sslcacert && strlen(this->conn_sslcacert)) {
+		mysql_options(this->hMysql, MYSQL_OPT_SSL_CA, this->conn_sslcacert);
+		enabledSSL = true;
+	}
+	if (this->conn_sslcapath && strlen(this->conn_sslcapath)) {
+		mysql_options(this->hMysql, MYSQL_OPT_SSL_CAPATH, this->conn_sslcapath);
+		enabledSSL = true;
+	}
+	if (this->conn_sslciphers.length()) {
+		mysql_options(this->hMysql, MYSQL_OPT_SSL_CIPHER, this->conn_sslciphers.c_str());
+	}
+	if (enabledSSL) {
+		#if LIBMYSQL_VERSION_ID < 80000
+		my_bool forceSSL = true;
+		mysql_options(this->hMysql, MYSQL_OPT_SSL_ENFORCE, &forceSSL);
+		#else
+		unsigned int forceSSL = SSL_MODE_REQUIRED;
+		mysql_options(this->hMysql, MYSQL_OPT_SSL_MODE, &forceSSL);
+		#endif
+		syslog(LOG_INFO, "Enabling SSL/TLS for mysql connection.");
+	}
+#endif
+	#if LIBMYSQL_VERSION_ID < 80000
+	if(!enabledSSL && this->conn_disable_secure_auth) {
+		int arg = 0;
+		mysql_options(this->hMysql, MYSQL_SECURE_AUTH, &arg);
+	}
+	#endif
+	extern unsigned int opt_mysql_connect_timeout;
+	if(opt_mysql_connect_timeout) {
+		mysql_options(this->hMysql, MYSQL_OPT_CONNECT_TIMEOUT, &opt_mysql_connect_timeout);
+	}
+	extern bool opt_mysql_use_init_command;
+	if(opt_mysql_use_init_command) {
+		mysql_options(this->hMysql, MYSQL_INIT_COMMAND,
+			      "SET character_set_client = 'utf8',"
+			      " character_set_connection = 'utf8',"
+			      " character_set_results = 'utf8',"
+			      " collation_connection = 'utf8_general_ci',"
+			      " sql_mode = '',"
+			      " group_concat_max_len = 100000000");
+	}
+}
+
+void SqlDb_mysql::check_connect_options() {
+	extern bool opt_mysql_use_init_command;
+	if(connect_options_ok || !opt_mysql_use_init_command) {
+		return;
+	}
+	string cs_client = getQueryRsltStringValue("show variables like 'character_set_client'", 1);
+	string cs_connection = getQueryRsltStringValue("show variables like 'character_set_connection'", 1);
+	string cs_results = getQueryRsltStringValue("show variables like 'character_set_results'", 1);
+	string collation = getQueryRsltStringValue("show variables like 'collation_connection'", 1);
+	string sql_mode = getQueryRsltStringValue("show variables like 'sql_mode'", 1);
+	int64_t group_concat_max_len = getQueryRsltIntValue("show variables like 'group_concat_max_len'", 1, 0);
+	if((cs_client == "utf8" || cs_client == "utf8mb3") &&
+	   (cs_connection == "utf8" || cs_connection == "utf8mb3") &&
+	   (cs_results == "utf8" || cs_results == "utf8mb3") &&
+	   (collation == "utf8_general_ci" || collation == "utf8mb3_general_ci") &&
+	   sql_mode.empty() &&
+	   group_concat_max_len == 100000000) {
+		connect_options_ok = true;
+	} else {
+		opt_mysql_use_init_command = false;
+		syslog(LOG_WARNING, "MYSQL_INIT_COMMAND check failed (session variables not applied by init command) - option 'mysql_use_init_command' auto-disabled");
+	}
 }
 
 int SqlDb_mysql::multi_on() {
@@ -3218,6 +3244,8 @@ void SqlDb_mysql::setSelectedCompressType(bool memoryEngine, const char *type, c
 		selectedCompressSubtype = subtype ? subtype : "";
 	}
 }
+
+bool SqlDb_mysql::connect_options_ok = false;
 
 
 SqlDb_odbc_bindBufferItem::SqlDb_odbc_bindBufferItem(SQLUSMALLINT colNumber, string fieldName, SQLSMALLINT dataType, SQLULEN columnSize, SQLHSTMT hStatement) {

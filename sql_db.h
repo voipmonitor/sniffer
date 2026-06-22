@@ -731,6 +731,8 @@ public:
 	bool connect(bool craeteDb = false, bool mainInit = false);
 	void disconnect();
 	bool connected();
+	void set_connect_options();
+	void check_connect_options();
 	bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL);
 	SqlDb_row fetchRow();
 	bool fetchQueryResult(vector<string> *fields, vector<int> *fields_types, vector<map<string, string_null> > *rows);
@@ -891,6 +893,7 @@ private:
 	string selectedCompressSubtype;
 	string selectedCompressType_memoryEngine;
 	string selectedCompressSubtype_memoryEngine;
+	static bool connect_options_ok;
 };
 
 class SqlDb_odbc_bindBufferItem {
