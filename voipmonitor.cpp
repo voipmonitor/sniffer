@@ -865,7 +865,7 @@ bool opt_disable_rtp_seq_probation = false;
 bool opt_disable_rtp_seq_check = false;
 bool opt_rtp_seq_dupl_skip_ext = false;
 int opt_hash_modify_queue_length_ms = 0;
-int opt_hash_modify_queue_length_ms_high_traffic = 100;
+int opt_hash_modify_queue_length_ms_high_traffic = 50;
 int hash_modify_queue_length_ms;
 bool opt_disable_process_sdp = false;
 
@@ -9877,6 +9877,26 @@ void set_context_config() {
 			rtp_qring_batch_length *= boost_mult;
 		}
 	}
+	
+	if(opt_t2_boost) {
+		if(opt_t2_boost == 2 && !CONFIG.isSet("t2_boost_ht_hash_queue")) {
+			opt_t2_boost_ht_hash_queue = true;
+		}
+		if(!CONFIG.isSet("t2_boost_ht_cleanup_calls")) {
+			opt_t2_boost_ht_cleanup_calls = true;
+		}
+		if(!CONFIG.isSet("t2_boost_ht_cleanup_registers")) {
+			opt_t2_boost_ht_cleanup_registers = true;
+		}
+		if(!CONFIG.isSet("use_sem_sync") &&
+		   !CONFIG.isSet("use_pcap_queue_sem_sync") &&
+		   !CONFIG.isSet("use_preprocess_packets_sem_sync") &&
+		   !CONFIG.isSet("use_preprocess_rtp_packets_sem_sync") &&
+		   !CONFIG.isSet("use_rtp_read_thread_sem_sync")) {
+			opt_use_sem_sync = true;
+		}
+	}
+	
 	if(opt_t2_boost != 2) {
 		opt_t2_boost_ht_hash_queue = 0;
 	}
