@@ -10564,9 +10564,33 @@ void *PreProcessPacket::outThreadFunction() {
 			_parse_packet_global_process_packet.refreshIfNeed();
 		}
 		if(this->typePreProcessThread == ppt_pp_find_call && opt_t2_boost_ht_cleanup_calls) {
+			extern Calltable::sCleanupCallsData cc_data;
+			if(cc_data.state == Calltable::_cc_begin_finish) {
+				batch_packet_s_process *batch = this->qring[this->readit];
+				if(batch->used == 1) {
+					__SYNC_LOCK(this->_sync_count);
+					unsigned count = batch->count;
+					__SYNC_UNLOCK(this->_sync_count);
+					if(count > 0) {
+						cc_data.packet_time_s = batch->batch[count - 1]->getTime_s();
+					}
+				}
+			}
 			_process_packet__cleanup_calls__new();
 		}
 		if(this->typePreProcessThread == ppt_pp_register && opt_t2_boost_ht_cleanup_registers) {
+			extern Calltable::sCleanupRegistersData cr_data;
+			if(cr_data.state == Calltable::_cr_begin_finish) {
+				batch_packet_s_process *batch = this->qring[this->readit];
+				if(batch->used == 1) {
+					__SYNC_LOCK(this->_sync_count);
+					unsigned count = batch->count;
+					__SYNC_UNLOCK(this->_sync_count);
+					if(count > 0) {
+						cr_data.packet_time_s = batch->batch[count - 1]->getTime_s();
+					}
+				}
+			}
 			_process_packet__cleanup_registers__new();
 		}
 		extern int opt_preprocess_packets_qring_sem_sync;

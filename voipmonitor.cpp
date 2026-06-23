@@ -2373,7 +2373,6 @@ void *cleanup_calls(void *) {
 			if(now_ms > last_cleanup_ms + (u_int64_t)cleanup_calls_period() * 1000) {
 				last_cleanup_ms = now_ms;
 				cc_data.init();
-				cc_data.packet_time_s = getTimeS();
 				__sync_synchronize();
 				cc_data.state = Calltable::_cc_start;
 			}
@@ -2427,7 +2426,6 @@ void *cleanup_registers(void *) {
 			if(now_ms > last_cleanup_ms + (u_int64_t)10 * 1000) {
 				last_cleanup_ms = now_ms;
 				cr_data.init();
-				cr_data.packet_time_s = getTimeS();
 				__sync_synchronize();
 				cr_data.state = Calltable::_cr_start;
 			}
