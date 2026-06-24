@@ -1537,6 +1537,7 @@ int opt_load_query_from_files_period;
 bool opt_load_query_from_files_inotify = true;
 
 bool opt_virtualudppacket = false;
+bool opt_pcap_dump_fix_tcp_seq_ack = false;
 int opt_sip_tcp_reassembly_stream_timeout = 10 * 60;
 int opt_sip_tcp_reassembly_stream_max_attempts = 200;
 int opt_sip_tcp_reassembly_stream_max_length = 0;
@@ -7956,6 +7957,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("systemd_unit_name", &systemd_unit_name));
 				addConfigItem(new FILE_LINE(42460) cConfigItem_yesno("printinsertid", &opt_printinsertid));
 				addConfigItem(new FILE_LINE(42461) cConfigItem_yesno("virtualudppacket", &opt_virtualudppacket));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pcap_dump_fix_tcp_seq_ack", &opt_pcap_dump_fix_tcp_seq_ack));
 				addConfigItem(new FILE_LINE(42462) cConfigItem_integer("sip_tcp_reassembly_stream_timeout", &opt_sip_tcp_reassembly_stream_timeout));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_stream_max_attempts", &opt_sip_tcp_reassembly_stream_max_attempts));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_stream_max_length", &opt_sip_tcp_reassembly_stream_max_length));

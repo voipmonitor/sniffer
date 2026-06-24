@@ -1140,6 +1140,9 @@ public:
 		}
 	}
 private:
+	bool fixSyntheticTcpSeqAck(int dlt, const u_char *packet, pcap_pkthdr *header,
+				   u_char **packet_new, pcap_pkthdr **header_new);
+private:
 	eTypeSpoolFile typeSpoolFile;
 	string fileName;
 	eTypePcapDump type;
@@ -1156,6 +1159,8 @@ private:
 	int _bufflength;
 	int _asyncwrite;
 	FileZipHandler::eTypeCompress _typeCompress;
+	volatile int _sync_tcp_seq;
+	std::map<vmIPportLink, u_int32_t> tcp_seq_by_dir;
 };
 
 pcap_dumper_t *__pcap_dump_open(pcap_t *p, eTypeSpoolFile typeSpoolFile, const char *fname, int linktype, string *errorString = NULL,

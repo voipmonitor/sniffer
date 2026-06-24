@@ -1725,6 +1725,7 @@ PcapDumper::PcapDumper(eTypePcapDump type, Call_abstract *call) {
 	this->_bufflength = -1;
 	this->_asyncwrite = type == na && !call ? 0 : -1;
 	this->_typeCompress = FileZipHandler::compress_default;
+	this->_sync_tcp_seq = 0;
 }
 
 PcapDumper::~PcapDumper() {
@@ -1848,9 +1849,10 @@ bool PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 			if(!opt_maxpcapsize_mb || this->capsize < opt_maxpcapsize_mb * 1024 * 1024) {
 				this->existsContent = true;
 				extern bool opt_virtualudppacket;
-				u_char *packets_alloc[2] = { NULL, NULL };
-				pcap_pkthdr *headers_alloc[2] = { NULL, NULL };
+				u_char *packets_alloc[3] = { NULL, NULL, NULL };
+				pcap_pkthdr *headers_alloc[3] = { NULL, NULL, NULL };
 				int packets_alloc_counter = 0;
+				bool createdVirtualUdpPacket = false;
 				if(enable_convert_dlt_sll_to_en10(dlt) && header->caplen > 16) {
 					u_char *packet_mod = new FILE_LINE(0) u_char[header->caplen + 1000]; // allocation reserve due to ticket VS-1508
 					pcap_pkthdr *header_mod = new FILE_LINE(0) pcap_pkthdr;
@@ -1894,6 +1896,7 @@ bool PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 							packets_alloc[packets_alloc_counter] = (u_char*)packet;
 							headers_alloc[packets_alloc_counter] = header;
 							++packets_alloc_counter;
+							createdVirtualUdpPacket = true;
 							extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp);
 							extern bool opt_check_sip_complete_in_virtual_packet;
 							extern char *sipportmatrix;
@@ -1907,6 +1910,18 @@ bool PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 								       daddr.getString().c_str(), dest.getPort());
 							}
 						}
+					}
+				}
+				extern bool opt_pcap_dump_fix_tcp_seq_ack;
+				if(opt_pcap_dump_fix_tcp_seq_ack && this->type == sip && istcp && !createdVirtualUdpPacket) {
+					u_char *packet_mod;
+					pcap_pkthdr *header_mod;
+					if(fixSyntheticTcpSeqAck(dlt, packet, header, &packet_mod, &header_mod)) {
+						packet = packet_mod;
+						header = header_mod;
+						packets_alloc[packets_alloc_counter] = (u_char*)packet;
+						headers_alloc[packets_alloc_counter] = header;
+						++packets_alloc_counter;
 					}
 				}
 				__pcap_dump((u_char*)this->handle, header, packet, allPackets);
@@ -1940,6 +1955,44 @@ bool PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 		#endif
 	}
 	return(rslt);
+}
+
+bool PcapDumper::fixSyntheticTcpSeqAck(int dlt, const u_char *packet, pcap_pkthdr *header,
+				       u_char **packet_new, pcap_pkthdr **header_new) {
+	u_int16_t header_ip_offset = 0;
+	u_int16_t protocol = 0;
+	u_int16_t vlan = VLAN_UNSET;
+	if(!parseEtherHeader(dlt, (u_char*)packet, NULL, NULL, header_ip_offset, protocol, vlan)) {
+		return(false);
+	}
+	iphdr2 *header_ip = (iphdr2*)(packet + header_ip_offset);
+	if(header_ip->get_protocol(header->caplen - header_ip_offset) != IPPROTO_TCP) {
+		return(false);
+	}
+	unsigned iphdrSize = header_ip->get_hdr_size();
+	tcphdr2 *header_tcp = (tcphdr2*)((u_char*)header_ip + iphdrSize);
+	if(header_tcp->seq || header_tcp->ack_seq) {
+		return(false);
+	}
+	vmIPportLink dir(header_ip->get_saddr(), header_tcp->get_source(),
+			 header_ip->get_daddr(), header_tcp->get_dest());
+	vmIPportLink dir_rev(header_ip->get_daddr(), header_tcp->get_dest(),
+			     header_ip->get_saddr(), header_tcp->get_source());
+	unsigned tcp_data_len = header->caplen - header_ip_offset - iphdrSize - header_tcp->doff * 4;
+	*packet_new = new FILE_LINE(0) u_char[header->caplen];
+	*header_new = new FILE_LINE(0) pcap_pkthdr;
+	memcpy(*packet_new, packet, header->caplen);
+	**header_new = *header;
+	tcphdr2 *header_tcp_new = (tcphdr2*)(*packet_new + header_ip_offset + iphdrSize);
+	__SYNC_LOCK(this->_sync_tcp_seq);
+	u_int32_t seq = this->tcp_seq_by_dir[dir];
+	std::map<vmIPportLink, u_int32_t>::iterator iter_rev = this->tcp_seq_by_dir.find(dir_rev);
+	u_int32_t ack = iter_rev != this->tcp_seq_by_dir.end() ? iter_rev->second : 0;
+	this->tcp_seq_by_dir[dir] = seq + tcp_data_len;
+	__SYNC_UNLOCK(this->_sync_tcp_seq);
+	header_tcp_new->seq = htonl(seq);
+	header_tcp_new->ack_seq = htonl(ack);
+	return(true);
 }
 
 void PcapDumper::close(bool updateFilesQueue) {
