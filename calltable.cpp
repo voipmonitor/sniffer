@@ -13829,6 +13829,23 @@ void Calltable::cleanup_calls__close_calls(sCleanupCallsData *cc_data) {
 }
 
 void Calltable::cleanup_calls__end(sCleanupCallsData */*cc_data*/) {
+	listening_cleanup();
+	
+	extern int opt_memory_purge_interval;
+	extern bool opt_hugepages_anon;
+	extern int opt_hugepages_max;
+	extern int opt_hugepages_overcommit_max;
+	extern unsigned long __last_memory_purge;
+	u_int64_t now_ms = getTimeMS_rdtsc();
+	if(opt_memory_purge_interval &&
+	   ((!opt_hugepages_max && !opt_hugepages_overcommit_max) || opt_hugepages_anon) &&
+	   (now_ms / 1000) >= __last_memory_purge + opt_memory_purge_interval) {
+		bool firstRun = __last_memory_purge == 0;
+		__last_memory_purge = now_ms / 1000;
+		if(!firstRun) {
+			rss_purge();
+                }
+        }
 }
 
 #if EXPERIMENTAL_SEPARATE_PROCESSSING
@@ -14103,6 +14120,10 @@ void Calltable::cleanup_registers__close_registers(sCleanupRegistersData *cr_dat
 }
 
 void Calltable::cleanup_registers__end(sCleanupRegistersData */*cr_data*/) {
+	if(enable_register_engine) {
+		extern Registers registers;
+		registers.cleanup(false, 30);
+	}
 }
 
 int Calltable::cleanup_ss7(bool closeAll, u_int32_t packet_time_s) {
