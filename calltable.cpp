@@ -13828,14 +13828,7 @@ void Calltable::cleanup_calls__close_calls(sCleanupCallsData *cc_data) {
 	delete [] cc_data->closeCalls;
 }
 
-void Calltable::cleanup_calls__end(sCleanupCallsData *cc_data) {
-	extern int opt_destroy_calls_period;
-	extern unsigned long process_packet__last_destroy_calls;
-	u_int32_t actTimeS = getTimeS_rdtsc();
-	if(actTimeS - process_packet__last_destroy_calls >= (unsigned)opt_destroy_calls_period) {
-		calltable->destroyCallsIfPcapsClosed();
-		process_packet__last_destroy_calls = actTimeS;
-	}
+void Calltable::cleanup_calls__end(sCleanupCallsData */*cc_data*/) {
 }
 
 #if EXPERIMENTAL_SEPARATE_PROCESSSING
@@ -14110,12 +14103,6 @@ void Calltable::cleanup_registers__close_registers(sCleanupRegistersData *cr_dat
 }
 
 void Calltable::cleanup_registers__end(sCleanupRegistersData */*cr_data*/) {
-	extern unsigned long process_packet__last_destroy_registers;
-	u_int32_t actTimeS = getTimeS_rdtsc();
-	if(actTimeS - process_packet__last_destroy_registers >= 2) {
-		destroyRegistersIfPcapsClosed();
-		process_packet__last_destroy_registers = actTimeS;
-	}
 }
 
 int Calltable::cleanup_ss7(bool closeAll, u_int32_t packet_time_s) {

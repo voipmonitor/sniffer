@@ -2365,12 +2365,17 @@ void *moving_cache( void */*dummy*/ ) {
 }
 
 void *cleanup_calls(void *) {
-	u_int64_t last_cleanup_ms = getTimeMS_rdtsc();
+	u_int64_t last_cleanup_ms;
+	u_int64_t last_destroy_calls_ms;
+	last_cleanup_ms = last_destroy_calls_ms = getTimeMS_rdtsc();
 	while(!is_terminating()) {
 		switch(cc_data.state) {
-		case Calltable::_cc_na:
-			{
+		case Calltable::_cc_na: {
 			u_int64_t now_ms = getTimeMS_rdtsc();
+			if(now_ms > last_destroy_calls_ms + (u_int64_t)opt_destroy_calls_period * 1000) {
+				last_destroy_calls_ms = now_ms;
+				calltable->destroyCallsIfPcapsClosed();
+			}
 			if(now_ms > last_cleanup_ms + (u_int64_t)cleanup_calls_period() * 1000) {
 				last_cleanup_ms = now_ms;
 				cc_data.init();
@@ -2418,12 +2423,17 @@ void *cleanup_calls(void *) {
 }
 
 void *cleanup_registers(void *) {
-	u_int64_t last_cleanup_ms = getTimeMS_rdtsc();
+	u_int64_t last_cleanup_ms;
+	u_int64_t last_destroy_registers_ms;
+	last_cleanup_ms = last_destroy_registers_ms = getTimeMS_rdtsc();
 	while(!is_terminating()) {
 		switch(cr_data.state) {
-		case Calltable::_cr_na:
-			{
+		case Calltable::_cr_na: {
 			u_int64_t now_ms = getTimeMS_rdtsc();
+			if(now_ms > last_destroy_registers_ms + (u_int64_t)2 * 1000) {
+				last_destroy_registers_ms = now_ms;
+				calltable->destroyRegistersIfPcapsClosed();
+			}
 			if(now_ms > last_cleanup_ms + (u_int64_t)10 * 1000) {
 				last_cleanup_ms = now_ms;
 				cr_data.init();
