@@ -14051,6 +14051,9 @@ void Calltable::cleanup_registers__close_registers(sCleanupRegistersData *cr_dat
 	u_int64_t currTimeMS = getTimeMS_rdtsc();
 	for(unsigned i = 0; i < cr_data->closeregistersCount; i++) {
 		Call *reg = cr_data->closeRegisters[i];
+		if(reg->push_register_to_registers_queue) {
+			continue;
+		}
 		CallBranch *r_branch = reg->branch_main();
 		if(verbosity && verbosityE > 1) {
 			syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", reg->call_id.c_str());
@@ -14097,11 +14100,13 @@ void Calltable::cleanup_registers__close_registers(sCleanupRegistersData *cr_dat
 		for(unsigned i = 0; i < cr_data->closeregistersCount; i++) {
 			Call *reg = cr_data->closeRegisters[i];
 			if(reg->push_register_to_registers_queue) {
-				syslog(LOG_WARNING,"try to duplicity push call %s to registers_queue", reg->call_id.c_str());
-			} else {
-				reg->push_register_to_registers_queue = 1;
-				registers_deletequeue.push_back(reg);
+				if(verbosity && verbosityE > 1) {
+					syslog(LOG_NOTICE, "skip already-saved register %s", reg->call_id.c_str());
+				}
+				continue;
 			}
+			reg->push_register_to_registers_queue = 1;
+			registers_deletequeue.push_back(reg);
 		}
 		unlock_registers_deletequeue();
 	} else {
@@ -14109,11 +14114,13 @@ void Calltable::cleanup_registers__close_registers(sCleanupRegistersData *cr_dat
 		for(unsigned i = 0; i < cr_data->closeregistersCount; i++) {
 			Call *reg = cr_data->closeRegisters[i];
 			if(reg->push_register_to_registers_queue) {
-				syslog(LOG_WARNING,"try to duplicity push call %s to registers_queue", reg->call_id.c_str());
-			} else {
-				reg->push_register_to_registers_queue = 1;
-				registers_queue.push_back(reg);
+				if(verbosity && verbosityE > 1) {
+					syslog(LOG_NOTICE, "skip already-saved register %s", reg->call_id.c_str());
+				}
+				continue;
 			}
+			reg->push_register_to_registers_queue = 1;
+			registers_queue.push_back(reg);
 		}
 		unlock_registers_queue();
 	}
@@ -14251,7 +14258,9 @@ void Call::saveregister(struct timeval *currtime) {
 		}
 		((Calltable*)calltable)->lock_registers_deletequeue();
 		if(push_register_to_registers_queue) {
-			syslog(LOG_WARNING,"try to duplicity push call %s / %i to registers_queue", call_id.c_str(), getTypeBase());
+			if(verbosity && verbosityE > 1) {
+				syslog(LOG_NOTICE, "skip already-saved register %s / %i", call_id.c_str(), getTypeBase());
+			}
 		} else {
 			push_register_to_registers_queue = 1;
 			((Calltable*)calltable)->registers_deletequeue.push_back(this);
@@ -14260,7 +14269,9 @@ void Call::saveregister(struct timeval *currtime) {
 	} else {
 		((Calltable*)calltable)->lock_registers_queue();
 		if(push_register_to_registers_queue) {
-			syslog(LOG_WARNING,"try to duplicity push call %s / %i to registers_queue", call_id.c_str(), getTypeBase());
+			if(verbosity && verbosityE > 1) {
+				syslog(LOG_NOTICE, "skip already-saved register %s / %i", call_id.c_str(), getTypeBase());
+			}
 		} else {
 			push_register_to_registers_queue = 1;
 			((Calltable*)calltable)->registers_queue.push_back(this);
