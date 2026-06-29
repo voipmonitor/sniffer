@@ -2365,6 +2365,7 @@ void *moving_cache( void */*dummy*/ ) {
 }
 
 void *cleanup_calls(void *) {
+	extern int opt_blockcleanupcalls;
 	u_int64_t last_cleanup_ms;
 	u_int64_t last_destroy_calls_ms;
 	last_cleanup_ms = last_destroy_calls_ms = getTimeMS_rdtsc();
@@ -2376,8 +2377,11 @@ void *cleanup_calls(void *) {
 				last_destroy_calls_ms = now_ms;
 				calltable->destroyCallsIfPcapsClosed();
 			}
-			if(now_ms > last_cleanup_ms + (u_int64_t)cleanup_calls_period() * 1000) {
+			extern bool process_packet__cleanup_calls__quick_save_cdr(bool commit = false);
+			if(now_ms > last_cleanup_ms + (u_int64_t)(process_packet__cleanup_calls__quick_save_cdr() ? 100 : cleanup_calls_period() * 1000) &&
+			   !opt_blockcleanupcalls) {
 				last_cleanup_ms = now_ms;
+				process_packet__cleanup_calls__quick_save_cdr(true);
 				cc_data.init();
 				__sync_synchronize();
 				cc_data.state = Calltable::_cc_start;

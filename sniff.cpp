@@ -7820,15 +7820,24 @@ inline void process_packet__parse_rtcpxr(CallBranch *c_branch, packet_s_process 
 	}
 }
 
-inline void process_packet__cleanup_calls(packet_s *packetS, u_int32_t time_s, const char *file, int line) {
-	bool doQuickCleanup = false;
-	if(opt_quick_save_cdr == 2 &&
-	   (count_sip_bye != process_packet__last_cleanup_calls__count_sip_bye ||
-	    count_sip_bye_confirmed != process_packet__last_cleanup_calls__count_sip_bye_confirmed ||
-	    count_sip_cancel != process_packet__last_cleanup_calls__count_sip_cancel ||
-	    count_sip_cancel_confirmed != process_packet__last_cleanup_calls__count_sip_cancel_confirmed)) {
-		doQuickCleanup = true;
+bool process_packet__cleanup_calls__quick_save_cdr(bool commit = false) {
+	if(commit) {
+		process_packet__last_cleanup_calls__count_sip_bye = count_sip_bye;
+		process_packet__last_cleanup_calls__count_sip_bye_confirmed = count_sip_bye_confirmed;
+		process_packet__last_cleanup_calls__count_sip_cancel = count_sip_cancel;
+		process_packet__last_cleanup_calls__count_sip_cancel_confirmed = count_sip_cancel_confirmed;
+		return(true);
+	} else {
+		return(opt_quick_save_cdr == 2 &&
+		       (count_sip_bye != process_packet__last_cleanup_calls__count_sip_bye ||
+			count_sip_bye_confirmed != process_packet__last_cleanup_calls__count_sip_bye_confirmed ||
+			count_sip_cancel != process_packet__last_cleanup_calls__count_sip_cancel ||
+			count_sip_cancel_confirmed != process_packet__last_cleanup_calls__count_sip_cancel_confirmed));
 	}
+}
+
+inline void process_packet__cleanup_calls(packet_s *packetS, u_int32_t time_s, const char *file, int line) {
+	bool doQuickCleanup = process_packet__cleanup_calls__quick_save_cdr();
 	u_int64_t actTimeMS = getTimeMS_rdtsc();
 	if(!(actTimeMS > (process_packet__last_cleanup_calls_ms + (doQuickCleanup ? 100 : cleanup_calls_period() * 1000)))) {
 		return;
@@ -7851,10 +7860,7 @@ inline void process_packet__cleanup_calls(packet_s *packetS, u_int32_t time_s, c
 	}
 	listening_cleanup();
 	
-	process_packet__last_cleanup_calls__count_sip_bye = count_sip_bye;
-	process_packet__last_cleanup_calls__count_sip_bye_confirmed = count_sip_bye_confirmed;
-	process_packet__last_cleanup_calls__count_sip_cancel = count_sip_cancel;
-	process_packet__last_cleanup_calls__count_sip_cancel_confirmed = count_sip_cancel_confirmed;
+	process_packet__cleanup_calls__quick_save_cdr(true);
 
 	/* You may encounter that voipmonitor process does not have a reduced memory usage although you freed the calls. 
 	This is because it allocates memory in a number of small chunks. When freeing one of those chunks, the OS may decide 
@@ -9316,10 +9322,14 @@ void _process_packet__cleanup_calls__new() {
 	extern Calltable::sCleanupCallsData cc_data;
 	switch(cc_data.state) {
 	case Calltable::_cc_begin_finish:
-		cc_data.state = Calltable::_cc_load_all_calls;
-		calltable->cleanup_calls__load_all_calls(&cc_data);
-		__sync_synchronize();
-		cc_data.state = Calltable::_cc_load_all_calls_finish;
+		if(opt_safe_cleanup_calls != 2 || cc_data.packet_time_s || cc_data.closeAll) {
+			cc_data.state = Calltable::_cc_load_all_calls;
+			calltable->cleanup_calls__load_all_calls(&cc_data);
+			__sync_synchronize();
+			cc_data.state = Calltable::_cc_load_all_calls_finish;
+		} else {
+			cc_data.state = Calltable::_cc_goto_end;
+		}
 		break;
 	case Calltable::_cc_process_calls_finish:
 		__sync_synchronize();
@@ -9336,10 +9346,14 @@ void _process_packet__cleanup_registers__new() {
 	extern Calltable::sCleanupRegistersData cr_data;
 	switch(cr_data.state) {
 	case Calltable::_cr_begin_finish:
-		cr_data.state = Calltable::_cr_load_all_registers;
-		calltable->cleanup_registers__load_all_registers(&cr_data);
-		__sync_synchronize();
-		cr_data.state = Calltable::_cr_load_all_registers_finish;
+		if(opt_safe_cleanup_calls != 2 || cr_data.packet_time_s || cr_data.closeAll) {
+			cr_data.state = Calltable::_cr_load_all_registers;
+			calltable->cleanup_registers__load_all_registers(&cr_data);
+			__sync_synchronize();
+			cr_data.state = Calltable::_cr_load_all_registers_finish;
+		} else {
+			cr_data.state = Calltable::_cr_goto_end;
+		}
 		break;
 	case Calltable::_cr_process_registers_finish:
 		__sync_synchronize();

@@ -825,6 +825,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	rtppacketsinqueue_out = 0;
 	
 	push_call_to_calls_queue = 0;
+	push_register_to_registers_engine = 0;
 	push_register_to_registers_queue = 0;
 	push_call_to_storing_cdr_queue = 0;
 	message = NULL;
@@ -14070,7 +14071,7 @@ void Calltable::cleanup_registers__close_registers(sCleanupRegistersData *cr_dat
 			if(verbosity > 2)
 				syslog(LOG_NOTICE, "Set call->sighup\n");
 		}
-		if(enable_register_engine) {
+		if(enable_register_engine && !__SYNC_TEST_LOCK(reg->push_register_to_registers_engine)) {
 			extern Registers registers;
 			if(reg->reg.msgcount <= 1 ||
 			   !r_branch->lastSIPresponseNum ||
@@ -14245,7 +14246,9 @@ void Call::saveregister(struct timeval *currtime) {
 	/* move call to queue for mysql processing */
 	if(enable_register_engine) {
 		extern Registers registers;
-		registers.add(this);
+		if(!__SYNC_TEST_LOCK(push_register_to_registers_engine)) {
+			registers.add(this);
+		}
 		((Calltable*)calltable)->lock_registers_deletequeue();
 		if(push_register_to_registers_queue) {
 			syslog(LOG_WARNING,"try to duplicity push call %s / %i to registers_queue", call_id.c_str(), getTypeBase());

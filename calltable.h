@@ -1726,6 +1726,7 @@ public:
 	volatile u_int64_t rtppacketsinqueue_out __attribute__((aligned(64)));
 
 	volatile int push_call_to_calls_queue;
+	volatile int push_register_to_registers_engine;
 	volatile int push_register_to_registers_queue;
 	volatile int push_call_to_storing_cdr_queue;
 	unsigned int ps_drop;
