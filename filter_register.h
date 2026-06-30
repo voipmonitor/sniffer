@@ -29,6 +29,11 @@ class cRegisterFilter : public cRecordFilter {
 public:
 	cRegisterFilter(const char *filter = NULL);
 	void setFilter(const char *filter);
+public:
+	bool need_country_sipcallerip;
+	bool need_country_sipcalledip;
+	bool need_country_from_num;
+	bool need_country_to_num;
 };
 
 

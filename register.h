@@ -266,7 +266,7 @@ public:
 	inline int getIdSensor();
 	inline u_int32_t getStateFrom_s();
 	inline bool getDataRow(RecordArray *rec, bool setCountry = true);
-	static void setDataRowCountry(RecordArray *rec);
+	static void setDataRowCountry(RecordArray *rec, bool country_sipcallerip = true, bool country_sipcalledip = true, bool country_from_num = true, bool country_to_num = true);
 	string typeSaveStateToString(eTypeSaveState typeSaveState);
 	void lock_states() {
 		__SYNC_LOCK(_sync_states);

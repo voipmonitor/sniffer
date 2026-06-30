@@ -1178,7 +1178,7 @@ u_int32_t Register::getStateFrom_s() {
 	return(state_from);
 }
 
-void Register::setDataRowCountry(RecordArray *rec) {
+void Register::setDataRowCountry(RecordArray *rec, bool country_sipcallerip, bool country_sipcalledip, bool country_from_num, bool country_to_num) {
 	if(!opt_register_country_code) {
 		return;
 	}
@@ -1188,15 +1188,15 @@ void Register::setDataRowCountry(RecordArray *rec) {
 	const char *num_from = rec->fields[rf_from_num].get_string();
 	const char *num_to = rec->fields[rf_to_num].get_string();
 	if(opt_register_country_code == 2) {
-		rec->fields[rf_sipcallerip_country_code].set(getCountryIdByIP(sipcallerip));
-		rec->fields[rf_sipcalledip_country_code].set(getCountryIdByIP(sipcalledip));
-		rec->fields[rf_from_num_country_code].set(getCountryIdByPhoneNumber(num_from, sipcallerip));
-		rec->fields[rf_to_num_country_code].set(getCountryIdByPhoneNumber(num_to, sipcalledip));
+		if(country_sipcallerip) rec->fields[rf_sipcallerip_country_code].set(getCountryIdByIP(sipcallerip));
+		if(country_sipcalledip) rec->fields[rf_sipcalledip_country_code].set(getCountryIdByIP(sipcalledip));
+		if(country_from_num) rec->fields[rf_from_num_country_code].set(getCountryIdByPhoneNumber(num_from, sipcallerip));
+		if(country_to_num) rec->fields[rf_to_num_country_code].set(getCountryIdByPhoneNumber(num_to, sipcalledip));
 	} else {
-		rec->fields[rf_sipcallerip_country_code].set(getCountryByIP(sipcallerip, true).c_str());
-		rec->fields[rf_sipcalledip_country_code].set(getCountryByIP(sipcalledip, true).c_str());
-		rec->fields[rf_from_num_country_code].set(getCountryByPhoneNumber(num_from, sipcallerip, true).c_str());
-		rec->fields[rf_to_num_country_code].set(getCountryByPhoneNumber(num_to, sipcalledip, true).c_str());
+		if(country_sipcallerip) rec->fields[rf_sipcallerip_country_code].set(getCountryByIP(sipcallerip, true).c_str());
+		if(country_sipcalledip) rec->fields[rf_sipcalledip_country_code].set(getCountryByIP(sipcalledip, true).c_str());
+		if(country_from_num) rec->fields[rf_from_num_country_code].set(getCountryByPhoneNumber(num_from, sipcallerip, true).c_str());
+		if(country_to_num) rec->fields[rf_to_num_country_code].set(getCountryByPhoneNumber(num_to, sipcalledip, true).c_str());
 	}
 }
 
@@ -1674,10 +1674,51 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 	
 	unlock_registers_erase();
 
-	if(opt_register_country_code) {
-		for(list<RecordArray>::iterator iter_rec = records.begin(); iter_rec != records.end(); iter_rec++) {
-			Register::setDataRowCountry(&(*iter_rec));
+	string filter = jsonParams.getValue("filter");
+	string filter_user_restr = jsonParams.getValue("filter_user_restr");
+	cRegisterFilter *regFilter = NULL;
+	if(records.size() && (!filter.empty() || !filter_user_restr.empty())) {
+		regFilter = new FILE_LINE(0) cRegisterFilter(filter.c_str());
+		if(!filter.empty()) {
+			// cout << "FILTER: " << filter << endl;
+			regFilter->setFilter(filter.c_str());
 		}
+		if(!filter_user_restr.empty()) {
+			// cout << "FILTER (user_restr): " << filter_user_restr << endl;
+			regFilter->setFilter(filter_user_restr.c_str());
+		}
+	}
+	bool country_lazy_sipcallerip = false,
+	     country_lazy_sipcalledip = false,
+	     country_lazy_from_num = false,
+	     country_lazy_to_num = false;
+	if(opt_register_country_code && records.size()) {
+		bool duplicity_active = duplicityOnlyById && duplicityOnlyCheckId;
+		bool country_all_sipcallerip =
+			sortById == rf_sipcallerip_country_code ||
+			(duplicity_active && (duplicityOnlyById == rf_sipcallerip_country_code || duplicityOnlyById2 == rf_sipcallerip_country_code || duplicityOnlyCheckId == rf_sipcallerip_country_code)) ||
+			(regFilter && regFilter->need_country_sipcallerip);
+		bool country_all_sipcalledip =
+			sortById == rf_sipcalledip_country_code ||
+			(duplicity_active && (duplicityOnlyById == rf_sipcalledip_country_code || duplicityOnlyById2 == rf_sipcalledip_country_code || duplicityOnlyCheckId == rf_sipcalledip_country_code)) ||
+			(regFilter && regFilter->need_country_sipcalledip);
+		bool country_all_from_num =
+			sortById == rf_from_num_country_code ||
+			(duplicity_active && (duplicityOnlyById == rf_from_num_country_code || duplicityOnlyById2 == rf_from_num_country_code || duplicityOnlyCheckId == rf_from_num_country_code)) ||
+			(regFilter && regFilter->need_country_from_num);
+		bool country_all_to_num =
+			sortById == rf_to_num_country_code ||
+			(duplicity_active && (duplicityOnlyById == rf_to_num_country_code || duplicityOnlyById2 == rf_to_num_country_code || duplicityOnlyCheckId == rf_to_num_country_code)) ||
+			(regFilter && regFilter->need_country_to_num);
+		if(country_all_sipcallerip || country_all_sipcalledip || country_all_from_num || country_all_to_num) {
+			for(list<RecordArray>::iterator iter_rec = records.begin(); iter_rec != records.end(); iter_rec++) {
+				Register::setDataRowCountry(&(*iter_rec), country_all_sipcallerip, country_all_sipcalledip, country_all_from_num, country_all_to_num);
+			}
+		}
+		country_lazy_sipcallerip = !country_all_sipcallerip;
+		country_lazy_sipcalledip = !country_all_sipcalledip;
+		country_lazy_from_num = !country_all_from_num;
+		country_lazy_to_num = !country_all_to_num;
 	}
 
 	//u_int64_t run_time_2 = getTimeMS_rdtsc();
@@ -1693,29 +1734,17 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 	}
 	header += "]";
 	table = "[" + header;
-	if(records.size()) {
-		string filter = jsonParams.getValue("filter");
-		string filter_user_restr = jsonParams.getValue("filter_user_restr");
-		if(!filter.empty() || !filter_user_restr.empty()) {
-			cRegisterFilter *regFilter = new FILE_LINE(0) cRegisterFilter(filter.c_str());
-			if(!filter.empty()) {
-				// cout << "FILTER: " << filter << endl;
-				regFilter->setFilter(filter.c_str());
+	if(regFilter) {
+		for(list<RecordArray>::iterator iter_rec = records.begin(); iter_rec != records.end(); ) {
+			if(!regFilter->check(&(*iter_rec))) {
+				iter_rec->free();
+				records.erase(iter_rec++);
+			} else {
+				iter_rec++;
 			}
-			if(!filter_user_restr.empty()) {
-				// cout << "FILTER (user_restr): " << filter_user_restr << endl;
-				regFilter->setFilter(filter_user_restr.c_str());
-			}
-			for(list<RecordArray>::iterator iter_rec = records.begin(); iter_rec != records.end(); ) {
-				if(!regFilter->check(&(*iter_rec))) {
-					iter_rec->free();
-					records.erase(iter_rec++);
-				} else {
-					iter_rec++;
-				}
-			}
-			delete regFilter;
 		}
+		delete regFilter;
+		regFilter = NULL;
 	}
 	if(records.size() && duplicityOnlyById && duplicityOnlyCheckId) {
 		map<pair<RecordArrayField2, RecordArrayField2>, list<RecordArrayField2> > dupl_map;
@@ -1769,6 +1798,9 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 		}
 		u_int32_t counter = 0;
 		while(counter < records.size() && iter_rec != records.end()) {
+			if(country_lazy_sipcallerip || country_lazy_sipcalledip || country_lazy_from_num || country_lazy_to_num) {
+				Register::setDataRowCountry(&(*iter_rec), country_lazy_sipcallerip, country_lazy_sipcalledip, country_lazy_from_num, country_lazy_to_num);
+			}
 			string rec_json = iter_rec->getJson();
 			extern cUtfConverter utfConverter;
 			if(!utfConverter.check(rec_json.c_str())) {
