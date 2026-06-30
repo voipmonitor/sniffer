@@ -1215,9 +1215,14 @@ int _parse_command(char *buf, int size, sClientInfo client, cClient *c_client, c
 			return(-1);
 		}
 		mparams->command = mgmtCmd->command;
-		bool blocking_concurrent = managerCommandConcurrencyLimit.acquire(mgmtCmd->command, client.ip);
+		cManagerCommandConcurrencyLimit::eAcquireResult concurrency_acquire = managerCommandConcurrencyLimit.acquire(mgmtCmd->command, client.ip);
+		if(concurrency_acquire == cManagerCommandConcurrencyLimit::_rejected) {
+			mparams->sendString("concurrency limit exceeded\n");
+			delete mparams;
+			return(-1);
+		}
 		int ret = mgmtCmd->mgmtFce(mparams);
-		if(blocking_concurrent) {
+		if(concurrency_acquire == cManagerCommandConcurrencyLimit::_acquired) {
 			managerCommandConcurrencyLimit.release(mgmtCmd->command, client.ip);
 		}
 		delete mparams;
@@ -1621,29 +1626,42 @@ volatile int cManagerAes::_sync = 0;
 
 
 cManagerCommandConcurrencyLimit::cManagerCommandConcurrencyLimit() {
-	_sync_running = 0;
+	_sync_counters = 0;
 	_sync_config = 0;
 }
 
-bool cManagerCommandConcurrencyLimit::acquire(string command, vmIP ip) {
-	unsigned limit = getLimit(command);
-	if(!limit) {
-		return(false);
+cManagerCommandConcurrencyLimit::eAcquireResult cManagerCommandConcurrencyLimit::acquire(string command, vmIP ip) {
+	sLimit limit;
+	if(!getLimit(command, &limit)) {
+		return(_not_limited);
 	}
 	sManagerCommandConcurrencyKey key;
 	key.command = command;
 	key.ip = ip;
 	bool reported = false;
+	bool in_queue = false;
 	while(true) {
-		__SYNC_LOCK(_sync_running);
-		if(running[key] < limit) {
-			++running[key];
-			__SYNC_UNLOCK(_sync_running);
-			return(true);
+		__SYNC_LOCK(_sync_counters);
+		sCounter *counter = &counters[key];
+		if(counter->running < limit.concurrency) {
+			++counter->running;
+			if(in_queue) {
+				--counter->waiting;
+			}
+			__SYNC_UNLOCK(_sync_counters);
+			return(_acquired);
 		}
-		__SYNC_UNLOCK(_sync_running);
+		if(!in_queue) {
+			if(limit.queue && counter->waiting >= limit.queue) {
+				__SYNC_UNLOCK(_sync_counters);
+				return(_rejected);
+			}
+			++counter->waiting;
+			in_queue = true;
+		}
+		__SYNC_UNLOCK(_sync_counters);
 		if(!reported) {
-			syslog(LOG_INFO, "manager_command_concurrency_limit: command '%s' from %s reached concurrency limit %u - waiting for completion", command.c_str(), ip.getString().c_str(), limit);
+			syslog(LOG_INFO, "manager_command_concurrency_limit: command '%s' from %s reached concurrency limit %u - waiting for completion", command.c_str(), ip.getString().c_str(), limit.concurrency);
 			reported = true;
 		}
 		usleep(1000);
@@ -1654,45 +1672,58 @@ void cManagerCommandConcurrencyLimit::release(string command, vmIP ip) {
 	sManagerCommandConcurrencyKey key;
 	key.command = command;
 	key.ip = ip;
-	__SYNC_LOCK(_sync_running);
-	map<sManagerCommandConcurrencyKey, unsigned>::iterator iter = running.find(key);
-	if(iter != running.end()) {
-		if(iter->second > 1) {
-			--iter->second;
-		} else {
-			running.erase(iter);
+	__SYNC_LOCK(_sync_counters);
+	map<sManagerCommandConcurrencyKey, sCounter>::iterator iter = counters.find(key);
+	if(iter != counters.end()) {
+		if(iter->second.running > 0) {
+			--iter->second.running;
+		}
+		if(iter->second.running == 0 && iter->second.waiting == 0) {
+			counters.erase(iter);
 		}
 	}
-	__SYNC_UNLOCK(_sync_running);
+	__SYNC_UNLOCK(_sync_counters);
 }
 
-unsigned cManagerCommandConcurrencyLimit::getLimit(string command) {
+bool cManagerCommandConcurrencyLimit::getLimit(string command, sLimit *limit) {
 	extern string opt_manager_command_concurrency_limit;
 	if(opt_manager_command_concurrency_limit.empty()) {
-		return(0);
+		return(false);
 	}
 	__SYNC_LOCK(_sync_config);
 	if(opt_manager_command_concurrency_limit != config_str) {
 		config_str = opt_manager_command_concurrency_limit;
 		limits.clear();
-		vector<string> items = split(config_str.c_str(), ",", true);
+		vector<string> items = split(config_str.c_str(), split(",|;", '|'), true);
 		for(unsigned i = 0; i < items.size(); i++) {
 			string item = items[i];
-			unsigned limit = 1;
+			sLimit l;
+			l.concurrency = 1;
+			l.queue = 0;
 			size_t sep = item.find(':');
 			if(sep != string::npos) {
-				limit = atoi(item.substr(sep + 1).c_str());
+				string params = item.substr(sep + 1);
 				item = trim_str(item.substr(0, sep));
+				size_t sep_queue = params.find('/');
+				if(sep_queue != string::npos) {
+					l.concurrency = atoi(params.substr(0, sep_queue).c_str());
+					l.queue = atoi(params.substr(sep_queue + 1).c_str());
+				} else {
+					l.concurrency = atoi(params.c_str());
+				}
 			}
-			if(!item.empty() && limit > 0) {
-				limits[item] = limit;
+			if(!item.empty() && l.concurrency > 0) {
+				limits[item] = l;
 			}
 		}
 	}
-	map<string, unsigned>::iterator iter = limits.find(command);
-	unsigned limit = iter != limits.end() ? iter->second : 0;
+	map<string, sLimit>::iterator iter = limits.find(command);
+	bool found = iter != limits.end();
+	if(found) {
+		*limit = iter->second;
+	}
 	__SYNC_UNLOCK(_sync_config);
-	return(limit);
+	return(found);
 }
 
 

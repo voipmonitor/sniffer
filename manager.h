@@ -195,16 +195,33 @@ private:
 				ip < other.ip);
 		}
 	};
+	struct sLimit {
+		unsigned concurrency;
+		unsigned queue;
+	};
+	struct sCounter {
+		sCounter() {
+			running = 0;
+			waiting = 0;
+		}
+		unsigned running;
+		unsigned waiting;
+	};
 public:
+	enum eAcquireResult {
+		_not_limited,
+		_acquired,
+		_rejected
+	};
 	cManagerCommandConcurrencyLimit();
-	bool acquire(string command, vmIP ip);
+	eAcquireResult acquire(string command, vmIP ip);
 	void release(string command, vmIP ip);
 private:
-	unsigned getLimit(string command);
-	map<sManagerCommandConcurrencyKey, unsigned> running;
-	map<string, unsigned> limits;
+	bool getLimit(string command, sLimit *limit);
+	map<sManagerCommandConcurrencyKey, sCounter> counters;
+	map<string, sLimit> limits;
 	string config_str;
-	volatile int _sync_running;
+	volatile int _sync_counters;
 	volatile int _sync_config;
 };
 
