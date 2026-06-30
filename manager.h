@@ -184,6 +184,30 @@ private:
 	static volatile int _sync;
 };
 
+class cManagerCommandConcurrencyLimit {
+private:
+	struct sManagerCommandConcurrencyKey {
+		string command;
+		vmIP ip;
+		bool operator < (const sManagerCommandConcurrencyKey& other) const {
+			return(command != other.command ?
+				command < other.command :
+				ip < other.ip);
+		}
+	};
+public:
+	cManagerCommandConcurrencyLimit();
+	bool acquire(string command, vmIP ip);
+	void release(string command, vmIP ip);
+private:
+	unsigned getLimit(string command);
+	map<sManagerCommandConcurrencyKey, unsigned> running;
+	map<string, unsigned> limits;
+	string config_str;
+	volatile int _sync_running;
+	volatile int _sync_config;
+};
+
 void listening_master_lock();
 void listening_master_unlock();
 void listening_cleanup();

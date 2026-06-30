@@ -133,6 +133,9 @@ struct sMgmtCmdsReg {
 };
 map<string, sMgmtCmdsReg> MgmtCmdsRegTable;
 
+cManagerCommandConcurrencyLimit managerCommandConcurrencyLimit;
+
+
 int Mgmt_params::registerCommand(const char *cmd, const char *help, int notNeedAes) {
 	sMgmtCmdsReg cmd_reg;
 	cmd_reg.mgmtFce = this->mgmtFce;
@@ -1212,7 +1215,11 @@ int _parse_command(char *buf, int size, sClientInfo client, cClient *c_client, c
 			return(-1);
 		}
 		mparams->command = mgmtCmd->command;
+		bool blocking_concurrent = managerCommandConcurrencyLimit.acquire(mgmtCmd->command, client.ip);
 		int ret = mgmtCmd->mgmtFce(mparams);
+		if(blocking_concurrent) {
+			managerCommandConcurrencyLimit.release(mgmtCmd->command, client.ip);
+		}
 		delete mparams;
 		return(ret);
 	} else {
@@ -1613,6 +1620,82 @@ cAesKey cManagerAes::aes_key_src;
 volatile int cManagerAes::_sync = 0;
 
 
+cManagerCommandConcurrencyLimit::cManagerCommandConcurrencyLimit() {
+	_sync_running = 0;
+	_sync_config = 0;
+}
+
+bool cManagerCommandConcurrencyLimit::acquire(string command, vmIP ip) {
+	unsigned limit = getLimit(command);
+	if(!limit) {
+		return(false);
+	}
+	sManagerCommandConcurrencyKey key;
+	key.command = command;
+	key.ip = ip;
+	bool reported = false;
+	while(true) {
+		__SYNC_LOCK(_sync_running);
+		if(running[key] < limit) {
+			++running[key];
+			__SYNC_UNLOCK(_sync_running);
+			return(true);
+		}
+		__SYNC_UNLOCK(_sync_running);
+		if(!reported) {
+			syslog(LOG_INFO, "manager_command_concurrency_limit: command '%s' from %s reached concurrency limit %u - waiting for completion", command.c_str(), ip.getString().c_str(), limit);
+			reported = true;
+		}
+		usleep(1000);
+	}
+}
+
+void cManagerCommandConcurrencyLimit::release(string command, vmIP ip) {
+	sManagerCommandConcurrencyKey key;
+	key.command = command;
+	key.ip = ip;
+	__SYNC_LOCK(_sync_running);
+	map<sManagerCommandConcurrencyKey, unsigned>::iterator iter = running.find(key);
+	if(iter != running.end()) {
+		if(iter->second > 1) {
+			--iter->second;
+		} else {
+			running.erase(iter);
+		}
+	}
+	__SYNC_UNLOCK(_sync_running);
+}
+
+unsigned cManagerCommandConcurrencyLimit::getLimit(string command) {
+	extern string opt_manager_command_concurrency_limit;
+	if(opt_manager_command_concurrency_limit.empty()) {
+		return(0);
+	}
+	__SYNC_LOCK(_sync_config);
+	if(opt_manager_command_concurrency_limit != config_str) {
+		config_str = opt_manager_command_concurrency_limit;
+		limits.clear();
+		vector<string> items = split(config_str.c_str(), ",", true);
+		for(unsigned i = 0; i < items.size(); i++) {
+			string item = items[i];
+			unsigned limit = 1;
+			size_t sep = item.find(':');
+			if(sep != string::npos) {
+				limit = atoi(item.substr(sep + 1).c_str());
+				item = trim_str(item.substr(0, sep));
+			}
+			if(!item.empty() && limit > 0) {
+				limits[item] = limit;
+			}
+		}
+	}
+	map<string, unsigned>::iterator iter = limits.find(command);
+	unsigned limit = iter != limits.end() ? iter->second : 0;
+	__SYNC_UNLOCK(_sync_config);
+	return(limit);
+}
+
+
 void *manager_server(void *arg) {
  	sManagerServerArgs managerServerArgs;
 	if(arg) {
@@ -1677,7 +1760,6 @@ void *manager_server(void *arg) {
 		return 0;
 	}
 	pthread_t threads;
-	pthread_attr_t attr;
 	fd_set rfds;
 	struct timeval tv;
 	while(!is_terminating_without_error() && 
@@ -1722,16 +1804,10 @@ void *manager_server(void *arg) {
 				close(clientHandler);
 				continue;
 			}
-			pthread_attr_init(&attr);
 			sManagerClientInfo *clientInfo = new FILE_LINE(0) sManagerClientInfo(clientHandler, clientIP);
 			clientInfo->file_socket = !managerServerArgs.file_socket.empty();
-			int rslt = pthread_create (		/* Create a child thread        */
-					&threads,		/* Thread ID (system assigned)  */    
-					&attr,			/* Default thread attributes    */
-					manager_read_thread,	/* Thread routine               */
-					clientInfo);		/* Arguments to be passed       */
-			pthread_detach(threads);
-			pthread_attr_destroy(&attr);
+			int rslt = vm_pthread_create_autodestroy("manager read thread",
+								 &threads, NULL, manager_read_thread, clientInfo, __FILE__, __LINE__);
 			if(rslt != 0) {
 				syslog(LOG_ERR, "manager pthread_create failed with rslt code %i", rslt);
 			}

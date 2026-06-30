@@ -346,6 +346,7 @@ string opt_manager_socket_run_via_manager;
 int opt_manager_nonblock_mode = 0;
 string opt_manager_aes_key;
 string opt_manager_aes_iv;
+string opt_manager_command_concurrency_limit;
 int opt_rtpsave_threaded = 1;
 int opt_norecord_header = 0;	// if = 1 SIP call with X-VoipMonitor-norecord header will be not saved although global configuration says to record. 
 int opt_rtpnosip = 0;		// if = 1 RTP stream will be saved into calls regardless on SIP signalizatoin (handy if you need extract RTP without SIP)
@@ -6983,6 +6984,7 @@ void cConfig::addConfigItems() {
 			->setReadOnly());
 		addConfigItem((new FILE_LINE(0) cConfigItem_yesno("manager_enable_unencrypted", &opt_manager_enable_unencrypted))
 			->setReadOnly());
+		addConfigItem(new FILE_LINE(0) cConfigItem_string("manager_command_concurrency_limit", &opt_manager_command_concurrency_limit));
 	group("buffers and memory usage");
 		subgroup("main");
 			addConfigItem((new FILE_LINE(42164) cConfigItem_integer("max_buffer_mem", &opt_max_buffer_mem))
