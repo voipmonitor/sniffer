@@ -5131,9 +5131,12 @@ void Call::getJsonHeader(vector<string> *header) {
 	}
 }
 
-void Call::getRecordData(RecordArray *rec) {
+void Call::getRecordData(RecordArray *rec, bool setCountry) {
 	unsigned i;
 	for(i = 0; i < sizeof(callFields) / sizeof(callFields[0]); i++) {
+		if(!setCountry && isCountryCallField(callFields[i].fieldType)) {
+			continue;
+		}
 		getValue(callFields[i].fieldType, &rec->fields[i]);
 	}
 	if(custom_headers_cdr) {
@@ -5142,6 +5145,39 @@ void Call::getRecordData(RecordArray *rec) {
 		for(list<string>::iterator iter = values.begin(); iter != values.end(); iter++) {
 			rec->fields[i++].set(iter->c_str());
 		}
+	}
+}
+
+void Call::setRecordDataCountry(RecordArray *rec) {
+	int caller_index = convCallFieldToFieldIndex(cf_caller);
+	int called_index = convCallFieldToFieldIndex(cf_called);
+	int callerip_index = convCallFieldToFieldIndex(cf_callerip);
+	int calledip_index = convCallFieldToFieldIndex(cf_calledip);
+	int rtp_src_index = convCallFieldToFieldIndex(cf_rtp_src);
+	int rtp_dst_index = convCallFieldToFieldIndex(cf_rtp_dst);
+	rec->fields[convCallFieldToFieldIndex(cf_caller_country)].set(getCountryByPhoneNumber(rec->fields[caller_index].get_string(), rec->fields[callerip_index].get_ip(), true).c_str());
+	rec->fields[convCallFieldToFieldIndex(cf_called_country)].set(getCountryByPhoneNumber(rec->fields[called_index].get_string(), rec->fields[calledip_index].get_ip(), true).c_str());
+	rec->fields[convCallFieldToFieldIndex(cf_caller_international)].set(!isLocalByPhoneNumber(rec->fields[caller_index].get_string(), rec->fields[callerip_index].get_ip()));
+	rec->fields[convCallFieldToFieldIndex(cf_called_international)].set(!isLocalByPhoneNumber(rec->fields[called_index].get_string(), rec->fields[calledip_index].get_ip()));
+	rec->fields[convCallFieldToFieldIndex(cf_callerip_country)].set(getCountryByIP(rec->fields[callerip_index].get_ip(), true).c_str());
+	rec->fields[convCallFieldToFieldIndex(cf_calledip_country)].set(getCountryByIP(rec->fields[calledip_index].get_ip(), true).c_str());
+	rec->fields[convCallFieldToFieldIndex(cf_rtp_src_country)].set(getCountryByIP(rec->fields[rtp_src_index].get_ip(), true).c_str());
+	rec->fields[convCallFieldToFieldIndex(cf_rtp_dst_country)].set(getCountryByIP(rec->fields[rtp_dst_index].get_ip(), true).c_str());
+}
+
+bool Call::isCountryCallField(eCallField field) {
+	switch(field) {
+	case cf_caller_country:
+	case cf_called_country:
+	case cf_caller_international:
+	case cf_called_international:
+	case cf_callerip_country:
+	case cf_calledip_country:
+	case cf_rtp_src_country:
+	case cf_rtp_dst_country:
+		return(true);
+	default:
+		return(false);
 	}
 }
 
@@ -12915,7 +12951,12 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 			*zip = false;
 		}
 	}
-	
+	bool sort_by_country = sortByIndex >= 0 &&
+			       sortByIndex < (int)(sizeof(callFields) / sizeof(callFields[0])) &&
+			       Call::isCountryCallField(callFields[sortByIndex].fieldType);
+	extern bool opt_pii_enable;
+	bool lazy_country = !opt_pii_enable && !sort_by_country;
+
 	Call **active_calls = NULL;
 	u_int32_t active_calls_size = 0;
 	u_int32_t active_calls_count = 0;
@@ -13095,7 +13136,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 			}
 			if(limit != 0) {
 				RecordArray rec(sizeof(callFields) / sizeof(callFields[0]) + custom_headers_size + custom_headers_reserve);
-				call->getRecordData(&rec);
+				call->getRecordData(&rec, !lazy_country);
 				rec.sortBy = sortByIndex;
 				rec.sortBy2 = convCallFieldToFieldIndex(cf_calldate_num);
 				records.push_back(rec);
@@ -13232,6 +13273,9 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 		}
 		u_int32_t counter = 0;
 		while(counter < records.size() && iter_rec != records.end()) {
+			if(lazy_country) {
+				Call::setRecordDataCountry(&(*iter_rec));
+			}
 			string rec_json = iter_rec->getJson();
 			extern cUtfConverter utfConverter;
 			if(!utfConverter.check(rec_json.c_str())) {

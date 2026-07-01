@@ -2943,7 +2943,9 @@ public:
 	void getValue(eCallField field, RecordArrayField *rfield);
 	static string getJsonHeader();
 	static void getJsonHeader(vector<string> *header);
-	void getRecordData(RecordArray *rec);
+	void getRecordData(RecordArray *rec, bool setCountry = true);
+	static void setRecordDataCountry(RecordArray *rec);
+	static bool isCountryCallField(eCallField field);
 	string getJsonData();
 	void setRtpThreadNum();
 	
