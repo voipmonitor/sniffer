@@ -11751,7 +11751,9 @@ unsigned RTPSENSOR_VERSION_INT() {
 }
 
 
-void rss_purge(bool force) {
+#define RSS_PURGE_MIN_INTERVAL 10
+
+void rss_purge() {
 	#ifndef FREEBSD
 		malloc_trim(0);
 		if(sverb.malloc_trim) {
@@ -11760,30 +11762,9 @@ void rss_purge(bool force) {
 	#endif
 		
 	#if HAVE_LIBTCMALLOC
-		bool tcmalloc_need_purge = false;
-		if(force) {
-			tcmalloc_need_purge = true;
-		} else {
-			extern int opt_memory_purge_if_release_gt;
-			extern u_int64_t all_ringbuffers_size;
-			size_t tcm_heap_bytes = 0;
-			MallocExtension::instance()->GetNumericProperty("generic.heap_size", &tcm_heap_bytes);
-			size_t tcm_allocated_bytes = 0;
-			MallocExtension::instance()->GetNumericProperty("generic.current_allocated_bytes", &tcm_allocated_bytes);
-			size_t rss = getRss();
-			int64_t release_size = rss - all_ringbuffers_size - tcm_allocated_bytes;
-			if(release_size > (int64_t)MIN(opt_memory_purge_if_release_gt * 1024 * 1024, getTotalMemory() / 10) ||
-			   (tcm_heap_bytes > tcm_allocated_bytes && 
-			    (tcm_heap_bytes - tcm_allocated_bytes > MIN(opt_memory_purge_if_release_gt * 1024 * 1024, getTotalMemory() / 10) ||
-			     tcm_heap_bytes > tcm_allocated_bytes * 1.5))) {
-				tcmalloc_need_purge = true;
-			}
-		}
-		if(tcmalloc_need_purge) {
-			MallocExtension::instance()->ReleaseFreeMemory();
-			if(sverb.malloc_trim) {
-				syslog(LOG_NOTICE, "tcmalloc release free memory");
-			}
+		MallocExtension::instance()->ReleaseFreeMemory();
+		if(sverb.malloc_trim) {
+			syslog(LOG_NOTICE, "tcmalloc release free memory");
 		}
 	#endif
 		
@@ -11797,6 +11778,65 @@ void rss_purge(bool force) {
 			syslog(LOG_NOTICE, "jemalloc purge memory");
 		}
 	#endif
+}
+
+int rss_purge_needed(bool full_period) {
+#if HAVE_LIBTCMALLOC
+	extern int opt_memory_purge_if_release_gt;
+	size_t tcm_pageheap_free_bytes = 0;
+	MallocExtension::instance()->GetNumericProperty("tcmalloc.pageheap_free_bytes", &tcm_pageheap_free_bytes);
+	int64_t threshold;
+	if(full_period) {
+		threshold = (int64_t)MIN(opt_memory_purge_if_release_gt * 1024 * 1024, getTotalMemory() / 20);
+	} else {
+		threshold = (int64_t)(getTotalMemory() / 10);
+	}
+	return((int64_t)tcm_pageheap_free_bytes > threshold ? 1 : 0);
+}
+#else
+	return(-1);
+}
+#endif
+
+void rss_purge_check() {
+	extern int opt_memory_purge_interval;
+	extern bool opt_hugepages_anon;
+	extern int opt_hugepages_max;
+	extern int opt_hugepages_overcommit_max;
+	extern unsigned long __last_memory_purge;
+	extern unsigned long __last_memory_purge_test;
+	bool hugepages_enabled = opt_hugepages_max || opt_hugepages_overcommit_max;
+	if(hugepages_enabled && !opt_hugepages_anon) {
+		return;
+	}
+	static volatile int _rss_purge_check_sync = 0;
+	unsigned long now_s = getTimeS_rdtsc();
+	bool test_tick = false;
+	bool full_tick = false;
+	__SYNC_LOCK(_rss_purge_check_sync);
+	if(!__last_memory_purge || !__last_memory_purge_test) {
+		__last_memory_purge = now_s;
+		__last_memory_purge_test = now_s;
+	} else {
+		if(RSS_PURGE_MIN_INTERVAL < opt_memory_purge_interval &&
+		   now_s >= __last_memory_purge_test + RSS_PURGE_MIN_INTERVAL) {
+			test_tick = true;
+			__last_memory_purge_test = now_s;
+		}
+		if(opt_memory_purge_interval &&
+		   now_s >= __last_memory_purge + opt_memory_purge_interval) {
+			full_tick = true;
+			__last_memory_purge = now_s;
+		}
+	}
+	__SYNC_UNLOCK(_rss_purge_check_sync);
+	if(test_tick || full_tick) {
+		int rslt = rss_purge_needed(full_tick);
+		if((full_tick && (rslt == 1 || rslt == -1)) ||
+		   (test_tick && rslt == 1)) {
+			rss_purge();
+		}
+	}
 }
 
 

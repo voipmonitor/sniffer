@@ -5253,7 +5253,7 @@ int Mgmt_alloc_trim(Mgmt_params *params) {
 		params->registerCommand("alloc_trim", "alloc_trim");
 		return(0);
 	}
-	rss_purge(true);
+	rss_purge();
 	return(0);
 }
 

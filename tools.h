@@ -5273,7 +5273,9 @@ public:
 
 unsigned RTPSENSOR_VERSION_INT();
 
-void rss_purge(bool force = false);
+void rss_purge();
+int rss_purge_needed(bool full_period);
+void rss_purge_check();
 
 void parse_cmd_str(const char *cmd_str, vector<string> *args);
 

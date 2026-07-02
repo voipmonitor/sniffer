@@ -385,6 +385,7 @@ unsigned long process_packet__last_cleanup_registers = 0;
 unsigned long process_packet__last_destroy_registers = 0;
 unsigned long process_packet__last_cleanup_ss7 = 0;
 unsigned long __last_memory_purge = 0;
+unsigned long __last_memory_purge_test = 0;
 
 volatile unsigned long count_sip_bye;
 volatile unsigned long count_sip_bye_confirmed;
@@ -7862,27 +7863,7 @@ inline void process_packet__cleanup_calls(packet_s *packetS, u_int32_t time_s, c
 	
 	process_packet__cleanup_calls__quick_save_cdr(true);
 
-	/* You may encounter that voipmonitor process does not have a reduced memory usage although you freed the calls. 
-	This is because it allocates memory in a number of small chunks. When freeing one of those chunks, the OS may decide 
-	that giving this little memory back to the kernel will cause too much overhead and delay the operation. As all chunks 
-	are this small, they get actually freed but not returned to the kernel. On systems using glibc, there is a function call 
-	"malloc_trim" from malloc.h which does this missing operation (note that it is allowed to fail). If your OS does not provide 
-	malloc_trim, try searching for a similar function.
-	*/
-	
-	extern int opt_memory_purge_interval;
-	extern bool opt_hugepages_anon;
-	extern int opt_hugepages_max;
-	extern int opt_hugepages_overcommit_max;
-	if(opt_memory_purge_interval &&
-	   ((!opt_hugepages_max && !opt_hugepages_overcommit_max) || opt_hugepages_anon) &&
-	   (actTimeMS / 1000) >= __last_memory_purge + opt_memory_purge_interval) {
-		bool firstRun = __last_memory_purge == 0;
-		__last_memory_purge = actTimeMS / 1000;
-		if(!firstRun) {
-			rss_purge();
-                }
-        }
+	rss_purge_check();
 
 }
 
@@ -7917,6 +7898,7 @@ void reset_cleanup_variables() {
 	process_packet__last_destroy_registers = 0;
 	process_packet__last_cleanup_ss7 = 0;
 	__last_memory_purge = 0;
+	__last_memory_purge_test = 0;
 }
 
 int process_packet__parse_sip_method_ext(char *data, unsigned int datalen, bool check_end_space, bool *sip_response) {

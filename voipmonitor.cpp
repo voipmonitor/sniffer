@@ -2501,6 +2501,7 @@ void *check_activity_or_crash(void *) {
 			semaphoreClose();
 			kill(getpid(), 9);
 		}
+		rss_purge_check();
 		for(int i = 0; i < 10 && !is_terminating(); i++) {
 			usleep(100000);
 		}
@@ -5197,11 +5198,11 @@ int main_init_read() {
 	if(opt_fork) {
 		vm_pthread_create("defered service",
 				  &defered_service_fork_thread, NULL, defered_service_fork, NULL, __FILE__, __LINE__);
-		vm_pthread_create("check pcap stat activity thread",
-				  &check_activity_or_crash_thread, NULL, check_activity_or_crash, NULL, __FILE__, __LINE__);
 	} else if(!is_read_from_file_simple()) {
 		dns_lookup_common_hostnames();
 	}
+	vm_pthread_create("check pcap stat activity thread",
+			  &check_activity_or_crash_thread, NULL, check_activity_or_crash, NULL, __FILE__, __LINE__);
 	
 	// start thread processing queued cdr and sql queue - supressed if run as sender
 	if(!is_sender() && !is_client_packetbuffer_sender()
