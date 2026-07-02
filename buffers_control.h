@@ -146,13 +146,13 @@ public:
 	u_int64_t _max_buffer_mem_own_use_pb() {
 		u_int16_t __asyncwrite_perc = _asyncwrite_perc();
 		return(__asyncwrite_perc ?
-			max_buffer_mem_own_use * (1. - 1./__asyncwrite_perc) :
+			max_buffer_mem_own_use * (1 - __asyncwrite_perc/100.) :
 			max_buffer_mem_own_use);
 	}
 	u_int64_t _max_buffer_mem_own_use_asyncwrite() {
 		u_int16_t __asyncwrite_perc = _asyncwrite_perc();
 		return(__asyncwrite_perc ?
-			max_buffer_mem_own_use * (1./__asyncwrite_perc) : 
+			max_buffer_mem_own_use * (__asyncwrite_perc/100.) : 
 			0);
 	}
 	u_int16_t _asyncwrite_perc() {
