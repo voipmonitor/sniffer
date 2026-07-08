@@ -1,3 +1,40 @@
+2026.07.0 08.07.2026
+====================
+- General sniffer performance improvement: inter-thread packet queues can now synchronize via semaphores instead of busy-wait/usleep polling. This removes the periodic usleeps between the capture, preprocess and RTP threads and lets threads wake immediately on new data, which significantly reduces the number of context switches and CPU usage under load (use_sem_sync). This is enabled automatically after upgrade (active by default together with the reworked cleanup / hash-queue optimizations whenever t2_boost is on, which is the default); no configuration change is required. It can be turned off with use_sem_sync = no. Beyond the raw CPU saving, the main benefit is a much smoother load profile: the previous busy-wait/usleep polling produced spiky load peaks that pushed heap usage up during traffic bursts, which in turn increased TLB pressure and compounded further - with semaphore wakeups the load curve is continuous, roughly up to ~10% lower than the peaks of the old spiky curve.
+- Add Diameter-SIP correlation via AVP 830, 601, 701 with configurable matching (MSISDN, User-Session-Id, Call-ID strip regex, leading-plus handling) [VG-3123]
+- Allow recording of all SIP OPTIONS/SUBSCRIBE/NOTIFY responses (save-sip-msg-responses) [VS-891]
+- Add wildcard support to number-based capture rules [VG-3125]
+- Add via-server upgrade: client downloads the sensor binary through the existing server tunnel instead of a public URL (server_upgrade_cache_dir, server_upgrade_cache_max_age_days) [VS-1699]
+- Add support for ssl_ipport=0.0.0.0 (bind SSL/TLS decryption to any local IP) [VS-1845]
+- Add manager_command_concurrency_limit option to limit concurrent manager commands per command/IP, with optional queue limit (cmd:N/Q)
+- Add pcap_dump_fix_tcp_seq_ack option - set synthetic TCP seq/ack in SIP pcaps so Wireshark sequence checks pass [VS-1840]
+- Add threads_cpu_log and other_processes_cpu_log options for periodic per-thread / other-process CPU diagnostics
+- Add check_sip_complete_in_virtual_packet option to log SIP packets with incomplete content, and rotate_interval parameter to start the traffic dumper [VS-1842]
+- Add heap fill limiting for packetbuffer block reception in client/server mode and option to suppress server logs (server_log_suppress) [VS-1841]
+- Add mysql_use_init_command option and cache table-existence checks (MYSQL_INIT_COMMAND) to reduce recurring SQL queries [VS-1847]
+- Refactor base stat log generation into structured form, extend structured stat sections [VG-3129]
+- Unify malformed packet dumping into TrafficDumper (replaces BogusDumper)
+- SRTP: strip auth tag from payload length for non-decrypted streams to fix jitterbuffer packetization (srtp_rtp_verify_tag) [VS-1851]
+- Rework call and register cleanup into lock-free removal of obsolete objects (boosted cleanup mode) [VS-1854]
+- Parallelize the register preprocess thread into main + next threads
+- rss_purge: run periodically from watchdog thread, gated by tcmalloc pageheap_free with RAM-scaled thresholds [VS-1859]
+- listcalls / listregisters: compute country / international fields lazily only for displayed rows - performance optimization
+- Charts calculation on the sniffer side - performance optimization
+- Various performance optimizations (hot/cold packet push split, tcp reassembly, thread/process cpu diagnostics)
+- Fix mixup in async buffer memory reserve calculation
+- Fix false MOS drop on RTP pause without seq gap when ts advances < packetization * 2 [VS-1855]
+- Fix long destroy period of closed calls and registers in the new (boosted) cleanup mode [VS-1854]
+- Skinny: associate c= with the correct m= media line; don't kill an active call when a new call reuses its IP pair; use the answering phone's IP as the called IP; remove IP pairs for unconnected ringing [VS-1856][VS-1857][VG-3120]
+- ipfix: fix swapped SrcPort/DstPort order in UDP SIP structs (sIPFixSipIn, sIPFixSipOut_next) to match horaclifix [VS-1858]
+- Fix issues with mysql_options / mysql_init_command [VS-1857]
+- Exclude 3xx-redirected (non-confirmed) invite legs from sipcaller/sipcalled IP and proxy detection [VS-1850]
+- Fix pcap_block_store flag mismatch in mixed DPDK/IPFIX packetbuffer pool [VS-1840]
+- Fix potential race condition in AsyncClose (could occur only with tar=no) [VS-1841]
+- Fix rs_OK overwrite by late responses; add destroy timeout for premature response calls [VS-1843]
+- Fix connection thread leak on TCP peer close (recv()==0) in cSocket::read [VS-1846]
+- Fix potential race on push_register_to_registers_queue in Call::saveregister
+
+
 2026.05.0 05.05.2026
 ====================
 - Add BFCP (Binary Floor Control Protocol) detection and capture support [VS-1831]
