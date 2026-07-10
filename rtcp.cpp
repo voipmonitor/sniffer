@@ -1091,10 +1091,12 @@ bool createRtcpPayloadFromJson(const char *json, SimpleBuffer *buffer) {
 	buffer->add(&header, sizeof(header));
 	buffer->add(&sender_info, sizeof(sender_info));
 	
+	u_int32_t xr_source_ssrc = 0;
 	for(unsigned int i = 0; i < report_blocks_count; i++) {
 		JsonItem *jsonData_report_block = jsonData_report_blocks->getLocalItem(i);
 		rtcp_sr_reportblock report_block;
-		report_block.ssrc = htonl(atoll(jsonData_report_block->getValue("source_ssrc").c_str()));
+		u_int32_t source_ssrc = atoll(jsonData_report_block->getValue("source_ssrc").c_str());
+		report_block.ssrc = htonl(source_ssrc);
 		report_block.frac_lost = atoi(jsonData_report_block->getValue("fraction_lost").c_str());
 		u_int32_t packets_lost = atoll(jsonData_report_block->getValue("packets_lost").c_str());
 		report_block.packets_lost[0] = (packets_lost >> 16) & 0xFF;
@@ -1105,7 +1107,35 @@ bool createRtcpPayloadFromJson(const char *json, SimpleBuffer *buffer) {
 		report_block.lsr = htonl(atoll(jsonData_report_block->getValue("lsr").c_str()));
 		report_block.delay_since_lsr = htonl(atoll(jsonData_report_block->getValue("dlsr").c_str()));
 		buffer->add(&report_block, sizeof(report_block));
+		if(!i) {
+			xr_source_ssrc = source_ssrc;
+		}
 	}
-	
+
+	unsigned mos_lq = atoi(jsonData.getValue("mos_lq").c_str());
+	if(mos_lq > 0 && mos_lq < 0x7F) {
+		if(!xr_source_ssrc) {
+			xr_source_ssrc = atoll(jsonData.getValue("ssrc").c_str());
+		}
+		rtcp_xr_header xr_header;
+		xr_header.ch.version = 2;
+		xr_header.ch.padding = 0;
+		xr_header.ch.rc_sc = 0;
+		xr_header.ch.packet_type = RTCP_PACKETTYPE_XR;
+		xr_header.ch.length = htons((sizeof(rtcp_xr_header) + sizeof(rtcp_xr_gen_t) + sizeof(rtcp_xr_voip_metrics_report_block_t)) / 4 - 1);
+		xr_header.ssrc = htonl(atoll(jsonData.getValue("ssrc").c_str()));
+		rtcp_xr_gen_t xr_gen;
+		xr_gen.bt = RTCP_XR_VOIP_METRICS;
+		xr_gen.type_specific = 0;
+		xr_gen.length = htons(sizeof(rtcp_xr_voip_metrics_report_block_t) / 4);
+		rtcp_xr_voip_metrics_report_block_t xr_block;
+		memset(&xr_block, 0, sizeof(xr_block));
+		xr_block.ssrc = htonl(xr_source_ssrc);
+		xr_block.mos_lq = (u_int8_t)mos_lq;
+		buffer->add(&xr_header, sizeof(xr_header));
+		buffer->add(&xr_gen, sizeof(xr_gen));
+		buffer->add(&xr_block, sizeof(xr_block));
+	}
+
 	return(true);
 }

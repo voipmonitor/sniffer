@@ -1613,6 +1613,7 @@ bool opt_hep_counter_log;
 bool opt_hep_kamailio_protocol_id_fix = true;
 bool opt_hep_via_pb = true;
 bool opt_hep_use_system_time = false;
+bool opt_hep_rtcp_mos_from_hep = false;
 
 bool opt_ribbonsbc_listen;
 string opt_ribbonsbc_bind_ip;
@@ -8013,6 +8014,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_kamailio_protocol_id_fix", &opt_hep_kamailio_protocol_id_fix));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_via_pb",  &opt_hep_via_pb));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_use_system_time",  &opt_hep_use_system_time));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_rtcp_mos_from_hep",  &opt_hep_rtcp_mos_from_hep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ribbonsbc_listen",  &opt_ribbonsbc_listen));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("ribbonsbc_bind_ip",  &opt_ribbonsbc_bind_ip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("ribbonsbc_bind_port",  &opt_ribbonsbc_bind_port));
