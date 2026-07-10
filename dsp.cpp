@@ -850,8 +850,14 @@ static int __dsp_call_progress(struct dsp *dsp, short *s, int len)
 				} else if (pair_there(hz[HZ_400], hz[HZ_450], hz[HZ_400], hz[HZ_400], dsp->genergy)) {
 					//UK RINGING
 					newstate = DSP_TONE_STATE_RINGING;
-				} else if (hz[HZ_425] > TONE_MIN_THRESH * TONE_THRESH) {
+				} else if (hz[HZ_425] > TONE_MIN_THRESH * TONE_THRESH &&
+					   hz[HZ_425] > dsp->genergy * TONE_THRESH &&
+					   hz[HZ_425] > hz[HZ_350] * TONE_THRESH &&
+					   hz[HZ_425] > hz[HZ_620] * TONE_THRESH) {
 					//CZECH / europe RINGING
+					//the 425Hz tone must dominate total block energy and the
+					//neighbour bands (as pair_there requires), otherwise speech
+					//harmonics near 425Hz classify as ringing (false FAS)
 					newstate = DSP_TONE_STATE_RINGING;
 				} else if (hz[HZ_950] > TONE_MIN_THRESH * TONE_THRESH) {
 					newstate = DSP_TONE_STATE_SPECIAL1;
