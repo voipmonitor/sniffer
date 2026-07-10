@@ -2531,7 +2531,10 @@ bool RTP::read(CallBranch *c_branch,
 				} else if(opt_inbanddtmf and (res & DSP_PROCESS_RES_DTMF) and event_digit >= 20 and event_digit <= 127) {
 					owner->handle_dtmf(event_digit, ts2double(header->ts.tv_sec, header->ts.tv_usec), saddr, daddr, s_dtmf::inband);
 				}
-				if (do_fasdetect) {
+				if (do_fasdetect and (res & DSP_PROCESS_RES_CALL_PROGRESSS)) {
+					//update only on call progress events; other features
+					//(silencedetect, inbanddtmf, faxdetect) set res on ordinary
+					//packets and would wipe the flag after the last ring burst
 					//syslog(LOG_ERR, "fas detected");
 					owner->is_fas_detected = (res_call_progress == AST_CONTROL_RINGING) ? true : false;
 				}
