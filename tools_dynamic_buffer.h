@@ -290,9 +290,9 @@ public:
 	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data = false);
 	virtual bool decompress_ev(char *data, u_int32_t len);
 	void chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bool freeChunks = false, bool enableContinue = false, u_int32_t limitLength = 0);
-	void deleteChunks();
 	bool allChunksIsEmpty();
 	u_int32_t getChunkIterateSafeLimitLength(u_int32_t limitLength);
+	void forceCreateNewEmptyChunk();
 	void lock_chunkBuffer() {
 		__SYNC_LOCK(this->_sync_chunkBuffer);
 	}
@@ -321,6 +321,27 @@ public:
 	}
 	inline void set_warning_try_write_to_closed_tar() {
 		warning_try_write_to_closed_tar = true;
+	}
+	void setForceFlush(volatile bool *donePtr) {
+		lock_chunkBuffer();
+		if(force_flush_done_ptr && force_flush_done_ptr != donePtr) {
+			*force_flush_done_ptr = true;
+		}
+		force_flush_done_ptr = donePtr;
+		force_flush = true;
+		unlock_chunkBuffer();
+	}
+	bool isForceFlush() {
+		return(force_flush);
+	}
+	void setForceFlushDone() {
+		lock_chunkBuffer();
+		if(force_flush_done_ptr) {
+			*force_flush_done_ptr = true;
+			force_flush_done_ptr = NULL;
+		}
+		force_flush = false;
+		unlock_chunkBuffer();
 	}
 private:
 	void strange_log(const char *error);
@@ -354,6 +375,8 @@ private:
 	volatile u_int64_t chunk_buffer_size;
 	u_int64_t created_at;
 	bool warning_try_write_to_closed_tar;
+	volatile bool force_flush;
+	volatile bool *force_flush_done_ptr;
 static volatile u_int64_t chunk_buffers_sumsize;
 static volatile u_int64_t chunk_buffers_sumcapacity;
 };      

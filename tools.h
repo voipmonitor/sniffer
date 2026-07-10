@@ -938,6 +938,8 @@ public:
 		#endif
 		return(rslt);
 	}
+	bool flushToTar(volatile bool *donePtr);
+	bool flushToDisk(volatile bool *donePtr);
 	bool read(unsigned length);
 	bool is_ok_decompress();
 	bool is_eof();
@@ -1069,12 +1071,18 @@ public:
 		  bool istcp = false, u_int8_t forceVirtualUdp = false, timeval *ts = NULL, int *error = NULL);
 	void close(bool updateFilesQueue = true);
 	void flush();
+	bool flushToTar(volatile bool *donePtr);
+	bool flushToDisk(volatile bool *donePtr);
 	void remove();
 	bool isOpen() {
 		return(this->handle != NULL);
 	}
 	bool isClose() {
 		return(this->state == state_na || this->state == state_close);
+	}
+	bool isTar() {
+		extern int opt_pcap_dump_bufflength;
+		return(this->handle && opt_pcap_dump_bufflength && ((FileZipHandler*)this->handle)->tar > 0);
 	}
 	bool isExistsContent() {
 		return(this->existsContent);
@@ -1381,6 +1389,41 @@ public:
 		FileZipHandler *handle;
 		char *data;
 	};
+	class AsyncFlushMarkerItem : public AsyncCloseItem {
+	public:
+		AsyncFlushMarkerItem(FileZipHandler *handle, volatile bool *donePtr, bool forTar) {
+			this->handle = handle;
+			this->donePtr = donePtr;
+			this->forTar = forTar;
+			this->transferred = false;
+		}
+		~AsyncFlushMarkerItem() {
+			if(!transferred && donePtr) {
+				*donePtr = true;
+			}
+		}
+		void process() {
+			handle->flushBuffer(true);
+			if(forTar && handle->tarBuffer) {
+				handle->tarBuffer->forceCreateNewEmptyChunk();
+				handle->tarBuffer->setForceFlush(donePtr);
+			} else if(donePtr) {
+				*donePtr = true;
+			}
+			transferred = true;
+		}
+		bool process_ready() {
+			return(true);
+		}
+		FileZipHandler *getHandler() {
+			return(handle);
+		}
+	private:
+		FileZipHandler *handle;
+		volatile bool *donePtr;
+		bool forTar;
+		bool transferred;
+	};
 	struct StartThreadData {
 		int threadIndex;
 		AsyncClose *asyncClose;
@@ -1550,6 +1593,17 @@ public:
 				break;
 			}
 		}
+	}
+	bool addFlushMarker(FileZipHandler *handle, volatile bool *donePtr, bool forTar) {
+		__SYNC_LOCK_USLEEP(handle->_sync_userData_lock, 10);
+		unsigned int useDataIdx = handle->userData;
+		if(!useDataIdx) {
+			__SYNC_UNLOCK(handle->_sync_userData_lock);
+			return(false);
+		}
+		add(new FILE_LINE(0) AsyncFlushMarkerItem(handle, donePtr, forTar), useDataIdx - 1, 0);
+		__SYNC_UNLOCK(handle->_sync_userData_lock);
+		return(true);
 	}
 	bool add(AsyncCloseItem *item, int threadIndex, int useThreadOper = 0) {
 		lock(threadIndex);

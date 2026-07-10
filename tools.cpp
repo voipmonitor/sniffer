@@ -2056,6 +2056,29 @@ void PcapDumper::flush() {
 	__pcap_dump_flush(this->handle);
 }
 
+bool PcapDumper::flushToTar(volatile bool *donePtr) {
+	extern int opt_pcap_dump_bufflength;
+	if(!this->handle || !opt_pcap_dump_bufflength) {
+		return(false);
+	}
+	return(((FileZipHandler*)this->handle)->flushToTar(donePtr));
+}
+
+bool PcapDumper::flushToDisk(volatile bool *donePtr) {
+	if(!this->handle) {
+		return(false);
+	}
+	extern int opt_pcap_dump_bufflength;
+	if(!opt_pcap_dump_bufflength) {
+		__pcap_dump_flush(this->handle);
+		if(donePtr) {
+			*donePtr = true;
+		}
+		return(true);
+	}
+	return(((FileZipHandler*)this->handle)->flushToDisk(donePtr));
+}
+
 void PcapDumper::remove() {
 	if(this->handle) {
 		this->close(false);
@@ -5211,6 +5234,41 @@ bool FileZipHandler::_flushBuffer(bool force) {
 	bool rsltWrite = this->_writeToFile(this->buffer, this->useBufferLength, force);
 	this->useBufferLength = 0;
 	return(rsltWrite);
+}
+
+bool FileZipHandler::flushToTar(volatile bool *donePtr) {
+	if(!this->tar) {
+		return(false);
+	}
+	if(this->enableAsyncWrite && asyncClose &&
+	   asyncClose->addFlushMarker(this, donePtr, true)) {
+		return(true);
+	}
+	this->flushBuffer(true);
+	if(this->tarBuffer) {
+		this->tarBuffer->forceCreateNewEmptyChunk();
+		this->tarBuffer->setForceFlush(donePtr);
+		return(true);
+	}
+	return(false);
+}
+
+bool FileZipHandler::flushToDisk(volatile bool *donePtr) {
+	if(this->tar || this->typeCompress != compress_na) {
+		if(donePtr) {
+			*donePtr = true;
+		}
+		return(false);
+	}
+	if(this->enableAsyncWrite && asyncClose &&
+	   asyncClose->addFlushMarker(this, donePtr, false)) {
+		return(true);
+	}
+	this->flushBuffer(true);
+	if(donePtr) {
+		*donePtr = true;
+	}
+	return(true);
 }
 
 void FileZipHandler::_flushTarBuffer() {

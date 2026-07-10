@@ -1200,6 +1200,8 @@ ChunkBuffer::ChunkBuffer(int time, data_tar_time tar_time, bool need_tar_pos,
 	this->chunk_buffer_size = 0;
 	this->created_at = getTimeUS();
 	this->warning_try_write_to_closed_tar = false;
+	this->force_flush = false;
+	this->force_flush_done_ptr = NULL;
 	if(call) {
 		#if DEBUG_ASYNC_TAR_WRITE
 		if(!call->incChunkBuffers(typeContent - 1 + indexContent, this, this->name.c_str())) {
@@ -1212,6 +1214,7 @@ ChunkBuffer::ChunkBuffer(int time, data_tar_time tar_time, bool need_tar_pos,
 }
 
 ChunkBuffer::~ChunkBuffer() {
+	this->setForceFlushDone();
 	if(sverb.tar > 2) {
 		syslog(LOG_NOTICE, "chunkbufer destroy: %s %lx %s", 
 		       this->getName().c_str(), (long)this,
@@ -1429,7 +1432,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 	case add_fill_fix_len: {
 		u_int32_t copied = 0;
 		do {
-			if(!(this->len % this->chunk_fix_len)) {
+			if(!this->lastChunk || this->lastChunk->len == this->chunk_fix_len) {
 				sChunk chunk;
 				chunk.chunk = new FILE_LINE(40017) char[this->chunk_fix_len];
 				chunk.chunk_capacity = this->chunk_fix_len;
@@ -1438,8 +1441,8 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 				++this->chunkBuffer_countItems;
 				this->lastChunk = &(*(--this->chunkBuffer.end()));
 			}
-			int whattocopy = MIN(this->chunk_fix_len - this->len % this->chunk_fix_len, datalen - copied);
-			memcpy_heapsafe(this->lastChunk->chunk + this->len % this->chunk_fix_len, this->lastChunk->chunk,
+			int whattocopy = MIN(this->chunk_fix_len - this->lastChunk->len, datalen - copied);
+			memcpy_heapsafe(this->lastChunk->chunk + this->lastChunk->len, this->lastChunk->chunk,
 					data + copied, data,
 					whattocopy,
 					__FILE__, __LINE__);
@@ -1658,9 +1661,6 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 				   this->chunkIterateProceedLen - chunkIterateProceedLen_start >= limitLength) {
 					break;
 				}
-				if(!this->closed && counterIterator >= sizeChunkBuffer + 1) {
-					break;
-				}
 			}
 		}
 		if(chunkbufferIterateEv) {
@@ -1720,20 +1720,6 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 	}
 }
 
-void ChunkBuffer::deleteChunks() {
-	size_t counterIterator = 0;
-	size_t sizeChunkBuffer = chunkBuffer_countItems;
-	for(list<sChunk>::iterator it = chunkBuffer.begin(); counterIterator < sizeChunkBuffer;) {
-		if(counterIterator++) ++it;
-		if(it->chunk) {
-			it->deleteChunk(this);
-		}
-		if(!this->closed && counterIterator >= sizeChunkBuffer - 1) {
-			break;
-		}
-	}
-}
-
 bool ChunkBuffer::allChunksIsEmpty() {
 	size_t counterIterator = 0;
 	size_t sizeChunkBuffer = chunkBuffer_countItems;
@@ -1759,10 +1745,10 @@ u_int32_t ChunkBuffer::getChunkIterateSafeLimitLength(u_int32_t limitLength) {
 			if(it->decompress_len == (u_int32_t)-1) {
 				return(limitLength);
 			} else {
-				if(safeLimitLength + it->decompress_len >= limitLength) {
+				if(safeLimitLength + it->decompress_len > limitLength) {
 					break;
 				}
-				if(!this->closed && counterIterator >= sizeChunkBuffer - 1) {
+				if(!this->closed && counterIterator > sizeChunkBuffer - 1) {
 					break;
 				}
 				safeLimitLength += it->decompress_len;
@@ -1777,10 +1763,10 @@ u_int32_t ChunkBuffer::getChunkIterateSafeLimitLength(u_int32_t limitLength) {
 				if(!it->chunk) {
 					continue;
 				}
-				if(safeLimitLength + it->len >= limitLength) {
+				if(safeLimitLength + it->len > limitLength) {
 					break;
 				}
-				if(!this->closed && counterIterator >= sizeChunkBuffer - 1) {
+				if(!this->closed && counterIterator > sizeChunkBuffer - 1) {
 					break;
 				}
 				safeLimitLength += it->len;
@@ -1788,6 +1774,21 @@ u_int32_t ChunkBuffer::getChunkIterateSafeLimitLength(u_int32_t limitLength) {
 		}
 	}
 	return(safeLimitLength);
+}
+
+void ChunkBuffer::forceCreateNewEmptyChunk() {
+	this->lock_chunkBuffer();
+	if(!this->compressStream && !this->closed && this->chunk_fix_len &&
+	   this->lastChunk && this->lastChunk->len > 0) {
+		sChunk chunk;
+		chunk.chunk = new FILE_LINE(40019) char[this->chunk_fix_len];
+		chunk.chunk_capacity = this->chunk_fix_len;
+		__SYNC_ADD(ChunkBuffer::chunk_buffers_sumcapacity, this->chunk_fix_len);
+		this->chunkBuffer.push_back(chunk);
+		++this->chunkBuffer_countItems;
+		this->lastChunk = &(*(--this->chunkBuffer.end()));
+	}
+	this->unlock_chunkBuffer();
 }
 
 void ChunkBuffer::addTarPosInCall(u_int64_t pos) {

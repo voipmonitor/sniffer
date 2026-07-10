@@ -1316,27 +1316,27 @@ qtype2typeSpoolFile(int qtype) {
 }
 
 
-int			    
-TarQueue::write(int qtype, data_t data) {
+string
+TarQueue::getTarPathname(int qtype, data_tar *data, string *tar_dir_output) {
 	stringstream tar_dir, tar_name;
 	eTypeSpoolFile typeSpoolFile = qtype2typeSpoolFile(qtype);
 	tar_dir << getSpoolDir(typeSpoolFile) << "/";
-	if(!data.sensorName.empty()) {
-		tar_dir << data.sensorName << "/";
+	if(!data->sensorName.empty()) {
+		tar_dir << data->sensorName << "/";
 	}
-	tar_dir << setfill('0') 
-		<< setw(4) << data.year << setw(1) << "-" << setw(2) << data.mon << setw(1) << "-" << setw(2) << data.day << setw(1) << "/" 
-		<< setw(2) << data.hour << setw(1) << "/" 
-		<< setw(2) << data.minute << setw(1) << "/" 
+	tar_dir << setfill('0')
+		<< setw(4) << data->year << setw(1) << "-" << setw(2) << data->mon << setw(1) << "-" << setw(2) << data->day << setw(1) << "/"
+		<< setw(2) << data->hour << setw(1) << "/"
+		<< setw(2) << data->minute << setw(1) << "/"
 		<< setw(0) << qtype2strC(qtype);
 	tar_name << tar_dir.str() << "/"
 		 << qtype2str(qtype) << "_";
-	if(!data.sensorName.empty()) {
-		tar_name << data.sensorName << "_";
+	if(!data->sensorName.empty()) {
+		tar_name << data->sensorName << "_";
 	}
-	tar_name << setfill('0') 
-		 << setw(4) << data.year << setw(1) << "-" << setw(2) << data.mon << setw(1) << "-" << setw(2) << data.day << setw(1) << "-" 
-		 << setw(2) << data.hour << setw(1) << "-" << setw(2) << data.minute << ".tar";
+	tar_name << setfill('0')
+		 << setw(4) << data->year << setw(1) << "-" << setw(2) << data->mon << setw(1) << "-" << setw(2) << data->day << setw(1) << "-"
+		 << setw(2) << data->hour << setw(1) << "-" << setw(2) << data->minute << ".tar";
 	switch(qtype) {
 	case 1:
 		switch(Tar::checkCompressType(opt_pcap_dump_tar_compress_sip)) {
@@ -1399,11 +1399,22 @@ TarQueue::write(int qtype, data_t data) {
 		}
 		break;
 	}
-	spooldir_mkdir(tar_dir.str());
-	//printf("tar_name %s\n", tar_name.str().c_str());
-       
+	if(tar_dir_output) {
+		*tar_dir_output = tar_dir.str();
+	}
+	return(tar_name.str());
+}
+
+int
+TarQueue::write(int qtype, data_t data) {
+	eTypeSpoolFile typeSpoolFile = qtype2typeSpoolFile(qtype);
+	string tar_dir;
+	string tar_name = getTarPathname(qtype, &data, &tar_dir);
+	spooldir_mkdir(tar_dir);
+	//printf("tar_name %s\n", tar_name.c_str());
+
 	pthread_mutex_lock(&tarslock);
-	Tar *tar = tars[tar_name.str()];
+	Tar *tar = tars[tar_name];
 	if(!tar) {
 		u_int32_t time_s = getTimeS();
 		tar = new FILE_LINE(34010) Tar;
@@ -1412,12 +1423,12 @@ TarQueue::write(int qtype, data_t data) {
 		okTarPointers[tar] = time_s;
 		unlock_okTarPointers();
 		if(sverb.tar) {
-			syslog(LOG_NOTICE, "new tar %s\n", tar_name.str().c_str());
+			syslog(LOG_NOTICE, "new tar %s\n", tar_name.c_str());
 			syslog(LOG_NOTICE, "add tar pointer %lx\n", (long)tar);
 		}
-		tars[tar_name.str()] = tar;
+		tars[tar_name] = tar;
 		pthread_mutex_unlock(&tarslock);
-		tar->tar_open(tar_name.str(), O_WRONLY | O_CREAT | O_APPEND, TAR_GNU);
+		tar->tar_open(tar_name, O_WRONLY | O_CREAT | O_APPEND, TAR_GNU);
 		tar->tar.qtype = qtype;
 		tar->time = data;
 		tar->created_at[0] = data.time;
@@ -1440,10 +1451,10 @@ TarQueue::write(int qtype, data_t data) {
      
 	tarthreads[tar->thread_id].qlock();
 //	printf("push id:%u\n", tar->thread_id);
-	if(tarthreads[tar->thread_id].queue_data.find(tar_name.str()) == tarthreads[tar->thread_id].queue_data.end()) {
-		tarthreads[tar->thread_id].queue_data[tar_name.str()] = new FILE_LINE(0) tarthreads_tq;
+	if(tarthreads[tar->thread_id].queue_data.find(tar_name) == tarthreads[tar->thread_id].queue_data.end()) {
+		tarthreads[tar->thread_id].queue_data[tar_name] = new FILE_LINE(0) tarthreads_tq;
 	}
-	tarthreads[tar->thread_id].queue_data[tar_name.str()]->push_back(data);
+	tarthreads[tar->thread_id].queue_data[tar_name]->push_back(data);
 	tarthreads[tar->thread_id].qunlock();
 	return 0;
 }
@@ -1553,14 +1564,15 @@ void *TarQueue::tarthreadworker(void *arg) {
 						unlock_okTarPointers();
 						*/
 						bool isClosed = data.buffer->isClosed();
-						if(!isClosed && 
-						   !data.buffer->isNewLastAddTimeForTar() && 
+						bool forceFlush = data.buffer->isForceFlush();
+						if(!isClosed && !forceFlush &&
+						   !data.buffer->isNewLastAddTimeForTar() &&
 						   !data.buffer->isFull()) {
 							continue;
 						}
 						data.buffer->copyLastAddTimeToTar();
 						unsigned int bufferLastTarTime = data.buffer->getLastTarTime();
-						if(!isClosed &&
+						if(!isClosed && !forceFlush &&
 						   bufferLastTarTime && bufferLastTarTime > getTimeS_rdtsc() - 3 && 
 						   !data.buffer->isFull()) {
 							continue;
@@ -1575,17 +1587,17 @@ void *TarQueue::tarthreadworker(void *arg) {
 						   data.buffer->allChunksIsEmpty()) {
 							lenForProceed = 0;
 						}
-						if(isClosed || lenForProceed > TAR_CHUNK_KB * 1024) {
+						if(isClosed || forceFlush || lenForProceed > TAR_CHUNK_KB * 1024) {
 							#if TAR_PROF
 							unsigned long long __prof_i1 = rdtsc();
 							#endif
-							size_t lenForProceedSafe = isClosed ? 
+							size_t lenForProceedSafe = isClosed ?
 										    lenForProceed :
 										    data.buffer->getChunkIterateSafeLimitLength(lenForProceed);
 							#if TAR_PROF
 							unsigned long long __prof_i2 = rdtsc();
 							#endif
-							if(isClosed ||
+							if(isClosed || forceFlush ||
 							   lenForProceedSafe > TAR_CHUNK_KB * 1024) {
 								doProcessData = true;
 								doProcessDataTar = true;
@@ -1598,6 +1610,9 @@ void *TarQueue::tarthreadworker(void *arg) {
 								unsigned long long __prof_i22 = rdtsc();
 								__prof_sum_5 += __prof_i22 - __prof_i21;
 								#endif
+								if(forceFlush && !isClosed) {
+									data.buffer->setForceFlushDone();
+								}
 								if(isClosed && !lenForProceed) {
 									//tarthread->queue[processTar].erase(tarthread->queue[processTar].begin() + index_list);
 									//--length_list;

@@ -449,6 +449,7 @@ int Mgmt_readaudio(Mgmt_params *params);
 int Mgmt_listen(Mgmt_params *params);
 int Mgmt_listen_stop(Mgmt_params *params);
 int Mgmt_active_call_info(Mgmt_params *params);
+int Mgmt_active_call_pcap(Mgmt_params *params);
 int Mgmt_options_qualify_refresh(Mgmt_params *params);
 int Mgmt_send_call_info_refresh(Mgmt_params *params);
 int Mgmt_fraud_refresh(Mgmt_params *params);
@@ -565,6 +566,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_listen,
 	Mgmt_listen_stop,
 	Mgmt_active_call_info,
+	Mgmt_active_call_pcap,
 	Mgmt_options_qualify_refresh,
 	Mgmt_send_call_info_refresh,
 	Mgmt_fraud_refresh,
@@ -3942,7 +3944,8 @@ int Mgmt_active_call_info(Mgmt_params *params) {
 	string callreference_str;
 	bool zip = false;
 	char params_str[1000];
-	sscanf(params->buf, "active_call_info %[^\n\r]", params_str);
+	params_str[0] = 0;
+	sscanf(params->buf, "active_call_info %999[^\n\r]", params_str);
 	if(isJsonObject(params_str)) {
 		JsonItem jsonParams;
 		jsonParams.parse(params_str);
@@ -3979,6 +3982,133 @@ int Mgmt_active_call_info(Mgmt_params *params) {
 		error = "call not found";
 	}
 	calltable->unlock_calls_listMAP();
+	if(!error.empty()) {
+		if(params->sendString(&error) == -1) {
+			rslt = -1;
+		}
+	}
+	return(rslt);
+}
+
+int Mgmt_active_call_pcap(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("active_call_pcap", "get pcap of active call");
+		return(0);
+	}
+	if(!calltable) {
+		return(-1);
+	}
+	int rslt = 0;
+	string error;
+	long long callreference = 0;
+	string callreference_str;
+	bool zip = false;
+	string end_string;
+	char params_str[1000];
+	params_str[0] = 0;
+	sscanf(params->buf, "active_call_pcap %999[^\n\r]", params_str);
+	if(isJsonObject(params_str)) {
+		JsonItem jsonParams;
+		jsonParams.parse(params_str);
+		callreference_str = jsonParams.getValue("callreference");
+		string zip_str = jsonParams.getValue("zip");
+		zip = yesno(zip_str.c_str()) || is_true(zip_str.c_str());
+		end_string = jsonParams.getValue("end");
+	} else {
+		callreference_str = params_str;
+	}
+	sscanf(callreference_str.c_str(), "%llu", &callreference);
+	if(!callreference) {
+		sscanf(callreference_str.c_str(), "%llx", &callreference);
+	}
+	params->zip = zip;
+	extern int opt_newdir;
+	extern int opt_pcap_split;
+	volatile bool *flush_done = new FILE_LINE(0) volatile bool;
+	*flush_done = false;
+	bool flush_started = false;
+	bool is_tar = false;
+	string tar_pathname;
+	string filename_in_tar;
+	string disk_pathname;
+	string tar_pos_string;
+	data_tar dt;
+	int spoolIndex = -1;
+	calltable->lock_calls_listMAP();
+	Call *call = calltable->find_by_reference(callreference, false);
+	if(call) {
+		PcapDumper *dumper = enable_pcap_split ? call->getPcapSip() : call->getPcap();
+		if(dumper->isOpen()) {
+			is_tar = dumper->isTar();
+			if(is_tar) {
+				dt.set(tsf_sip, call, dumper->getFileName().c_str());
+				spoolIndex = call->getSpoolIndex();
+				filename_in_tar = dt.filename;
+				flush_started = dumper->flushToTar(flush_done);
+			} else {
+				disk_pathname = dumper->getFileName();
+				flush_started = dumper->flushToDisk(flush_done);
+			}
+		} else {
+			error = "sip pcap is not open";
+		}
+	} else {
+		error = "call not found";
+	}
+	calltable->unlock_calls_listMAP();
+	if(error.empty() && is_tar) {
+		extern TarQueue *tarQueue[2];
+		if(spoolIndex >= 0 && spoolIndex < 2 && tarQueue[spoolIndex]) {
+			tar_pathname = tarQueue[spoolIndex]->getTarPathname(1, &dt);
+		}
+	}
+	if(error.empty() && is_tar && tar_pathname.empty()) {
+		error = "cannot resolve tar pathname";
+	}
+	if(error.empty()) {
+		unsigned watchdog = 0;
+		while(flush_started && !*flush_done && !is_terminating() && watchdog < 10000) {
+			usleep(10000);
+			if(++watchdog % 1000 == 0) {
+				syslog(LOG_NOTICE, "active_call_pcap: still waiting for pcap flush (%s)",
+				       is_tar ? tar_pathname.c_str() : disk_pathname.c_str());
+			}
+		}
+		if(is_tar) {
+			calltable->lock_calls_listMAP();
+			call = calltable->find_by_reference(callreference, false);
+			if(call) {
+				tar_pos_string = call->getTarPosStr(FileZipHandler::pcap_sip);
+			} else {
+				error = "call not found";
+			}
+			calltable->unlock_calls_listMAP();
+			if(error.empty()) {
+				flushTar(tar_pathname.c_str());
+				Tar tar;
+				if(!tar.tar_open(tar_pathname, O_RDONLY)) {
+					string filename_conv = filename_in_tar;
+					prepare_string_to_filename((char*)filename_conv.c_str());
+					tar.tar_read_send_parameters(params);
+					tar.tar_read(filename_conv.c_str(), 0, NULL, tar_pos_string.empty() ? NULL : tar_pos_string.c_str());
+					if(!end_string.empty()) {
+						params->_send(end_string.c_str(), end_string.length());
+					}
+				} else {
+					error = "cannot open tar file";
+				}
+			}
+		} else {
+			if(params->sendFile(disk_pathname.c_str()) == -1) {
+				rslt = -1;
+			} else if(!end_string.empty()) {
+				params->_send(end_string.c_str(), end_string.length());
+			}
+		}
+	}
+	if(!flush_started || *flush_done) {
+		delete flush_done;
+	}
 	if(!error.empty()) {
 		if(params->sendString(&error) == -1) {
 			rslt = -1;

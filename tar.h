@@ -468,6 +468,7 @@ public:
 	void add(data_tar *tar_data, ChunkBuffer *buffer, unsigned int time);
 	void flushQueue();
 	int write(int, data_t);
+	string getTarPathname(int qtype, data_tar *data, string *tar_dir_output = NULL);
 	int queuelen();
 	unsigned int last_flushTars;
 	void cleanTars(int term_pass = false);

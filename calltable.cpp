@@ -393,6 +393,7 @@ Call_abstract::Call_abstract(int call_type, u_int64_t time_us) {
 	#endif
 	this->created_at = getTimeUS();
 	this->closed = false;
+	this->_sync_tarPos = 0;
 }
 
 Call_abstract::~Call_abstract() {
@@ -525,8 +526,9 @@ Call_abstract::get_fbasename_safe() {
 	return fbasename_safe;
 }
 
-void 
+void
 Call_abstract::addTarPos(u_int64_t pos, int type) {
+	__SYNC_LOCK(this->_sync_tarPos);
 	switch(type) {
 	case FileZipHandler::pcap_sip:
 		if(opt_pcap_dump_tar_sip_use_pos) {
@@ -544,6 +546,26 @@ Call_abstract::addTarPos(u_int64_t pos, int type) {
 		}
 		break;
 	}
+	__SYNC_UNLOCK(this->_sync_tarPos);
+}
+
+string
+Call_abstract::getTarPosStr(int type) {
+	string rslt;
+	__SYNC_LOCK(this->_sync_tarPos);
+	list<u_int64_t> *tarPos = type == FileZipHandler::pcap_sip ? &this->tarPosSip :
+				  type == FileZipHandler::pcap_rtp ? &this->tarPosRtp :
+				  type == FileZipHandler::graph_rtp ? &this->tarPosGraph : NULL;
+	if(tarPos) {
+		for(list<u_int64_t>::iterator it = tarPos->begin(); it != tarPos->end(); it++) {
+			if(!rslt.empty()) {
+				rslt += ",";
+			}
+			rslt += intToString((long long)*it);
+		}
+	}
+	__SYNC_UNLOCK(this->_sync_tarPos);
+	return(rslt);
 }
 
 string CallStructs::sSipPacketInfo::getJson() {

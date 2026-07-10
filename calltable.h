@@ -1061,6 +1061,7 @@ public:
 	}
 	#endif
 	void addTarPos(u_int64_t pos, int type);
+	string getTarPosStr(int type);
 	bool isAllocFlagOK() {
 		return(alloc_flag == 1);
 	}
@@ -1117,6 +1118,7 @@ protected:
 	list<u_int64_t> tarPosSip;
 	list<u_int64_t> tarPosRtp;
 	list<u_int64_t> tarPosGraph;
+	volatile int _sync_tarPos;
 private:
 	#if DEBUG_ASYNC_TAR_WRITE
 	map<sChbIndex, bool> chunkBuffersMap;
