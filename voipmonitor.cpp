@@ -1041,6 +1041,7 @@ int opt_alter_rows_limit = 100000;
 bool opt_mysql_security_invoker_routines = true;
 
 char opt_mysql_timezone[256] = "";
+char opt_mysql_charset[256] = "utf8";
 int opt_mysql_client_compress = 0;
 char opt_timezone[256] = "";
 int opt_skiprtpdata = 0;
@@ -6583,6 +6584,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42084) cConfigItem_yesno("cdr_check_duplicity_callid_in_next_pass_insert", &opt_cdr_check_duplicity_callid_in_next_pass_insert));
 				addConfigItem(new FILE_LINE(42085) cConfigItem_yesno("message_check_duplicity_callid_in_next_pass_insert", &opt_message_check_duplicity_callid_in_next_pass_insert));
 				addConfigItem(new FILE_LINE(42086) cConfigItem_string("mysql_timezone", opt_mysql_timezone, sizeof(opt_mysql_timezone)));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("mysql_charset", opt_mysql_charset, sizeof(opt_mysql_charset)));
 				addConfigItem(new FILE_LINE(42087) cConfigItem_yesno("autoload_from_sqlvmexport", &opt_autoload_from_sqlvmexport));
 				expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("mysql_connect_timeout", &opt_mysql_connect_timeout));

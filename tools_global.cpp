@@ -3022,40 +3022,49 @@ void cUtfConverter::_replace_exceeding_utf8_mb(const char *str, unsigned max_mb,
 			p++;
 		} else if((*p & 0xe0) == 0xc0) {
 			// 2 bytes
-			if(max_mb < 2 ||
-			   (*(p + 1) & 0xc0) != 0x80) {
+			if((*(p + 1) & 0xc0) != 0x80) {
 				*output++ = subst;
+				p++;
+			} else if(max_mb < 2) {
+				*output++ = subst;
+				p += 2;
 			} else {
 				*output++ = *p;
 				*output++ = *(p + 1);
+				p += 2;
 			}
-			for(unsigned i = 0; *p && i < 2; i++) p++;
 		} else if ((*p & 0xf0) == 0xe0) {
 			// 3 bytes
-			if(max_mb < 3 ||
-			   (*(p + 1) & 0xc0) != 0x80 || 
+			if((*(p + 1) & 0xc0) != 0x80 ||
 			   (*(p + 2) & 0xc0) != 0x80) {
 				*output++ = subst;
+				p++;
+			} else if(max_mb < 3) {
+				*output++ = subst;
+				p += 3;
 			} else {
 				*output++ = *p;
 				*output++ = *(p + 1);
 				*output++ = *(p + 2);
+				p += 3;
 			}
-			for(unsigned i = 0; *p && i < 3; i++) p++;
 		} else if ((*p & 0xf8) == 0xf0) {
 			// 4 bytes
-			if(max_mb < 4 ||
-			   (*(p + 1) & 0xc0) != 0x80 || 
+			if((*(p + 1) & 0xc0) != 0x80 ||
 			   (*(p + 2) & 0xc0) != 0x80 ||
 			   (*(p + 3) & 0xc0) != 0x80) {
 				*output++ = subst;
+				p++;
+			} else if(max_mb < 4) {
+				*output++ = subst;
+				p += 4;
 			} else {
 				*output++ = *p;
 				*output++ = *(p + 1);
 				*output++ = *(p + 2);
 				*output++ = *(p + 3);
+				p += 4;
 			}
-			for(unsigned i = 0; *p && i < 4; i++) p++;
 		} else {
 			*output++ = '_';
 			p++;

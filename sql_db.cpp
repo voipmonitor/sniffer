@@ -9,6 +9,15 @@
 #include <netdb.h>
 #include <mysqld_error.h>
 #include <errmsg.h>
+#ifndef ER_DEFINITION_CONTAINS_INVALID_STRING
+#define ER_DEFINITION_CONTAINS_INVALID_STRING 4089
+#endif
+#ifndef ER_COMMENT_CONTAINS_INVALID_STRING
+#define ER_COMMENT_CONTAINS_INVALID_STRING 4088
+#endif
+#ifndef ER_CANNOT_CONVERT_STRING
+#define ER_CANNOT_CONVERT_STRING 3854
+#endif
 #include <dirent.h>
 #include <math.h>
 #include <signal.h>
@@ -103,6 +112,7 @@ extern char mysql_2_socket[256];
 extern mysqlSSLOptions optMySsl_2;
 
 extern char opt_mysql_timezone[256];
+extern char opt_mysql_charset[256];
 extern int opt_mysql_client_compress;
 extern int opt_skiprtpdata;
 
@@ -1818,6 +1828,17 @@ SqlDb_mysql::~SqlDb_mysql() {
 	this->clean();
 }
 
+static string mysqlCharsetSafe() {
+	string charset = strlwr(opt_mysql_charset[0] ? opt_mysql_charset : "utf8");
+	for(size_t i = 0; i < charset.length(); i++) {
+		if(!((charset[i] >= 'a' && charset[i] <= 'z') ||
+		     (charset[i] >= '0' && charset[i] <= '9') || charset[i] == '_')) {
+			return("utf8");
+		}
+	}
+	return(charset);
+}
+
 bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 	if(opt_nocdr || isCloud() || snifferClientOptions.isEnableRemoteQuery()) {
 		return(true);
@@ -1950,7 +1971,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			sql_disable_next_attempt_if_error = 1;
 			check_connect_options();
 			if(!opt_mysql_use_init_command) {
-				if(!this->query("SET NAMES UTF8")) {
+				if(!this->query("SET NAMES " + mysqlCharsetSafe())) {
 					rslt = false;
 				}
 			}
@@ -2091,13 +2112,16 @@ void SqlDb_mysql::set_connect_options() {
 	}
 	extern bool opt_mysql_use_init_command;
 	if(opt_mysql_use_init_command) {
-		mysql_options(this->hMysql, MYSQL_INIT_COMMAND,
-			      "SET character_set_client = 'utf8',"
-			      " character_set_connection = 'utf8',"
-			      " character_set_results = 'utf8',"
-			      " collation_connection = 'utf8_general_ci',"
-			      " sql_mode = '',"
-			      " group_concat_max_len = 100000000");
+		string charset = mysqlCharsetSafe();
+		string collation = charset + "_general_ci";
+		string init_command =
+			"SET character_set_client = '" + charset + "',"
+			" character_set_connection = '" + charset + "',"
+			" character_set_results = '" + charset + "',"
+			" collation_connection = '" + collation + "',"
+			" sql_mode = '',"
+			" group_concat_max_len = 100000000";
+		mysql_options(this->hMysql, MYSQL_INIT_COMMAND, init_command.c_str());
 	}
 }
 
@@ -2112,10 +2136,14 @@ void SqlDb_mysql::check_connect_options() {
 	string collation = getQueryRsltStringValue("show variables like 'collation_connection'", 1);
 	string sql_mode = getQueryRsltStringValue("show variables like 'sql_mode'", 1);
 	int64_t group_concat_max_len = getQueryRsltIntValue("show variables like 'group_concat_max_len'", 1, 0);
-	if((cs_client == "utf8" || cs_client == "utf8mb3") &&
-	   (cs_connection == "utf8" || cs_connection == "utf8mb3") &&
-	   (cs_results == "utf8" || cs_results == "utf8mb3") &&
-	   (collation == "utf8_general_ci" || collation == "utf8mb3_general_ci") &&
+	string charset_req = mysqlCharsetSafe();
+	string charset_req_alt = charset_req == "utf8" ? "utf8mb3" : charset_req;
+	string collation_req = charset_req + "_general_ci";
+	string collation_req_alt = charset_req_alt + "_general_ci";
+	if((cs_client == charset_req || cs_client == charset_req_alt) &&
+	   (cs_connection == charset_req || cs_connection == charset_req_alt) &&
+	   (cs_results == charset_req || cs_results == charset_req_alt) &&
+	   (collation == collation_req || collation == collation_req_alt) &&
 	   sql_mode.empty() &&
 	   group_concat_max_len == 100000000) {
 		connect_options_ok = true;
@@ -2475,9 +2503,15 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 	}
 	bool rslt = false;
 	this->cleanFields();
+	extern cUtfConverter utfConverter;
+	int utf_reduce_max_mb = 4;
+	bool utf_reduced = false;
 	unsigned int attempt = 1;
-	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++) {
+	for(unsigned int pass = 0; pass < this->maxQueryPass || utf_reduced; pass++) {
 		string preparedQuery = this->prepareQuery(query, !callFromStoreProcessWithFixDeadlock && attempt > 1);
+		if(utf_reduce_max_mb < 4) {
+			preparedQuery = utfConverter.replace_exceeding_utf8_mb(preparedQuery.c_str(), utf_reduce_max_mb);
+		}
 		if(attempt == 1) {
 			if(verbosity > 1) {
 				syslog(LOG_INFO, "%s", prepareQueryForPrintf(preparedQuery).c_str());
@@ -2487,7 +2521,9 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 			}
 		}
 		if(pass > 0) {
-			if(is_terminating()) {
+			if(utf_reduced) {
+				utf_reduced = false;
+			} else if(is_terminating()) {
 				USLEEP(100000);
 			} else {
 				sleep(1);
@@ -2535,6 +2571,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 				if(this->connecting) {
 					break;
 				} else {
+					int query_max_mb = utfConverter.get_max_mb(query.c_str());
 					if(this->getLastError() == CR_SERVER_GONE_ERROR ||
 					   this->getLastError() == ER_NO_PARTITION_FOR_GIVEN_VALUE) {
 						if(pass < this->maxQueryPass - 1) {
@@ -2564,6 +2601,19 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 						} else {
 							break;
 						}
+					} else if((this->getLastError() == ER_INVALID_CHARACTER_STRING ||
+						   (this->getLastError() == ER_TRUNCATED_WRONG_VALUE_FOR_FIELD &&
+						    (query_max_mb < 0 || query_max_mb >= 4)) ||
+						   ((this->getLastError() == ER_DEFINITION_CONTAINS_INVALID_STRING ||
+						     this->getLastError() == ER_COMMENT_CONTAINS_INVALID_STRING ||
+						     this->getLastError() == ER_CANNOT_CONVERT_STRING) &&
+						    getDbName_static() == "mysql")) &&
+						  utf_reduce_max_mb > 1) {
+						--utf_reduce_max_mb;
+						utf_reduced = true;
+						syslog(LOG_NOTICE, "query contains utf8 characters unsupported by charset '%s' - reducing to max %i-byte utf8 and retrying", mysqlCharsetSafe().c_str(), utf_reduce_max_mb);
+						++attempt;
+						continue;
 					} else if(sql_disable_next_attempt_if_error || 
 						  this->disableNextAttemptIfError ||
 						  this->ignoreLastError() ||
@@ -5465,7 +5515,7 @@ string MySqlStore::exportToFile(FILE *file, string fileName, bool sqlFormat, boo
 	if(!openFile) {
 		return("exportToFile : failed open file " + fileName);
 	}
-	fputs("SET NAMES UTF8;\n", file);
+	fprintf(file, "SET NAMES %s;\n", mysqlCharsetSafe().c_str());
 	fprintf(file, "USE %s;\n", mysql_database);
 	this->lock_processes();
 	map<int, map<int, MySqlStore_process*> >::iterator iter1;
