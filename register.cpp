@@ -375,7 +375,7 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		expires = call->reg.register_expires;
 		id_sensor = call->useSensorId;
 		is_sipalg_detected = c_branch->is_sipalg_detected;
-		vlan = c_branch->vlan;
+		vlan = c_branch->vlan_first;
 	} else {
 		state_from_us = state_to_us = 0;
 		time_shift_ms = 0;
@@ -451,7 +451,7 @@ bool RegisterState::isEq(Call *call, Register *reg, bool *exp_state) {
 		  (!opt_sip_register_state_compare_digest_realm || REG_EQ_STR(digest_realm == EQ_REG ? reg->digest_realm : digest_realm, c_branch->digest_realm.c_str())) &&
 		  (!opt_sip_register_state_compare_ua || REG_EQ_STR(ua == EQ_REG ? reg->ua : ua, c_branch->a_ua.c_str())) &&
 		  (!opt_sip_register_state_compare_sipalg || (!opt_sipalg_detect || is_sipalg_detected == c_branch->is_sipalg_detected)) &&
-		  (!opt_sip_register_state_compare_vlan || (vlan == c_branch->vlan)) &&
+		  (!opt_sip_register_state_compare_vlan || (vlan == c_branch->vlan_first)) &&
 		  id_sensor == call->useSensorId;
 	if(exp_state) {
 		if(eq) {
@@ -538,7 +538,7 @@ Register::Register(Call *call) {
 	from_domain = REG_NEW_STR(c_branch->caller_domain.c_str());
 	digest_realm = REG_NEW_STR(c_branch->digest_realm.c_str());
 	ua = REG_NEW_STR(c_branch->a_ua.c_str());
-	vlan = c_branch->vlan;
+	vlan = c_branch->vlan_first;
 	rrd_sum = 0;
 	rrd_count = 0;
 	reg_call_id = call->call_id;
@@ -616,7 +616,7 @@ void Register::update(Call *call, eRegisterState state) {
 	}
 	sipcallerport = c_branch->sipcallerport[0];
 	sipcalledport = c_branch->sipcalledport[0];
-	vlan = c_branch->vlan;
+	vlan = c_branch->vlan_first;
 	reg_call_id = call->call_id;
 	flags = call->flags;
 	if(call->reg.reg_tcp_seq) {

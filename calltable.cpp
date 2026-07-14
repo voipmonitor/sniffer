@@ -642,7 +642,8 @@ CallBranch::CallBranch(Call *call, unsigned branch_id) {
 	seenRES2XX_no_BYE = false;
 	seenRES18X = false;
 	
-	vlan = VLAN_UNSET;
+	vlan_first = VLAN_UNSET;
+	_vlan_all_lock = 0;
 	is_sipalg_detected = false;
 	
 	ipport_n = 0;
@@ -1848,9 +1849,7 @@ const char* Call::get_domain_to_not_canceled(CallBranch *c_branch, bool uri) {
 /* analyze rtcp packet */
 bool Call::read_rtcp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscaller, char enable_save_packet) {
  
-	extern int opt_vlan_siprtpsame;
-	if(opt_vlan_siprtpsame && VLAN_IS_SET(c_branch->vlan) &&
-	   packetS->pid.vlan != c_branch->vlan) {
+	if(c_branch->vlanRtpReject(packetS->pid.vlan, false)) {
 		return(false);
 	}
 
@@ -2167,15 +2166,13 @@ bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 		}
 	}
 	
-	extern int opt_vlan_siprtpsame;
 	bool rtp_read_rslt = false;
 	int curpayload;
 	
 	*record_dtmf = false;
 	*disable_save = false;
 	
-	if(opt_vlan_siprtpsame && VLAN_IS_SET(c_branch->vlan) &&
-	   packetS->pid.vlan != c_branch->vlan) {
+	if(c_branch->vlanRtpReject(packetS->pid.vlan, true)) {
 		*disable_save = true;
 		return(false);
 	}
@@ -4957,7 +4954,7 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		rfield->set(useSensorId);
 		break;
 	case cf_vlan:
-		rfield->set(branch_main()->vlan);
+		rfield->set(branch_main()->getVlan());
 		break;
 	default:
 		break;
@@ -7395,8 +7392,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 	}
 	if(existsColumns.cdr_vlan) {
-		if(VLAN_IS_SET(c_branch->vlan)) {
-			cdr.add(c_branch->vlan, "vlan");
+		u_int16_t vlan = c_branch->getVlan();
+		if(VLAN_IS_SET(vlan)) {
+			cdr.add(vlan, "vlan");
 		} else {
 			cdr.add(0, "vlan", true);
 		}
@@ -10380,8 +10378,8 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		msg.add(content_length, "content_length");
 	}
 
-	if(existsColumns.message_vlan && VLAN_IS_SET(c_branch->vlan)) {
-		msg.add(c_branch->vlan, "vlan");
+	if(existsColumns.message_vlan && VLAN_IS_SET(c_branch->vlan_first)) {
+		msg.add(c_branch->vlan_first, "vlan");
 	}
 
 	msg.add(c_branch->lastSIPresponseNum, "lastSIPresponseNum");

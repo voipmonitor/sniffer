@@ -3266,7 +3266,7 @@ void FraudAlerts::completeCallInfo(sFraudCallInfo *callInfo, Call *call,
 	callInfo->caller_domain = c_branch->caller_domain;
 	callInfo->called_domain = call->get_called_domain(c_branch);
 	callInfo->a_ua = c_branch->a_ua;
-	callInfo->vlan = c_branch->vlan;
+	callInfo->vlan = c_branch->getVlan();
 	if(useUserRestriction_custom_headers) {
 		extern CustomHeaders *custom_headers_cdr;
 		callInfo->custom_headers = new FILE_LINE(0) map<string, string>;

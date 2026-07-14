@@ -83,7 +83,7 @@ public:
 		case cf_called_international:
 			return(!isLocalByPhoneNumber(((Call*)rec)->get_called(((Call*)rec)->branch_main()), ((Call*)rec)->getSipcalledip(((Call*)rec)->branch_main(), true, true)));
 		case cf_vlan:
-			return(((Call*)rec)->branch_main()->vlan);
+			return(((Call*)rec)->branch_main()->getVlan());
 		}
 		return(0);
 	}

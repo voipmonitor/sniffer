@@ -39,6 +39,7 @@
 #include "dtls.h"
 #include "ipfix.h"
 #include "rtcp.h"
+#include "header_packet.h"
 
 
 #define MAX_IP_PER_CALL 40	//!< total maxumum of SDP sessions for one call-id
@@ -665,6 +666,63 @@ public:
 	int64_t get_min_response_100_time_us();
 	int64_t get_min_response_xxx_time_us();
 	string get_sip_packets_info_json();
+	inline void vlan_all_lock() {
+		__SYNC_LOCK(this->_vlan_all_lock);
+	}
+	inline void vlan_all_unlock() {
+		__SYNC_UNLOCK(this->_vlan_all_lock);
+	}
+	inline void vlanAllAdd(u_int16_t vlan_add) {
+		vlan_all_lock();
+		if(vlan_all.find(vlan_add) == vlan_all.end()) {
+			vlan_all[vlan_add] = 0;
+		}
+		vlan_all_unlock();
+	}
+	inline bool vlanAllMatch(u_int16_t vlan_check, bool count) {
+		vlan_all_lock();
+		bool rslt;
+		if(vlan_all.empty()) {
+			rslt = true;
+		} else {
+			map<u_int16_t, u_int64_t>::iterator iter = vlan_all.find(vlan_check);
+			rslt = iter != vlan_all.end();
+			if(rslt && count) {
+				++iter->second;
+			}
+		}
+		vlan_all_unlock();
+		return(rslt);
+	}
+	inline u_int16_t getVlan() {
+		if(vlan_all.empty()) {
+			return(vlan_first);
+		}
+		u_int16_t best = vlan_first;
+		u_int64_t best_count = 0;
+		vlan_all_lock();
+		for(map<u_int16_t, u_int64_t>::iterator iter = vlan_all.begin(); iter != vlan_all.end(); iter++) {
+			if(iter->second > best_count) {
+				best_count = iter->second;
+				best = iter->first;
+			}
+		}
+		vlan_all_unlock();
+		return(best);
+	}
+	inline bool vlanRtpReject(u_int16_t vlan_check, bool count) {
+		extern int opt_vlan_siprtpsame;
+		if(opt_vlan_siprtpsame) {
+			if(opt_vlan_siprtpsame == 2) {
+				if(!vlanAllMatch(vlan_check, count)) {
+					return(true);
+				}
+			} else if(VLAN_IS_SET(vlan_first) && vlan_check != vlan_first) {
+				return(true);
+			}
+		}
+		return(false);
+	}
 public:
 
 	Call *call;
@@ -786,7 +844,9 @@ public:
 	bool seenRES2XX_no_BYE;
 	bool seenRES18X;
 	
-	u_int16_t vlan;
+	u_int16_t vlan_first;
+	map<u_int16_t, u_int64_t> vlan_all;
+	volatile int _vlan_all_lock;
 	bool is_sipalg_detected;
 	
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];

@@ -3900,7 +3900,7 @@ inline bool init_call_branch(Call *call, CallBranch *c_branch, packet_s_process 
 	c_branch->lastsrcip = packetS->saddr_();
 	c_branch->lastdstip = packetS->daddr_();
 	c_branch->lastsrcport = packetS->source_();
-	c_branch->vlan = packetS->pid.vlan;
+	c_branch->vlan_first = packetS->pid.vlan;
 
 	if(sip_method == INVITE or sip_method == REGISTER or sip_method == MESSAGE) {
 		char *s;
@@ -4987,6 +4987,10 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 	}
 	
 	if(packetS->sip_method == INVITE || (opt_sip_message && packetS->sip_method == MESSAGE)) {
+		extern int opt_vlan_siprtpsame;
+		if(opt_vlan_siprtpsame == 2 && packetS->sip_method == INVITE && VLAN_IS_SET(packetS->pid.vlan)) {
+			c_branch->vlanAllAdd(packetS->pid.vlan);
+		}
 		++call->invite_packets_counter;
 		if(opt_max_invite_packets_in_call > 0 && call->invite_packets_counter > opt_max_invite_packets_in_call) {
 			if(call->invite_packets_counter == opt_max_invite_packets_in_call + 1) {
