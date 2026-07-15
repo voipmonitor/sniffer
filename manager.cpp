@@ -3992,7 +3992,7 @@ int Mgmt_active_call_info(Mgmt_params *params) {
 
 int Mgmt_active_call_pcap(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("active_call_pcap", "get pcap of active call");
+		params->registerCommand("active_call_pcap", "get sip or rtp pcap of active call");
 		return(0);
 	}
 	if(!calltable) {
@@ -4004,6 +4004,7 @@ int Mgmt_active_call_pcap(Mgmt_params *params) {
 	string callreference_str;
 	bool zip = false;
 	string end_string;
+	string content_str;
 	char params_str[1000];
 	params_str[0] = 0;
 	sscanf(params->buf, "active_call_pcap %999[^\n\r]", params_str);
@@ -4014,6 +4015,7 @@ int Mgmt_active_call_pcap(Mgmt_params *params) {
 		string zip_str = jsonParams.getValue("zip");
 		zip = yesno(zip_str.c_str()) || is_true(zip_str.c_str());
 		end_string = jsonParams.getValue("end");
+		content_str = jsonParams.getValue("content");
 	} else {
 		callreference_str = params_str;
 	}
@@ -4024,6 +4026,10 @@ int Mgmt_active_call_pcap(Mgmt_params *params) {
 	params->zip = zip;
 	extern int opt_newdir;
 	extern int opt_pcap_split;
+	bool rtp_content = enable_pcap_split && strcasecmp(content_str.c_str(), "rtp") == 0;
+	eTypeSpoolFile content_tsf = rtp_content ? tsf_rtp : tsf_sip;
+	FileZipHandler::eTypeFile content_pos = rtp_content ? FileZipHandler::pcap_rtp : FileZipHandler::pcap_sip;
+	int content_qtype = rtp_content ? 2 : 1;
 	volatile bool *flush_done = new FILE_LINE(0) volatile bool;
 	*flush_done = false;
 	bool flush_started = false;
@@ -4037,11 +4043,11 @@ int Mgmt_active_call_pcap(Mgmt_params *params) {
 	calltable->lock_calls_listMAP();
 	Call *call = calltable->find_by_reference(callreference, false);
 	if(call) {
-		PcapDumper *dumper = enable_pcap_split ? call->getPcapSip() : call->getPcap();
+		PcapDumper *dumper = !enable_pcap_split ? call->getPcap() : rtp_content ? call->getPcapRtp() : call->getPcapSip();
 		if(dumper->isOpen()) {
 			is_tar = dumper->isTar();
 			if(is_tar) {
-				dt.set(tsf_sip, call, dumper->getFileName().c_str());
+				dt.set(content_tsf, call, dumper->getFileName().c_str());
 				spoolIndex = call->getSpoolIndex();
 				filename_in_tar = dt.filename;
 				flush_started = dumper->flushToTar(flush_done);
@@ -4050,7 +4056,7 @@ int Mgmt_active_call_pcap(Mgmt_params *params) {
 				flush_started = dumper->flushToDisk(flush_done);
 			}
 		} else {
-			error = "sip pcap is not open";
+			error = rtp_content ? "rtp pcap is not open" : "sip pcap is not open";
 		}
 	} else {
 		error = "call not found";
@@ -4059,7 +4065,7 @@ int Mgmt_active_call_pcap(Mgmt_params *params) {
 	if(error.empty() && is_tar) {
 		extern TarQueue *tarQueue[2];
 		if(spoolIndex >= 0 && spoolIndex < 2 && tarQueue[spoolIndex]) {
-			tar_pathname = tarQueue[spoolIndex]->getTarPathname(1, &dt);
+			tar_pathname = tarQueue[spoolIndex]->getTarPathname(content_qtype, &dt);
 		}
 	}
 	if(error.empty() && is_tar && tar_pathname.empty()) {
@@ -4078,7 +4084,7 @@ int Mgmt_active_call_pcap(Mgmt_params *params) {
 			calltable->lock_calls_listMAP();
 			call = calltable->find_by_reference(callreference, false);
 			if(call) {
-				tar_pos_string = call->getTarPosStr(FileZipHandler::pcap_sip);
+				tar_pos_string = call->getTarPosStr(content_pos);
 			} else {
 				error = "call not found";
 			}
