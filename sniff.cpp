@@ -1692,6 +1692,10 @@ inline char * gettag_sip_from(packet_s_process *packetS, const char *from,
 	return(rslt);
 }
 
+inline char * gettag_sip_ua(packet_s_process *packetS, unsigned long *gettaglen) {
+	return(gettag_sip(packetS, "\nUser-Agent:", "\nServer:", gettaglen));
+}
+
 enum peername_rslt_type {
 	_prefer_domain = 1,
 	_prefer_number = 2
@@ -3962,7 +3966,7 @@ inline bool init_call_branch(Call *call, CallBranch *c_branch, packet_s_process 
 */			}
 
 			// copy contact num <sip:num@domain>
-			s = gettag_sip(packetS, "\nUser-Agent:", &l);
+			s = gettag_sip_ua(packetS, &l);
 			if(s) {
 				c_branch->a_ua = string(s, l);
 				if(sverb.set_ua) {
@@ -4623,7 +4627,7 @@ void process_ua(Call */*call*/, CallBranch *c_branch, packet_s_process *packetS,
 	unsigned long l;
 	char *s;
 	if(iscaller > 0 && c_branch->b_ua.empty()) {
-		s = gettag_sip(packetS, "\nUser-Agent:", &l);
+		s = gettag_sip_ua(packetS, &l);
 		if(s) {
 			c_branch->b_ua = string(s, l);
 			if(sverb.set_ua) {
@@ -4632,7 +4636,7 @@ void process_ua(Call */*call*/, CallBranch *c_branch, packet_s_process *packetS,
 		}
 	}
 	if(iscalled > 0 && c_branch->a_ua.empty()) {
-		s = gettag_sip(packetS, "\nUser-Agent:", &l);
+		s = gettag_sip_ua(packetS, &l);
 		if(s) {
 			c_branch->a_ua = string(s, l);
 			if(sverb.set_ua) {
@@ -4746,7 +4750,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 		if(opt_enable_fraud && isFraudReady()) {
 			char *ua = NULL;
 			unsigned long ua_len = 0;
-			ua = gettag_sip(packetS, "\nUser-Agent:", &ua_len);
+			ua = gettag_sip_ua(packetS, &ua_len);
 			fraudSipPacket(packetS->saddr_(), packetS->daddr_(), packetS->sip_method, packetS->getTimeval(), ua, ua_len);
 		}
 		if(logPacketSipMethodCall_enable) {
@@ -5172,7 +5176,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 	if(opt_enable_fraud && isFraudReady()) {
 		char *ua = NULL;
 		unsigned long ua_len = 0;
-		ua = gettag_sip(packetS, "\nUser-Agent:", &ua_len);
+		ua = gettag_sip_ua(packetS, &ua_len);
 		fraudSipPacket(packetS->saddr_(), packetS->daddr_(),
 			       packetS->sip_method == INVITE && (existInviteSdaddr || existRInviteSdaddr) ? REINVITE : packetS->sip_method,
 			       packetS->getTimeval(), ua, ua_len);
@@ -6635,7 +6639,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 	if(opt_enable_fraud && isFraudReady()) {
 		char *ua = NULL;
 		unsigned long ua_len = 0;
-		ua = gettag_sip(packetS, "\nUser-Agent:", &ua_len);
+		ua = gettag_sip_ua(packetS, &ua_len);
 		fraudSipPacket(packetS->saddr_(), packetS->daddr_(), packetS->sip_method, packetS->getTimeval(), ua, ua_len);
 	}
 			
@@ -6666,7 +6670,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		if(opt_enable_fraud && isFraudReady()) {
 			char *ua = NULL;
 			unsigned long ua_len = 0;
-			ua = gettag_sip(packetS, "\nUser-Agent:", &ua_len);
+			ua = gettag_sip_ua(packetS, &ua_len);
 			fraudRegister(packetS->saddr_(), packetS->daddr_(), packetS->getTimeval(), ua, ua_len,
 				      packetS);
 		}
@@ -6984,7 +6988,7 @@ endsip:
 	}
 	
 	if(call && c_branch && packetS->sip_method != REGISTER) {
-		s = gettag_sip(packetS, "\nUser-Agent:", &l);
+		s = gettag_sip_ua(packetS, &l);
 		if(s) {
 			c_branch->b_ua = string(s, l);
 			if(sverb.set_ua) {
@@ -7049,7 +7053,7 @@ void process_packet_sip_other_sip_msg(packet_s_process *packetS) {
 	sipMsg->callername = data_callerd.callername;
 
 	long unsigned int ua_len;
-	char *ua = gettag_sip(packetS, "\nUser-Agent:", &ua_len);
+	char *ua = gettag_sip_ua(packetS, &ua_len);
 	if(ua) {
 		sipMsg->ua = string(ua, ua_len);
 	}

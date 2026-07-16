@@ -4567,6 +4567,7 @@ void ParsePacket::setStdParse() {
 	}
 	addNode("geoposition:");
 	addNode("user-agent:");
+	addNode("server:");
 	addNode("authorization:");
 	addNode("proxy-authorization:");
 	addNode("expires:");
