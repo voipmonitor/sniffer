@@ -236,6 +236,7 @@ public:
 	void add_duration(u_int64_t duration_us, string fieldName, bool use_ms, bool round_s = false, u_int64_t limit = 0);
 	void add_duration(int64_t duration_us, string fieldName, bool use_ms, bool round_s = false, int64_t limit = 0);
 	void add_cb_string(string content, string fieldName, int cb_type);
+	string add_id_or_insert(string fieldName, const char *sqlFunc, string varName, string funcArgsPrefix, string value, const char *table, const char *column);
 	void add_null(string fieldName) {
 		row.push_back(SqlDb_rowField(NULL, fieldName));
 	}
@@ -299,8 +300,9 @@ public:
 	}
 	string implodeFields(string separator = ",", string border = "");
 	string implodeFieldsToCsv();
-	string implodeContent(string separator = ",", string border = "'", bool enableSqlString = false, bool escapeAll = false, bool escapeAllBinary = false);
-	string implodeFieldContent(string separator = ",", string fieldBorder = "`", string contentBorder = "'", bool enableSqlString = false, bool escapeAll = false);
+	string implodeContent(string separator = ",", string border = "'", bool enableSqlString = false, bool escapeAll = false, bool escapeAllBinary = false, const char *table = NULL);
+	string implodeFieldContent(string separator = ",", string fieldBorder = "`", string contentBorder = "'", bool enableSqlString = false, bool escapeAll = false, const char *table = NULL);
+	bool contentLatin1Utf(size_t index, const char *table, int charset_max_mb, bool escapeAll, string &rslt);
 	string implodeContentTypeToCsv(bool enableSqlString = false);
 	string keyvalList(string separator);
 	size_t getCountFields();
@@ -423,9 +425,12 @@ public:
 	virtual string getCsvResult() { return(""); }
 	virtual string getJsonError() { return(""); }
 	virtual string getFieldsStr(list<SqlDb_field> *fields);
-	virtual string getCondStr(list<SqlDb_condField> *cond, bool forceLatin1 = false);
+	virtual string getCondStr(list<SqlDb_condField> *cond, const char *table = NULL, bool forceLatin1 = false);
 	virtual string selectQuery(string table, list<SqlDb_field> *fields = NULL, list<SqlDb_condField> *cond = NULL, unsigned limit = 0, bool forceLatin1 = false);
 	virtual string selectQuery(string table, const char *field, const char *condField = NULL, const char *condValue = NULL, unsigned limit = 0, bool forceLatin1 = false);
+	virtual bool getTableColumnsCharset(const char *table, map<string, string> &out) = 0;
+	static string getColumnCharset(const char *table, const char *column);
+	static bool existsCharsetTable(const char *table);
 	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false, SqlDb_row *row_on_duplicate = NULL);
 	virtual string insertOrUpdateQuery(string table, SqlDb_row row, SqlDb_row row_on_duplicate, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string insertQuery(string table, vector<SqlDb_row> *rows, int insertParams = 0);
@@ -788,6 +793,8 @@ public:
 	void createTable(const char *tableName);
 	void checkDbMode();
 	void checkSchema(int connectId = 0, bool enableAlter = true);
+	void loadTablesCharset();
+	bool getTableColumnsCharset(const char *table, map<string, string> &out);
 	void updateSensorState();
 	void checkColumns_cdr(bool enableAlter);
 	void checkColumns_cdr_next(bool enableAlter);
@@ -881,6 +888,10 @@ public:
 	bool testCreateTable(bool memoryEngine, const char *compressType);
 	void setSelectedCompressType(bool memoryEngine, const char *type, const char *subtype = NULL);
 private:
+	string routineParamCanonical(string type);
+	string routineTypeFromParam(string paramItem, bool hasName);
+	string routineParamsCanonicalFromDb(string routineName, eRoutineType routineType);
+	string routineParamsCanonicalFromDefinition(string routineParamsAndReturn);
 	MYSQL *hMysql;
 	MYSQL *hMysqlConn;
 	MYSQL_RES *hMysqlRes;
@@ -958,6 +969,7 @@ public:
 	void createTable(const char *tableName);
 	void checkDbMode();
 	void checkSchema(int connectId = 0, bool enableAlter = true);
+	bool getTableColumnsCharset(const char *table, map<string, string> &out);
 	void updateSensorState();
 	string getTypeDb() {
 		return("odbc");
@@ -1516,6 +1528,50 @@ struct sExistsColumns {
 	bool ssl_sessions_id_sensor_is_unsigned;
 	bool cache_number_location_ua;
 	bool cache_number_domain_location_ua;
+};
+
+struct sTablesCharset {
+	sTablesCharset() {
+		sync = 0;
+	}
+	bool getColumns(const char *table, map<string, string> &out) {
+		bool found;
+		__SYNC_LOCK(sync);
+		map<string, map<string, string> >::iterator iter = charset.find(table);
+		found = iter != charset.end();
+		if(found) {
+			out = iter->second;
+		}
+		__SYNC_UNLOCK(sync);
+		return(found);
+	}
+	bool existsTable(const char *table) {
+		bool found;
+		__SYNC_LOCK(sync);
+		found = charset.find(table) != charset.end();
+		__SYNC_UNLOCK(sync);
+		return(found);
+	}
+	string get(const char *table, const char *column) {
+		string rslt;
+		__SYNC_LOCK(sync);
+		map<string, map<string, string> >::iterator iter_table = charset.find(table);
+		if(iter_table != charset.end()) {
+			map<string, string>::iterator iter_column = iter_table->second.find(column);
+			if(iter_column != iter_table->second.end()) {
+				rslt = iter_column->second;
+			}
+		}
+		__SYNC_UNLOCK(sync);
+		return(rslt);
+	}
+	void swapData(map<string, map<string, string> > &data) {
+		__SYNC_LOCK(sync);
+		charset.swap(data);
+		__SYNC_UNLOCK(sync);
+	}
+	map<string, map<string, string> > charset;
+	volatile int sync;
 };
 
 class cLogSensor {

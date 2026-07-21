@@ -177,7 +177,8 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 	string stringValueInputSafe;
 	extern cUtfConverter utfConverter;
 	#ifdef CLOUD_ROUTER_CLIENT
-	if(!(useSetId() ? utfConverter.is_ascii(stringValueInput) : utfConverter.check(stringValueInput))) {
+	extern bool opt_mysql_codebook_utf_in_set_id_mode;
+	if(!((useSetId() && !opt_mysql_codebook_utf_in_set_id_mode) ? utfConverter.is_ascii(stringValueInput) : utfConverter.check(stringValueInput))) {
 		stringValueInputSafe = utfConverter.remove_no_ascii(stringValueInput);
 	} else {
 		stringValueInputSafe = stringValueInput;
@@ -192,7 +193,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 	#endif
 	string stringValue = stringValueInputSafe;
 	if(!caseSensitive) {
-		std::transform(stringValue.begin(), stringValue.end(), stringValue.begin(), ::toupper);
+		stringValue = utfConverter.toUpper(stringValue.c_str());
 	}
 	if(data_overflow) {
 		return(0);
@@ -265,6 +266,9 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 					if(forceLatin1 == 1 ||
 					   sqlDb->getLastError() != ER_CANT_AGGREGATE_2COLLATIONS) {
 						sqlDb->checkLastError("query error in [" + sqlDb->selectQuery(table, NULL, &cond, 1, forceLatin1 == 1) + "]", true);
+					}
+					if(forceLatin1 == 0 && sqlDb->getLastError() != ER_CANT_AGGREGATE_2COLLATIONS) {
+						break;
 					}
 				}
 				sqlDb->setEnableLogError();
@@ -393,6 +397,7 @@ unsigned cSqlDbCodebook::convId(unsigned old_id, cSqlDbCodebook *cb_dst) {
 }
 
 void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow, SqlDb *sqlDb) {
+	extern cUtfConverter utfConverter;
 	lastBeginLoadTime = getTimeS();
 	data->clear();
 	bool _createSqlObject = false;
@@ -434,7 +439,7 @@ void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow, SqlDb *s
 					}
 					unsigned id = atol(row[columnId].c_str());
 					if(!caseSensitive) {
-						std::transform(stringValue.begin(), stringValue.end(), stringValue.begin(), ::toupper);
+						stringValue = utfConverter.toUpper(stringValue.c_str());
 					}
 					(*data)[stringValue] = id;
 					if(load_normalisation && this->limitTableRows && data->size() > this->limitTableRows) {
@@ -470,7 +475,7 @@ void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow, SqlDb *s
 				string stringValue = (*rows)[i][columnStringValue].str;
 				unsigned id = atol((*rows)[i][columnId].str.c_str());
 				if(!caseSensitive) {
-					std::transform(stringValue.begin(), stringValue.end(), stringValue.begin(), ::toupper);
+					stringValue = utfConverter.toUpper(stringValue.c_str());
 				}
 				(*data)[stringValue] = id;
 			}
@@ -485,6 +490,7 @@ void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow, SqlDb *s
 
 void cSqlDbCodebook::_load(map<unsigned, string> *data_r, SqlDb *sqlDb) {
 	#ifdef CLOUD_ROUTER_CLIENT
+	extern cUtfConverter utfConverter;
 	lastBeginLoadTime = getTimeS();
 	data_r->clear();
 	bool _createSqlObject = false;
@@ -500,7 +506,7 @@ void cSqlDbCodebook::_load(map<unsigned, string> *data_r, SqlDb *sqlDb) {
 			string stringValue = row[columnStringValue];
 			unsigned id = atol(row[columnId].c_str());
 			if(!caseSensitive) {
-				std::transform(stringValue.begin(), stringValue.end(), stringValue.begin(), ::toupper);
+				stringValue = utfConverter.toUpper(stringValue.c_str());
 			}
 			(*data_r)[id] = stringValue;
 		}
@@ -897,6 +903,28 @@ void _sqlEscapeString(const char *inputStr, int length, char *outputStr, const c
 	if(checkUtf && !utfConverter.check(outputStr)) {
 		utfConverter._remove_no_ascii(outputStr);
 	}
+}
+
+string _sqlUnescapeString(const char *inputStr, int length) {
+	string rslt;
+	rslt.reserve(length);
+	for(int i = 0; i < length; i++) {
+		if(inputStr[i] == '\\' && i + 1 < length) {
+			switch(inputStr[i + 1]) {
+			case '0': rslt += (char)0x00; i++; break;
+			case 'n': rslt += '\n'; i++; break;
+			case 'r': rslt += '\r'; i++; break;
+			case 'Z': rslt += (char)0x1A; i++; break;
+			case '\'':
+			case '"':
+			case '\\': rslt += inputStr[i + 1]; i++; break;
+			default: rslt += inputStr[i]; break;
+			}
+		} else {
+			rslt += inputStr[i];
+		}
+	}
+	return(rslt);
 }
 
 string sqlEscapeStringBorder(string inputStr, char borderChar, const char *typeDb) {
@@ -1335,4 +1363,22 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, cDbCalls
 		}
 	}
 	#endif
+}
+
+string mysqlCharsetSafe() {
+	extern char opt_mysql_charset[256];
+	string charset = strlwr(opt_mysql_charset[0] ? opt_mysql_charset : "utf8");
+	for(size_t i = 0; i < charset.length(); i++) {
+		if(!((charset[i] >= 'a' && charset[i] <= 'z') ||
+		     (charset[i] >= '0' && charset[i] <= '9') || charset[i] == '_')) {
+			return("utf8");
+		}
+	}
+	return(charset);
+}
+
+int mysqlCharsetMaxMb() {
+	string charset = mysqlCharsetSafe();
+	return(charset == "utf8mb4" ? 4 :
+	       charset == "utf8" || charset == "utf8mb3" ? 3 : 1);
 }

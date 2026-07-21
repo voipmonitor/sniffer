@@ -923,9 +923,7 @@ u_int8_t Register::saveNewStateToDb(RegisterState *state) {
 				if(_cb_id) {
 					reg.add(_cb_id, "ua_id");
 				} else {
-					query_str += MYSQL_ADD_QUERY_END(string("set @ua_id = ") + 
-						     "getIdOrInsertUA(" + sqlEscapeStringBorder(adj_ua) + ")");
-					reg.add(MYSQL_VAR_PREFIX + "@ua_id", "ua_id");
+					query_str += reg.add_id_or_insert("ua_id", "getIdOrInsertUA", "ua_id", "", adj_ua, "cdr_ua", "ua");
 				}
 			}
 		}

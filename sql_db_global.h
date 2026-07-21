@@ -271,6 +271,17 @@ inline string sqlEscapeString_limit(string inputStr, unsigned limitLength, const
 string sqlEscapeStringBorder(string inputStr, char borderChar = '\'', const char *typeDb = NULL);
 string sqlEscapeStringBorder(const char *inputStr, char borderChar = '\'', const char *typeDb = NULL);
 
+string _sqlUnescapeString(const char *inputStr, int length);
+inline string sqlUnescapeString(const char *inputStr, int length = 0) {
+	if(!length) {
+		length = strlen(inputStr);
+	}
+	return(_sqlUnescapeString(inputStr, length));
+}
+inline string sqlUnescapeString(string inputStr) {
+	return(_sqlUnescapeString(inputStr.c_str(), inputStr.length()));
+}
+
 
 #define _MYSQL_QUERY_END_new "_\\_'QE'_\\_;\n"
 #define _MYSQL_QUERY_END_old ";\n"
@@ -324,6 +335,8 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, cDbCalls
 			     int cdr_check_exists_callid,
 			     #endif
 			     long unsigned maxAllowedPacket);
+string mysqlCharsetSafe();
+int mysqlCharsetMaxMb();
 
 
 #endif

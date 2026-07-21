@@ -1208,8 +1208,11 @@ public:
 	int get_max_mb(const char *str);
 	void _replace_exceeding_utf8_mb(const char *str, unsigned max_mb, const char subst = '_');
 	string replace_exceeding_utf8_mb(const char *str, unsigned max_mb, const char subst = '_');
+	string fixMojibakeUtf8(const char *str);
+	string toUpper(const char *str);
 private:
 	bool init();
+	void initMojibakeRevMap();
 	void term();
 	void lock() {
 		__SYNC_LOCK_USLEEP(_sync_lock, 100);
@@ -1221,6 +1224,7 @@ private:
 	UConverter *cnv_utf8;
 	bool init_ok;
 	volatile int _sync_lock;
+	map<string, string> mojibakeRevMap;
 };
 
 

@@ -112,7 +112,6 @@ extern char mysql_2_socket[256];
 extern mysqlSSLOptions optMySsl_2;
 
 extern char opt_mysql_timezone[256];
-extern char opt_mysql_charset[256];
 extern int opt_mysql_client_compress;
 extern int opt_skiprtpdata;
 
@@ -165,6 +164,7 @@ bool opt_cdr_summary_partition_oldver[2] = { false, false };
 bool opt_rtp_stat_partition_oldver = false;
 bool opt_log_sensor_partition_oldver = false;
 sExistsColumns existsColumns;
+sTablesCharset tablesCharset;
 SqlDb::eSupportPartitions supportPartitions = SqlDb::_supportPartitions_ok;
 
 cSqlDbData *dbData;
@@ -181,6 +181,9 @@ map<int, u_int64_t> _query_to_file_cnt;
 map<int, u_int64_t> _loadFromQFile_cnt;
 map<int, u_int64_t> _charts_cache_cnt;
 #endif
+
+
+static string likeAsciiPrefix(const char *value);
 
 
 string SqlDb_row::SqlDb_rowField::getContentForCsv() {
@@ -303,6 +306,31 @@ void SqlDb_row::add_cb_string(string content, string fieldName, int cb_type) {
 	    ->ifv.cb_type = cb_type;
 }
 
+string SqlDb_row::add_id_or_insert(string fieldName, const char *sqlFunc, string varName, string funcArgsPrefix, string value, const char *table, const char *column) {
+	extern bool opt_mysql_latin1_utf_bytes;
+	extern cUtfConverter utfConverter;
+	bool utf = opt_mysql_latin1_utf_bytes && !utfConverter.is_ascii(value.c_str()) &&
+		   SqlDb::getColumnCharset(table, column) == "latin1";
+	if(utf && utfConverter.get_max_mb(value.c_str()) < 0) {
+		value = utfConverter.replace_exceeding_utf8_mb(value.c_str(), 4);
+	}
+	this->add(MYSQL_VAR_PREFIX + "@" + varName, fieldName);
+	string funcCall;
+	if(utf) {
+		int charset_max_mb = mysqlCharsetMaxMb();
+		int content_max_mb = utfConverter.get_max_mb(value.c_str());
+		string prefixArg = sqlEscapeStringBorder(likeAsciiPrefix(value.c_str()));
+		if(content_max_mb >= 1 && content_max_mb <= charset_max_mb) {
+			funcCall = string(sqlFunc) + "_utf(" + funcArgsPrefix + sqlEscapeStringBorder(value) + ", " + prefixArg + ")";
+		} else {
+			funcCall = string(sqlFunc) + "_utf_hex(" + funcArgsPrefix + "'" + hexencode((unsigned char*)value.c_str(), value.length()) + "', " + prefixArg + ")";
+		}
+	} else {
+		funcCall = string(sqlFunc) + "(" + funcArgsPrefix + sqlEscapeStringBorder(value) + ")";
+	}
+	return(MYSQL_ADD_QUERY_END(string("set @") + varName + " = " + funcCall));
+}
+
 int SqlDb_row::_getIndexField(string fieldName) {
 	return(this->sqlDb->getIndexField(fieldName));
 }
@@ -327,7 +355,31 @@ string SqlDb_row::implodeFieldsToCsv() {
 	return(implodeFields(",", "\""));
 }
 
-string SqlDb_row::implodeContent(string separator, string border, bool enableSqlString, bool escapeAll, bool escapeAllBinary) {
+bool SqlDb_row::contentLatin1Utf(size_t index, const char *table, int charset_max_mb, bool escapeAll, string &rslt) {
+	extern cUtfConverter utfConverter;
+	if(!table || utfConverter.is_ascii(this->row[index].content.c_str())) {
+		return(false);
+	}
+	if(SqlDb::getColumnCharset(table, this->row[index].fieldName.c_str()) != "latin1") {
+		return(false);
+	}
+	string content = utfConverter.get_max_mb(this->row[index].content.c_str()) < 0 ?
+			 utfConverter.replace_exceeding_utf8_mb(this->row[index].content.c_str(), 4) :
+			 this->row[index].content;
+	int content_max_mb = utfConverter.get_max_mb(content.c_str());
+	if(content_max_mb >= 1 && content_max_mb <= charset_max_mb) {
+		rslt += "UNHEX(HEX('";
+		rslt += escapeAll ? sqlEscapeString(content) : content;
+		rslt += "'))";
+	} else {
+		string content_raw = escapeAll ? content : sqlUnescapeString(content);
+		rslt += "UNHEX('" + hexencode((unsigned char*)content_raw.c_str(), content_raw.length()) + "')";
+	}
+	return(true);
+}
+
+string SqlDb_row::implodeContent(string separator, string border, bool enableSqlString, bool escapeAll, bool escapeAllBinary, const char *table) {
+	int charset_max_mb = table ? mysqlCharsetMaxMb() : 0;
 	string rslt;
 	rslt.reserve(this->row.size() * 100);
 	for(size_t i = 0; i < this->row.size(); i++) {
@@ -344,6 +396,7 @@ string SqlDb_row::implodeContent(string separator, string border, bool enableSql
 			rslt += fieldContent;
 		} else if(escapeAllBinary && (this->row[i].flags & 128)) {
 			rslt += "UNHEX('" + hexencode((unsigned char*)this->row[i].content.c_str(), this->row[i].content.length()) + "')";
+		} else if(!escapeAllBinary && this->contentLatin1Utf(i, table, charset_max_mb, escapeAll, rslt)) {
 		} else {
 			rslt += border;
 			rslt += escapeAllBinary ? _sqlEscapeString(this->row[i].content.c_str(), this->row[i].content.length(), NULL) :
@@ -354,7 +407,8 @@ string SqlDb_row::implodeContent(string separator, string border, bool enableSql
 	return(rslt);
 }
 
-string SqlDb_row::implodeFieldContent(string separator, string fieldBorder, string contentBorder, bool enableSqlString, bool escapeAll) {
+string SqlDb_row::implodeFieldContent(string separator, string fieldBorder, string contentBorder, bool enableSqlString, bool escapeAll, const char *table) {
+	int charset_max_mb = table ? mysqlCharsetMaxMb() : 0;
 	string rslt;
 	for(size_t i = 0; i < this->row.size(); i++) {
 		if(i) { rslt += separator; }
@@ -370,6 +424,7 @@ string SqlDb_row::implodeFieldContent(string separator, string fieldBorder, stri
 			string nameValue = dbData->getCbNameForType((cSqlDbCodebook::eTypeCodebook)this->row[i].ifv.cb_type) + ";" + this->row[i].content;
 			string fieldContent = MYSQL_CODEBOOK_ID_PREFIX + intToString(nameValue.length()) + ":" + nameValue;
 			rslt += fieldContent;
+		} else if(this->contentLatin1Utf(i, table, charset_max_mb, escapeAll, rslt)) {
 		} else {
 			rslt += contentBorder + 
 				(escapeAll ? sqlEscapeString(this->row[i].content) : this->row[i].content) + 
@@ -1066,21 +1121,41 @@ string SqlDb::getFieldsStr(list<SqlDb_field> *fields) {
 	return(fieldsStr);
 }
 
-string SqlDb::getCondStr(list<SqlDb_condField> *cond, bool forceLatin1) {
+string SqlDb::getCondStr(list<SqlDb_condField> *cond, const char *table, bool forceLatin1) {
+	extern bool opt_mysql_latin1_utf_bytes;
+	extern cUtfConverter utfConverter;
 	string condStr;
 	for(list<SqlDb_condField>::iterator iter = cond->begin(); iter != cond->end(); iter++) {
 		if(!condStr.empty()) {
 			condStr += " and ";
 		}
-		condStr += iter->needEscapeField ?
-			    getFieldBorder() + iter->field + getFieldBorder() :
-			    iter->field;
-		condStr += iter->oper.empty() ? " = " : " " + iter->oper + " ";
-		condStr += iter->needEscapeValue ?
-			    (forceLatin1 ? "convert(" : "") +
-			    getContentBorder() + escape(iter->value.c_str()) + getContentBorder()  +
-			    (forceLatin1 ? "using latin1)" : "") :
-			    iter->value;
+		string field = iter->needEscapeField ?
+			       getFieldBorder() + iter->field + getFieldBorder() :
+			       iter->field;
+		if(iter->needEscapeValue && iter->oper.empty() && opt_mysql_latin1_utf_bytes && table &&
+		   !utfConverter.is_ascii(iter->value.c_str()) &&
+		   SqlDb::getColumnCharset(table, iter->field.c_str()) == "latin1") {
+			string value = utfConverter.get_max_mb(iter->value.c_str()) < 0 ?
+				       utfConverter.replace_exceeding_utf8_mb(iter->value.c_str(), 4) :
+				       string(iter->value);
+			string prefix = likeAsciiPrefix(value.c_str());
+			if(!prefix.empty()) {
+				condStr += field + " LIKE " + getContentBorder() + escape(prefix.c_str()) + "%" + getContentBorder() + " and ";
+			}
+			int content_max_mb = utfConverter.get_max_mb(value.c_str());
+			string valExpr = content_max_mb >= 1 && content_max_mb <= mysqlCharsetMaxMb() ?
+					 "CONVERT(" + getContentBorder() + escape(value.c_str()) + getContentBorder() + " USING utf8mb4)" :
+					 "CONVERT(UNHEX('" + hexencode((unsigned char*)value.c_str(), value.length()) + "') USING utf8mb4)";
+			condStr += "CONVERT(BINARY " + field + " USING utf8mb4) = " + valExpr + " COLLATE utf8mb4_general_ci";
+		} else {
+			condStr += field;
+			condStr += iter->oper.empty() ? " = " : " " + iter->oper + " ";
+			condStr += iter->needEscapeValue ?
+				    (forceLatin1 ? "convert(" : "") +
+				    getContentBorder() + escape(iter->value.c_str()) + getContentBorder() +
+				    (forceLatin1 ? "using latin1)" : "") :
+				    iter->value;
+		}
 	}
 	return(condStr);
 }
@@ -1091,7 +1166,7 @@ string SqlDb::selectQuery(string table, list<SqlDb_field> *fields, list<SqlDb_co
 		(fields && fields->size() ? getFieldsStr(fields) : "*") + 
 		" from " + escapeTableName(table);
 	if(cond && cond->size()) {
-		query += " where " + getCondStr(cond, forceLatin1);
+		query += " where " + getCondStr(cond, table.c_str(), forceLatin1);
 	}
 	if(limit) {
 		query += " limit " + intToString(limit);
@@ -1116,13 +1191,15 @@ string SqlDb::selectQuery(string table, const char *field, const char *condField
 }
 
 string SqlDb::insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent, bool escapeAll, bool insertIgnore, SqlDb_row *row_on_duplicate) {
+	extern bool opt_mysql_latin1_utf_bytes;
+	bool latin1Table = opt_mysql_latin1_utf_bytes && existsCharsetTable(table.c_str());
 	string query = 
 		string("INSERT ") + (insertIgnore ? "IGNORE " : "") + "INTO " + escapeTableName(table) + " ( " + row.implodeFields(this->getFieldSeparator(), this->getFieldBorder()) + 
-		" ) VALUES ( " + row.implodeContent(this->getContentSeparator(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll) + " )";
+		" ) VALUES ( " + row.implodeContent(this->getContentSeparator(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll, false, latin1Table ? table.c_str() : NULL) + " )";
 	if(row_on_duplicate) {
 		query += 
 			" ON DUPLICATE KEY UPDATE " +
-			row_on_duplicate->implodeFieldContent(this->getFieldSeparator(), this->getFieldBorder(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll);
+			row_on_duplicate->implodeFieldContent(this->getFieldSeparator(), this->getFieldBorder(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll, latin1Table ? table.c_str() : NULL);
 	}
 	return(query);
 }
@@ -1139,14 +1216,16 @@ string SqlDb::insertQuery(string table, vector<SqlDb_row> *rows, int insertParam
 	bool escapeAll = insertParams & _insert_param_escapeAll;
 	bool escapeAllBinary = (insertParams & _insert_param_escapeAllBinary) == _insert_param_escapeAllBinary;
 	bool insertIgnore = insertParams & _insert_param_insertIgnore;
+	extern bool opt_mysql_latin1_utf_bytes;
+	bool latin1Table = opt_mysql_latin1_utf_bytes && existsCharsetTable(table.c_str());
 	string values = "";
 	for(size_t i = 0; i < rows->size(); i++) {
-		values += "( " + (*rows)[i].implodeContent(this->getContentSeparator(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll, escapeAllBinary) + " )";
+		values += "( " + (*rows)[i].implodeContent(this->getContentSeparator(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll, escapeAllBinary, latin1Table ? table.c_str() : NULL) + " )";
 		if(i < rows->size() - 1) {
 			values += ",";
 		}
 	}
-	string query =
+	string query = 
 		string("INSERT ") + (insertIgnore ? "IGNORE " : "") + "INTO " + escapeTableName(table) + " ( " + (*rows)[0].implodeFields(this->getFieldSeparator(), this->getFieldBorder()) +
 		" ) VALUES " + values;
 	return(query);
@@ -1157,10 +1236,12 @@ string SqlDb::insertQueryWithLimitMultiInsert(string table, vector<SqlDb_row> *r
 	if(!rows->size()) {
 		return("");
 	}
+	extern bool opt_mysql_latin1_utf_bytes;
+	bool latin1Table = opt_mysql_latin1_utf_bytes && existsCharsetTable(table.c_str());
 	string query = "";
 	string values = "";
 	for(size_t i = 0; i < rows->size(); i++) {
-		values += "( " + (*rows)[i].implodeContent(this->getContentSeparator(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll) + " )";
+		values += "( " + (*rows)[i].implodeContent(this->getContentSeparator(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll, false, latin1Table ? table.c_str() : NULL) + " )";
 		if(queriesSeparator && queriesSeparatorSubst && queriesSeparator != queriesSeparatorSubst) {
 			values = find_and_replace(values, queriesSeparator, queriesSeparatorSubst);
 		}
@@ -1180,8 +1261,10 @@ string SqlDb::insertQueryWithLimitMultiInsert(string table, vector<SqlDb_row> *r
 }
 
 string SqlDb::updateQuery(string table, SqlDb_row row, const char *whereCond, bool enableSqlStringInContent, bool escapeAll) {
+	extern bool opt_mysql_latin1_utf_bytes;
+	bool latin1Table = opt_mysql_latin1_utf_bytes && existsCharsetTable(table.c_str());
 	string query = 
-		string("UPDATE ") + escapeTableName(table) + " set " + row.implodeFieldContent(this->getFieldSeparator(), this->getFieldBorder(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll);
+		string("UPDATE ") + escapeTableName(table) + " set " + row.implodeFieldContent(this->getFieldSeparator(), this->getFieldBorder(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll, latin1Table ? table.c_str() : NULL);
 	if(whereCond) {
 		query += string(" WHERE ") + whereCond;
 	}
@@ -1828,17 +1911,6 @@ SqlDb_mysql::~SqlDb_mysql() {
 	this->clean();
 }
 
-static string mysqlCharsetSafe() {
-	string charset = strlwr(opt_mysql_charset[0] ? opt_mysql_charset : "utf8");
-	for(size_t i = 0; i < charset.length(); i++) {
-		if(!((charset[i] >= 'a' && charset[i] <= 'z') ||
-		     (charset[i] >= '0' && charset[i] <= '9') || charset[i] == '_')) {
-			return("utf8");
-		}
-	}
-	return(charset);
-}
-
 bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 	if(opt_nocdr || isCloud() || snifferClientOptions.isEnableRemoteQuery()) {
 		return(true);
@@ -2364,6 +2436,196 @@ bool SqlDb_mysql::_getDbVersion() {
 	return(!this->dbVersion.empty());
 }
 
+string SqlDb_mysql::routineParamCanonical(string type) {
+	for(size_t i = 0; i < type.length(); i++) {
+		type[i] = tolower((unsigned char)type[i]);
+	}
+	static const char *intTypes[] = { "tinyint", "smallint", "mediumint", "bigint", "int", NULL };
+	for(int i = 0; intTypes[i]; i++) {
+		size_t tl = strlen(intTypes[i]);
+		if(type.compare(0, tl, intTypes[i]) == 0 && type.length() > tl && type[tl] == '(') {
+			size_t q = type.find(')', tl);
+			if(q != string::npos) {
+				type = type.substr(0, tl) + type.substr(q + 1);
+			}
+			break;
+		}
+	}
+	string typeClean;
+	for(size_t i = 0; i < type.length(); i++) {
+		if(type[i] != ' ' && type[i] != '\t') {
+			typeClean += type[i];
+		}
+	}
+	type = typeClean;
+	if(type == "bool" || type == "boolean") {
+		type = "tinyint";
+	} else if(type == "integer") {
+		type = "int";
+	} else if(type == "integerunsigned") {
+		type = "intunsigned";
+	}
+	return(type);
+}
+
+string SqlDb_mysql::routineTypeFromParam(string paramItem, bool hasName) {
+	size_t a = paramItem.find_first_not_of(" \t");
+	if(a == string::npos) {
+		return(this->routineParamCanonical(""));
+	}
+	size_t b = paramItem.find_last_not_of(" \t");
+	string s = paramItem.substr(a, b - a + 1);
+	if(hasName) {
+		string low = s;
+		for(size_t i = 0; i < low.length(); i++) {
+			low[i] = tolower((unsigned char)low[i]);
+		}
+		if(low.compare(0, 6, "inout ") == 0) {
+			s = s.substr(6);
+		} else if(low.compare(0, 3, "in ") == 0) {
+			s = s.substr(3);
+		} else if(low.compare(0, 4, "out ") == 0) {
+			s = s.substr(4);
+		}
+		a = s.find_first_not_of(" \t");
+		if(a == string::npos) {
+			return(this->routineParamCanonical(""));
+		}
+		s = s.substr(a);
+		size_t sp = s.find_first_of(" \t");
+		if(sp == string::npos) {
+			return(this->routineParamCanonical(""));
+		}
+		s = s.substr(sp + 1);
+		a = s.find_first_not_of(" \t");
+		if(a == string::npos) {
+			return(this->routineParamCanonical(""));
+		}
+		s = s.substr(a);
+	}
+	int depth = 0;
+	size_t te = 0;
+	while(te < s.length()) {
+		char c = s[te];
+		if(c == '(') {
+			depth++;
+		} else if(c == ')') {
+			depth--;
+		} else if((c == ' ' || c == '\t') && depth == 0) {
+			break;
+		}
+		te++;
+	}
+	string type = s.substr(0, te);
+	size_t pos = te;
+	while(pos < s.length()) {
+		while(pos < s.length() && (s[pos] == ' ' || s[pos] == '\t')) {
+			pos++;
+		}
+		if(pos >= s.length()) {
+			break;
+		}
+		size_t ts = pos;
+		while(pos < s.length() && s[pos] != ' ' && s[pos] != '\t') {
+			pos++;
+		}
+		string tok = s.substr(ts, pos - ts);
+		string tokLow = tok;
+		for(size_t i = 0; i < tokLow.length(); i++) {
+			tokLow[i] = tolower((unsigned char)tokLow[i]);
+		}
+		if(tokLow == "unsigned" || tokLow == "zerofill") {
+			type += " " + tok;
+		} else {
+			break;
+		}
+	}
+	return(this->routineParamCanonical(type));
+}
+
+string SqlDb_mysql::routineParamsCanonicalFromDb(string routineName, eRoutineType routineType) {
+	this->query(string("select ordinal_position, dtd_identifier from information_schema.parameters where specific_schema='") + this->conn_database +
+		    "' and specific_name='" + routineName +
+		    "' and routine_type='" + (routineType == procedure ? "PROCEDURE" : "FUNCTION") + "' order by ordinal_position");
+	string params;
+	string ret;
+	SqlDb_row row;
+	while((row = this->fetchRow())) {
+		string canonical = this->routineParamCanonical(row["dtd_identifier"]);
+		if(atoi(row["ordinal_position"].c_str()) == 0) {
+			ret = canonical;
+		} else {
+			if(!params.empty()) {
+				params += ";";
+			}
+			params += canonical;
+		}
+	}
+	return(params + "#" + ret);
+}
+
+string SqlDb_mysql::routineParamsCanonicalFromDefinition(string routineParamsAndReturn) {
+	size_t start = routineParamsAndReturn.find('(');
+	if(start == string::npos) {
+		return("#");
+	}
+	int depth = 0;
+	size_t end = string::npos;
+	for(size_t i = start; i < routineParamsAndReturn.length(); i++) {
+		if(routineParamsAndReturn[i] == '(') {
+			depth++;
+		} else if(routineParamsAndReturn[i] == ')') {
+			depth--;
+			if(depth == 0) {
+				end = i;
+				break;
+			}
+		}
+	}
+	if(end == string::npos) {
+		return("#");
+	}
+	string inner = routineParamsAndReturn.substr(start + 1, end - start - 1);
+	string params;
+	depth = 0;
+	string cur;
+	vector<string> parts;
+	for(size_t i = 0; i < inner.length(); i++) {
+		char c = inner[i];
+		if(c == '(') {
+			depth++;
+		} else if(c == ')') {
+			depth--;
+		}
+		if(c == ',' && depth == 0) {
+			parts.push_back(cur);
+			cur = "";
+		} else {
+			cur += c;
+		}
+	}
+	if(cur.find_first_not_of(" \t") != string::npos) {
+		parts.push_back(cur);
+	}
+	for(size_t i = 0; i < parts.size(); i++) {
+		if(!params.empty()) {
+			params += ";";
+		}
+		params += this->routineTypeFromParam(parts[i], true);
+	}
+	string ret;
+	string after = routineParamsAndReturn.substr(end + 1);
+	string afterLow = after;
+	for(size_t i = 0; i < afterLow.length(); i++) {
+		afterLow[i] = tolower((unsigned char)afterLow[i]);
+	}
+	size_t rp = afterLow.find("returns");
+	if(rp != string::npos) {
+		ret = this->routineTypeFromParam(after.substr(rp + 7), false);
+	}
+	return(params + "#" + ret);
+}
+
 bool SqlDb_mysql::createRoutine(string routine, string routineName, string routineParamsAndReturn, eRoutineType routineType, bool abortIfFailed) {
 	bool missing = false;
 	bool diff = false;
@@ -2401,6 +2663,10 @@ bool SqlDb_mysql::createRoutine(string routine, string routineName, string routi
 			   (i < routine.length() || j < row["routine_definition"].length())) {
 				diff = true;
 			}
+		}
+		if(!missing && !diff &&
+		   this->routineParamsCanonicalFromDefinition(routineParamsAndReturn) != this->routineParamsCanonicalFromDb(routineName, routineType)) {
+			diff = true;
 		}
 	}
 	if(missing || diff) {
@@ -2711,9 +2977,21 @@ SqlDb_row SqlDb_mysql::fetchRow() {
 		if(this->hMysqlRes) {
 			MYSQL_ROW mysqlRow = mysql_fetch_row(hMysqlRes);
 			if(mysqlRow) {
+				extern cUtfConverter utfConverter;
+				extern bool opt_mysql_latin1_utf_bytes;
 				unsigned int numFields = mysql_num_fields(this->hMysqlRes);
 				unsigned long *lengths = mysql_fetch_lengths(this->hMysqlRes);
 				for(unsigned int i = 0; i < numFields; i++) {
+					if(opt_mysql_latin1_utf_bytes && mysqlRow[i] && !utfConverter.is_ascii(mysqlRow[i])) {
+						MYSQL_FIELD *field = mysql_fetch_field_direct(this->hMysqlRes, i);
+						if(field->org_table && field->org_table[0] &&
+						   SqlDb::getColumnCharset(field->org_table, field->org_name) == "latin1") {
+							string fixed = utfConverter.fixMojibakeUtf8(mysqlRow[i]);
+							row.add(fixed.c_str(), this->fields[i], this->fields_type[i], fixed.length())
+							    ->setFlags(this->fields_flags[i]);
+							continue;
+						}
+					}
 					row.add(mysqlRow[i], this->fields[i], this->fields_type[i], lengths[i])
 					    ->setFlags(this->fields_flags[i]);
 				}
@@ -8964,6 +9242,163 @@ bool SqlDb_mysql::createSchema_procedures_other(int connectId) {
 		END IF; \
 	END",
 	"getIdOrInsertCONTENTTYPE", "(val VARCHAR(255) CHARACTER SET utf8) RETURNS INT DETERMINISTIC", true);
+	extern bool opt_mysql_latin1_utf_bytes;
+	if(opt_mysql_latin1_utf_bytes) {
+		this->createFunction(
+		"BEGIN  \
+			DECLARE _ID INT; \
+			DECLARE _dup INT DEFAULT 0; \
+			DECLARE CONTINUE HANDLER FOR SQLSTATE '23000' SET _dup = 1; \
+			SET _ID = (SELECT id FROM cdr_ua WHERE ua LIKE CONCAT(prefix, '%') AND CONVERT(BINARY ua USING utf8mb4) = val COLLATE utf8mb4_general_ci LIMIT 1); \
+			IF ( _ID ) THEN \
+				RETURN _ID; \
+			END IF; \
+			INSERT INTO cdr_ua SET ua = UNHEX(HEX(val)); \
+			IF ( _dup ) THEN \
+				RETURN (SELECT id FROM cdr_ua WHERE ua = CONVERT(UNHEX(HEX(val)) USING latin1) LIMIT 1); \
+			END IF; \
+			RETURN LAST_INSERT_ID(); \
+		END",
+		"getIdOrInsertUA_utf", "(val VARCHAR(255) CHARACTER SET utf8mb4, prefix VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC", true);
+		this->createFunction(
+		"BEGIN  \
+			DECLARE _ID INT; \
+			DECLARE _dup INT DEFAULT 0; \
+			DECLARE CONTINUE HANDLER FOR SQLSTATE '23000' SET _dup = 1; \
+			SET _ID = (SELECT id FROM cdr_ua WHERE ua LIKE CONCAT(prefix, '%') AND CONVERT(BINARY ua USING utf8mb4) = CONVERT(UNHEX(val) USING utf8mb4) COLLATE utf8mb4_general_ci LIMIT 1); \
+			IF ( _ID ) THEN \
+				RETURN _ID; \
+			END IF; \
+			INSERT INTO cdr_ua SET ua = UNHEX(val); \
+			IF ( _dup ) THEN \
+				RETURN (SELECT id FROM cdr_ua WHERE ua = CONVERT(UNHEX(val) USING latin1) LIMIT 1); \
+			END IF; \
+			RETURN LAST_INSERT_ID(); \
+		END",
+		"getIdOrInsertUA_utf_hex", "(val VARCHAR(1024) CHARACTER SET latin1, prefix VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC", true);
+		this->createFunction(
+		"BEGIN  \
+			DECLARE _ID INT; \
+			DECLARE _dup INT DEFAULT 0; \
+			DECLARE CONTINUE HANDLER FOR SQLSTATE '23000' SET _dup = 1; \
+			SET _ID = (SELECT id FROM cdr_sip_response WHERE lastSIPresponse LIKE CONCAT(prefix, '%') AND CONVERT(BINARY lastSIPresponse USING utf8mb4) = val COLLATE utf8mb4_general_ci LIMIT 1); \
+			IF ( _ID ) THEN \
+				RETURN _ID; \
+			END IF; \
+			INSERT INTO cdr_sip_response SET lastSIPresponse = UNHEX(HEX(val)); \
+			IF ( _dup ) THEN \
+				RETURN (SELECT id FROM cdr_sip_response WHERE lastSIPresponse = CONVERT(UNHEX(HEX(val)) USING latin1) LIMIT 1); \
+			END IF; \
+			RETURN LAST_INSERT_ID(); \
+		END",
+		"getIdOrInsertSIPRES_utf", "(val VARCHAR(255) CHARACTER SET utf8mb4, prefix VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC", true);
+		this->createFunction(
+		"BEGIN  \
+			DECLARE _ID INT; \
+			DECLARE _dup INT DEFAULT 0; \
+			DECLARE CONTINUE HANDLER FOR SQLSTATE '23000' SET _dup = 1; \
+			SET _ID = (SELECT id FROM cdr_sip_response WHERE lastSIPresponse LIKE CONCAT(prefix, '%') AND CONVERT(BINARY lastSIPresponse USING utf8mb4) = CONVERT(UNHEX(val) USING utf8mb4) COLLATE utf8mb4_general_ci LIMIT 1); \
+			IF ( _ID ) THEN \
+				RETURN _ID; \
+			END IF; \
+			INSERT INTO cdr_sip_response SET lastSIPresponse = UNHEX(val); \
+			IF ( _dup ) THEN \
+				RETURN (SELECT id FROM cdr_sip_response WHERE lastSIPresponse = CONVERT(UNHEX(val) USING latin1) LIMIT 1); \
+			END IF; \
+			RETURN LAST_INSERT_ID(); \
+		END",
+		"getIdOrInsertSIPRES_utf_hex", "(val VARCHAR(510) CHARACTER SET latin1, prefix VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC", true);
+		if(_save_sip_history) {
+			this->createFunction(
+			"BEGIN  \
+				DECLARE _ID INT; \
+				DECLARE _dup INT DEFAULT 0; \
+				DECLARE CONTINUE HANDLER FOR SQLSTATE '23000' SET _dup = 1; \
+				SET _ID = (SELECT id FROM cdr_sip_request WHERE request LIKE CONCAT(prefix, '%') AND CONVERT(BINARY request USING utf8mb4) = val COLLATE utf8mb4_general_ci LIMIT 1); \
+				IF ( _ID ) THEN \
+					RETURN _ID; \
+				END IF; \
+				INSERT INTO cdr_sip_request SET request = UNHEX(HEX(val)); \
+				IF ( _dup ) THEN \
+					RETURN (SELECT id FROM cdr_sip_request WHERE request = CONVERT(UNHEX(HEX(val)) USING latin1) LIMIT 1); \
+				END IF; \
+				RETURN LAST_INSERT_ID(); \
+			END",
+			"getIdOrInsertSIPREQUEST_utf", "(val VARCHAR(255) CHARACTER SET utf8mb4, prefix VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC", true);
+			this->createFunction(
+			"BEGIN  \
+				DECLARE _ID INT; \
+				DECLARE _dup INT DEFAULT 0; \
+				DECLARE CONTINUE HANDLER FOR SQLSTATE '23000' SET _dup = 1; \
+				SET _ID = (SELECT id FROM cdr_sip_request WHERE request LIKE CONCAT(prefix, '%') AND CONVERT(BINARY request USING utf8mb4) = CONVERT(UNHEX(val) USING utf8mb4) COLLATE utf8mb4_general_ci LIMIT 1); \
+				IF ( _ID ) THEN \
+					RETURN _ID; \
+				END IF; \
+				INSERT INTO cdr_sip_request SET request = UNHEX(val); \
+				IF ( _dup ) THEN \
+					RETURN (SELECT id FROM cdr_sip_request WHERE request = CONVERT(UNHEX(val) USING latin1) LIMIT 1); \
+				END IF; \
+				RETURN LAST_INSERT_ID(); \
+			END",
+			"getIdOrInsertSIPREQUEST_utf_hex", "(val VARCHAR(510) CHARACTER SET latin1, prefix VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC", true);
+		}
+		this->createFunction(
+		"BEGIN  \
+			DECLARE _ID INT; \
+			DECLARE _dup INT DEFAULT 0; \
+			DECLARE CONTINUE HANDLER FOR SQLSTATE '23000' SET _dup = 1; \
+			SET _ID = (SELECT id FROM cdr_reason WHERE type = type_input and reason LIKE CONCAT(prefix, '%') AND CONVERT(BINARY reason USING utf8mb4) = val COLLATE utf8mb4_general_ci LIMIT 1); \
+			IF ( _ID ) THEN \
+				RETURN _ID; \
+			END IF; \
+			INSERT INTO cdr_reason SET type = type_input, reason = UNHEX(HEX(val)); \
+			IF ( _dup ) THEN \
+				RETURN (SELECT id FROM cdr_reason WHERE type = type_input AND reason = CONVERT(UNHEX(HEX(val)) USING latin1) LIMIT 1); \
+			END IF; \
+			RETURN LAST_INSERT_ID(); \
+		END",
+		"getIdOrInsertREASON_utf", "(type_input tinyint, val VARCHAR(255) CHARACTER SET utf8mb4, prefix VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC", true);
+		this->createFunction(
+		"BEGIN  \
+			DECLARE _ID INT; \
+			DECLARE _dup INT DEFAULT 0; \
+			DECLARE CONTINUE HANDLER FOR SQLSTATE '23000' SET _dup = 1; \
+			SET _ID = (SELECT id FROM cdr_reason WHERE type = type_input and reason LIKE CONCAT(prefix, '%') AND CONVERT(BINARY reason USING utf8mb4) = CONVERT(UNHEX(val) USING utf8mb4) COLLATE utf8mb4_general_ci LIMIT 1); \
+			IF ( _ID ) THEN \
+				RETURN _ID; \
+			END IF; \
+			INSERT INTO cdr_reason SET type = type_input, reason = UNHEX(val); \
+			IF ( _dup ) THEN \
+				RETURN (SELECT id FROM cdr_reason WHERE type = type_input AND reason = CONVERT(UNHEX(val) USING latin1) LIMIT 1); \
+			END IF; \
+			RETURN LAST_INSERT_ID(); \
+		END",
+		"getIdOrInsertREASON_utf_hex", "(type_input tinyint, val VARCHAR(510) CHARACTER SET latin1, prefix VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC", true);
+		this->createFunction(
+		"BEGIN  \
+			DECLARE _ID INT; \
+			SET _ID = (SELECT id FROM contenttype WHERE contenttype LIKE CONCAT(prefix, '%') AND CONVERT(BINARY contenttype USING utf8mb4) = val COLLATE utf8mb4_general_ci LIMIT 1); \
+			IF ( _ID ) THEN \
+				RETURN _ID; \
+			ELSE  \
+				INSERT INTO contenttype SET contenttype = UNHEX(HEX(val)); \
+				RETURN LAST_INSERT_ID(); \
+			END IF; \
+		END",
+		"getIdOrInsertCONTENTTYPE_utf", "(val VARCHAR(255) CHARACTER SET utf8mb4, prefix VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC", true);
+		this->createFunction(
+		"BEGIN  \
+			DECLARE _ID INT; \
+			SET _ID = (SELECT id FROM contenttype WHERE contenttype LIKE CONCAT(prefix, '%') AND CONVERT(BINARY contenttype USING utf8mb4) = CONVERT(UNHEX(val) USING utf8mb4) COLLATE utf8mb4_general_ci LIMIT 1); \
+			IF ( _ID ) THEN \
+				RETURN _ID; \
+			ELSE  \
+				INSERT INTO contenttype SET contenttype = UNHEX(val); \
+				RETURN LAST_INSERT_ID(); \
+			END IF; \
+		END",
+		"getIdOrInsertCONTENTTYPE_utf_hex", "(val VARCHAR(510) CHARACTER SET latin1, prefix VARCHAR(255) CHARACTER SET latin1) RETURNS INT DETERMINISTIC", true);
+	}
 	this->createProcedure(
 	"BEGIN \
 		DECLARE _ID INT; \
@@ -9769,7 +10204,51 @@ void SqlDb_mysql::checkSchema(int connectId, bool enableAlter) {
 		}
 	}
 
+	this->loadTablesCharset();
 	sql_disable_next_attempt_if_error = 0;
+}
+
+void SqlDb_mysql::loadTablesCharset() {
+	extern bool opt_mysql_latin1_utf_bytes;
+	map<string, map<string, string> > data;
+	if(!opt_mysql_latin1_utf_bytes) {
+		tablesCharset.swapData(data);
+		return;
+	}
+	vector<string> latin1_tables;
+	if(this->query("show table status")) {
+		SqlDb_row row;
+		while((row = this->fetchRow())) {
+			if(row["Collation"].substr(0, 7) == "latin1_") {
+				latin1_tables.push_back(row["Name"]);
+			}
+		}
+	}
+	for(size_t i = 0; i < latin1_tables.size(); i++) {
+		if(this->query("show full columns from " + this->escapeTableName(latin1_tables[i]))) {
+			SqlDb_row row;
+			while((row = this->fetchRow())) {
+				string collation = row["Collation"];
+				size_t charset_length = collation.find('_');
+				if(charset_length != string::npos) {
+					data[latin1_tables[i]][row["Field"]] = collation.substr(0, charset_length);
+				}
+			}
+		}
+	}
+	tablesCharset.swapData(data);
+}
+
+bool SqlDb_mysql::getTableColumnsCharset(const char *table, map<string, string> &out) {
+	return(tablesCharset.getColumns(table, out));
+}
+
+string SqlDb::getColumnCharset(const char *table, const char *column) {
+	return(tablesCharset.get(table, column));
+}
+
+bool SqlDb::existsCharsetTable(const char *table) {
+	return(tablesCharset.existsTable(table));
 }
 
 void SqlDb_mysql::updateSensorState() {
@@ -11296,6 +11775,10 @@ void SqlDb_odbc::checkDbMode() {
 }
 
 void SqlDb_odbc::checkSchema(int /*connectId*/, bool /*enableAlter*/) {
+}
+
+bool SqlDb_odbc::getTableColumnsCharset(const char * /*table*/, map<string, string> & /*out*/) {
+	return(false);
 }
 
 void SqlDb_odbc::updateSensorState() {
@@ -13463,3 +13946,15 @@ void out_db_cnt() {
 	}
 }
 #endif
+
+
+string likeAsciiPrefix(const char *value) {
+	string prefix;
+	for(const unsigned char *p = (const unsigned char*)value; *p && *p < 0x80; p++) {
+		if(*p == '\\' || *p == '%' || *p == '_') {
+			prefix += '\\';
+		}
+		prefix += (char)*p;
+	}
+	return(prefix);
+}

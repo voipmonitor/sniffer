@@ -6,16 +6,22 @@
 #include <string.h>
 #include <syslog.h>
 #include <string>
+#include <new>
 
 #include "voipmonitor_define.h"
 
 
+#define HEAPSAFE_MAX_ALIGN			64
+
 #define HEAPSAFE_ALLOC_RESERVE			20
-#define HEAPSAFE_SAFE_ALLOC_RESERVE		4
+#define HEAPSAFE_SAFE_ALLOC_RESERVE		HEAPSAFE_MAX_ALIGN
 
 #define HEAPSAFE_BEGIN_MEMORY_CONTROL_BLOCK	"BMB"
 #define HEAPSAFE_FREED_MEMORY_CONTROL_BLOCK	"FMB"
 #define HEAPSAFE_END_MEMORY_CONTROL_BLOCK	"EMB"
+
+#define HEAPSAFE_SAFE_RESERVE_CHECK		0x48535243
+#define MEMORY_STAT_QUICK_CHECK			0x4D535143
 
 #define HEAPSAFE_COPY_BEGIN_MEMORY_CONTROL_BLOCK(stringInfo) { \
 	stringInfo[0] = HEAPSAFE_BEGIN_MEMORY_CONTROL_BLOCK[0]; \
@@ -45,9 +51,7 @@
 
 #define MCB_PLUS   (HeapSafeCheck & _HeapSafePlus)
 #define MCB_STACK  (HeapSafeCheck & _HeapSafeStack)
-#define SIZEOF_MCB (MCB_PLUS ? sizeof(sHeapSafeMemoryControlBlockPlus) : \
-		    MCB_STACK ? sizeof(sHeapSafeMemoryControlBlockEx) : \
-		    16 /*sizeof(sHeapSafeMemoryControlBlock)*/) // to optimize -Ox the offset must be aligned to 16 bytes
+#define SIZEOF_MCB HEAPSAFE_MAX_ALIGN // the offset must be a multiple of HEAPSAFE_MAX_ALIGN - preserves alignment of over-aligned types for vectorized -Ox access
  
 
 enum eHeapSafeErrors {
@@ -84,7 +88,22 @@ struct sHeapSafeMemoryControlBlockEx : public sHeapSafeMemoryControlBlock {
 struct sMemoryStatQuickBlock {
 	u_int32_t alloc_number;
 	u_int32_t size;
+	u_int32_t check;
+	char reserve[HEAPSAFE_MAX_ALIGN - 3 * sizeof(u_int32_t)];
 };
+
+#if __cplusplus >= 201103L
+static_assert((HEAPSAFE_MAX_ALIGN & (HEAPSAFE_MAX_ALIGN - 1)) == 0 && HEAPSAFE_MAX_ALIGN >= 16,
+	      "HEAPSAFE_MAX_ALIGN must be a power of two >= 16");
+static_assert(SIZEOF_MCB % HEAPSAFE_MAX_ALIGN == 0 &&
+	      sizeof(sHeapSafeMemoryControlBlockPlus) <= SIZEOF_MCB &&
+	      sizeof(sHeapSafeMemoryControlBlockEx) <= SIZEOF_MCB,
+	      "SIZEOF_MCB must be a multiple of HEAPSAFE_MAX_ALIGN and must fit all MCB variants");
+static_assert(HEAPSAFE_SAFE_ALLOC_RESERVE % HEAPSAFE_MAX_ALIGN == 0,
+	      "HEAPSAFE_SAFE_ALLOC_RESERVE must be a multiple of HEAPSAFE_MAX_ALIGN");
+static_assert(sizeof(sMemoryStatQuickBlock) % HEAPSAFE_MAX_ALIGN == 0,
+	      "sizeof(sMemoryStatQuickBlock) must be a multiple of HEAPSAFE_MAX_ALIGN");
+#endif
 
 
 void HeapSafeAllocError(int error);
@@ -199,6 +218,12 @@ void memoryStatInit();
 	#define FILE_LINE(alloc_number) (__FILE__, __LINE__, alloc_number)
 	void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_type2 = 0, int alloc_number = 0);
 	void * operator new[](size_t sizeOfObject, const char *memory_type1, int memory_type2 = 0, int alloc_number = 0);
+	#if defined(__cpp_aligned_new)
+	void * operator new(size_t sizeOfObject, std::align_val_t align, const char *memory_type1, int memory_type2 = 0, int alloc_number = 0);
+	void * operator new[](size_t sizeOfObject, std::align_val_t align, const char *memory_type1, int memory_type2 = 0, int alloc_number = 0);
+	void operator delete(void *pointerToObject, std::align_val_t align, const char *memory_type1, int memory_type2, int alloc_number) noexcept;
+	void operator delete[](void *pointerToObject, std::align_val_t align, const char *memory_type1, int memory_type2, int alloc_number) noexcept;
+	#endif
 	void delete_object(void *pointerToObject);
 	void *realloc_object(void *pointerToObject, size_t sizeOfObject, const char *memory_type1, int memory_type2, int alloc_number);
 #else

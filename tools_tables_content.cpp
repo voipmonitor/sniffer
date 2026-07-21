@@ -202,9 +202,27 @@ string cDbStrings::implodeInsertValues(const char *table, cDbStrings *header, Sq
 			rslt += "NULL";
 		} else {
 			switch(strings[i].flags & SqlDb_row::_ift_base) {
-			case SqlDb_row::_ift_string:
-				rslt += string_border + strings[i].str + string_border;
+			case SqlDb_row::_ift_string: {
+				extern bool opt_mysql_latin1_utf_bytes;
+				extern cUtfConverter utfConverter;
+				const char *column = header->strings[i].getStr();
+				if(opt_mysql_latin1_utf_bytes && !utfConverter.is_ascii(strings[i].str) &&
+				   SqlDb::getColumnCharset(table, column) == "latin1") {
+					string content = utfConverter.get_max_mb(strings[i].str) < 0 ?
+							 utfConverter.replace_exceeding_utf8_mb(strings[i].str, 4) :
+							 string(strings[i].str);
+					int content_max_mb = utfConverter.get_max_mb(content.c_str());
+					if(content_max_mb >= 1 && content_max_mb <= mysqlCharsetMaxMb()) {
+						rslt += "UNHEX(HEX('" + content + "'))";
+					} else {
+						string content_raw = sqlUnescapeString(content);
+						rslt += "UNHEX('" + hexencode((unsigned char*)content_raw.c_str(), content_raw.length()) + "')";
+					}
+				} else {
+					rslt += string_border + strings[i].str + string_border;
+				}
 				break;
+				}
 			case SqlDb_row::_ift_int:
 			case SqlDb_row::_ift_int_u:
 			case SqlDb_row::_ift_double:

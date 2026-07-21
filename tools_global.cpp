@@ -2845,6 +2845,99 @@ cUtfConverter::cUtfConverter() {
 	init_ok = false;
 	_sync_lock = 0;
 	init();
+	initMojibakeRevMap();
+}
+
+void cUtfConverter::initMojibakeRevMap() {
+	static const int cp1252[32] = {
+		0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
+		0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008D, 0x017D, 0x008F,
+		0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
+		0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x009D, 0x017E, 0x0178
+	};
+	for(int byte = 0x80; byte <= 0xFF; byte++) {
+		int codePoint = byte <= 0x9F ? cp1252[byte - 0x80] : byte;
+		string utf8;
+		if(codePoint < 0x800) {
+			utf8 += (char)(0xC0 | (codePoint >> 6));
+			utf8 += (char)(0x80 | (codePoint & 0x3F));
+		} else {
+			utf8 += (char)(0xE0 | (codePoint >> 12));
+			utf8 += (char)(0x80 | ((codePoint >> 6) & 0x3F));
+			utf8 += (char)(0x80 | (codePoint & 0x3F));
+		}
+		mojibakeRevMap[utf8] = string(1, (char)byte);
+	}
+}
+
+string cUtfConverter::fixMojibakeUtf8(const char *str) {
+	if(!str || !*str || is_ascii(str) || get_max_mb(str) < 0) {
+		return(str ? str : "");
+	}
+	string rslt;
+	const unsigned char *p = (const unsigned char*)str;
+	while(*p) {
+		int len = *p < 0x80 ? 1 :
+			  (*p & 0xe0) == 0xc0 ? 2 :
+			  (*p & 0xf0) == 0xe0 ? 3 :
+			  (*p & 0xf8) == 0xf0 ? 4 : 1;
+		if(len == 1) {
+			rslt += (char)*p;
+			p++;
+		} else {
+			map<string, string>::iterator iter = mojibakeRevMap.find(string((const char*)p, len));
+			if(iter == mojibakeRevMap.end()) {
+				return(str);
+			}
+			rslt += iter->second;
+			p += len;
+		}
+	}
+	if(is_ascii(rslt.c_str()) || get_max_mb(rslt.c_str()) < 0) {
+		return(str);
+	}
+	return(rslt);
+}
+
+string cUtfConverter::toUpper(const char *str) {
+	if(!str || !*str) {
+		return(str ? str : "");
+	}
+	if(is_ascii(str) || !init_ok) {
+		string rslt = str;
+		for(size_t i = 0; i < rslt.length(); i++) {
+			if((unsigned char)rslt[i] < 0x80) {
+				rslt[i] = (char)toupper((unsigned char)rslt[i]);
+			}
+		}
+		return(rslt);
+	}
+	string rslt = str;
+	unsigned strLen = strlen(str);
+	unsigned strUtfLimit = strLen * 2 + 10;
+	UChar *strUtf = new FILE_LINE(0) UChar[strUtfLimit + 1];
+	UErrorCode status = U_ZERO_ERROR;
+	lock();
+	int32_t utfLen = ucnv_toUChars(cnv_utf8, strUtf, strUtfLimit, str, -1, &status);
+	unlock();
+	if(status == U_ZERO_ERROR) {
+		UChar *strUpper = new FILE_LINE(0) UChar[strUtfLimit + 1];
+		int32_t upperLen = u_strToUpper(strUpper, strUtfLimit, strUtf, utfLen, "", &status);
+		if(status == U_ZERO_ERROR) {
+			unsigned strLimit = upperLen * 3 + 10;
+			char *strUpperUtf8 = new FILE_LINE(0) char[strLimit + 1];
+			lock();
+			ucnv_fromUChars(cnv_utf8, strUpperUtf8, strLimit, strUpper, upperLen, &status);
+			unlock();
+			if(status == U_ZERO_ERROR) {
+				rslt = strUpperUtf8;
+			}
+			delete [] strUpperUtf8;
+		}
+		delete [] strUpper;
+	}
+	delete [] strUtf;
+	return(rslt);
 }
 
 cUtfConverter::~cUtfConverter() {
@@ -2894,47 +2987,19 @@ string cUtfConverter::reverse(const char *str) {
 	if(!str || !*str) {
 		return("");
 	}
+	int length = strlen(str);
 	string rslt;
-	bool okReverseUtf = false;
-	if(init_ok && !is_ascii(str)) {
-		unsigned strLen = strlen(str);
-		unsigned strLimit = strLen * 2 + 10;
-		unsigned strUtfLimit = strLen * 2 + 10;
-		UChar *strUtf = new FILE_LINE(0) UChar[strUtfLimit + 1];
-		UErrorCode status = U_ZERO_ERROR;
-		lock();
-		ucnv_toUChars(cnv_utf8, strUtf, strUtfLimit, str, -1, &status);
-		unlock();
-		if(status == U_ZERO_ERROR) {
-			unsigned len = 0;
-			for(unsigned i = 0; i < strUtfLimit && strUtf[i]; i++) {
-				len++;
-			}
-			UChar *strUtf_r = new FILE_LINE(0) UChar[strUtfLimit + 1];
-			for(unsigned i = 0; i < len; i++) {
-				strUtf_r[len - i - 1] = strUtf[i];
-			}
-			strUtf_r[len] = 0;
-			char *str_r = new FILE_LINE(0) char[strLimit + 1];
-			lock();
-			ucnv_fromUChars(cnv_utf8, str_r, strLimit, strUtf_r, -1, &status);
-			unlock();
-			if(status == U_ZERO_ERROR && strlen(str_r) == strLen) {
-				rslt = str_r;
-				okReverseUtf = true;
-			}
-			delete [] str_r;
-			delete [] strUtf_r;
+	rslt.reserve(length);
+	int i = length;
+	while(i > 0) {
+		int start = i - 1;
+		while(start > 0 && ((unsigned char)str[start] & 0xc0) == 0x80) {
+			start--;
 		}
-		delete [] strUtf;
+		rslt.append(str + start, i - start);
+		i = start;
 	}
-	if(!okReverseUtf) {
-		int length = strlen(str);
-		for(int i = length - 1; i >= 0; i--) {
-			rslt += str[i];
-		}
-	}
-	return rslt;
+	return(rslt);
 }
 
 bool cUtfConverter::is_ascii(const char *str) {

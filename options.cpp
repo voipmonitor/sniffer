@@ -1023,9 +1023,7 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 						if(_cb_id) {
 							rec.add(_cb_id, field);
 						} else {
-							query_str += MYSQL_ADD_QUERY_END(string("set @" + field + " = ") +  
-								     "getIdOrInsertUA(" + sqlEscapeStringBorder(adj_ua) + ")");
-							rec.add(MYSQL_VAR_PREFIX + "@" + field, field);
+							query_str += rec.add_id_or_insert(field, "getIdOrInsertUA", field, "", adj_ua, "cdr_ua", "ua");
 						}
 					}
 				}
@@ -1039,9 +1037,7 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 				if(_cb_id) {
 					rec.add(_cb_id, "response_id");
 				} else {
-					query_str += MYSQL_ADD_QUERY_END(string("set @response_id = ") + 
-						     "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(requestResponse->response->response_string) + ")");
-					rec.add(MYSQL_VAR_PREFIX + "@response_id", "response_id");
+					query_str += rec.add_id_or_insert("response_id", "getIdOrInsertSIPRES", "response_id", "", requestResponse->response->response_string, "cdr_sip_response", "lastSIPresponse");
 				}
 			}
 		}
@@ -1056,9 +1052,7 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 					if(_cb_id) {
 						rec.add(_cb_id, field_content_type);
 					} else {
-						query_str += MYSQL_ADD_QUERY_END(string("set @" + field_content_type + " = ") + 
-							     "getIdOrInsertCONTENTTYPE(" + sqlEscapeStringBorder(item->content_type) + ")");
-						rec.add(MYSQL_VAR_PREFIX + "@" + field_content_type, field_content_type);
+						query_str += rec.add_id_or_insert(field_content_type, "getIdOrInsertCONTENTTYPE", field_content_type, "", item->content_type, "contenttype", "contenttype");
 					}
 				}
 			}
@@ -1119,10 +1113,7 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 						if(_cb_id) {
 							resp_row.add(_cb_id, "response_id");
 						} else {
-							string varName = "@sip_msg_resp_id_" + intToString(respIdx);
-							query_str += MYSQL_ADD_QUERY_END(string("set ") + varName + " = " +
-								     "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterResp->response_string) + ")");
-							resp_row.add(MYSQL_VAR_PREFIX + varName, "response_id");
+							query_str += resp_row.add_id_or_insert("response_id", "getIdOrInsertSIPRES", "sip_msg_resp_id_" + intToString(respIdx), "", iterResp->response_string, "cdr_sip_response", "lastSIPresponse");
 						}
 					}
 				}

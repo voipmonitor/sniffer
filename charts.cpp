@@ -1632,9 +1632,7 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 									if(_cb_id) {
 										cdr_sum_row.add(_cb_id, "lastSIPresponse_id");
 									} else {
-										lsr_query_str = MYSQL_ADD_QUERY_END(string("set @lSresp_id = ") +
-												"getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iter_sum->first.lsr_str) + ")");
-										cdr_sum_row.add(MYSQL_VAR_PREFIX + "@lSresp_id", "lastSIPresponse_id");
+										lsr_query_str = cdr_sum_row.add_id_or_insert("lastSIPresponse_id", "getIdOrInsertSIPRES", "lSresp_id", "", iter_sum->first.lsr_str, "cdr_sip_response", "lastSIPresponse");
 									}
 								}
 								cdr_sum_row.add(iter_sum->first.sensor_id, "sensor_id");

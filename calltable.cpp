@@ -8173,10 +8173,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			if(_cb_id) {
 				cdr.add(_cb_id, "lastSIPresponse_id");
 			} else {
-				query_str += MYSQL_ADD_QUERY_END(string("set @lSresp_id = ") + 
-					     "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(c_branch->lastSIPresponse) + ")");
-				cdr.add(MYSQL_VAR_PREFIX + "@lSresp_id", "lastSIPresponse_id");
-				//cdr.add(MYSQL_VAR_PREFIX + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
+				query_str += cdr.add_id_or_insert("lastSIPresponse_id", "getIdOrInsertSIPRES", "lSresp_id", "", c_branch->lastSIPresponse, "cdr_sip_response", "lastSIPresponse");
 			}
 		}
 		if(opt_cdr_reason_string_enable && existsColumns.cdr_reason) {
@@ -8188,10 +8185,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					if(_cb_id) {
 						cdr.add(_cb_id, "reason_sip_text_id");
 					} else {
-						query_str += MYSQL_ADD_QUERY_END(string("set @r_sip_tid = ") + 
-							     "getIdOrInsertREASON(1," + sqlEscapeStringBorder(c_branch->reason_sip_text.c_str()) + ")");
-						cdr.add(MYSQL_VAR_PREFIX + "@r_sip_tid", "reason_sip_text_id");
-						//cdr.add(MYSQL_VAR_PREFIX + "getIdOrInsertREASON(1," + sqlEscapeStringBorder(reason_sip_text.c_str()) + ")", "reason_sip_text_id");
+						query_str += cdr.add_id_or_insert("reason_sip_text_id", "getIdOrInsertREASON", "r_sip_tid", "1,", c_branch->reason_sip_text, "cdr_reason", "reason");
 					}
 				}
 			}
@@ -8203,10 +8197,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					if(_cb_id) {
 						cdr.add(_cb_id, "reason_q850_text_id");
 					} else {
-						query_str += MYSQL_ADD_QUERY_END(string("set @r_q850_tid = ") + 
-							     "getIdOrInsertREASON(2," + sqlEscapeStringBorder(c_branch->reason_q850_text.c_str()) + ")");
-						cdr.add(MYSQL_VAR_PREFIX + "@r_q850_tid", "reason_q850_text_id");
-						//cdr.add(MYSQL_VAR_PREFIX + "getIdOrInsertREASON(2," + sqlEscapeStringBorder(reason_q850_text.c_str()) + ")", "reason_q850_text_id");
+						query_str += cdr.add_id_or_insert("reason_q850_text_id", "getIdOrInsertREASON", "r_q850_tid", "2,", c_branch->reason_q850_text, "cdr_reason", "reason");
 					}
 				}
 			}
@@ -8220,10 +8211,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					if(_cb_id) {
 						cdr.add(_cb_id, "a_ua_id");
 					} else {
-						query_str += MYSQL_ADD_QUERY_END(string("set @uaA_id = ") + 
-							     "getIdOrInsertUA(" + sqlEscapeStringBorder(c_branch->a_ua) + ")");
-						cdr.add(MYSQL_VAR_PREFIX + "@uaA_id", "a_ua_id");
-						//cdr.add(MYSQL_VAR_PREFIX + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
+						query_str += cdr.add_id_or_insert("a_ua_id", "getIdOrInsertUA", "uaA_id", "", c_branch->a_ua, "cdr_ua", "ua");
 					}
 				}
 			}
@@ -8235,10 +8223,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					if(_cb_id) {
 						cdr.add(_cb_id, "b_ua_id");
 					} else {
-						query_str += MYSQL_ADD_QUERY_END(string("set @uaB_id = ") + 
-							     "getIdOrInsertUA(" + sqlEscapeStringBorder(c_branch->b_ua) + ")");
-						cdr.add(MYSQL_VAR_PREFIX + "@uaB_id", "b_ua_id");
-						//cdr.add(MYSQL_VAR_PREFIX + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
+						query_str += cdr.add_id_or_insert("b_ua_id", "getIdOrInsertUA", "uaB_id", "", c_branch->b_ua, "cdr_ua", "ua");
 					}
 				}
 			}
@@ -8953,10 +8938,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					if(_cb_id) {
 						sipresp.add(_cb_id, "SIPresponse_id");
 					} else {
-						query_str += MYSQL_ADD_QUERY_END(string("set @sip_resp_id = ") + 
-							     "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiprespUnique->SIPresponse.c_str()) + ")");
-						sipresp.add(MYSQL_VAR_PREFIX + "@sip_resp_id", "SIPresponse_id");
-						//sipresp.add(MYSQL_VAR_PREFIX + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiprespUnique->SIPresponse.c_str()) + ")", "SIPresponse_id");
+						query_str += sipresp.add_id_or_insert("SIPresponse_id", "getIdOrInsertSIPRES", "sip_resp_id", "", iterSiprespUnique->SIPresponse.c_str(), "cdr_sip_response", "lastSIPresponse");
 						enableMultiInsert = false;
 					}
 				}
@@ -9007,10 +8989,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 						if(_cb_id) {
 							siphist.add(_cb_id, "SIPrequest_id");
 						} else {
-							query_str += MYSQL_ADD_QUERY_END(string("set @sip_req_id = ") + 
-								     "getIdOrInsertSIPREQUEST(" + sqlEscapeStringBorder(iterSiphistory->SIPrequest.c_str()) + ")");
-							siphist.add(MYSQL_VAR_PREFIX + "@sip_req_id", "SIPrequest_id");
-							//siphist.add(MYSQL_VAR_PREFIX + "getIdOrInsertSIPREQUEST(" + sqlEscapeStringBorder(iterSiphistory->SIPrequest.c_str()) + ")", "SIPrequest_id");
+							query_str += siphist.add_id_or_insert("SIPrequest_id", "getIdOrInsertSIPREQUEST", "sip_req_id", "", iterSiphistory->SIPrequest.c_str(), "cdr_sip_request", "request");
 							enableMultiInsert = false;
 						}
 					}
@@ -9026,10 +9005,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 						if(_cb_id) {
 							siphist.add(_cb_id, "SIPresponse_id");
 						} else {
-							query_str += MYSQL_ADD_QUERY_END(string("set @sip_resp_id = ") + 
-								     "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiphistory->SIPresponse.c_str()) + ")");
-							siphist.add(MYSQL_VAR_PREFIX + "@sip_resp_id", "SIPresponse_id");
-							//siphist.add(MYSQL_VAR_PREFIX + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiphistory->SIPresponse.c_str()) + ")", "SIPresponse_id");
+							query_str += siphist.add_id_or_insert("SIPresponse_id", "getIdOrInsertSIPRES", "sip_resp_id", "", iterSiphistory->SIPresponse.c_str(), "cdr_sip_response", "lastSIPresponse");
 							enableMultiInsert = false;
 						}
 					}
@@ -9682,9 +9658,7 @@ void Call::prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch
 			if(_cb_id) {
 				next_branch_row.add(_cb_id, "lastSIPresponse_id");
 			} else {
-				*query_str += MYSQL_ADD_QUERY_END("set @lSresp_id" + n_branch_var_suffix + " = " + 
-					      "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(n_branch->lastSIPresponse) + ")");
-				next_branch_row.add(MYSQL_VAR_PREFIX + "@lSresp_id" + n_branch_var_suffix, "lastSIPresponse_id");
+				*query_str += next_branch_row.add_id_or_insert("lastSIPresponse_id", "getIdOrInsertSIPRES", "lSresp_id" + n_branch_var_suffix, "", n_branch->lastSIPresponse, "cdr_sip_response", "lastSIPresponse");
 			}
 		}
 	} else {
@@ -9701,9 +9675,7 @@ void Call::prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch
 					if(_cb_id) {
 						next_branch_row.add(_cb_id, "reason_sip_text_id");
 					} else {
-						*query_str += MYSQL_ADD_QUERY_END("set @r_sip_tid" + n_branch_var_suffix + " = " + 
-							      "getIdOrInsertREASON(1," + sqlEscapeStringBorder(n_branch->reason_sip_text.c_str()) + ")");
-						next_branch_row.add(MYSQL_VAR_PREFIX + "@r_sip_tid" + n_branch_var_suffix, "reason_sip_text_id");
+						*query_str += next_branch_row.add_id_or_insert("reason_sip_text_id", "getIdOrInsertREASON", "r_sip_tid" + n_branch_var_suffix, "1,", n_branch->reason_sip_text, "cdr_reason", "reason");
 					}
 				}
 			} else {
@@ -9721,9 +9693,7 @@ void Call::prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch
 					if(_cb_id) {
 						next_branch_row.add(_cb_id, "reason_q850_text_id");
 					} else {
-						*query_str += MYSQL_ADD_QUERY_END("set @r_q850_tid" + n_branch_var_suffix + " = " + 
-							      "getIdOrInsertREASON(2," + sqlEscapeStringBorder(n_branch->reason_q850_text.c_str()) + ")");
-						next_branch_row.add(MYSQL_VAR_PREFIX + "@r_q850_tid" + n_branch_var_suffix, "reason_q850_text_id");
+						*query_str += next_branch_row.add_id_or_insert("reason_q850_text_id", "getIdOrInsertREASON", "r_q850_tid" + n_branch_var_suffix, "2,", n_branch->reason_q850_text, "cdr_reason", "reason");
 					}
 				}
 			} else {
@@ -9744,9 +9714,7 @@ void Call::prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch
 					if(_cb_id) {
 						next_branch_row.add(_cb_id, "a_ua_id");
 					} else {
-						*query_str += MYSQL_ADD_QUERY_END("set @uaA_id" + n_branch_var_suffix + " = " + 
-							      "getIdOrInsertUA(" + sqlEscapeStringBorder(n_branch->a_ua) + ")");
-						next_branch_row.add(MYSQL_VAR_PREFIX + "@uaA_id" + n_branch_var_suffix, "a_ua_id");
+						*query_str += next_branch_row.add_id_or_insert("a_ua_id", "getIdOrInsertUA", "uaA_id" + n_branch_var_suffix, "", n_branch->a_ua, "cdr_ua", "ua");
 					}
 				}
 			} else {
@@ -9764,9 +9732,7 @@ void Call::prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch
 					if(_cb_id) {
 						next_branch_row.add(_cb_id, "b_ua_id");
 					} else {
-						*query_str += MYSQL_ADD_QUERY_END("set @uaB_id" + n_branch_var_suffix + " = " + 
-							      "getIdOrInsertUA(" + sqlEscapeStringBorder(n_branch->b_ua) + ")");
-						next_branch_row.add(MYSQL_VAR_PREFIX + "@uaB_id" + n_branch_var_suffix, "b_ua_id");
+						*query_str += next_branch_row.add_id_or_insert("b_ua_id", "getIdOrInsertUA", "uaB_id" + n_branch_var_suffix, "", n_branch->b_ua, "cdr_ua", "ua");
 					}
 				}
 			} else {
@@ -10424,10 +10390,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			if(_cb_id) {
 				msg.add(_cb_id, "lastSIPresponse_id");
 			} else {
-				query_str += MYSQL_ADD_QUERY_END(string("set @lSresp_id = ") + 
-					     "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(c_branch->lastSIPresponse) + ")");
-				msg.add(MYSQL_VAR_PREFIX + "@lSresp_id", "lastSIPresponse_id");
-				//msg.add(MYSQL_VAR_PREFIX + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
+				query_str += msg.add_id_or_insert("lastSIPresponse_id", "getIdOrInsertSIPRES", "lSresp_id", "", c_branch->lastSIPresponse, "cdr_sip_response", "lastSIPresponse");
 			}
 		}
 		if(opt_cdr_ua_enable) {
@@ -10439,10 +10402,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 					if(_cb_id) {
 						msg.add(_cb_id, "a_ua_id");
 					} else {
-						query_str += MYSQL_ADD_QUERY_END(string("set @uaA_id = ") + 
-							     "getIdOrInsertUA(" + sqlEscapeStringBorder(c_branch->a_ua) + ")");
-						msg.add(MYSQL_VAR_PREFIX + "@uaA_id", "a_ua_id");
-						//cdr.add(MYSQL_VAR_PREFIX + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
+						query_str += msg.add_id_or_insert("a_ua_id", "getIdOrInsertUA", "uaA_id", "", c_branch->a_ua, "cdr_ua", "ua");
 					}
 				}
 			}
@@ -10454,10 +10414,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 					if(_cb_id) {
 						msg.add(_cb_id, "b_ua_id");
 					} else {
-						query_str += MYSQL_ADD_QUERY_END(string("set @uaB_id = ") + 
-							     "getIdOrInsertUA(" + sqlEscapeStringBorder(c_branch->b_ua) + ")");
-						msg.add(MYSQL_VAR_PREFIX + "@uaB_id", "b_ua_id");
-						//cdr.add(MYSQL_VAR_PREFIX + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
+						query_str += msg.add_id_or_insert("b_ua_id", "getIdOrInsertUA", "uaB_id", "", c_branch->b_ua, "cdr_ua", "ua");
 					}
 				}
 			}
@@ -10470,10 +10427,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 				if(_cb_id) {
 					msg.add(_cb_id, "id_contenttype");
 				} else {
-					query_str += MYSQL_ADD_QUERY_END(string("set @cntt_id = ") + 
-						     "getIdOrInsertCONTENTTYPE(" + sqlEscapeStringBorder(contenttype) + ")");
-					msg.add(MYSQL_VAR_PREFIX + "@cntt_id", "id_contenttype");
-					//cdr.add(MYSQL_VAR_PREFIX + "getIdOrInsertCONTENTTYPE(" + sqlEscapeStringBorder(contenttype) + ")", "id_contenttype");
+					query_str += msg.add_id_or_insert("id_contenttype", "getIdOrInsertCONTENTTYPE", "cntt_id", "", contenttype, "contenttype", "contenttype");
 				}
 			}
 		}
