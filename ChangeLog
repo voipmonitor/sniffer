@@ -1,3 +1,14 @@
+2026.07.1 21.07.2026
+====================
+- Add hep_rtcp_mos_from_hep option - take the MOS value from the HEP MOS chunk (0x20) sent alongside RTCP-JSON (e.g. by Heplify) and store it in the CDR via a synthesized RTCP-XR record; useful when RTP is not mirrored to the sniffer [VS-1861]
+- Add manager command active_call_pcap to force-flush and extract the open SIP pcap of a live call, extended with an rtp option to include RTP streams [VS-1860]
+- vlan_siprtpsame: add 'all_invite' mode - accept RTP/RTCP on the VLAN of any INVITE of the call (useful when branches/re-INVITEs arrive on different VLANs) and store the most frequently matched VLAN in the CDR [VS-1862]
+- Add mysql_charset option (allows utf8mb4) and fix query failures on UTF-8 characters unsupported by the database charset (reduce and retry) [VG-3147]
+- Fix crash in -O3 / AVX builds caused by over-aligned Call members - heapsafe placement new returns only 16B-aligned memory, so the vectorized constructor emitted aligned AVX stores on an unaligned object [VS-1864]
+- Fix SIP User-Agent parsing: fall back to the Server header (RFC 3261) so the called-party agent is captured for UAS that only send Server [VS-1863]
+- FAS detection fixes: require 425Hz tone dominance in ring detection (speech harmonics caused false FAS) and update is_fas_detected only on call progress events (silencedetect erased detections)
+
+
 2026.07.0 08.07.2026
 ====================
 - General sniffer performance improvement: inter-thread packet queues can now synchronize via semaphores instead of busy-wait/usleep polling. This removes the periodic usleeps between the capture, preprocess and RTP threads and lets threads wake immediately on new data, which significantly reduces the number of context switches and CPU usage under load (use_sem_sync). This is enabled automatically after upgrade (active by default together with the reworked cleanup / hash-queue optimizations whenever t2_boost is on, which is the default); no configuration change is required. It can be turned off with use_sem_sync = no. Beyond the raw CPU saving, the main benefit is a much smoother load profile: the previous busy-wait/usleep polling produced spiky load peaks that pushed heap usage up during traffic bursts, which in turn increased TLB pressure and compounded further - with semaphore wakeups the load curve is continuous, roughly up to ~10% lower than the peaks of the old spiky curve.
