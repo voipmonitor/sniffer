@@ -1784,15 +1784,8 @@ public:
 	
 	sReg reg;
 	
-	// WARNING: do NOT re-enable __attribute__((aligned(64))) on these members.
-	// Call is allocated via 'new FILE_LINE(...)' = heapsafe placement operator new,
-	// which ignores C++17 align_val_t and returns only 16B-aligned memory (malloc/tcmalloc).
-	// Over-aligning Call raises alignof(Call) to 64, so -O3/-march=native emits aligned
-	// AVX stores (movdqa/vmovdqa) for the vectorized constructor init on a 16B-aligned
-	// 'this' -> #GP -> SIGSEGV in Call::Call. Manifests only with AVX build (SSE 16B is ok);
-	// -O2 merely hides it. Introduced by "performance optimization" cbaeef42, crashed 2026-07.
-	volatile u_int64_t rtppacketsinqueue_in /* __attribute__((aligned(64))) */;
-	volatile u_int64_t rtppacketsinqueue_out /* __attribute__((aligned(64))) */;
+	volatile u_int64_t rtppacketsinqueue_in __attribute__((aligned(64)));
+	volatile u_int64_t rtppacketsinqueue_out __attribute__((aligned(64)));
 
 	volatile int push_call_to_calls_queue;
 	volatile int push_register_to_registers_engine;

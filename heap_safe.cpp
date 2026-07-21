@@ -63,9 +63,20 @@ static u_int16_t _get_unix_tid() {
 }
 
 
-inline void *_heapsafe_alloc(size_t sizeOfObject) {
+inline size_t heapsafe_align_for_size(size_t sizeOfObject) {
+	if(sizeOfObject) {
+		for(size_t align = HEAPSAFE_MAX_ALIGN; align > 16; align >>= 1) {
+			if((sizeOfObject & (align - 1)) == 0) {
+				return(align);
+			}
+		}
+	}
+	return(16);
+}
+
+inline void *_heapsafe_alloc_align(size_t align, size_t sizeOfObject) {
 	#if SEPARATE_HEAP_FOR_HUGETABLE
-	if(heap_vm_hp_active && 
+	if(heap_vm_hp_active &&
 	   (sizeOfObject == heap_vm_hp_size_call || sizeOfObject == heap_vm_hp_size_packetbuffer)) {
 		u_int16_t heapItemIndex;
 		void *ptr = heap_vm_hp->MAlloc(sizeOfObject + heap_vm_shift, &heapItemIndex);
@@ -75,7 +86,18 @@ inline void *_heapsafe_alloc(size_t sizeOfObject) {
 		}
 	}
 	#endif //SEPARATE_HEAP_FOR_HUGETABLE
+	if(align > 16) {
+		void *ptr = NULL;
+		if(posix_memalign(&ptr, align, sizeOfObject) == 0) {
+			return(ptr);
+		}
+		return(NULL);
+	}
 	return(malloc(sizeOfObject));
+}
+
+inline void *_heapsafe_alloc(size_t sizeOfObject) {
+	return(_heapsafe_alloc_align(heapsafe_align_for_size(sizeOfObject), sizeOfObject));
 }
  
 inline void _heapsafe_free(void *pointerToObject) {
@@ -101,20 +123,25 @@ inline void *_heapsafe_realloc(void *pointerToObject, size_t sizeOfObject) {
 }
 
 #if HEAPSAFE
-inline void * heapsafe_safe_alloc(size_t sizeOfObject) { 
-	void *pointerToObject = _heapsafe_alloc(sizeOfObject + HEAPSAFE_SAFE_ALLOC_RESERVE * 2);
+inline void * heapsafe_safe_alloc(size_t sizeOfObject, size_t align = 0) {
+	void *pointerToObject = _heapsafe_alloc_align(align ? align : heapsafe_align_for_size(sizeOfObject), sizeOfObject + HEAPSAFE_SAFE_ALLOC_RESERVE * 2);
 	if(!pointerToObject) {
 		HeapSafeAllocError(_HeapSafeErrorNotEnoughMemory);
+	} else {
+		*(u_int32_t*)pointerToObject = HEAPSAFE_SAFE_RESERVE_CHECK;
 	}
 	return((char*)pointerToObject + HEAPSAFE_SAFE_ALLOC_RESERVE);
 }
 
-inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NULL, int memory_type2 = 0) { 
+inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NULL, int memory_type2 = 0, size_t align = 0) {
 	extern unsigned int HeapSafeCheck;
+	if(!align) {
+		align = heapsafe_align_for_size(sizeOfObject);
+	}
 	void *pointerToObject = NULL;
 	int error = 0;
 	try { 
-		pointerToObject = _heapsafe_alloc(sizeOfObject + HEAPSAFE_ALLOC_RESERVE +
+		pointerToObject = _heapsafe_alloc_align(align, sizeOfObject + HEAPSAFE_ALLOC_RESERVE +
 						  (HeapSafeCheck & _HeapSafeErrorBeginEnd ?
 						    (SIZEOF_MCB + sizeof(sHeapSafeMemoryControlBlock)) :
 						    0));
@@ -144,7 +171,7 @@ inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NUL
 		begin->length = sizeOfObject;
 		begin->memory_type = 0;
 		if(MCB_PLUS) {
-			((sHeapSafeMemoryControlBlockPlus*)begin)->block_addr = (void*)((unsigned long)begin + sizeof(sHeapSafeMemoryControlBlockPlus));
+			((sHeapSafeMemoryControlBlockPlus*)begin)->block_addr = (void*)((unsigned long)begin + SIZEOF_MCB);
 			if(memory_type1) {
 				#if __GNUC__ >= 8
 				#pragma GCC diagnostic push
@@ -310,18 +337,27 @@ inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NUL
 }
 #endif
 
-inline void * alloc_memory_stat_quick(size_t sizeOfObject, int alloc_number = 0) { 
+inline void * alloc_memory_stat_quick(size_t sizeOfObject, int alloc_number = 0, size_t align = 0) {
 	void *pointerToObject = NULL;
 	try { 
-		pointerToObject = _heapsafe_alloc(sizeOfObject + sizeof(sMemoryStatQuickBlock));
+		pointerToObject = _heapsafe_alloc_align(align ? align : heapsafe_align_for_size(sizeOfObject), sizeOfObject + sizeof(sMemoryStatQuickBlock));
 	}
 	catch(...) { 
 		return(NULL);
 	}
 	((sMemoryStatQuickBlock*)pointerToObject)->alloc_number = alloc_number;
 	((sMemoryStatQuickBlock*)pointerToObject)->size = sizeOfObject;
+	((sMemoryStatQuickBlock*)pointerToObject)->check = MEMORY_STAT_QUICK_CHECK;
 	__SYNC_ADD(memoryStat[alloc_number], sizeOfObject);
 	return((unsigned char*)pointerToObject + sizeof(sMemoryStatQuickBlock));
+}
+
+static volatile u_int64_t heapsafe_foreign_free_counter = 0;
+inline void heapsafe_foreign_free_log() {
+	if(heapsafe_foreign_free_counter < 20) {
+		__SYNC_ADD(heapsafe_foreign_free_counter, 1);
+		syslog(LOG_NOTICE, "HEAPSAFE: free of memory block allocated outside heapsafe (shared library or pre-init allocation) - direct free fallback");
+	}
 }
 
 #if HEAPSAFE
@@ -329,7 +365,13 @@ inline void heapsafe_safe_free(void *pointerToObject) {
 	if(!pointerToObject) {
 		return;
 	}
-	_heapsafe_free((char*)pointerToObject - HEAPSAFE_SAFE_ALLOC_RESERVE);
+	char *pointerToBegin = (char*)pointerToObject - HEAPSAFE_SAFE_ALLOC_RESERVE;
+	if(*(u_int32_t*)pointerToBegin != HEAPSAFE_SAFE_RESERVE_CHECK) {
+		heapsafe_foreign_free_log();
+		_heapsafe_free(pointerToObject);
+		return;
+	}
+	_heapsafe_free(pointerToBegin);
 }
 
 inline void heapsafe_free(void *pointerToObject) {
@@ -365,7 +407,9 @@ inline void heapsafe_free(void *pointerToObject) {
 			  HEAPSAFE_CMP_FREED_MEMORY_CONTROL_BLOCK(beginMemoryBlock->stringInfo)) {
 			error = _HeapSafeErrorFreed;
 		} else {
-			error = _HeapSafeErrorBeginEnd;
+			heapsafe_foreign_free_log();
+			_heapsafe_free(pointerToObject);
+			return;
 		}
 	}
 	if(HeapSafeCheck & _HeapSafeErrorAllocReserve &&
@@ -412,6 +456,11 @@ inline void heapsafe_free(void *pointerToObject) {
 inline void free_memory_stat_quick(void *pointerToObject) {
 	if(pointerToObject) {
 		sMemoryStatQuickBlock *memoryStatQuickBlock = (sMemoryStatQuickBlock *)((unsigned char*)pointerToObject - sizeof(sMemoryStatQuickBlock));
+		if(memoryStatQuickBlock->check != MEMORY_STAT_QUICK_CHECK) {
+			heapsafe_foreign_free_log();
+			_heapsafe_free(pointerToObject);
+			return;
+		}
 		__SYNC_SUB(memoryStat[memoryStatQuickBlock->alloc_number], memoryStatQuickBlock->size);
 		free(memoryStatQuickBlock);
 	}
@@ -428,6 +477,8 @@ inline void *heapsafe_safe_realloc(void *pointerToObject, size_t sizeOfObject) {
 	_pointerToBegin = (char*)_heapsafe_realloc(_pointerToBegin, sizeOfObject + HEAPSAFE_SAFE_ALLOC_RESERVE * 2);
 	if(!_pointerToBegin) {
 		HeapSafeAllocError(_HeapSafeErrorNotEnoughMemory);
+	} else {
+		*(u_int32_t*)_pointerToBegin = HEAPSAFE_SAFE_RESERVE_CHECK;
 	}
 	return(_pointerToBegin + HEAPSAFE_SAFE_ALLOC_RESERVE);
 }
@@ -463,7 +514,9 @@ inline void * realloc_memory_stat_quick(void *pointerToObject, size_t sizeOfObje
 	size_t oldSize = 0;
 	if(pointerToObject) {
 		sMemoryStatQuickBlock *memoryStatQuickBlock = (sMemoryStatQuickBlock *)((unsigned char*)pointerToObject - sizeof(sMemoryStatQuickBlock));
-		oldSize = memoryStatQuickBlock->size;
+		if(memoryStatQuickBlock->check == MEMORY_STAT_QUICK_CHECK) {
+			oldSize = memoryStatQuickBlock->size;
+		}
 	}
 	if(sizeOfObject <= oldSize) {
 		return(pointerToObject);
@@ -584,6 +637,77 @@ inline void _delete_object(void *pointerToObject) {
 	}
 }
  
+#if defined(__cpp_aligned_new)
+inline void *heapsafe_aligned_new(size_t sizeOfObject, size_t align, const char *memory_type1, int memory_type2, int alloc_number, bool arrayForm) {
+	if(align < 16) {
+		align = 16;
+	}
+	if(align > HEAPSAFE_MAX_ALIGN && (HeapSafeCheck || MemoryStatQuick)) {
+		syslog(LOG_ERR, "aligned allocation (%zd > %d) is not supported in heapsafe/memstat mode - abort!", align, HEAPSAFE_MAX_ALIGN);
+		abort();
+	}
+	if(sizeOfObject > 1000000000ull) {
+		syslog(LOG_WARNING, "too big allocated block - %zd, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
+		if(opt_abort_if_alloc_gt_gb && sizeOfObject > 1000000000ull * opt_abort_if_alloc_gt_gb) {
+			syslog(LOG_ERR, "allocated block > abort_if_alloc_gt_gb - abort!");
+			abort();
+		}
+	}
+	void *newPointer = HeapSafeCheck ?
+			    (HeapSafeCheck & _HeapSafeSafeReserve ?
+			      heapsafe_safe_alloc(sizeOfObject, align) :
+			      heapsafe_alloc(sizeOfObject, memory_type1, memory_type2, align)) :
+			   MemoryStatQuick ?
+			    alloc_memory_stat_quick(sizeOfObject, alloc_number, align) :
+			    _heapsafe_alloc_align(align, sizeOfObject);
+	if(!newPointer) {
+		notEnoughFreeMemory = true;
+		syslog(LOG_ERR, "allocation (operator new%s align) failed - size %zd, %s, %i", arrayForm ? "[]" : "", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
+	}
+	return(newPointer);
+}
+
+void * operator new(size_t sizeOfObject, std::align_val_t align) {
+	return(heapsafe_aligned_new(sizeOfObject, (size_t)align, NULL, 0, 0, false));
+}
+
+void * operator new[](size_t sizeOfObject, std::align_val_t align) {
+	return(heapsafe_aligned_new(sizeOfObject, (size_t)align, NULL, 0, 0, true));
+}
+
+void * operator new(size_t sizeOfObject, std::align_val_t align, const char *memory_type1, int memory_type2, int alloc_number) {
+	return(heapsafe_aligned_new(sizeOfObject, (size_t)align, memory_type1, memory_type2, alloc_number, false));
+}
+
+void * operator new[](size_t sizeOfObject, std::align_val_t align, const char *memory_type1, int memory_type2, int alloc_number) {
+	return(heapsafe_aligned_new(sizeOfObject, (size_t)align, memory_type1, memory_type2, alloc_number, true));
+}
+
+void operator delete(void *pointerToObject, std::align_val_t) noexcept {
+	_delete_object(pointerToObject);
+}
+
+void operator delete[](void *pointerToObject, std::align_val_t) noexcept {
+	_delete_object(pointerToObject);
+}
+
+void operator delete(void *pointerToObject, size_t, std::align_val_t) noexcept {
+	_delete_object(pointerToObject);
+}
+
+void operator delete[](void *pointerToObject, size_t, std::align_val_t) noexcept {
+	_delete_object(pointerToObject);
+}
+
+void operator delete(void *pointerToObject, std::align_val_t, const char*, int, int) noexcept {
+	_delete_object(pointerToObject);
+}
+
+void operator delete[](void *pointerToObject, std::align_val_t, const char*, int, int) noexcept {
+	_delete_object(pointerToObject);
+}
+#endif
+
 void delete_object(void *pointerToObject) {
 	_delete_object(pointerToObject);
 }
@@ -890,17 +1014,17 @@ void parse_heapsafeplus_coredump(const char *corefile, const char *outfile) {
 					   mbBMB->length < buffer_length / 2) {
 						sParseHeapsafeplusBlockInfo block_info;
 						block_info.length[0] = mbBMB->length;
-						block_info.length[1] = mbBMB->length + sizeof(sHeapSafeMemoryControlBlockPlus) + 20 + sizeof(sHeapSafeMemoryControlBlock);
+						block_info.length[1] = mbBMB->length + SIZEOF_MCB + 20 + sizeof(sHeapSafeMemoryControlBlock);
 						block_info.file = string(mbBMB->memory_type1).c_str();
 						block_info.line = mbBMB->memory_type2;
-						sHeapSafeMemoryControlBlock *mbEMB = (sHeapSafeMemoryControlBlock*)((long)posBMB + sizeof(sHeapSafeMemoryControlBlockPlus) + mbBMB->length + 20);
+						sHeapSafeMemoryControlBlock *mbEMB = (sHeapSafeMemoryControlBlock*)((long)posBMB + SIZEOF_MCB + mbBMB->length + 20);
 						if(strncmp(mbEMB->stringInfo, "EMB", 3) ||
 						   mbBMB->memory_type != mbEMB->memory_type ||
 						   mbBMB->length != mbEMB->length) {
 							map_bad_blocks[(unsigned long)mbBMB->block_addr] = block_info;
 							if(out) {
 								fprintf(out, "BAD BLOCK - length: %u", mbBMB->length);
-								fwrite(posBMB, mbBMB->length + sizeof(sHeapSafeMemoryControlBlockPlus) + sizeof(sHeapSafeMemoryControlBlock) + 20, 1, out);
+								fwrite(posBMB, mbBMB->length + SIZEOF_MCB + sizeof(sHeapSafeMemoryControlBlock) + 20, 1, out);
 								indik_bad_block = true;
 							}
 						} else {
