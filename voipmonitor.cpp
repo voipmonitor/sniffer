@@ -290,6 +290,7 @@ int opt_dbdtmf = 0;
 int opt_pcapdtmf = 1;
 int opt_inbanddtmf = 0;
 int opt_fasdetect = 0;
+u_int64_t opt_silence_detect_after_answer = 0;	// seconds; 0 = off, allowed 2 - 10
 bool opt_sipalg_detect = false;
 int opt_rtcp = 1;		// pair RTP+1 port to RTCP and save it. 
 int opt_nocdr = 0;		// do not save cdr?
@@ -7606,6 +7607,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42314) cConfigItem_integer("silencethreshold", &opt_silencethreshold));
 			addConfigItem(new FILE_LINE(42315) cConfigItem_yesno("sipalg_detect", &opt_sipalg_detect));
 			addConfigItem(new FILE_LINE(42315) cConfigItem_yesno("fasdetect", &opt_fasdetect));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("silence_detect_after_answer", &opt_silence_detect_after_answer));
 			addConfigItem(new FILE_LINE(42315) cConfigItem_yesno("silencedetect", &opt_silencedetect));
 			addConfigItem(new FILE_LINE(42316) cConfigItem_yesno("clippingdetect", &opt_clippingdetect));
 			addConfigItem(new FILE_LINE(42317) cConfigItem_yesno("norecord-header", &opt_norecord_header));
@@ -9522,10 +9524,17 @@ void set_spool_permission() {
 }
 
 void set_context_config() {
- 
+
 	if(!CONFIG.isSet("t2_boost") && sysconf(_SC_NPROCESSORS_ONLN) <= 4) {
 		opt_t2_boost = 0;
 	}
+
+	if(opt_silence_detect_after_answer &&
+	   (opt_silence_detect_after_answer < 2 || opt_silence_detect_after_answer > 10)) {
+		opt_silence_detect_after_answer = 0;
+		syslog(LOG_NOTICE, "silence_detect_after_answer: allowed values are 2 - 10 (seconds) - disabling");
+	}
+	opt_silence_detect_after_answer = TIME_S_TO_US(opt_silence_detect_after_answer);
  
 	if(opt_t2_boost_direct_rtp) {
 		opt_t2_boost = 2;

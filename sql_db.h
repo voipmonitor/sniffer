@@ -1413,6 +1413,7 @@ struct sExistsColumns {
 	bool cdr_sipport;
 	bool cdr_last_rtp_from_end;
 	bool cdr_silencedetect;
+	bool cdr_silence_afteranswer;
 	bool cdr_clippingdetect;
 	bool cdr_rtp_ptime;
 	bool cdr_mos_min;

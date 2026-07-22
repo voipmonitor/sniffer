@@ -72,6 +72,7 @@ extern int opt_inbanddtmf;
 extern int opt_silencedetect;
 extern int opt_clippingdetect;
 extern int opt_fasdetect;
+extern int opt_silence_detect_after_answer;
 extern SqlDb *sqlDbSaveCall;
 extern int opt_mysqlstore_max_threads_cdr;
 extern MySqlStore *sqlStore;
@@ -1205,6 +1206,11 @@ RTP::process_dtmf_rfc2833() {
 
         return;
 }
+
+//minimum uninterrupted noise from the called party that ends the
+//"dead air after answer" measurement (silence_detect_after_answer);
+//the value is documented in config/voipmonitor.conf
+#define SILENCE_AFTERANSWER_MIN_NOISE_MS 40
 
 /* read rtp packet */
 bool RTP::read(CallBranch *c_branch,
@@ -2422,7 +2428,11 @@ bool RTP::read(CallBranch *c_branch,
 	bool do_energylevels = opt_save_energylevels && (!opt_energylevelheader[0] || (owner && owner->save_energylevels)) &&
 			       !energylevels_via_jb;
 	bool do_silencedetect = opt_silencedetect && this == lastactivertp;
-	if(owner and (opt_inbanddtmf or opt_faxt30detect or do_silencedetect or opt_clippingdetect or do_fasdetect or do_energylevels)
+	bool do_silence_afteranswer = opt_silence_detect_after_answer && !this->iscaller &&
+				      owner && owner->connect_time_us &&
+				      !owner->silence_afteranswer_noise_start_us &&
+				      this->last_packet_time_us > owner->connect_time_us;
+	if(owner and (opt_inbanddtmf or opt_faxt30detect or do_silencedetect or opt_clippingdetect or do_fasdetect or do_silence_afteranswer or do_energylevels)
 	   and frame->frametype == AST_FRAME_VOICE and (codec == 0 or codec == 8) and payload_len > 0) {
 
 		int res;
@@ -2454,12 +2464,10 @@ bool RTP::read(CallBranch *c_branch,
 			} else {
 				dsp_clear_feature(DSP, DSP_FEATURE_ENERGYLEVEL);
 			}
-			if (opt_silencedetect) {
-				if (do_silencedetect) {
-					dsp_set_feature(DSP, DSP_FEATURE_SILENCE_SUPPRESS);
-				} else {
-					dsp_clear_feature(DSP, DSP_FEATURE_SILENCE_SUPPRESS);
-				}
+			if (do_silencedetect || do_silence_afteranswer) {
+				dsp_set_feature(DSP, DSP_FEATURE_SILENCE_SUPPRESS);
+			} else {
+				dsp_clear_feature(DSP, DSP_FEATURE_SILENCE_SUPPRESS);
 			}
 		}
 
@@ -2493,7 +2501,7 @@ bool RTP::read(CallBranch *c_branch,
 				}
 			}
 		}
-		if(opt_inbanddtmf or opt_faxt30detect or do_silencedetect or do_fasdetect or do_energylevels) {
+		if(opt_inbanddtmf or opt_faxt30detect or do_silencedetect or do_fasdetect or do_silence_afteranswer or do_energylevels) {
 			int silence0 = 0;
 			int totalsilence = 0;
 			int totalnoise = 0;
@@ -2522,6 +2530,26 @@ bool RTP::read(CallBranch *c_branch,
 						owner->called_noise += payload_len / 8;
 					}
 					last_was_silence = false;
+				}
+			}
+			if(do_silence_afteranswer) {
+				if(!owner->silence_afteranswer_rtp_seen) {
+					//guarded to avoid a per-packet store into the shared Call
+					owner->silence_afteranswer_rtp_seen = true;
+				}
+				if(!silence0 && totalnoise >= SILENCE_AFTERANSWER_MIN_NOISE_MS) {
+					//dead air from the called party ended; backdate to the
+					//start of the noise run (totalnoise includes this packet)
+					u_int64_t prev_noise_us = totalnoise > payload_len / 8 ?
+								  TIME_MS_TO_US(totalnoise - payload_len / 8) : 0;
+					u_int64_t noise_start_us = this->last_packet_time_us > prev_noise_us ?
+								   this->last_packet_time_us - prev_noise_us : this->last_packet_time_us;
+					if(noise_start_us <= owner->connect_time_us) {
+						//noise run already in progress at connect - dead air is zero
+						//(+1 keeps the latch distinguishable from the unset 0)
+						noise_start_us = owner->connect_time_us + 1;
+					}
+					owner->silence_afteranswer_noise_start_us = noise_start_us;
 				}
 			}
 			if(res) {

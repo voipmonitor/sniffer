@@ -6791,6 +6791,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`called_silence` tinyint unsigned DEFAULT NULL,\
 			`caller_silence_end` smallint unsigned DEFAULT NULL,\
 			`called_silence_end` smallint unsigned DEFAULT NULL,\
+			`silence_afteranswer` smallint unsigned DEFAULT NULL,\
 		       ") +
 		       "`response_time_100` smallint unsigned DEFAULT NULL,\
 			`response_time_xxx` smallint unsigned DEFAULT NULL,\
@@ -10311,6 +10312,13 @@ void SqlDb_mysql::checkColumns_cdr(bool enableAlter) {
 					"called_silence", "tinyint unsigned default NULL", NULL_CHAR_PTR,
 					"caller_silence_end", "smallint default NULL", NULL_CHAR_PTR,
 					"called_silence_end", "smallint default NULL", NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
+	}
+	if(!opt_disable_cdr_fields_rtp) {
+		extern int opt_silence_detect_after_answer;
+		this->checkExistsColumn("cdr", "silence after answer", opt_silence_detect_after_answer && enableAlter,
+					&tableSize, &existsColumns.cdr_silence_afteranswer,
+					"silence_afteranswer", "smallint unsigned default NULL", NULL_CHAR_PTR,
 					NULL_CHAR_PTR);
 	}
 	if(!opt_disable_cdr_fields_rtp) {
