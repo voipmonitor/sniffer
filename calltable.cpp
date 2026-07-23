@@ -11033,6 +11033,14 @@ void Call::disableListeningBuffers() {
 	pthread_mutex_unlock(&listening_worker_run_lock);
 }
 
+void Call::getInviteConfirmedLegs(CallBranch *c_branch, set<string> *confirmed_legs) {
+	for(vector<sInviteSD_Addr>::iterator iter = c_branch->invite_sdaddr.begin(); iter != c_branch->invite_sdaddr.end(); iter++) {
+		if(iter->confirmed && iter->callid.length()) {
+			confirmed_legs->insert(iter->callid);
+		}
+	}
+}
+
 vmIP Call::getSipcalleripFromInviteList(CallBranch *c_branch,
 					vmPort *sport, vmIP *saddr_encaps, u_int8_t *saddr_encaps_protocol, 
 					bool onlyConfirmed, bool skipRedirected,
@@ -11050,6 +11058,12 @@ vmIP Call::getSipcalleripFromInviteList(CallBranch *c_branch,
 		return(vmIP(0));
 	}
 	c_branch->invite_list_lock();
+	set<string> confirmed_legs;
+	bool check_confirmed_legs = false;
+	if(onlyConfirmed && has_second_merged_leg) {
+		getInviteConfirmedLegs(c_branch, &confirmed_legs);
+		check_confirmed_legs = true;
+	}
 	map<unsigned, unsigned> sort_indexes;
 	unsigned invite_sdaddr_order_size = c_branch->invite_sdaddr_order.size();
 	if(c_branch->invite_sdaddr_bad_order) {
@@ -11073,7 +11087,7 @@ vmIP Call::getSipcalleripFromInviteList(CallBranch *c_branch,
 			continue;
 		}
 		vector<sInviteSD_Addr>::iterator iter = c_branch->invite_sdaddr.begin() + c_branch->invite_sdaddr_order[_index].order;
-		if((!onlyConfirmed || iter->confirmed) &&
+		if((!onlyConfirmed || iter->confirmed || (check_confirmed_legs && confirmed_legs.find(iter->callid) == confirmed_legs.end())) &&
 		   (!skipRedirected || !iter->redirect || iter->confirmed) &&
 		   (!only_ipv || iter->saddr.v() == only_ipv)) { 
 			ip = iter->saddr;
@@ -11113,6 +11127,12 @@ vmIP Call::getSipcalledipFromInviteList(CallBranch *c_branch,
 		return(vmIP(0));
 	}
 	c_branch->invite_list_lock();
+	set<string> confirmed_legs;
+	bool check_confirmed_legs = false;
+	if(onlyConfirmed && has_second_merged_leg) {
+		getInviteConfirmedLegs(c_branch, &confirmed_legs);
+		check_confirmed_legs = true;
+	}
 	map<unsigned, unsigned> sort_indexes;
 	unsigned invite_sdaddr_order_size = c_branch->invite_sdaddr_order.size();
 	if(c_branch->invite_sdaddr_bad_order) {
@@ -11140,7 +11160,7 @@ vmIP Call::getSipcalledipFromInviteList(CallBranch *c_branch,
 			continue;
 		}
 		vector<sInviteSD_Addr>::iterator iter = c_branch->invite_sdaddr.begin() + c_branch->invite_sdaddr_order[_index].order;
-		if((!onlyConfirmed || iter->confirmed) &&
+		if((!onlyConfirmed || iter->confirmed || (check_confirmed_legs && confirmed_legs.find(iter->callid) == confirmed_legs.end())) &&
 		   (!skipRedirected || !iter->redirect || iter->confirmed) &&
 		   (!only_ipv || iter->daddr.v() == only_ipv)) { 
 			if(!_saddr.isSet() && !_daddr.isSet()) {

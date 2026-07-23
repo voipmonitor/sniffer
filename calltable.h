@@ -524,6 +524,7 @@ public:
 		string called;
 		string called_invite;
 		string branch;
+		string callid;
 	};
 	struct sInviteSD_OrderItem {
 		inline sInviteSD_OrderItem(unsigned order, u_int64_t ts) {
@@ -2553,6 +2554,7 @@ public:
 		return(any_redirected);
 	}
 
+	void getInviteConfirmedLegs(CallBranch *c_branch, set<string> *confirmed_legs);
 	vmIP getSipcalleripFromInviteList(CallBranch *c_branch, vmPort *sport = NULL, vmIP *saddr_encaps = NULL, u_int8_t *saddr_encaps_protocol = NULL, 
 					  bool onlyConfirmed = false, bool skipRedirected = false, bool onlyFirst = false, u_int8_t only_ipv = 0);
 	vmIP getSipcalledipFromInviteList(CallBranch *c_branch, vmPort *dport = NULL, vmIP *daddr_encaps = NULL, u_int8_t *daddr_encaps_protocol = NULL, list<vmIPport> *proxies = NULL, 

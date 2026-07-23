@@ -5062,6 +5062,9 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 					detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 					invite_sd.branch = branch;
 				}
+				if(opt_callidmerge_header[0] != '\0') {
+					invite_sd.callid = packetS->get_callid();
+				}
 				invite_sd.cseq_data[packetS->cseq.number] = CallStructs::sInviteCseqData(packet_time_us);
 				c_branch->invite_sdaddr.push_back(invite_sd);
 				inviteSdaddrIndex = c_branch->invite_sdaddr.size() - 1;
