@@ -178,6 +178,7 @@ extern int opt_mysqlstore_max_threads_charts_cache;
 extern int opt_mysqlstore_limit_queue_register;
 extern Calltable *calltable;
 extern int opt_silencedetect;
+extern u_int64_t opt_silence_detect_after_answer;
 extern int opt_clippingdetect;
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
@@ -901,6 +902,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
         called_noise = 0;
 	caller_lastsilence = 0;
 	called_lastsilence = 0;
+
+	silence_afteranswer_noise_start_us = 0;
+	silence_afteranswer_rtp_seen = false;
 
 	caller_clipping_8k = 0;
 	called_clipping_8k = 0;
@@ -7629,6 +7633,24 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 				cdr.add(LIMIT_SMALLINT_UNSIGNED(caller_lastsilence / 1000), "caller_silence_end");
 				cdr.add(LIMIT_SMALLINT_UNSIGNED(called_lastsilence / 1000), "called_silence_end");
+			}
+			if(opt_silence_detect_after_answer && existsColumns.cdr_silence_afteranswer && connect_time_us) {
+				u_int64_t dead_air_us = 0;
+				if(silence_afteranswer_noise_start_us > connect_time_us) {
+					dead_air_us = silence_afteranswer_noise_start_us - connect_time_us;
+				} else if(!silence_afteranswer_noise_start_us && silence_afteranswer_rtp_seen &&
+					  callend_us() > connect_time_us) {
+					//called party never produced audible sound for the whole call
+					dead_air_us = connect_duration_us();
+				}
+				if(dead_air_us) {
+					//stored in 10 ms units - plain ms would saturate smallint (~65 s)
+					//in the whole-call (callee never audible) case
+					cdr.add(LIMIT_SMALLINT_UNSIGNED(TIME_US_TO_MS(dead_air_us) / 10), "silence_afteranswer");
+					if(dead_air_us >= opt_silence_detect_after_answer) {
+						cdr_flags |= CDR_SILENCE_AFTERANSWER;
+					}
+				}
 			}
 			if(opt_clippingdetect && existsColumns.cdr_clippingdetect) {
 				if(caller_clipping_8k) {

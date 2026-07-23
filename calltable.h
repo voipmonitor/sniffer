@@ -205,7 +205,8 @@ enum eCdrBitFlag {
 	_CDR_BIT_PROTO_TLS,
 	_CDR_BIT_STOPPED_JB_DUE_TO_HIGH_OOO,
 	_CDR_BIT_CHANGING_CODEC_IN_STREAM,
-	_CDR_BIT_RTCP_RTD_USE_WS_METHOD
+	_CDR_BIT_RTCP_RTD_USE_WS_METHOD,
+	_CDR_BIT_SILENCE_AFTERANSWER	// bit 37 - number is documented in config/voipmonitor.conf
 };
 
 #define CDR_CHANGE_SRC_PORT_CALLER		CDR_FLAG(_CDR_BIT_CHANGE_SRC_PORT_CALLER)
@@ -234,6 +235,7 @@ enum eCdrBitFlag {
 #define CDR_STOPPED_JB_DUE_TO_HIGH_OOO		CDR_FLAG(_CDR_BIT_STOPPED_JB_DUE_TO_HIGH_OOO)
 #define CDR_CHANGING_CODEC_IN_STREAM		CDR_FLAG(_CDR_BIT_CHANGING_CODEC_IN_STREAM)
 #define CDR_RTCP_RTD_USE_WS_METHOD		CDR_FLAG(_CDR_BIT_RTCP_RTD_USE_WS_METHOD)
+#define CDR_SILENCE_AFTERANSWER			CDR_FLAG(_CDR_BIT_SILENCE_AFTERANSWER)
 
 #define CDR_SAVE_FLAGS				CDR_FLAG(_CDR_BIT_SAVE_FLAGS)
 #define CDR_SAVE_SIP_PCAP			CDR_FLAG(_CDR_BIT_SAVE_SIP_PCAP)
@@ -1900,6 +1902,9 @@ public:
 	unsigned int called_noise;
 	unsigned int caller_lastsilence;
 	unsigned int called_lastsilence;
+
+	u_int64_t silence_afteranswer_noise_start_us;	//!< start of first confirmed noise from called party after connect (0 = not yet)
+	bool silence_afteranswer_rtp_seen;		//!< called party G711 RTP was DSP-processed after connect
 
 	unsigned int caller_clipping_8k;
 	unsigned int called_clipping_8k;

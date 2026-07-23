@@ -235,6 +235,8 @@ struct RecordArrayField2 : public RecordArrayField {
 		if(other) {
 			this->tf = other->tf;
 			this->v = other->v;
+			this->v_ip = other->v_ip;
+			this->v_port = other->v_port;
 			if(other->tf == tf_string && other->v.s && *other->v.s && cloneStr) {
 				this->v.s = new FILE_LINE(19002) char[strlen(other->v.s) + 1];
 				strcpy(this->v.s, other->v.s);
@@ -244,6 +246,8 @@ struct RecordArrayField2 : public RecordArrayField {
 	RecordArrayField2(const RecordArrayField2 &other) {
 		this->tf = other.tf;
 		this->v = other.v;
+		this->v_ip = other.v_ip;
+		this->v_port = other.v_port;
 		if(other.tf == tf_string && other.v.s && *other.v.s) {
 			this->v.s = new FILE_LINE(19003) char[strlen(other.v.s) + 1];
 			strcpy(this->v.s, other.v.s);
@@ -256,6 +260,8 @@ struct RecordArrayField2 : public RecordArrayField {
 		free();
 		this->tf = other.tf;
 		this->v = other.v;
+		this->v_ip = other.v_ip;
+		this->v_port = other.v_port;
 		if(other.tf == tf_string && other.v.s && *other.v.s) {
 			this->v.s = new FILE_LINE(19004) char[strlen(other.v.s) + 1];
 			strcpy(this->v.s, other.v.s);
