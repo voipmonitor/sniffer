@@ -206,7 +206,8 @@ enum eCdrBitFlag {
 	_CDR_BIT_STOPPED_JB_DUE_TO_HIGH_OOO,
 	_CDR_BIT_CHANGING_CODEC_IN_STREAM,
 	_CDR_BIT_RTCP_RTD_USE_WS_METHOD,
-	_CDR_BIT_SILENCE_AFTERANSWER	// bit 37 - number is documented in config/voipmonitor.conf
+	_CDR_BIT_SILENCE_AFTERANSWER,	// bit 37 - number is documented in config/voipmonitor.conf
+	_CDR_BIT_NEXT_BRANCHES		// bit 38 - call has rows in cdr_next_branches
 };
 
 #define CDR_CHANGE_SRC_PORT_CALLER		CDR_FLAG(_CDR_BIT_CHANGE_SRC_PORT_CALLER)
@@ -236,6 +237,7 @@ enum eCdrBitFlag {
 #define CDR_CHANGING_CODEC_IN_STREAM		CDR_FLAG(_CDR_BIT_CHANGING_CODEC_IN_STREAM)
 #define CDR_RTCP_RTD_USE_WS_METHOD		CDR_FLAG(_CDR_BIT_RTCP_RTD_USE_WS_METHOD)
 #define CDR_SILENCE_AFTERANSWER			CDR_FLAG(_CDR_BIT_SILENCE_AFTERANSWER)
+#define CDR_NEXT_BRANCHES			CDR_FLAG(_CDR_BIT_NEXT_BRANCHES)
 
 #define CDR_SAVE_FLAGS				CDR_FLAG(_CDR_BIT_SAVE_FLAGS)
 #define CDR_SAVE_SIP_PCAP			CDR_FLAG(_CDR_BIT_SAVE_SIP_PCAP)
@@ -628,6 +630,59 @@ public:
 	};
 };
 
+class CustomHeadersContentData {
+public:
+	enum eSelectOccurrence {
+		so_sensor_setting = 0,
+		so_first_value = 1,
+		so_last_value = 2,
+		so_nth_value = 3
+	};
+	struct sCH_index {
+		int i1;
+		int i2;
+		sCH_index(int i1, int i2) : i1(i1), i2(i2) {}
+		inline bool operator == (const sCH_index& other) const {
+			return(this->i1 == other.i1 &&
+			       this->i2 == other.i2);
+		}
+		inline bool operator < (const sCH_index& other) const {
+			return(this->i1 < other.i1 ? 1 : this->i1 > other.i1 ? 0 :
+			       this->i2 < other.i2);
+		}
+	};
+	struct sCH_ContentDataItem {
+		sCH_ContentDataItem() {}
+		sCH_ContentDataItem(const char *header, const char *content) : header(header), content(content) {}
+		string header;
+		string content;
+	};
+	struct sCH_ContentData {
+		sCH_ContentData() {
+			content_time = 0;
+			selectOccurrence = so_first_value;
+			nthOccurrence = 0;
+		}
+		void addContent(sCH_ContentDataItem *content, u_int64_t time_us);
+		sCH_ContentDataItem getContent();
+		bool isSet();
+		map<u_int64_t, sCH_ContentDataItem> timecontent;
+		sCH_ContentDataItem content;
+		u_int64_t content_time;
+		eSelectOccurrence selectOccurrence;
+		int nthOccurrence;
+	};
+	struct sCH_Content {
+		~sCH_Content();
+		void addContent(int i1, int i2, sCH_ContentDataItem *content, u_int64_t time_us, eSelectOccurrence selectOccurrence, int nthOccurrence);
+		sCH_ContentDataItem getContent(int i1, int i2);
+		void incParseCounter(int i1, int i2);
+		unsigned getParseCounter(int i1, int i2);
+		map<sCH_index, sCH_ContentData*> data;
+		map<sCH_index, unsigned> parse_counter;
+	};
+};
+
 class CallBranch : public CallStructs {
 public:
 	CallBranch(Call *call = NULL, unsigned branch_id = 0);
@@ -640,10 +695,12 @@ public:
 	}
 	inline bool is_closed() {
 		return(seenbye ||
+		       seenokbye ||
 		       seencancel ||
 		       ignore_rtp_after_response_time_usec ||
+		       (lastSIPresponseNum / 100 == 3 && !new_invite_after_lsr3xx) ||
 		       (lastSIPresponseNum / 100 == 4 && !(lastSIPresponseNum == 401 || lastSIPresponseNum == 407 || lastSIPresponseNum == 491)) ||
-		       lastSIPresponseNum / 100 == 5 ||
+		       (lastSIPresponseNum / 100 == 5 && lastSIPresponseNum != 501) ||
 		       lastSIPresponseNum / 100 == 6);
 	}
 	void proxy_add(vmIP ip, vmPort port) {
@@ -732,6 +789,7 @@ public:
 	unsigned branch_id;
 	string branch_call_id;
 	string branch_fbasename;
+	u_int64_t connect_time_us;
 
 	vector<sInviteSD_Addr> invite_sdaddr;
 	map<vmIPportLink, unsigned> invite_sdaddr_map;
@@ -773,6 +831,16 @@ public:
 	string digest_realm;
 	
 	string custom_header1;
+	map<int, class RTPsecure*> rtp_secure_map;
+	CustomHeadersContentData::sCH_Content custom_headers_content_cdr;
+	CustomHeadersContentData::sCH_Content custom_headers_content_message;
+	volatile int _custom_headers_content_sync;
+	void custom_headers_content_lock() {
+		__SYNC_LOCK(this->_custom_headers_content_sync);
+	}
+	void custom_headers_content_unlock() {
+		__SYNC_UNLOCK(this->_custom_headers_content_sync);
+	}
 	string match_header;
  
 	vmIP sipcallerip[MAX_SIPCALLERDIP];	//!< SIP signalling source IP address
@@ -814,6 +882,7 @@ public:
 	list<sSipHistory> SIPhistory;
 	list<sSipPacketInfo*> SIPpacketInfoList;
 	bool new_invite_after_lsr487;
+	bool new_invite_after_lsr3xx;
 	bool cancel_lsr487;
 	
 	int reason_sip_cause;
@@ -1202,59 +1271,6 @@ struct sChartsCacheCallData {
 	map<u_int32_t, cEvalFormula::sValue> value_map;
 };
 
-class CustomHeadersContentData {
-public:
-	enum eSelectOccurrence {
-		so_sensor_setting = 0,
-		so_first_value = 1,
-		so_last_value = 2,
-		so_nth_value = 3
-	};
-	struct sCH_index {
-		int i1;
-		int i2;
-		sCH_index(int i1, int i2) : i1(i1), i2(i2) {}
-		inline bool operator == (const sCH_index& other) const {
-			return(this->i1 == other.i1 &&
-			       this->i2 == other.i2);
-		}
-		inline bool operator < (const sCH_index& other) const {
-			return(this->i1 < other.i1 ? 1 : this->i1 > other.i1 ? 0 :
-			       this->i2 < other.i2);
-		}
-	};
-	struct sCH_ContentDataItem {
-		sCH_ContentDataItem() {}
-		sCH_ContentDataItem(const char *header, const char *content) : header(header), content(content) {}
-		string header;
-		string content;
-	};
-	struct sCH_ContentData {
-		sCH_ContentData() {
-			content_time = 0;
-			selectOccurrence = so_first_value;
-			nthOccurrence = 0;
-		}
-		void addContent(sCH_ContentDataItem *content, u_int64_t time_us);
-		sCH_ContentDataItem getContent();
-		bool isSet();
-		map<u_int64_t, sCH_ContentDataItem> timecontent;
-		sCH_ContentDataItem content;
-		u_int64_t content_time;
-		eSelectOccurrence selectOccurrence;
-		int nthOccurrence;
-	};
-	struct sCH_Content {
-		~sCH_Content();
-		void addContent(int i1, int i2, sCH_ContentDataItem *content, u_int64_t time_us, eSelectOccurrence selectOccurrence, int nthOccurrence);
-		sCH_ContentDataItem getContent(int i1, int i2);
-		void incParseCounter(int i1, int i2);
-		unsigned getParseCounter(int i1, int i2);
-		map<sCH_index, sCH_ContentData*> data;
-		map<sCH_index, unsigned> parse_counter;
-	};
-};
-
 /**
   * This class implements operations on call
 */
@@ -1639,8 +1655,16 @@ public:
 	bool rtcp_exists;
 	list<RTP*> *rtp_canceled;
 	volatile bool rtp_remove_flag;
+	bool rtp_remove_all;
+	set<CallBranch*> rtp_remove_branches;
+	volatile int _rtp_remove_sync;
+	void rtp_remove_lock() {
+		__SYNC_LOCK(this->_rtp_remove_sync);
+	}
+	void rtp_remove_unlock() {
+		__SYNC_UNLOCK(this->_rtp_remove_sync);
+	}
 	RTP *rtpab[2];
-	map<int, class RTPsecure*> rtp_secure_map;
 	cDtls *dtls;
 	bool dtls_exists;
 	volatile unsigned dtls_queue_move;
@@ -1884,10 +1908,6 @@ public:
 	RTP *lastraw[2];
 
 	string geoposition;
-
-	CustomHeadersContentData::sCH_Content custom_headers_content_cdr;
-	CustomHeadersContentData::sCH_Content custom_headers_content_message;
-	volatile int _custom_headers_content_sync;
 
 	u_int16_t onInvite_counter;
 	u_int16_t onCall_2XX_counter;
@@ -2196,13 +2216,15 @@ public:
 	 * @brief remove all RTP 
 	 *
 	*/
-	void setFlagForRemoveRTP();
+	void setFlagForRemoveRTP(CallBranch *c_branch = NULL);
 	inline void removeRTP_ifSetFlag() {
 		if(rtp_remove_flag) {
-			_removeRTP();
+			_removeRTP_branch();
 		}
 	}
 	void _removeRTP();
+	void _removeRTP_branch();
+	void refill_rtp_streams(vector<RTP*> &rtp_keep);
 
 	/**
 	 * @brief stop recording packets to pcap file
@@ -2402,13 +2424,6 @@ public:
 		__SYNC_UNLOCK(this->_call_id_alternative_lock);
 	}
 	
-	void custom_headers_content_lock() {
-		__SYNC_LOCK(this->_custom_headers_content_sync);
-	}
-	void custom_headers_content_unlock() {
-		__SYNC_UNLOCK(this->_custom_headers_content_sync);
-	}
-	
 	void forcemark_lock() {
 		__SYNC_LOCK(this->_forcemark_lock);
 	}
@@ -2417,8 +2432,29 @@ public:
 	}
 
 	bool is_enable_set_destroy_call_at_for_call(CallBranch *c_branch, sCseq *cseq, int merged) {
+		extern bool opt_call_branches;
+		extern bool opt_callidmerge_force_separate_branches;
 		return((!cseq || !c_branch->invitecseq_in_dialog.size() || find(c_branch->invitecseq_in_dialog.begin(),c_branch->invitecseq_in_dialog.end(), *cseq) == c_branch->invitecseq_in_dialog.end()) &&
-		       (!this->has_second_merged_leg || (this->has_second_merged_leg && merged)));
+		       (!this->has_second_merged_leg || (this->has_second_merged_leg && merged) ||
+			(opt_call_branches && opt_callidmerge_force_separate_branches)));
+	}
+	
+	bool seenRES18X_or_2XX_in_branches() {
+		if(first_branch.seenRES18X || first_branch.seenRES2XX) {
+			return(true);
+		}
+		bool rslt = false;
+		if(next_branches.size()) {
+			branches_lock();
+			for(unsigned i = 0; i < next_branches.size(); i++) {
+				if(next_branches[i]->seenRES18X || next_branches[i]->seenRES2XX) {
+					rslt = true;
+					break;
+				}
+			}
+			branches_unlock();
+		}
+		return(rslt);
 	}
 	
 	bool is_closed_other_branches(CallBranch *c_branch) {
@@ -2501,12 +2537,14 @@ public:
 			}
 			bool rslt = false;
 			if(next_branches.size()) {
+				branches_lock();
 				for(unsigned i = 0; i < next_branches.size(); i++) {
 					if(checkKnownIP_inSipCallerdIP(next_branches[i], ip)) {
 						rslt = true;
 						break;
 					}
 				}
+				branches_unlock();
 			}
 			return(rslt);
 		}
@@ -3009,7 +3047,7 @@ public:
 		return(0);
 	}
 	
-	void getValue(eCallField field, RecordArrayField *rfield);
+	void getValue(eCallField field, RecordArrayField *rfield, CallBranch *c_branch = NULL);
 	static string getJsonHeader();
 	static void getJsonHeader(vector<string> *header);
 	void getRecordData(RecordArray *rec, bool setCountry = true);
@@ -3125,6 +3163,7 @@ public:
 	map<string, int> branches_to_map;
 	map<string, int> branches_tag_map;
 	volatile unsigned branch_main_id;
+	bool branches_max_reached;
 	volatile int _branches_lock;
 	inline bool is_multibranch() {
 		return(next_branches.size() > 0);
@@ -3138,7 +3177,7 @@ public:
 		} else {
 			CallBranch *branch;
 			branches_lock();
-			branch = next_branches[branch_id - 1];
+			branch = branch_id - 1 < next_branches.size() ? next_branches[branch_id - 1] : &first_branch;
 			branches_unlock();
 			return(branch);
 		}
@@ -4546,10 +4585,10 @@ public:
 	void clear(bool lock = true);
 	void refresh(SqlDb *sqlDb = NULL, bool enableCreatePartitions = true);
 	void prepareCustomNodes(ParsePacket *parsePacket);
-	void parse(Call *call, int type, sCH_Content *ch_content, packet_s_process *packetS, eReqRespDirection reqRespDirection = dir_na);
+	void parse(Call *call, CallBranch *c_branch, int type, sCH_Content *ch_content, packet_s_process *packetS, eReqRespDirection reqRespDirection = dir_na);
 	void setCustomHeaderContent(Call *call, int type, sCH_Content *ch_content, int i1, int i2, sCH_ContentDataItem *content, u_int64_t time_us,
 				    eSelectOccurrence selectOccurrence, int nthOccurrence);
-	void prepareSaveRows(Call *call, int type, sCH_Content *ch_content, u_int64_t time_us, class SqlDb_row *cdr_next, class SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]);
+	void prepareSaveRows(Call *call, CallBranch *c_branch, int type, sCH_Content *ch_content, u_int64_t time_us, class SqlDb_row *cdr_next, class SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]);
 	string getScreenPopupFieldsString(Call *call, int type);
 	string getDeleteQuery(const char *id, const char *prefix, const char *suffix);
 	list<string> getAllNextTables() {
@@ -4575,7 +4614,7 @@ public:
 	void checkTableColumns(const char *tableName, int tableIndex, SqlDb *sqlDb, bool enableAlter);
 	void createColumnsForFixedHeaders(SqlDb *sqlDb = NULL);
 	bool getPosForDbId(unsigned db_id, d_u_int32_t *pos);
-	static sCH_Content *getCustomHeadersCallContent(Call *call, int type);
+	static sCH_Content *getCustomHeadersCallContent(CallBranch *c_branch, int type);
 	void getHeaders(list<string> *rslt);
 	void getValues(Call *call, int type, list<string> *rslt);
 	void getHeaderValues(Call *call, int type, map<string, string> *rslt);

@@ -10580,6 +10580,13 @@ void SqlDb_mysql::checkColumns_cdr_next_branches(bool enableAlter) {
 					"sipcalledport_v6", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					NULL_CHAR_PTR);
 	}
+	this->checkExistsColumn("cdr_next_branches", "country code (next branches)", opt_cdr_country_code && enableAlter,
+				&tableSize, &existsColumns.cdr_next_branches_country_code,
+				"sipcallerip_country_code", (opt_cdr_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), "`sipcallerip_country_code` (`sipcallerip_country_code`)",
+				"sipcalledip_country_code", (opt_cdr_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), "`sipcalledip_country_code` (`sipcalledip_country_code`)",
+				"caller_number_country_code", (opt_cdr_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), "`caller_number_country_code` (`caller_number_country_code`)",
+				"called_number_country_code", (opt_cdr_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), "`called_number_country_code` (`called_number_country_code`)",
+				NULL_CHAR_PTR);
 }
 
 void SqlDb_mysql::checkColumns_cdr_sdp(bool enableAlter) {

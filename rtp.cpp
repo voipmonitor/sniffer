@@ -405,6 +405,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	this->index_call_ip_port = -1;
 	this->index_call_ip_port_other_side = -1;
 	this->index_call_ip_port_by_dest = false;
+	this->c_branch_created = NULL;
 	
 	this->_last_ts.tv_sec = 0;
 	this->_last_ts.tv_usec = 0;
@@ -3344,7 +3345,7 @@ RTPMAP *RTP::get_rtpmap(Call *call, CallBranch *c_branch, bool other_side) {
 		if(call) {
 			int rtpmap_call_index = other_side ? this->rtpmap_other_side_call_index : this->rtpmap_call_index;
 			if(rtpmap_call_index >= 0) {
-				return(c_branch->rtpmap[rtpmap_call_index]);
+				return((c_branch_created ? c_branch_created : c_branch)->rtpmap[rtpmap_call_index]);
 			}
 		}
 		return(NULL);

@@ -158,6 +158,8 @@ extern bool opt_call_branches;
 extern bool opt_call_branches_find_by_called_number;
 extern bool opt_call_branches_find_by_called_domain;
 extern bool opt_call_branches_find_smart;
+extern bool opt_call_branches_find_by_from_tag;
+extern int opt_call_branches_max;
 extern char opt_call_id_alternative[256];
 extern vector<string> opt_call_id_alternative_v;
 extern char opt_fbasename_header[128];
@@ -3565,22 +3567,71 @@ struct s_detect_callerd {
 			   called_domain_to) :
 			 ""));
 	}
-	inline bool __smart_cmp_called_number(string &number_short, string &number_long) {
-		return(number_short.length() >= max(number_long.length() / 2, (size_t)3) && 
-		       number_long.find(number_short) != string::npos);
+	inline string branch_to_key_by_to() {
+		string key_to = (opt_call_branches_find_by_called_number ?
+				  called_to :
+				  "") +
+				(opt_call_branches_find_by_called_number && opt_call_branches_find_by_called_domain ?
+				  "@" :
+				  "") +
+				(opt_call_branches_find_by_called_domain ?
+				  called_domain_to :
+				  "");
+		if(key_to.empty() || key_to == "@" || key_to == branch_to_key()) {
+			return("");
+		}
+		return(key_to);
 	}
-	inline bool _smart_cmp_called_number(string &number1, string &number2) {
-		return(!number1.empty() && !number2.empty() &&
-		       (number1 == number2 ||
-			(number1.length() < number2.length() ?
-			  __smart_cmp_called_number(number1, number2) :
-			  __smart_cmp_called_number(number2, number1))));
+	inline void __smart_norm_called_number(string &number, string *rslt) {
+		if(number.length() > 2 && number[0] == '0' && number[1] == '0') {
+			*rslt = number.substr(2);
+		} else if(number.length() > 1 && number[0] == '+') {
+			*rslt = number.substr(1);
+		} else {
+			*rslt = number;
+		}
 	}
-	inline bool smart_cmp_called_number(CallBranch *c_branch) {
-		return(_smart_cmp_called_number(this->called_to, c_branch->called_to) ||
-		       _smart_cmp_called_number(this->called_uri, c_branch->called_uri) ||
-		       _smart_cmp_called_number(this->called_to, c_branch->called_uri) ||
-		       _smart_cmp_called_number(this->called_uri, c_branch->called_to));
+	inline unsigned __smart_cmp_called_number(string &number_short, string &number_long) {
+		if(number_short.length() < max(number_long.length() / 2, (size_t)6)) {
+			return(0);
+		}
+		if(number_long.find(number_short) != string::npos) {
+			return((unsigned)number_short.length());
+		}
+		return(0);
+	}
+	inline unsigned _smart_cmp_called_number(string &number1, string &number2) {
+		if(number1.empty() || number2.empty()) {
+			return(0);
+		}
+		if(number1 == number2) {
+			return((unsigned)number1.length());
+		}
+		string norm1, norm2;
+		__smart_norm_called_number(number1, &norm1);
+		__smart_norm_called_number(number2, &norm2);
+		if(norm1 == norm2) {
+			return((unsigned)norm1.length());
+		}
+		return(norm1.length() < norm2.length() ?
+			__smart_cmp_called_number(norm1, norm2) :
+			__smart_cmp_called_number(norm2, norm1));
+	}
+	inline unsigned smart_cmp_called_number(CallBranch *c_branch) {
+		unsigned rslt = _smart_cmp_called_number(this->called_to, c_branch->called_to);
+		unsigned cmp = _smart_cmp_called_number(this->called_uri, c_branch->called_uri);
+		if(cmp > rslt) {
+			rslt = cmp;
+		}
+		cmp = _smart_cmp_called_number(this->called_to, c_branch->called_uri);
+		if(cmp > rslt) {
+			rslt = cmp;
+		}
+		cmp = _smart_cmp_called_number(this->called_uri, c_branch->called_to);
+		if(cmp > rslt) {
+			rslt = cmp;
+		}
+		return(rslt);
 	}
 	inline bool _smart_cmp_called_domain(string &domain1, string &domain2) {
 		return(!domain1.empty() && domain1 == domain2);
@@ -3622,7 +3673,7 @@ inline void detect_callerd(packet_s_process *packetS, int sip_method, s_detect_c
 			  data->caller[0] != '\0') {
 				caller_useRemotePartyID = true;
 			} else {
-				if(opt_passertedidentity && !get_sip_peername(packetS, "\nP-Assserted-Identity:", NULL, &data->caller, ppntt_asserted_identity, ppndt_caller) &&
+				if(opt_passertedidentity && !get_sip_peername(packetS, "\nP-Asserted-Identity:", NULL, &data->caller, ppntt_asserted_identity, ppndt_caller) &&
 				  data->caller[0] != '\0') {
 					caller_usePAssertedIdentity = true;
 				} else {
@@ -3754,7 +3805,7 @@ inline void detect_callerd(packet_s_process *packetS, int sip_method, s_detect_c
 		}
 	}
 	
-	get_sip_peertag(packetS, "\nFrom:", "\ft:", &data->caller_tag, ppntt_to, ppndt_caller_tag);
+	get_sip_peertag(packetS, "\nFrom:", "\nf:", &data->caller_tag, ppntt_from, ppndt_caller_tag);
 	get_sip_peertag(packetS, "\nTo:", "\nt:", &data->called_tag_to, ppntt_to, ppndt_called_tag);
 	
 }
@@ -3894,7 +3945,7 @@ inline unsigned int setCallFlags(unsigned long int flags, sNatAliases **nat_alia
 	return(flags);
 }
 
-static inline void process_packet__parse_custom_headers(Call *call, packet_s_process *packetS);
+static inline void process_packet__parse_custom_headers(Call *call, CallBranch *c_branch, packet_s_process *packetS);
 
 inline bool init_call_branch(Call *call, CallBranch *c_branch, packet_s_process *packetS, int sip_method, s_detect_callerd *data_callerd) {
 
@@ -4088,6 +4139,22 @@ inline void new_invite_register__init_branch(CallBranch *c_branch, Call *call, s
 	string branch_to_key = (opt_callidmerge_force_separate_branches ? c_branch->branch_call_id + ':' : "") +
 			       data_callerd->branch_to_key();
 	call->branches_to_map[branch_to_key] = 0;
+	if(opt_destination_number_mode == 2) {
+		string branch_to_key_by_to = data_callerd->branch_to_key_by_to();
+		if(!branch_to_key_by_to.empty()) {
+			if(opt_callidmerge_force_separate_branches) {
+				branch_to_key_by_to = c_branch->branch_call_id + ':' + branch_to_key_by_to;
+			}
+			if(call->branches_to_map.find(branch_to_key_by_to) == call->branches_to_map.end()) {
+				call->branches_to_map[branch_to_key_by_to] = 0;
+			} else if(sverb.call_branches) {
+				cout << " * branch secondary (destination number mode 2) to-key collision:"
+				     << " call_id: " << call->call_id
+				     << " key: " << branch_to_key_by_to
+				     << endl;
+			}
+		}
+	}
 	if(!data_callerd->caller_tag.empty()) {
 		call->branches_tag_map[data_callerd->caller_tag] = 0;
 	}
@@ -4117,7 +4184,7 @@ inline void new_invite_register__no_record_header(Call *call, packet_s_process *
 inline void new_invite_register__fraud(Call *call, packet_s_process *packetS) {
 	if(opt_enable_fraud && isFraudReady()) {
 		if(needCustomHeadersForFraud()) {
-			process_packet__parse_custom_headers(call, packetS);
+			process_packet__parse_custom_headers(call, &call->first_branch, packetS);
 		}
 		fraudBeginCall(call, packetS->getTimeval());
 	}
@@ -4781,22 +4848,43 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 		get_sip_peertag(packetS, "\nFrom:", "\nf:", &from_tag, ppntt_from, ppndt_caller_tag);
 		get_sip_peertag(packetS, "\nTo:", "\nt:", &to_tag, ppntt_to, ppndt_called_tag);
 
+		bool create_enable = to_tag.empty() && !from_tag.empty() &&
+				     packetS->sip_method == INVITE;
+		bool from_tag_fallback = false;
 		call->branches_lock();
 		if(!from_tag.empty()) {
 			map<string, int>::iterator iter = call->branches_tag_map.find(from_tag);
 			if(iter != call->branches_tag_map.end()) {
-				c_branch_id = iter->second;
 				c_branch_id_by_from_tag = iter->second;
 			}
 		}
 		if(!to_tag.empty()) {
 			map<string, int>::iterator iter = call->branches_tag_map.find(to_tag);
 			if(iter != call->branches_tag_map.end()) {
-				if(c_branch_id < 0) {
-					c_branch_id = iter->second;
-				}
 				c_branch_id_by_to_tag = iter->second;
 			}
+		}
+		if(!to_tag.empty()) {
+			if(c_branch_id_by_to_tag >= 0) {
+				if(c_branch_id_by_from_tag >= 0 && c_branch_id_by_from_tag != c_branch_id_by_to_tag) {
+					if(to_tag == call->first_branch.caller_tag) {
+						c_branch_id = c_branch_id_by_from_tag;
+					} else if(from_tag == call->first_branch.caller_tag) {
+						c_branch_id = c_branch_id_by_to_tag;
+					} else {
+						c_branch_id = c_branch_id_by_from_tag;
+					}
+				} else {
+					c_branch_id = c_branch_id_by_to_tag;
+				}
+			} else if(c_branch_id_by_from_tag >= 0 &&
+				  (call->next_branches.empty() || opt_call_branches_find_by_from_tag)) {
+				c_branch_id = c_branch_id_by_from_tag;
+			}
+		} else if(c_branch_id_by_from_tag >= 0 &&
+			  (opt_call_branches_find_by_from_tag ||
+			   (!create_enable && call->next_branches.empty()))) {
+			c_branch_id = c_branch_id_by_from_tag;
 		}
 		
 		if(c_branch_id >= 0) {
@@ -4811,48 +4899,106 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 				c_branch_id = iter->second;
 				c_branch = c_branch_id > 0 ? call->next_branches[c_branch_id - 1] : &call->first_branch;
 			} else if(opt_call_branches_find_smart) {
+				unsigned best_score = 0;
 				for(map<string, int>::iterator iter = call->branches_to_map.begin(); iter != call->branches_to_map.end(); iter++) {
 					CallBranch *comp_branch = iter->second > 0 ? call->next_branches[iter->second - 1] : &call->first_branch;
-					if((!opt_call_branches_find_by_called_number ||
-					    data_callerd.smart_cmp_called_number(comp_branch)) &&
-					   (!opt_call_branches_find_by_called_domain ||
-					    data_callerd.smart_cmp_called_domain(comp_branch))) {
+					if(opt_callidmerge_force_separate_branches &&
+					   comp_branch->branch_call_id != packetS->get_callid()) {
+						continue;
+					}
+					if(opt_call_branches_find_by_called_domain &&
+					   !data_callerd.smart_cmp_called_domain(comp_branch)) {
+						continue;
+					}
+					if(opt_call_branches_find_by_called_number) {
+						unsigned score = data_callerd.smart_cmp_called_number(comp_branch);
+						if(score > best_score) {
+							best_score = score;
+							c_branch_id = iter->second;
+							c_branch = comp_branch;
+						}
+					} else {
 						c_branch_id = iter->second;
 						c_branch = comp_branch;
 						break;
 					}
 				}
-			}
-			if(c_branch_id < 0 &&
-			   (packetS->sip_method == INVITE || (opt_sip_message && packetS->sip_method == MESSAGE)) &&
-			   !from_tag.empty() && to_tag.empty()) {
-				if(sverb.call_branches) {
-					cout << " * new branch:" 
-					     << " call_id: " << call->call_id 
-					     << " exists_to: " << call->branches_to_map.begin()->first
-					     << " new_to: " << branch_to_key
+				if(sverb.call_branches && c_branch_id >= 0) {
+					cout << " * branch smart match:"
+					     << " call_id: " << call->call_id
+					     << " branch_id: " << c_branch_id
+					     << " score: " << best_score
 					     << endl;
 				}
-				c_branch_id = call->next_branches.size() + 1;
-				c_branch_id_by_from_tag = c_branch_id;
-				c_branch = new FILE_LINE(0) CallBranch(call, c_branch_id);
-				init_call_branch(call, c_branch, packetS, packetS->sip_method, &data_callerd);
-				call->next_branches.push_back(c_branch);
-				call->branches_to_map[branch_to_key] = c_branch_id;
-				call->branches_tag_map[from_tag] = c_branch_id;
-				c_branch->branch_call_id = packetS->get_callid();
-				bool use_fbasename_header = false;
-				if(opt_fbasename_header[0]) {
-					char *s;
-					unsigned long l;
-					s = gettag_sip(packetS, opt_fbasename_header, &l);
-					if(s && l > 0) {
-						c_branch->branch_fbasename = string(s, MIN(l, MAX_FNAME - 1));
-						use_fbasename_header = true;
+			}
+			if(c_branch_id < 0 && create_enable) {
+				if((int)call->next_branches.size() < opt_call_branches_max) {
+					if(sverb.call_branches) {
+						cout << " * new branch:" 
+						     << " call_id: " << call->call_id 
+						     << " exists_to: " << (call->branches_to_map.size() ? call->branches_to_map.begin()->first : string())
+						     << " new_to: " << branch_to_key
+						     << endl;
 					}
+					c_branch_id = call->next_branches.size() + 1;
+					c_branch = new FILE_LINE(0) CallBranch(call, c_branch_id);
+					init_call_branch(call, c_branch, packetS, packetS->sip_method, &data_callerd);
+					call->next_branches.push_back(c_branch);
+					call->branches_to_map[branch_to_key] = c_branch_id;
+					if(opt_destination_number_mode == 2) {
+						string branch_to_key_by_to = data_callerd.branch_to_key_by_to();
+						if(!branch_to_key_by_to.empty()) {
+							if(opt_callidmerge_force_separate_branches) {
+								branch_to_key_by_to = string(packetS->get_callid()) + ':' + branch_to_key_by_to;
+							}
+							if(call->branches_to_map.find(branch_to_key_by_to) == call->branches_to_map.end()) {
+								call->branches_to_map[branch_to_key_by_to] = c_branch_id;
+							} else if(sverb.call_branches) {
+								cout << " * branch secondary (destination number mode 2) to-key collision:"
+								     << " call_id: " << call->call_id
+								     << " key: " << branch_to_key_by_to
+								     << endl;
+							}
+						}
+					}
+					if(c_branch_id_by_from_tag < 0) {
+						call->branches_tag_map[from_tag] = c_branch_id;
+						c_branch_id_by_from_tag = c_branch_id;
+					}
+					if(!call->connect_time_us) {
+						CallBranch *main_branch = call->branch_main_id > 0 ? call->next_branches[call->branch_main_id - 1] : &call->first_branch;
+						if(main_branch->is_closed()) {
+							call->branch_main_id = c_branch_id;
+						}
+					}
+					c_branch->branch_call_id = packetS->get_callid();
+					bool use_fbasename_header = false;
+					if(opt_fbasename_header[0]) {
+						char *s;
+						unsigned long l;
+						s = gettag_sip(packetS, opt_fbasename_header, &l);
+						if(s && l > 0) {
+							c_branch->branch_fbasename = string(s, MIN(l, MAX_FNAME - 1));
+							use_fbasename_header = true;
+						}
+					}
+					if(!use_fbasename_header) {
+						c_branch->branch_fbasename = c_branch->branch_call_id;
+					}
+				} else if(!call->branches_max_reached) {
+					call->branches_max_reached = true;
+					syslog(LOG_NOTICE, "call branches limit (%i) reached in call %s", opt_call_branches_max, call->call_id.c_str());
 				}
-				if(!use_fbasename_header) {
-					c_branch->branch_fbasename = c_branch->branch_call_id;
+			}
+			if(c_branch_id < 0 && c_branch_id_by_from_tag >= 0) {
+				c_branch_id = c_branch_id_by_from_tag;
+				c_branch = c_branch_id > 0 ? call->next_branches[c_branch_id - 1] : &call->first_branch;
+				from_tag_fallback = true;
+				if(sverb.call_branches) {
+					cout << " * branch from_tag fallback:"
+					     << " call_id: " << call->call_id
+					     << " branch_id: " << c_branch_id
+					     << endl;
 				}
 			}
 		}
@@ -4861,7 +5007,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 			if(!from_tag.empty() && c_branch_id_by_from_tag < 0) {
 				call->branches_tag_map[from_tag] = c_branch_id;
 			}
-			if(!to_tag.empty() && c_branch_id_by_to_tag < 0) {
+			if(!to_tag.empty() && c_branch_id_by_to_tag < 0 && !from_tag_fallback) {
 				call->branches_tag_map[to_tag] = c_branch_id;
 			}
 		}
@@ -4869,6 +5015,12 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 		
 		if(!c_branch) {
 			c_branch = call->branch_main();
+			if(sverb.call_branches) {
+				cout << " * branch main fallback:"
+				     << " call_id: " << call->call_id
+				     << " branch_id: " << c_branch->branch_id
+				     << endl;
+			}
 		}
 	
 	}
@@ -5221,7 +5373,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 	call->shift_destroy_call_at(c_branch, packetS->getTime_s(), lastSIPresponseNum);
 
 	call->set_last_signal_packet_time_us(packet_time_us);
-	
+
 	if(packetS->call_cancel_lsr487) {
 		c_branch->cancel_lsr487 = true;
 	}
@@ -5240,6 +5392,11 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 	   !(c_branch->cancelcseq.is_set() && packetS->cseq.is_set() && packetS->cseq == c_branch->cancelcseq)) {
 		c_branch->lastSIPresponse = lastSIPresponse;
 		c_branch->lastSIPresponseNum = lastSIPresponseNum;
+		if(lastSIPresponseNum / 100 == 3 && c_branch->new_invite_after_lsr3xx &&
+		   packetS->cseq.is_set() &&
+		   c_branch->invitecseq_next.size() && find(c_branch->invitecseq_next.begin(), c_branch->invitecseq_next.end(), packetS->cseq) != c_branch->invitecseq_next.end()) {
+			c_branch->new_invite_after_lsr3xx = false;
+		}
 	}
 	if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0') {
 		c_branch->SIPresponse.push_back(Call::sSipResponse(lastSIPresponse, lastSIPresponseNum));
@@ -5249,8 +5406,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 	   (!opt_get_reason_from_bye_cancel || 
 	    c_branch->reason_sip_cause == 0 || c_branch->reason_q850_cause == 0 || 
 	    (opt_get_reason_from_bye_cancel && (packetS->sip_method == BYE || packetS->sip_method == CANCEL))) &&
-	   !(!opt_call_branches &&
-	     packetS->sip_method == CANCEL && c_branch->seeninviteok &&
+	   !(packetS->sip_method == CANCEL && c_branch->seeninviteok &&
 	     (c_branch->called_invite_branch_map.size() > 1 || call->is_multiple_to_branch(c_branch)))) {
 		char *reason = gettag_sip(packetS, "reason:", &l);
 		if(reason) {
@@ -5372,6 +5528,9 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 		if(c_branch->lastSIPresponseNum == 487) {
 			c_branch->new_invite_after_lsr487 = true;
 		}
+		if(c_branch->lastSIPresponseNum / 100 == 3) {
+			c_branch->new_invite_after_lsr3xx = true;
+		}
 		//update called number for each invite due to overlap-dialling
 		if(((opt_sipoverlap && packetS->saddr_() == call->getSipcallerip(c_branch)) || opt_last_dest_number) && !reverseInviteSdaddr) {
 			detect_to(packetS, to, sizeof(to), &to_detected);
@@ -5428,7 +5587,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 				packet_info = new FILE_LINE(0) sSciPacketInfo;
 				fillSciPacketInfo(packetS, INVITE, packet_info);
 			}
-			process_packet__parse_custom_headers(call, packetS);
+			process_packet__parse_custom_headers(call, c_branch, packetS);
 			sendCallInfoEvCall(c_branch, sci_invite, packetS->getTimeval(), call->onInvite_counter, packet_info);
 			if(packet_info) {
 				delete packet_info;
@@ -5536,9 +5695,15 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 	} else if(packetS->sip_method == BYE) {
 		++count_sip_bye;
 		if(call->is_enable_set_destroy_call_at_for_call(c_branch, NULL, merged)) {
-			//do not set destroy for BYE which belongs to first leg in case of merged legs through sip header 
-			call->set_destroy_call_at(packetS->getTime_s(), 60);
-			call->destroy_call_at_bye = packetS->getTime_s() + opt_bye_timeout;
+			//do not set destroy for BYE which belongs to first leg in case of merged legs through sip header
+			if(!opt_call_branches ||
+			   !call->is_multibranch() || !call->has_second_merged_leg ||
+			   call->is_closed_other_branches(c_branch)) {
+				call->set_destroy_call_at(packetS->getTime_s(), 60);
+				call->destroy_call_at_bye = packetS->getTime_s() + opt_bye_timeout;
+			} else {
+				call->set_destroy_call_at(packetS->getTime_s(), 300);
+			}
 		}
 		//check and save CSeq for later to compare with OK 
 		if(packetS->cseq.is_set()) {
@@ -5548,7 +5713,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 				syslog(LOG_NOTICE, "Seen bye\n");
 			if(opt_enable_fraud && isFraudReady()) {
 				if(needCustomHeadersForFraud()) {
-					process_packet__parse_custom_headers(call, packetS);
+					process_packet__parse_custom_headers(call, c_branch, packetS);
 				}
 				fraudSeenByeCall(call, packetS->getTimeval());
 			}
@@ -5588,7 +5753,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 		++count_sip_cancel;
 		call->setSeenCancel(c_branch, true, packet_time_us, packetS->get_callid());
 
-		if(opt_call_branches || call->is_multiple_to_branch(c_branch)) { 
+		if((opt_call_branches && !c_branch->seeninviteok) || call->is_multiple_to_branch(c_branch)) {
 			detect_to(packetS, to, sizeof(to), &to_detected);
 			detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 			call->cancel_ip_port_hash(c_branch, packetS->saddr_(), to, branch);
@@ -5597,9 +5762,9 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 		// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. Lets wait max 10 seconds and destroy call
 		if(call->is_enable_set_destroy_call_at_for_call(c_branch, NULL, merged)) {
 			//do not set destroy for CANCEL which belongs to first leg in case of merged legs through sip header 
-			if(opt_call_branches ?
-			    (!call->is_multibranch() || call->is_closed_other_branches(c_branch)) :
-			    (!call->is_multiple_to_branch(c_branch) || call->all_branches_is_canceled(c_branch, false))) {
+			if((!opt_call_branches ||
+			    !call->is_multibranch() || call->is_closed_other_branches(c_branch)) &&
+			   (!call->is_multiple_to_branch(c_branch) || call->all_branches_is_canceled(c_branch, false))) {
 				call->set_destroy_call_at(packetS->getTime_s(),
 							  (opt_quick_save_cdr == 2 ? 0 :
 							  (opt_quick_save_cdr ? 1 : 10)));
@@ -5782,10 +5947,16 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 
 						// destroy call after 5 seonds from now 
 						if(call->is_enable_set_destroy_call_at_for_call(c_branch, &packetS->cseq, merged)) {
-							call->set_destroy_call_at(packetS->getTime_s(),
-										  (opt_quick_save_cdr == 2 ? 0 :
-										  (opt_quick_save_cdr ? 1 : 5)));
-							call->destroy_call_at_bye_confirmed = packetS->getTime_s() + opt_bye_confirmed_timeout;
+							if(!opt_call_branches ||
+							   !call->is_multibranch() || !call->has_second_merged_leg ||
+							   call->is_closed_other_branches(c_branch)) {
+								call->set_destroy_call_at(packetS->getTime_s(),
+											  (opt_quick_save_cdr == 2 ? 0 :
+											  (opt_quick_save_cdr ? 1 : 5)));
+								call->destroy_call_at_bye_confirmed = packetS->getTime_s() + opt_bye_confirmed_timeout;
+							} else {
+								call->set_destroy_call_at(packetS->getTime_s(), 300);
+							}
 						}
 						#if EXPERIMENTAL_SEPARATE_PROCESSSING
 						if(opt_ignore_rtp_after_bye_confirmed && separate_processing() == cSeparateProcessing::_sip) {
@@ -5797,7 +5968,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 						}
 						#endif
 					}
-					process_packet__parse_custom_headers(call, packetS);
+					process_packet__parse_custom_headers(call, c_branch, packetS);
 					goto endsip_save_packet;
 				}
 				else if((packetS->cseq.method == INVITE && 
@@ -5813,19 +5984,27 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 						c_branch->invite_sdaddr_all_confirmed = -1;
 					}
 					c_branch->invite_list_unlock();
+					bool branch_answer_first = false;
 					if(packetS->cseq.method == INVITE) {
 						c_branch->seeninviteok = true;
 						c_branch->seenbye_and_ok_permanent = false;
+						if(!c_branch->connect_time_us) {
+							c_branch->connect_time_us = packet_time_us;
+							branch_answer_first = true;
+						}
 						if(!call->connect_time_us) {
-							call->connect_time_us = packet_time_us;
+							call->connect_time_us = c_branch->connect_time_us;
 							if(opt_enable_fraud && isFraudReady()) {
 								if(needCustomHeadersForFraud()) {
-									process_packet__parse_custom_headers(call, packetS);
+									process_packet__parse_custom_headers(call, c_branch, packetS);
 								}
 								fraudConnectCall(call, packetS->getTimeval());
 							}
 						}
 					} else {
+						if(!c_branch->seenmessageok) {
+							branch_answer_first = true;
+						}
 						c_branch->seenmessageok = true;
 					}
 					
@@ -5860,14 +6039,19 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 						}
 					}
 					
-					call->branch_main_id = c_branch->branch_id;
+					if(branch_answer_first) {
+						call->branch_main_id = c_branch->branch_id;
+						if(c_branch->connect_time_us) {
+							call->connect_time_us = c_branch->connect_time_us;
+						}
+					}
 					
 					if(verbosity > 2)
 						syslog(LOG_NOTICE, "Call answered\n");
 					++call->onCall_2XX_counter;
 					if(call->onCall_2XX_counter == 1) {
 						if(call->typeIs(INVITE)) {
-							process_packet__parse_custom_headers(call, packetS);
+							process_packet__parse_custom_headers(call, c_branch, packetS);
 							ClientThreads.onCall(call->call_id.c_str(),
 									     lastSIPresponseNum, c_branch->callername.c_str(), c_branch->caller.c_str(), call->get_called(c_branch),
 									     call->getSipcallerip(c_branch), call->getSipcalledip(c_branch),
@@ -5913,7 +6097,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 					  c_branch->cancelcseq.is_set() && packetS->cseq == c_branch->cancelcseq) {
 					++count_sip_cancel_confirmed;
 					call->setSeenCancelAndOk(c_branch, true, packet_time_us, packetS->get_callid());
-					process_packet__parse_custom_headers(call, packetS);
+					process_packet__parse_custom_headers(call, c_branch, packetS);
 					#if EXPERIMENTAL_SEPARATE_PROCESSSING
 					if(opt_ignore_rtp_after_cancel_confirmed && separate_processing() == cSeparateProcessing::_sip) {
 						sendCloseCall(call->call_id.c_str(), 
@@ -5939,7 +6123,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 			++call->onCall_18X_counter;
 			if(call->onCall_18X_counter == 1) {
 				if(call->typeIs(INVITE)) {
-					process_packet__parse_custom_headers(call, packetS);
+					process_packet__parse_custom_headers(call, c_branch, packetS);
 					ClientThreads.onCall(call->call_id.c_str(),
 							     lastSIPresponseNum, c_branch->callername.c_str(), c_branch->caller.c_str(), call->get_called(c_branch),
 							     call->getSipcallerip(c_branch), call->getSipcalledip(c_branch),
@@ -5964,8 +6148,12 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 			   (opt_sip_message && packetS->cseq.method == MESSAGE) || 
 			   (packetS->cseq.method == PRACK && packetS->lastSIPresponseNum == 481)) &&
 			  (IS_SIP_RES3XX(packetS->sip_method) || IS_SIP_RES4XX(packetS->sip_method) || packetS->sip_method == RES5XX || packetS->sip_method == RES6XX)) {
-			if(IS_SIP_RES4XX(packetS->sip_method) && packetS->sip_method != 401 && packetS->sip_method != 407 &&
-			   (opt_call_branches || call->is_multiple_to_branch(c_branch))) {
+			if((IS_SIP_RES4XX(packetS->sip_method) &&
+			    packetS->lastSIPresponseNum != 401 && packetS->lastSIPresponseNum != 407 && packetS->lastSIPresponseNum != 491 &&
+			    ((opt_call_branches && !c_branch->seeninviteok) || call->is_multiple_to_branch(c_branch))) ||
+			   ((packetS->sip_method == RES5XX || packetS->sip_method == RES6XX) &&
+			    packetS->lastSIPresponseNum != 501 &&
+			    opt_call_branches && !c_branch->seeninviteok)) {
 				detect_to(packetS, to, sizeof(to), &to_detected);
 				detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 				call->cancel_ip_port_hash(c_branch, packetS->daddr_(), to, branch);
@@ -5993,21 +6181,39 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 			}
 			if(lastSIPresponseNum == 481) {
 				// 481 CallLeg/Transaction doesnt exist - set timeout to 180 seconds
-				if(call->is_enable_set_destroy_call_at_for_call(c_branch, &packetS->cseq, merged)) {
-					call->set_destroy_call_at(packetS->getTime_s(), 180);
-				} else if(c_branch->seenbye_and_ok_permanent) {
-					call->set_destroy_call_at(packetS->getTime_s(), 60);
+				if(!opt_call_branches ||
+				   !call->is_multibranch() || call->is_closed_other_branches(c_branch)) {
+					if(call->is_enable_set_destroy_call_at_for_call(c_branch, &packetS->cseq, merged)) {
+						call->set_destroy_call_at(packetS->getTime_s(), 180);
+					} else if(c_branch->seenbye_and_ok_permanent) {
+						call->set_destroy_call_at(packetS->getTime_s(), 60);
+					}
 				}
 			} else if(lastSIPresponseNum == 491) {
 				// do not set timeout for 491
 			} else if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501) {
 				// save packet 
 				if(call->is_enable_set_destroy_call_at_for_call(c_branch, &packetS->cseq, merged)) {
-					if(opt_call_branches ?
-					    (!call->is_multibranch() || call->is_closed_other_branches(c_branch)) :
-					    (!call->is_multiple_to_branch(c_branch) || call->all_branches_is_canceled(c_branch, false))) {
+					if((!opt_call_branches ||
+					    !call->is_multibranch() || call->is_closed_other_branches(c_branch)) &&
+					   (!call->is_multiple_to_branch(c_branch) || call->all_branches_is_canceled(c_branch, false))) {
 						call->set_destroy_call_at(packetS->getTime_s(), (packetS->sip_method == RES300 ? opt_redirect_response_300_timeout : opt_response_default_timeout));
 					}
+				}
+				if(opt_call_branches && call->is_multibranch() &&
+				   !call->connect_time_us &&
+				   !c_branch->seenmessageok &&
+				   c_branch->branch_id == call->branch_main_id &&
+				   c_branch->is_closed()) {
+					call->branches_lock();
+					for(int i = (int)call->next_branches.size() - 1; i >= -1; i--) {
+						CallBranch *o_branch = i >= 0 ? call->next_branches[i] : &call->first_branch;
+						if(o_branch->branch_id != c_branch->branch_id && !o_branch->is_closed()) {
+							call->branch_main_id = o_branch->branch_id;
+							break;
+						}
+					}
+					call->branches_unlock();
 				}
 				if(lastSIPresponseNum == 488 || lastSIPresponseNum == 606) {
 					call->not_acceptable = true;
@@ -6035,13 +6241,15 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 					c_branch->ipport_n = 0;
 					extern bool opt_remove_rtp_streams_after_resp3xx;
 					if(opt_remove_rtp_streams_after_resp3xx) {
-						call->setFlagForRemoveRTP();
+						call->setFlagForRemoveRTP(c_branch);
 					}
 				}
-				process_packet__parse_custom_headers(call, packetS);
+				process_packet__parse_custom_headers(call, c_branch, packetS);
 				goto endsip_save_packet;
 			} else if(!call->destroy_call_at) {
-				if(call->is_enable_set_destroy_call_at_for_call(c_branch, &packetS->cseq, merged)) {
+				if(call->is_enable_set_destroy_call_at_for_call(c_branch, &packetS->cseq, merged) &&
+				   (!opt_call_branches ||
+				    !call->is_multibranch() || call->is_closed_other_branches(c_branch))) {
 					call->set_destroy_call_at(packetS->getTime_s(), 60);
 				}
 			}
@@ -6227,7 +6435,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 	}
 
 	// check if we have custom headers
-	process_packet__parse_custom_headers(call, packetS);
+	process_packet__parse_custom_headers(call, c_branch, packetS);
 	
 	// we have packet, extend pending destroy requests
 	call->shift_destroy_call_at(c_branch, packetS->getTime_s(), lastSIPresponseNum);
@@ -7402,6 +7610,14 @@ inline bool call_confirmation_for_rtp_processing(Call *call, call_rtp *call_rtp,
 	if(call->suppress_rtp_proc_due_to_insufficient_hw_performance) {
 		return(false);
 	}
+	if(opt_call_branches && call->is_multibranch()) {
+		for(int i = 0; i < call_info->length; i++) {
+			if(call_info->calls[i].c_branch->call == call &&
+			   call_info->calls[i].is_rtcp == call_rtp->is_rtcp) {
+				return(false);
+			}
+		}
+	}
 	
 	if(!(call->typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
 	   (call_info->find_by_dest ?
@@ -7699,16 +7915,16 @@ void process_packet_other(packet_s_stack *packetS) {
 	}
 }
 
-inline void process_packet__parse_custom_headers(Call *call, packet_s_process *packetS) {
+inline void process_packet__parse_custom_headers(Call *call, CallBranch *c_branch, packet_s_process *packetS) {
 	if(packetS->_customHeadersDone) {
 		return;
 	}
 	if(call->typeIs(INVITE) && custom_headers_cdr) {
-		custom_headers_cdr->parse(call, INVITE, NULL, packetS,
+		custom_headers_cdr->parse(call, c_branch, INVITE, NULL, packetS,
 					  IS_SIP_RESXXX(packetS->sip_method) ? CustomHeaders::dir_response : CustomHeaders::dir_request);
 	}
 	if(call->typeIs(MESSAGE) && custom_headers_message) {
-		custom_headers_message->parse(call, MESSAGE, NULL, packetS,
+		custom_headers_message->parse(call, c_branch, MESSAGE, NULL, packetS,
 					      IS_SIP_RESXXX(packetS->sip_method) ? CustomHeaders::dir_response : CustomHeaders::dir_request);
 	}
 	packetS->_customHeadersDone = true;

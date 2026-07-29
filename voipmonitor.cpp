@@ -1053,6 +1053,8 @@ bool opt_call_branches = false;
 bool opt_call_branches_find_by_called_number = true;
 bool opt_call_branches_find_by_called_domain = false;
 bool opt_call_branches_find_smart = true;
+bool opt_call_branches_find_by_from_tag = true;
+int opt_call_branches_max = 40;
 
 char opt_call_id_alternative[256] = "";
 vector<string> opt_call_id_alternative_v;
@@ -7440,6 +7442,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("call_branches_find_by_called_number", &opt_call_branches_find_by_called_number));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("call_branches_find_by_called_domain", &opt_call_branches_find_by_called_domain));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("call_branches_find_smart", &opt_call_branches_find_smart));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("call_branches_find_by_from_tag", &opt_call_branches_find_by_from_tag));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("call_branches_max", &opt_call_branches_max));
 			normal();
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("call_id_alternative", opt_call_id_alternative, sizeof(opt_call_id_alternative)));
 			addConfigItem((new FILE_LINE(42273) cConfigItem_string("fbasenameheader", opt_fbasename_header, sizeof(opt_fbasename_header)))
@@ -9535,6 +9539,12 @@ void set_context_config() {
 		syslog(LOG_NOTICE, "silence_detect_after_answer: allowed values are 2 - 10 (seconds) - disabling");
 	}
 	opt_silence_detect_after_answer = TIME_S_TO_US(opt_silence_detect_after_answer);
+
+	if(opt_call_branches &&
+	   !opt_call_branches_find_by_called_number && !opt_call_branches_find_by_called_domain &&
+	   !opt_callidmerge_force_separate_branches) {
+		syslog(LOG_WARNING, "call_branches: both call_branches_find_by_called_number and call_branches_find_by_called_domain are disabled - branches cannot be distinguished and will never be created");
+	}
  
 	if(opt_t2_boost_direct_rtp) {
 		opt_t2_boost = 2;

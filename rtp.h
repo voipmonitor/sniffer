@@ -867,6 +867,7 @@ private:
 	int index_call_ip_port;
 	int index_call_ip_port_other_side;
 	bool index_call_ip_port_by_dest;
+	class CallBranch *c_branch_created;
 	
 	int _last_sensor_id;
 	char _last_ifname[10];

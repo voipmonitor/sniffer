@@ -587,6 +587,8 @@ string CallStructs::sSipPacketInfo::getJson() {
 CallBranch::CallBranch(Call *call, unsigned branch_id) {
 	this->call = call;
 	this->branch_id = branch_id;
+	connect_time_us = 0;
+	_custom_headers_content_sync = 0;
 	invite_sdaddr_last_ts = 0;
 	invite_sdaddr_all_confirmed = -1;
 	invite_sdaddr_bad_order = false;
@@ -616,6 +618,7 @@ CallBranch::CallBranch(Call *call, unsigned branch_id) {
 	oneway = 1;
 	lastSIPresponseNum = 0;
 	new_invite_after_lsr487 = false;
+	new_invite_after_lsr3xx = false;
 	cancel_lsr487 = false;
 	reason_sip_cause = 0;
 	reason_q850_cause = 0;
@@ -670,6 +673,9 @@ CallBranch::CallBranch(Call *call, unsigned branch_id) {
 CallBranch::~CallBranch() {
 	for(list<sSipPacketInfo*>::iterator iter = SIPpacketInfoList.begin(); iter != SIPpacketInfoList.end(); iter++) {
 		delete *iter;
+	}
+	for(map<int, class RTPsecure*>::iterator iter = rtp_secure_map.begin(); iter != rtp_secure_map.end(); iter++) {
+		delete iter->second;
 	}
 }
 
@@ -747,6 +753,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
   
 	first_branch.call = this;
 	branch_main_id = 0;
+	branches_max_reached = false;
 	_branches_lock = 0;
   
 	//increaseTartimemap(time);
@@ -816,6 +823,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	rtcp_exists = false;
 	rtp_canceled = NULL;
 	rtp_remove_flag = false;
+	rtp_remove_all = false;
+	_rtp_remove_sync = 0;
 	rtpab[0] = NULL;
 	rtpab[1] = NULL;
 	dtls = NULL;
@@ -870,7 +879,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	if(verbosity && verbosityE > 1) {
 		syslog(LOG_NOTICE, "CREATE CALL %s", this->call_id.c_str());
 	}
-	_custom_headers_content_sync = 0;
 	forcemark_time_size = 0;
 	_forcemark_lock = 0;
 	a_mos_lqo = -1;
@@ -1231,7 +1239,7 @@ void Call::_addtocachequeue(string file) {
 	calltable->unlock_files_queue();
 }
 
-void Call::setFlagForRemoveRTP() {
+void Call::setFlagForRemoveRTP(CallBranch *c_branch) {
 	u_int64_t startTimeMS = getTimeMS_rdtsc();
 	while(isRtpPacketsInQueue()) {
 		if(!opt_t2_boost && rtp_threads) {
@@ -1248,6 +1256,13 @@ void Call::setFlagForRemoveRTP() {
 		}
 		USLEEP(100);
 	}
+	rtp_remove_lock();
+	if(c_branch && is_multibranch()) {
+		rtp_remove_branches.insert(c_branch);
+	} else {
+		rtp_remove_all = true;
+	}
+	rtp_remove_unlock();
 	rtp_remove_flag = true;
 }
 
@@ -1281,7 +1296,66 @@ void Call::_removeRTP() {
 	lastcalledrtp = NULL;
 	lastactivecallerrtp = NULL;
 	lastactivecalledrtp = NULL;
+}
+
+void Call::_removeRTP_branch() {
+	rtp_remove_lock();
+	set<CallBranch*> b_branches;
+	b_branches.swap(rtp_remove_branches);
+	bool remove_all = rtp_remove_all;
+	rtp_remove_all = false;
 	rtp_remove_flag = false;
+	rtp_remove_unlock();
+	#if not EXPERIMENTAL_LITE_RTP_MOD
+	if(remove_all || b_branches.empty() ||
+	   (flags & (FLAG_SAVEAUDIO | FLAG_SAVEGRAPH | FLAG_SAVEAUDIOGRAPH))) {
+		_removeRTP();
+		return;
+	}
+	if(!rtp_canceled) {
+		rtp_canceled = new FILE_LINE(0) list<RTP*>;
+	}
+	vector<RTP*> rtp_keep;
+	for(int i = 0; i < ssrc_n; i++) {
+		RTP *rtp_i = rtp_stream_by_index(i);
+		if(b_branches.find(rtp_i->c_branch_created) != b_branches.end()) {
+			rtp_canceled->push_back(rtp_i);
+		} else {
+			rtp_keep.push_back(rtp_i);
+		}
+	}
+	if((int)rtp_keep.size() < ssrc_n) {
+		refill_rtp_streams(rtp_keep);
+	}
+	#else
+	_removeRTP();
+	#endif
+}
+
+void Call::refill_rtp_streams(vector<RTP*> &rtp_keep) {
+	#if not EXPERIMENTAL_LITE_RTP_MOD
+	for(int i = 0; i < MAX_SSRC_PER_CALL_FIX; i++) {
+		rtp_fix[i] = NULL;
+	}
+	#if CALL_RTP_DYNAMIC_ARRAY
+	if(rtp_dynamic) {
+		rtp_dynamic->clear();
+	}
+	#endif
+	ssrc_n = 0;
+	for(unsigned i = 0; i < rtp_keep.size(); i++) {
+		rtp_keep[i]->ssrc_index = ssrc_n;
+		add_rtp_stream(rtp_keep[i]);
+	}
+	for(int i = 0; i < 2; i++) {
+		rtp_cur[i] = NULL;
+		rtp_prev[i] = NULL;
+	}
+	lastcallerrtp = NULL;
+	lastcalledrtp = NULL;
+	lastactivecallerrtp = NULL;
+	lastactivecalledrtp = NULL;
+	#endif
 }
 
 /* destructor */
@@ -1373,10 +1447,6 @@ Call::~Call(){
 	}
 	
 	for(map<sStreamId, sUdptlDumper*>::iterator iter = udptlDumpers.begin(); iter != udptlDumpers.end(); iter++) {
-		delete iter->second;
-	}
-	
-	for(map<int, class RTPsecure*>::iterator iter = rtp_secure_map.begin(); iter != rtp_secure_map.end(); iter++) {
 		delete iter->second;
 	}
 	
@@ -1889,8 +1959,8 @@ bool Call::read_rtcp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 		int index_call_ip_port_by_src = get_index_by_ip_port_by_src(c_branch, packetS->saddr_(), packetS->source_(), iscaller, true);
 		if(index_call_ip_port_by_src >= 0 && 
 		   c_branch->ip_port[index_call_ip_port_by_src].srtp) {
-			if(!rtp_secure_map[index_call_ip_port_by_src]) {
-				rtp_secure_map[index_call_ip_port_by_src] = 
+			if(!c_branch->rtp_secure_map[index_call_ip_port_by_src]) {
+				c_branch->rtp_secure_map[index_call_ip_port_by_src] = 
 					new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
 								   this, c_branch, index_call_ip_port_by_src);
 				if(sverb.log_srtp_callid && !log_srtp_callid) {
@@ -1898,7 +1968,7 @@ bool Call::read_rtcp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 					log_srtp_callid = true;
 				}
 			}
-			srtp_decrypt = rtp_secure_map[index_call_ip_port_by_src];
+			srtp_decrypt = c_branch->rtp_secure_map[index_call_ip_port_by_src];
 		}
 	}
 	
@@ -2094,18 +2164,19 @@ void Call::_read_rtp_srtp(CallBranch *c_branch, packet_s_process_0 *packetS, RTP
 	      (opt_srtp_rtp_dtmf_decrypt && rtp->codec == PAYLOAD_TELEVENT)))) &&
 	   (srtp_decrypt_full || opt_srtp_rtp_verify_tag)) {
 		int index_call_ip_port_by_src = get_index_by_ip_port_by_src(c_branch, packetS->saddr_(), packetS->source_(), iscaller);
+		CallBranch *rtp_branch = rtp->c_branch_created ? rtp->c_branch_created : c_branch;
 		if(opt_srtp_rtp_local_instances) {
 			if((index_call_ip_port_by_src >= 0 && c_branch->ip_port[index_call_ip_port_by_src].srtp) ||
-			   (rtp->index_call_ip_port >= 0 && c_branch->ip_port[rtp->index_call_ip_port].srtp) ||
-			   (rtp->index_call_ip_port_other_side >= 0 && c_branch->ip_port[rtp->index_call_ip_port_other_side].srtp)) {
+			   (rtp->index_call_ip_port >= 0 && rtp_branch->ip_port[rtp->index_call_ip_port].srtp) ||
+			   (rtp->index_call_ip_port_other_side >= 0 && rtp_branch->ip_port[rtp->index_call_ip_port_other_side].srtp)) {
 				RTPsecure *rtp_secure = new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
 										   this, c_branch, index_call_ip_port_by_src, true, !srtp_decrypt_full);
 				rtp->setSRtpDecrypt(rtp_secure, -1, true);
 			}
 		} else {
 			if(index_call_ip_port_by_src >= 0 && c_branch->ip_port[index_call_ip_port_by_src].srtp) {
-				if(!rtp_secure_map[index_call_ip_port_by_src]) {
-					rtp_secure_map[index_call_ip_port_by_src] =
+				if(!c_branch->rtp_secure_map[index_call_ip_port_by_src]) {
+					c_branch->rtp_secure_map[index_call_ip_port_by_src] =
 						new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
 									   this, c_branch, index_call_ip_port_by_src, false, !srtp_decrypt_full);
 					if(sverb.log_srtp_callid && !log_srtp_callid) {
@@ -2113,7 +2184,7 @@ void Call::_read_rtp_srtp(CallBranch *c_branch, packet_s_process_0 *packetS, RTP
 						log_srtp_callid = true;
 					}
 				}
-				rtp->setSRtpDecrypt(rtp_secure_map[index_call_ip_port_by_src], index_call_ip_port_by_src);
+				rtp->setSRtpDecrypt(c_branch->rtp_secure_map[index_call_ip_port_by_src], index_call_ip_port_by_src);
 			}
 		}
 	}
@@ -2121,14 +2192,18 @@ void Call::_read_rtp_srtp(CallBranch *c_branch, packet_s_process_0 *packetS, RTP
 	   (!rtp->is_srtp &&
 	    rtp->find_by_dest)) {
 		int srtp_index_ip_port = -1;
+		CallBranch *srtp_index_branch = c_branch;
 		int index_call_ip_port_by_src = get_index_by_ip_port_by_src(c_branch, packetS->saddr_(), packetS->source_(), iscaller);
+		CallBranch *rtp_branch = rtp->c_branch_created ? rtp->c_branch_created : c_branch;
 		if(opt_srtp_rtp_local_instances) {
 			if(index_call_ip_port_by_src >= 0 && c_branch->ip_port[index_call_ip_port_by_src].srtp) {
 				srtp_index_ip_port = index_call_ip_port_by_src;
-			} else if(rtp->index_call_ip_port >= 0 && c_branch->ip_port[rtp->index_call_ip_port].srtp) {
+			} else if(rtp->index_call_ip_port >= 0 && rtp_branch->ip_port[rtp->index_call_ip_port].srtp) {
 				srtp_index_ip_port = rtp->index_call_ip_port;
-			} else if(rtp->index_call_ip_port_other_side >= 0 && c_branch->ip_port[rtp->index_call_ip_port_other_side].srtp) {
+				srtp_index_branch = rtp_branch;
+			} else if(rtp->index_call_ip_port_other_side >= 0 && rtp_branch->ip_port[rtp->index_call_ip_port_other_side].srtp) {
 				srtp_index_ip_port = rtp->index_call_ip_port_other_side;
+				srtp_index_branch = rtp_branch;
 			}
 		} else {
 			if(index_call_ip_port_by_src >= 0 && c_branch->ip_port[index_call_ip_port_by_src].srtp) {
@@ -2137,7 +2212,7 @@ void Call::_read_rtp_srtp(CallBranch *c_branch, packet_s_process_0 *packetS, RTP
 		}
 		if(srtp_index_ip_port >= 0) {
 			rtp->is_srtp = true;
-			list<srtp_crypto_config> *srtp_crypto_config_list = c_branch->ip_port[srtp_index_ip_port].srtp_crypto_config_list;
+			list<srtp_crypto_config> *srtp_crypto_config_list = srtp_index_branch->ip_port[srtp_index_ip_port].srtp_crypto_config_list;
 			if(srtp_crypto_config_list && srtp_crypto_config_list->size()) {
 				for(list<srtp_crypto_config>::iterator iter = srtp_crypto_config_list->begin(); iter != srtp_crypto_config_list->end(); iter++) {
 					int tag_size = RTPsecure::getTagSize(iter->suite.c_str());
@@ -2353,7 +2428,7 @@ read:
 						}
 						
 						if(rtp_i->index_call_ip_port >= 0) {
-							evProcessRtpStream(c_branch, rtp_i->index_call_ip_port, rtp_i->index_call_ip_port_by_dest,
+							evProcessRtpStream(rtp_i->c_branch_created ? rtp_i->c_branch_created : c_branch, rtp_i->index_call_ip_port, rtp_i->index_call_ip_port_by_dest,
 									   packet_saddr, packet_source, packet_daddr, packet_dest, packetS->header_pt->ts.tv_sec);
 						}
 						if(find_by_dest ?
@@ -2450,6 +2525,7 @@ read:
 			RTP *rtp_new = new FILE_LINE(0) RTP(packetS->sensor_id_(), packetS->sensor_ip); 
 			rtp_new->ssrc_index = rtp_size();
 			rtp_new->call_owner = this;
+			rtp_new->c_branch_created = c_branch;
 			rtp_new->ssrc2 = curSSRC;
 			rtp_new->iscaller = iscaller; 
 			rtp_new->find_by_dest = find_by_dest;
@@ -2548,6 +2624,7 @@ read:
 		RTP *rtp_new = new FILE_LINE(1001) RTP(packetS->sensor_id_(), packetS->sensor_ip);
 		rtp_new->ssrc_index = rtp_size();
 		rtp_new->call_owner = this;
+		rtp_new->c_branch_created = c_branch;
 		rtp_new->iscaller = iscaller;
 		rtp_new->find_by_dest = find_by_dest;
 		rtp_new->ok_other_ip_side_by_sip = typeIs(MGCP) || 
@@ -4836,7 +4913,10 @@ void Call::removeMergeCalls() {
 	}
 }
 
-void Call::getValue(eCallField field, RecordArrayField *rfield) {
+void Call::getValue(eCallField field, RecordArrayField *rfield, CallBranch *c_branch) {
+	if(!c_branch) {
+		c_branch = branch_main();
+	}
 	switch(field) {
 	case cf_callreference:
 		rfield->set(this);
@@ -4866,7 +4946,7 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 	case cf_caller:
 		{
 		extern bool opt_pii_enable;
-		string numb_caller = branch_main()->caller;
+		string numb_caller = c_branch->caller;
 		if(opt_pii_enable) {
 			numb_caller = pii_masking(numb_caller.c_str());
 		}
@@ -4876,7 +4956,7 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 	case cf_called:
 		{
 		extern bool opt_pii_enable;
-		string numb_called = get_called(branch_main());
+		string numb_called = get_called(c_branch);
 		if(opt_pii_enable) {
 			numb_called = pii_masking(numb_called.c_str());
 		}
@@ -4884,22 +4964,22 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		}
 		break;
 	case cf_caller_country:
-		rfield->set(getCountryByPhoneNumber(branch_main()->caller.c_str(), getSipcallerip(branch_main(), true), true).c_str());
+		rfield->set(getCountryByPhoneNumber(c_branch->caller.c_str(), getSipcallerip(c_branch, true), true).c_str());
 		break;
 	case cf_called_country:
-		rfield->set(getCountryByPhoneNumber(get_called(branch_main()), getSipcalledip(branch_main(), true, true), true).c_str());
+		rfield->set(getCountryByPhoneNumber(get_called(c_branch), getSipcalledip(c_branch, true, true), true).c_str());
 		break;
 	case cf_caller_international:
-		rfield->set(!isLocalByPhoneNumber(branch_main()->caller.c_str(), getSipcallerip(branch_main(), true)));
+		rfield->set(!isLocalByPhoneNumber(c_branch->caller.c_str(), getSipcallerip(c_branch, true)));
 		break;
 	case cf_called_international:
-		rfield->set(!isLocalByPhoneNumber(get_called(branch_main()), getSipcalledip(branch_main(), true, true)));
+		rfield->set(!isLocalByPhoneNumber(get_called(c_branch), getSipcalledip(c_branch, true, true)));
 		break;
 	case cf_callername:
 		{
 		extern bool opt_pii_enable;
 		extern bool opt_pii_anonymize_callername;
-		string callername = branch_main()->callername;
+		string callername = c_branch->callername;
 		if(opt_pii_enable && opt_pii_anonymize_callername) {
 			callername = pii_masking(callername.c_str());
 		}
@@ -4907,46 +4987,46 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		}
 		break;
 	case cf_callerdomain:
-		rfield->set(branch_main()->caller_domain.c_str());
+		rfield->set(c_branch->caller_domain.c_str());
 		break;
 	case cf_calleddomain:
-		rfield->set(get_called_domain(branch_main()));
+		rfield->set(get_called_domain(c_branch));
 		break;
 	case cf_calleragent:
-		rfield->set(branch_main()->a_ua.c_str());
+		rfield->set(c_branch->a_ua.c_str());
 		break;
 	case cf_calledagent:
-		rfield->set(branch_main()->b_ua.c_str());
+		rfield->set(c_branch->b_ua.c_str());
 		break;
 	case cf_callerip:
-		rfield->set(getSipcallerip(branch_main(), true), RecordArrayField::tf_ip_n4_cmpstr);
+		rfield->set(getSipcallerip(c_branch, true), RecordArrayField::tf_ip_n4_cmpstr);
 		break;
 	case cf_calledip:
-		rfield->set(getSipcalledip(branch_main(), true, true), RecordArrayField::tf_ip_n4_cmpstr);
+		rfield->set(getSipcalledip(c_branch, true, true), RecordArrayField::tf_ip_n4_cmpstr);
 		break;
 	case cf_callerip_country:
-		rfield->set(getCountryByIP(getSipcallerip(branch_main(), true), true).c_str());
+		rfield->set(getCountryByIP(getSipcallerip(c_branch, true), true).c_str());
 		break;
 	case cf_calledip_country:
-		rfield->set(getCountryByIP(getSipcalledip(branch_main(), true, true), true).c_str());
+		rfield->set(getCountryByIP(getSipcalledip(c_branch, true, true), true).c_str());
 		break;
 	case cf_callerip_encaps:
-		rfield->set(getSipcallerip_encaps(branch_main(), true), RecordArrayField::tf_ip_n4_cmpstr);
+		rfield->set(getSipcallerip_encaps(c_branch, true), RecordArrayField::tf_ip_n4_cmpstr);
 		break;
 	case cf_calledip_encaps:
-		rfield->set(getSipcalledip_encaps(branch_main(), true, true), RecordArrayField::tf_ip_n4_cmpstr);
+		rfield->set(getSipcalledip_encaps(c_branch, true, true), RecordArrayField::tf_ip_n4_cmpstr);
 		break;
 	case cf_callerip_encaps_prot:
-		rfield->set(getSipcallerip_encaps_prot(branch_main(), true));
+		rfield->set(getSipcallerip_encaps_prot(c_branch, true));
 		break;
 	case cf_calledip_encaps_prot:
-		rfield->set(getSipcalledip_encaps_prot(branch_main(), true, true));
+		rfield->set(getSipcalledip_encaps_prot(c_branch, true, true));
 		break;
 	case cf_sipproxies:
-		rfield->set(getProxies_str(branch_main(), true, true).c_str());
+		rfield->set(getProxies_str(c_branch, true, true).c_str());
 		break;
 	case cf_lastSIPresponseNum:
-		rfield->set(branch_main()->lastSIPresponseNum);
+		rfield->set(c_branch->lastSIPresponseNum);
 		break;
 	case cf_callercodec:
 		rfield->set(last_callercodec);
@@ -4958,7 +5038,7 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		rfield->set(useSensorId);
 		break;
 	case cf_vlan:
-		rfield->set(branch_main()->getVlan());
+		rfield->set(c_branch->getVlan());
 		break;
 	default:
 		break;
@@ -5156,11 +5236,12 @@ void Call::getJsonHeader(vector<string> *header) {
 
 void Call::getRecordData(RecordArray *rec, bool setCountry) {
 	unsigned i;
+	CallBranch *c_branch = branch_main();
 	for(i = 0; i < sizeof(callFields) / sizeof(callFields[0]); i++) {
 		if(!setCountry && isCountryCallField(callFields[i].fieldType)) {
 			continue;
 		}
-		getValue(callFields[i].fieldType, &rec->fields[i]);
+		getValue(callFields[i].fieldType, &rec->fields[i], c_branch);
 	}
 	if(custom_headers_cdr) {
 		list<string> values;
@@ -5259,6 +5340,7 @@ void Call::add_txt(u_int64_t time, eTxtType type, const char *txt, unsigned txt_
 }
 
 void Call::getChartCacheValue(int type, double *value, string *value_str, bool *null, cCharts *chartsCache) {
+	CallBranch *c_branch = branch_main();
 	bool setNull = false;
 	double v = 0;
 	string v_str;
@@ -5277,7 +5359,7 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 			v = MIN(65535, 
 				opt_response_time_from_first_invite ?
 				 round((first_response_100_time_us - first_invite_time_us) / 1000.0) :
-				 round(branch_main()->get_min_response_100_time_us() / 1000.0));
+				 round(c_branch->get_min_response_100_time_us() / 1000.0));
 		} else {
 			setNull = true;
 		}
@@ -5739,7 +5821,6 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		break;
 	case _chartType_pbd:
 		{
-		CallBranch *c_branch = branch_main();
 		if(c_branch->seenbye_time_usec && c_branch->seenbye_and_ok_time_usec && 
 		   c_branch->seenbye_and_ok_time_usec > c_branch->seenbye_time_usec) {
 			v = (c_branch->seenbye_and_ok_time_usec - c_branch->seenbye_time_usec) / 1e6;
@@ -5759,15 +5840,15 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		v = 1;
 		break;
 	case _chartType_sipResp:
-		if(branch_main()->lastSIPresponseNum) {
-			v = branch_main()->lastSIPresponseNum;
+		if(c_branch->lastSIPresponseNum) {
+			v = c_branch->lastSIPresponseNum;
 		} else {
 			setNull = true;
 		}
 		break;
 	case _chartType_sipResponse:
-		if(!branch_main()->lastSIPresponse.empty()) {
-			v_str = branch_main()->lastSIPresponse;
+		if(!c_branch->lastSIPresponse.empty()) {
+			v_str = c_branch->lastSIPresponse;
 			if(chartsCache && chartsCache->maxLengthSipResponseText && v_str.length() > chartsCache->maxLengthSipResponseText) {
 				v_str.resize(chartsCache->maxLengthSipResponseText);
 			}
@@ -5777,7 +5858,7 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		break;
 	case _chartType_sipResponse_base:
 		{
-		int lsr = branch_main()->lastSIPresponseNum;
+		int lsr = c_branch->lastSIPresponseNum;
 		while(lsr >= 10) lsr /= 10;
 		v = lsr;
 		}
@@ -5790,36 +5871,36 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		}
 		break;
 	case _chartType_IP_src:
-		v_str = getSipcallerip(branch_main()).getString();
+		v_str = getSipcallerip(c_branch).getString();
 		break;
 	case _chartType_IP_dst:
-		v_str = branch_main()->sipcalledip_rslt.getString();
+		v_str = c_branch->sipcalledip_rslt.getString();
 		break;
 	case _chartType_domain_src:
-		v_str = branch_main()->caller_domain;
+		v_str = c_branch->caller_domain;
 		break;
 	case _chartType_domain_dst:
-		v_str = get_called_domain(branch_main());
+		v_str = get_called_domain(c_branch);
 		break;
 	case _chartType_caller_countries:
 		v_str = opt_cdr_country_code == 2 ?
-			 intToString(getCountryIdByPhoneNumber(branch_main()->caller.c_str(), getSipcallerip(branch_main()))) :
-			 getCountryByPhoneNumber(branch_main()->caller.c_str(), getSipcallerip(branch_main()), true);
+			 intToString(getCountryIdByPhoneNumber(c_branch->caller.c_str(), getSipcallerip(c_branch))) :
+			 getCountryByPhoneNumber(c_branch->caller.c_str(), getSipcallerip(c_branch), true);
 		break;
 	case _chartType_called_countries:
 		v_str = opt_cdr_country_code == 2 ?
-			 intToString(getCountryIdByPhoneNumber(get_called(branch_main()), branch_main()->sipcalledip_rslt)) :
-			 getCountryByPhoneNumber(get_called(branch_main()), branch_main()->sipcalledip_rslt, true);
+			 intToString(getCountryIdByPhoneNumber(get_called(c_branch), c_branch->sipcalledip_rslt)) :
+			 getCountryByPhoneNumber(get_called(c_branch), c_branch->sipcalledip_rslt, true);
 		break;
 	case _chartType_SIP_src_IP_countries:
 		v_str = opt_cdr_country_code == 2 ?
-			 intToString(getCountryIdByIP(getSipcallerip(branch_main()))) :
-			 getCountryByIP(getSipcallerip(branch_main()), true);
+			 intToString(getCountryIdByIP(getSipcallerip(c_branch))) :
+			 getCountryByIP(getSipcallerip(c_branch), true);
 		break;
 	case _chartType_SIP_dst_IP_countries:
 		v_str = opt_cdr_country_code == 2 ?
-			 intToString(getCountryIdByIP(branch_main()->sipcalledip_rslt)) :
-			 getCountryByIP(branch_main()->sipcalledip_rslt, true);
+			 intToString(getCountryIdByIP(c_branch->sipcalledip_rslt)) :
+			 getCountryByIP(c_branch->sipcalledip_rslt, true);
 		break;
 	case _chartType_price_customer:
 		if(price_customer > 0) {
@@ -7023,6 +7104,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr_flags |= CDR_ZEROSSRC_DETECTED;
 	if (c_branch->is_sipalg_detected)
 		cdr_flags |= CDR_SIPALG_DETECTED;
+	if (is_multibranch())
+		cdr_flags |= CDR_NEXT_BRANCHES;
 	if (protocol_is_tcp)
 		cdr_flags |= CDR_PROTO_TCP;
 	if (protocol_is_udp)
@@ -7052,11 +7135,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			} else if(exists_srtp && exists_srtp_crypto_config) {
 				bool exists_srtp_in_stream = false;
 				bool exists_srtp_crypto_config_in_stream = false;
+				CallBranch *rtp_i_branch = rtp_i->c_branch_created ? rtp_i->c_branch_created : c_branch;
 				for(int i = 0; i < 2; i++) {
 					int _index_call_ip_port = i == 0 ? rtp_i->index_call_ip_port : rtp_i->index_call_ip_port_other_side;
-					if(_index_call_ip_port >= 0 && c_branch->ip_port[_index_call_ip_port].srtp) {
+					if(_index_call_ip_port >= 0 && rtp_i_branch->ip_port[_index_call_ip_port].srtp) {
 						exists_srtp_in_stream = true;
-						if(c_branch->ip_port[_index_call_ip_port].srtp_crypto_config_list) {
+						if(rtp_i_branch->ip_port[_index_call_ip_port].srtp_crypto_config_list) {
 							exists_srtp_crypto_config_in_stream = true;
 						}
 					}
@@ -7076,6 +7160,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				int srtp_decrypt_index_call_ip_port = -1;
 				for(int j = 0; j < rtp_size(); j++) {
 					if(rtp_stream_by_index(j)->index_call_ip_port == i &&
+					   rtp_stream_by_index(j)->c_branch_created == c_branch &&
 					   rtp_stream_by_index(j)->stats.received > 0) {
 						stream_is_used = true;
 						srtp_decrypt_index_call_ip_port = rtp_stream_by_index(j)->srtp_decrypt_index_call_ip_port;
@@ -7084,8 +7169,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 				if(stream_is_used &&
 				   !(c_branch->ip_port[i].srtp_crypto_config_list ||
-				     (rtp_secure_map[srtp_decrypt_index_call_ip_port >= 0 ? srtp_decrypt_index_call_ip_port : i] && 
-				      rtp_secure_map[srtp_decrypt_index_call_ip_port >= 0 ? srtp_decrypt_index_call_ip_port : i]->isOK_decrypt_rtp()))) {
+				     (c_branch->rtp_secure_map[srtp_decrypt_index_call_ip_port >= 0 ? srtp_decrypt_index_call_ip_port : i] && 
+				      c_branch->rtp_secure_map[srtp_decrypt_index_call_ip_port >= 0 ? srtp_decrypt_index_call_ip_port : i]->isOK_decrypt_rtp()))) {
 					cdr_flags |= CDR_SRTP_WITHOUT_KEY;
 					if(sverb.dtls && ssl_sessionkey_enable()) {
 						string log_str;
@@ -7094,12 +7179,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 							log_str += "\nip_port " + intToString(k) + " " +
 								   c_branch->ip_port[k].addr.getString() + ":" + c_branch->ip_port[k].port.getString() + 
 								   "; exist srtp_crypto_config_list: " + (c_branch->ip_port[k].srtp_crypto_config_list ? "Y" : "n") + 
-								   "; exist rtp_secure_map: " + (rtp_secure_map[k] ? "Y" : "n") + 
-								   (rtp_secure_map[k] ?
-								     string("; isOK_decrypt_rtp: ") + (rtp_secure_map[k]->isOK_decrypt_rtp() ? "Y" : "n") :
+								   "; exist rtp_secure_map: " + (c_branch->rtp_secure_map[k] ? "Y" : "n") + 
+								   (c_branch->rtp_secure_map[k] ?
+								     string("; isOK_decrypt_rtp: ") + (c_branch->rtp_secure_map[k]->isOK_decrypt_rtp() ? "Y" : "n") :
 								     "") + 
-								   (rtp_secure_map[k] && !rtp_secure_map[k]->isOK_decrypt_rtp() ?
-								     string("; ok/f: ") + intToString(rtp_secure_map[k]->decrypt_rtp_ok) + "/" + intToString(rtp_secure_map[k]->decrypt_rtp_failed) :
+								   (c_branch->rtp_secure_map[k] && !c_branch->rtp_secure_map[k]->isOK_decrypt_rtp() ?
+								     string("; ok/f: ") + intToString(c_branch->rtp_secure_map[k]->decrypt_rtp_ok) + "/" + intToString(c_branch->rtp_secure_map[k]->decrypt_rtp_failed) :
 								     "");
 						}
 						for(int k = 0; k < rtp_size(); k++) {
@@ -7168,8 +7253,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		RTP *rtp_i = rtp_stream_by_index(i);
 		if((rtp_i->find_by_dest && rtp_i->index_call_ip_port >= 0) || 
 		   (!rtp_i->find_by_dest && rtp_i->index_call_ip_port_other_side >= 0)) {
-			u_int16_t sdp_ptime = rtp_i->find_by_dest && rtp_i->index_call_ip_port_other_side >= 0 ? c_branch->ip_port[rtp_i->index_call_ip_port_other_side].ptime :
-					      !rtp_i->find_by_dest && rtp_i->index_call_ip_port >= 0 ? c_branch->ip_port[rtp_i->index_call_ip_port].ptime : 0;
+			CallBranch *rtp_i_branch = rtp_i->c_branch_created ? rtp_i->c_branch_created : c_branch;
+			u_int16_t sdp_ptime = rtp_i->find_by_dest && rtp_i->index_call_ip_port_other_side >= 0 ? rtp_i_branch->ip_port[rtp_i->index_call_ip_port_other_side].ptime :
+					      !rtp_i->find_by_dest && rtp_i->index_call_ip_port >= 0 ? rtp_i_branch->ip_port[rtp_i->index_call_ip_port].ptime : 0;
 			if(sdp_ptime > 0 && sdp_ptime != rtp_i->sdp_ptime) {
 				rtp_i->sdp_ptime = sdp_ptime;
 			}
@@ -7560,7 +7646,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	if(custom_headers_cdr) {
-		custom_headers_cdr->prepareSaveRows(this, INVITE, NULL, 0, &cdr_next, cdr_next_ch, cdr_next_ch_name);
+		custom_headers_cdr->prepareSaveRows(this, c_branch, INVITE, NULL, 0, &cdr_next, cdr_next_ch, cdr_next_ch_name);
 	}
 
 	if(c_branch->whohanged == 0 || c_branch->whohanged == 1) {
@@ -9250,6 +9336,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			for(unsigned i = 0; i < next_branches.size(); i++) {
 				CallBranch *n_branch = next_branches[i];
 				SqlDb_row next_branch_row;
+				next_branch_row.add(cdrID, "cdr_ID");
 				prepareDbRow_cdr_next_branches(next_branch_row, n_branch, i, sql_cdr_next_branches_table, false, NULL);
 				sqlDbSaveCall->insert(sql_cdr_next_branches_table, next_branch_row);
 			}
@@ -9552,12 +9639,19 @@ void Call::prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch
 	string num_caller_reverse = reverseString(num_caller.c_str());
 	string num_called = get_called(n_branch);
 	string num_called_reverse = reverseString(num_called.c_str());
+	string callername = n_branch->callername;
+	string callername_reverse = reverseString(callername.c_str());
 	extern bool opt_pii_enable;
+	extern bool opt_pii_anonymize_callername;
 	if(opt_pii_enable) {
 		num_caller = pii_masking(num_caller.c_str());
 		num_caller_reverse = pii_masking(num_caller_reverse.c_str());
 		num_called = pii_masking(num_called.c_str());
 		num_called_reverse = pii_masking(num_called_reverse.c_str());
+		if(opt_pii_anonymize_callername) {
+			callername = pii_masking(callername.c_str());
+			callername_reverse = pii_masking(callername_reverse.c_str());
+		}
 	}
 	next_branch_row.add(sqlEscapeString_limit(num_caller, 255), "caller");
 	next_branch_row.add(sqlEscapeString_limit(num_caller_reverse, 255), "caller_reverse");
@@ -9565,8 +9659,8 @@ void Call::prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch
 	next_branch_row.add(sqlEscapeString_limit(num_called_reverse, 255), "called_reverse");
 	next_branch_row.add(sqlEscapeString_limit(n_branch->caller_domain, 255), "caller_domain");
 	next_branch_row.add(sqlEscapeString_limit(get_called_domain(n_branch), 255), "called_domain");
-	next_branch_row.add(sqlEscapeString_limit(n_branch->callername, 255), "callername");
-	next_branch_row.add(sqlEscapeString_limit(reverseString(n_branch->callername.c_str()).c_str(), 255), "callername_reverse");
+	next_branch_row.add(sqlEscapeString_limit(callername, 255), "callername");
+	next_branch_row.add(sqlEscapeString_limit(callername_reverse, 255), "callername_reverse");
 	
 	next_branch_row.add(n_branch->sipcallerip_rslt, "sipcallerip", false, sqlDbSaveCall, table.c_str());
 	next_branch_row.add(n_branch->sipcalledip_rslt, "sipcalledip", false, sqlDbSaveCall, table.c_str());
@@ -9585,7 +9679,7 @@ void Call::prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch
 				    !n_branch->sipcalledip_encaps_rslt.isSet() || n_branch->sipcalledip_encaps_prot_rslt == 0xFF);
 	}
 	
-	if(opt_cdr_country_code) {
+	if(opt_cdr_country_code && existsColumns.cdr_next_branches_country_code) {
 		if(opt_cdr_country_code == 2) {
 			next_branch_row.add(getCountryIdByIP(getSipcallerip(n_branch)), "sipcallerip_country_code");
 			next_branch_row.add(getCountryIdByIP(n_branch->sipcalledip_rslt), "sipcalledip_country_code");
@@ -9765,7 +9859,7 @@ void Call::prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch
 		}
 	}
 	 
-	next_branch_row.add(sqlEscapeString(n_branch->branch_call_id), "call_id");
+	next_branch_row.add(sqlEscapeString_limit(n_branch->branch_call_id, 255), "call_id");
 	if(!n_branch->branch_fbasename.empty() && n_branch->branch_fbasename != n_branch->branch_call_id) {
 		next_branch_row.add(sqlEscapeString_limit(n_branch->branch_fbasename, 255), "fbasename");
 	} else {
@@ -10383,7 +10477,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	}
 
 	if(custom_headers_message) {
-		custom_headers_message->prepareSaveRows(this, MESSAGE, NULL, 0, &msg, msg_next_ch, msg_next_ch_name);
+		custom_headers_message->prepareSaveRows(this, c_branch, MESSAGE, NULL, 0, &msg, msg_next_ch, msg_next_ch_name);
 	}
 
 	if(opt_message_country_code) {
@@ -13635,7 +13729,7 @@ void Calltable::cleanup_calls__process_calls(sCleanupCallsData *cc_data) {
 				call->absolute_timeout_exceeded = true;
 				++cc_data->stat.close_absolute_timeout;
 			} else if(currTimeS_unshift > call->get_first_packet_time_s() + 300 &&
-				  !c_branch->seenRES18X && !c_branch->seenRES2XX && !call->first_rtp_time_us) {
+				  !call->seenRES18X_or_2XX_in_branches() && !call->first_rtp_time_us) {
 				closeCall = true;
 				call->zombie_timeout_exceeded = true;
 				++cc_data->stat.close_zombie_timeout;
@@ -15394,10 +15488,10 @@ void CustomHeaders::prepareCustomNodes(ParsePacket *parsePacket) {
 
 extern char * gettag_ext(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents, 
 			 const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
-void CustomHeaders::parse(Call *call, int type, sCH_Content *ch_content, packet_s_process *packetS, eReqRespDirection reqRespDirection) {
+void CustomHeaders::parse(Call *call, CallBranch *c_branch, int type, sCH_Content *ch_content, packet_s_process *packetS, eReqRespDirection reqRespDirection) {
 	if(!ch_content) {
-		if(call) {
-			ch_content = getCustomHeadersCallContent(call, type);
+		if(c_branch) {
+			ch_content = getCustomHeadersCallContent(c_branch, type);
 		}
 		if(!ch_content) {
 			return;
@@ -15407,8 +15501,8 @@ void CustomHeaders::parse(Call *call, int type, sCH_Content *ch_content, packet_
 	int datalen = packetS->sipDataLen;
 	ParsePacket::ppContentsX *parseContents = &packetS->parseContents;
 	lock_custom_headers();
-	if(call) {
-		call->custom_headers_content_lock();
+	if(c_branch) {
+		c_branch->custom_headers_content_lock();
 	}
 	unsigned long gettagLimitLen = 0;
 	for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
@@ -15542,8 +15636,8 @@ void CustomHeaders::parse(Call *call, int type, sCH_Content *ch_content, packet_
 			ch_content->incParseCounter(iter->first.i1, iter->first.i2);
 		}
 	}
-	if(call) {
-		call->custom_headers_content_unlock();
+	if(c_branch) {
+		c_branch->custom_headers_content_unlock();
 	}
 	unlock_custom_headers();
 }
@@ -15552,7 +15646,7 @@ void CustomHeaders::setCustomHeaderContent(Call *call, int type, sCH_Content *ch
 					   eSelectOccurrence selectOccurrence, int nthOccurrence) {
 	if(!ch_content) {
 		if(call) {
-			ch_content = getCustomHeadersCallContent(call, type);
+			ch_content = getCustomHeadersCallContent(call->branch_main(), type);
 		}
 		if(!ch_content) {
 			return;
@@ -15561,17 +15655,20 @@ void CustomHeaders::setCustomHeaderContent(Call *call, int type, sCH_Content *ch
 	ch_content->addContent(i1, i2, content, time_us, selectOccurrence, nthOccurrence);
 }
 
-void CustomHeaders::prepareSaveRows(Call *call, int type, sCH_Content *ch_content, u_int64_t time_us, SqlDb_row *cdr_next, SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]) {
+void CustomHeaders::prepareSaveRows(Call *call, CallBranch *c_branch, int type, sCH_Content *ch_content, u_int64_t time_us, SqlDb_row *cdr_next, SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]) {
+	if(call && !c_branch) {
+		c_branch = call->branch_main();
+	}
 	if(!ch_content) {
-		if(call) {
-			ch_content = getCustomHeadersCallContent(call, type);
+		if(c_branch) {
+			ch_content = getCustomHeadersCallContent(c_branch, type);
 		}
 		if(!ch_content) {
 			return;
 		}
 	}
-	if(call) {
-		call->custom_headers_content_lock();
+	if(c_branch) {
+		c_branch->custom_headers_content_lock();
 	}
 	for(map<sCH_index, sCH_ContentData*>::iterator iter = ch_content->data.begin(); iter != ch_content->data.end(); iter++) {
 		if(iter->first.i1 <= CDR_NEXT_MAX) {
@@ -15598,14 +15695,14 @@ void CustomHeaders::prepareSaveRows(Call *call, int type, sCH_Content *ch_conten
 			}
 		}
 	}
-	if(call) {
-		call->custom_headers_content_unlock();
+	if(c_branch) {
+		c_branch->custom_headers_content_unlock();
 	}
 }
 
 string CustomHeaders::getScreenPopupFieldsString(Call *call, int type) {
 	string fields;
-	sCH_Content *ch_content = getCustomHeadersCallContent(call, type);
+	sCH_Content *ch_content = getCustomHeadersCallContent(call->branch_main(), type);
 	for(map<sCH_index, sCH_ContentData*>::iterator iter = ch_content->data.begin(); iter != ch_content->data.end(); iter++) {
 		map<sCH_index, sCustomHeaderData>::iterator ch_iter = custom_headers.find(iter->first);
 		if(ch_iter != custom_headers.end() && ch_iter->second.screenPopupField) {
@@ -15667,7 +15764,7 @@ void CustomHeaders::createMysqlPartitions(class SqlDb *sqlDb, const char *tableN
 string CustomHeaders::getQueryForSaveUseInfo(Call* call, int type, sCH_Content *ch_content) {
 	if(!ch_content) {
 		if(call) {
-			ch_content = getCustomHeadersCallContent(call, type);
+			ch_content = getCustomHeadersCallContent(call->branch_main(), type);
 		}
 		if(!ch_content) {
 			return("");
@@ -15890,11 +15987,11 @@ bool CustomHeaders::getPosForDbId(unsigned db_id, d_u_int32_t *pos) {
 	return(find);
 }
 
-CustomHeaders::sCH_Content *CustomHeaders::getCustomHeadersCallContent(Call *call, int type) {
+CustomHeaders::sCH_Content *CustomHeaders::getCustomHeadersCallContent(CallBranch *c_branch, int type) {
 	return(type == INVITE ?
-		&call->custom_headers_content_cdr :
-	       type == MESSAGE ? 
-		&call->custom_headers_content_message :
+		&c_branch->custom_headers_content_cdr :
+	       type == MESSAGE ?
+		&c_branch->custom_headers_content_message :
 		NULL);
 }
 
@@ -15911,20 +16008,22 @@ void CustomHeaders::getHeaders(list<string> *rslt) {
 }
 
 void CustomHeaders::getValues(Call *call, int type, list<string> *rslt) {
+	CallBranch *c_branch = call->branch_main();
 	lock_custom_headers();
-	call->custom_headers_content_lock();
-	sCH_Content *ch_content = getCustomHeadersCallContent(call, type);
+	c_branch->custom_headers_content_lock();
+	sCH_Content *ch_content = getCustomHeadersCallContent(c_branch, type);
 	for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
 		rslt->push_back(getCH_Content_value(ch_content, iter->first.i1, iter->first.i2));
 	}
-	call->custom_headers_content_unlock();
+	c_branch->custom_headers_content_unlock();
 	unlock_custom_headers();
 }
 
 void CustomHeaders::getHeaderValues(Call *call, int type, map<string, string> *rslt) {
+	CallBranch *c_branch = call->branch_main();
 	lock_custom_headers();
-	call->custom_headers_content_lock();
-	sCH_Content *ch_content = getCustomHeadersCallContent(call, type);
+	c_branch->custom_headers_content_lock();
+	sCH_Content *ch_content = getCustomHeadersCallContent(c_branch, type);
 	for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
 		if(!iter->first.i1) {
 			(*rslt)["custom_header__" + iter->second.first_header()] = getCH_Content_value(ch_content, iter->first.i1, iter->first.i2);
@@ -15932,26 +16031,28 @@ void CustomHeaders::getHeaderValues(Call *call, int type, map<string, string> *r
 			(*rslt)["custom_header_" + intToString(iter->first.i1) + "_" + intToString(iter->first.i2)] = getCH_Content_value(ch_content, iter->first.i1, iter->first.i2);
 		}
 	}
-	call->custom_headers_content_unlock();
+	c_branch->custom_headers_content_unlock();
 	unlock_custom_headers();
 }
 
 void CustomHeaders::getNameValues(Call *call, int type, map<string, string> *rslt) {
+	CallBranch *c_branch = call->branch_main();
 	lock_custom_headers();
-	call->custom_headers_content_lock();
-	sCH_Content *ch_content = getCustomHeadersCallContent(call, type);
+	c_branch->custom_headers_content_lock();
+	sCH_Content *ch_content = getCustomHeadersCallContent(c_branch, type);
 	for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
 		(*rslt)[iter->second.name] = getCH_Content_value(ch_content, iter->first.i1, iter->first.i2);
 	}
-	call->custom_headers_content_unlock();
+	c_branch->custom_headers_content_unlock();
 	unlock_custom_headers();
 }
 
 string CustomHeaders::getValue(Call *call, int type, const char *header) {
 	string rslt;
+	CallBranch *c_branch = call->branch_main();
 	lock_custom_headers();
-	call->custom_headers_content_lock();
-	sCH_Content *ch_content = getCustomHeadersCallContent(call, type);
+	c_branch->custom_headers_content_lock();
+	sCH_Content *ch_content = getCustomHeadersCallContent(c_branch, type);
 	for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end() && rslt.empty(); iter++) {
 		string cmpHeaderName = !iter->first.i1 ?
 					"custom_header__" + iter->second.first_header() :
@@ -15960,7 +16061,7 @@ string CustomHeaders::getValue(Call *call, int type, const char *header) {
 			rslt = getCH_Content_value(ch_content, iter->first.i1, iter->first.i2);
 		}
 	}
-	call->custom_headers_content_unlock();
+	c_branch->custom_headers_content_unlock();
 	unlock_custom_headers();
 	return(rslt);
 }
@@ -16026,7 +16127,7 @@ bool NoHashMessageRule::checkNoHash(Call *call) {
 	}
 	bool noHashByHeader = false;
 	if(this->customHeader_ok) {
-		string header = call->custom_headers_content_message.getContent(this->customHeader_pos[0], this->customHeader_pos[1]).content;
+		string header = call->branch_main()->custom_headers_content_message.getContent(this->customHeader_pos[0], this->customHeader_pos[1]).content;
 		if(header.length()) {
 			if(this->header_regexp.size()) {
 				list<cRegExp*>::iterator iter_header_regexp;

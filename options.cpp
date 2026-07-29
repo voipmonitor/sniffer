@@ -310,7 +310,7 @@ void cSipMsgRequestResponse::destroy(cSipMsgRelations *relations, cSipMsgRelatio
 
 void cSipMsgRequestResponse::parseCustomHeaders(packet_s_process *packetS, CustomHeaders::eReqRespDirection reqRespDirection) {
 	if(custom_headers_sip_msg) {
-		custom_headers_sip_msg->parse(NULL, 0, &custom_headers_content, packetS, reqRespDirection);
+		custom_headers_sip_msg->parse(NULL, NULL, 0, &custom_headers_content, packetS, reqRespDirection);
 	}
 }
 
@@ -1076,7 +1076,7 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 				     MYSQL_GET_MAIN_INSERT_ID;
 		}
 		if(custom_headers_sip_msg) {
-			custom_headers_sip_msg->prepareSaveRows(NULL, 0, &requestResponse->custom_headers_content, requestResponse->time_us, NULL, next_ch, next_ch_name);
+			custom_headers_sip_msg->prepareSaveRows(NULL, NULL, 0, &requestResponse->custom_headers_content, requestResponse->time_us, NULL, next_ch, next_ch_name);
 			bool existsNextCh = false;
 			for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
 				if(next_ch_name[i][0]) {

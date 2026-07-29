@@ -1449,6 +1449,7 @@ struct sExistsColumns {
 	bool cdr_next_branches_sipport;
 	bool cdr_next_branches_sipcallerdip_encaps;
 	bool cdr_next_branches_sipcallerdip_v6;
+	bool cdr_next_branches_country_code;
 	bool cdr_rtp_calldate;
 	bool cdr_rtp_energylevels_calldate;
 	bool cdr_rtp_sport;
