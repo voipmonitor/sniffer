@@ -212,6 +212,34 @@ struct sll2_header {
 #define IS_MRCP(data, datalen) ((datalen) >= 4 && ((char*)(data))[0] == 'M' && ((char*)(data))[1] == 'R' && ((char*)(data))[2] == 'C' && ((char*)(data))[3] == 'P')
 #define IS_BFCP(data, datalen) ((datalen) >= 12 && (((u_char*)(data))[0] == 0x20 || (((u_char*)(data))[0] & 0xE7) == 0x40) && ((u_char*)(data))[1] >= 1 && ((u_char*)(data))[1] <= 17)
 
+inline bool check_udptl(u_char *data, u_int32_t datalen) {
+	if(datalen <= 4) {
+		return(false);
+	}
+	u_int32_t ifp_offset;
+	u_int32_t ifp_len;
+	if(data[2] < 0x80) {
+		ifp_offset = 3;
+		ifp_len = data[2];
+	} else if((data[2] & 0xC0) == 0x80) {
+		ifp_offset = 4;
+		ifp_len = ((data[2] & 0x3F) << 8) | data[3];
+	} else {
+		return(false);
+	}
+	if(ifp_len < 1 || ifp_offset + ifp_len >= datalen) {
+		return(false);
+	}
+	u_char ifp0 = data[ifp_offset];
+	if(ifp_len == 1 ?
+	    (ifp0 & 0xA1) != 0 :
+	    ((ifp0 & 0xC0) != 0xC0 && (ifp0 & 0xE0) != 0x20)) {
+		return(false);
+	}
+	u_char er0 = data[ifp_offset + ifp_len];
+	return(er0 < 0x10 || (er0 & 0x80));
+}
+#define IS_UDPTL(data, datalen) check_udptl((u_char*)(data), (u_int32_t)(datalen))
 
 #define if_likely(x) __builtin_expect(!!(x), 1)
 #define if_unlikely(x) __builtin_expect(!!(x), 0)

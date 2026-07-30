@@ -816,6 +816,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	has_second_merged_leg = false;
 	isfax = NOFAX;
 	seenudptl = 0;
+	seen_sdp_mt_image = 0;
 	exists_udptl_data = false;
 	not_acceptable = false;
 	sip_fragmented = false;
@@ -1434,6 +1435,10 @@ Call::~Call(){
 	
 	if(is_ssl) {
 		glob_ssl_calls--;
+	}
+	if(seen_sdp_mt_image) {
+		extern volatile u_int64_t counter_calls_with_sdp_mt_image;
+		__SYNC_DEC(counter_calls_with_sdp_mt_image);
 	}
 
 	if(contenttype) delete [] contenttype;

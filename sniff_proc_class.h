@@ -1559,6 +1559,7 @@ private:
 	inline void process_DETACH_X_1(pcap_queue_packet_data *packet_data, packet_s_plus_pointer *packetS_detach) {
 		extern int opt_t2_boost;
 		extern char *sipportmatrix;
+		extern volatile u_int64_t counter_calls_with_sdp_mt_image;
 		pcap_pkthdr *header = packet_data->hp.header->_getStdHeader();
 		u_char *packet = packet_data->hp.packet;
 		#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
@@ -1604,7 +1605,12 @@ private:
 				packet_data->datalen > 2 &&
 				(IS_RTP(packet + packet_data->data_offset, packet_data->datalen) || 
 				 IS_DTLS(packet + packet_data->data_offset, packet_data->datalen) ||
-				 packet_data->pflags.other_rtp_processing())) :
+				 packet_data->pflags.other_rtp_processing() ||
+				 (counter_calls_with_sdp_mt_image &&
+				  !need_sip_process &&
+				  !packet_data->pflags.get_tcp() &&
+				  IS_UDPTL(packet + packet_data->data_offset,
+					   min(packet_data->datalen, (u_int32_t)(header->caplen - packet_data->data_offset)))))) :
 			       false;
 		if(need_sip_process && is_rtp && opt_t2_boost_direct_rtp) {
 			extern bool check_sip_method(u_char *data, unsigned long len);

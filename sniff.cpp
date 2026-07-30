@@ -368,6 +368,7 @@ u_int64_t counter_sip_message_packets;
 u_int64_t counter_rtp_packets[2];
 u_int64_t counter_all_packets;
 volatile u_int64_t counter_user_packets[5];
+volatile u_int64_t counter_calls_with_sdp_mt_image;
 
 extern struct queue_state *qs_readpacket_thread_queue;
 
@@ -4558,6 +4559,10 @@ void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, in
 							syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
 						}
 						call->isfax = T38FAX;
+						if(!call->seen_sdp_mt_image &&
+						   !__SYNC_TEST_LOCK(call->seen_sdp_mt_image)) {
+							__SYNC_INC(counter_calls_with_sdp_mt_image);
+						}
 					} else {
 						if(call->isfax) {
 							call->isfax = NOFAX;

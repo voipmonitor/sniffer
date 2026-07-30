@@ -1891,6 +1891,7 @@ public:
 
 	int isfax;
 	char seenudptl;
+	volatile char seen_sdp_mt_image;
 	bool exists_udptl_data;
 	bool not_acceptable;
 	
