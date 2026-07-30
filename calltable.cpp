@@ -612,7 +612,13 @@ CallBranch::CallBranch(Call *call, unsigned branch_id) {
 	sipcalledip_encaps_prot_rslt = 0xFF;
 	sipcallerdip_reverse = false;
 	
+	sip_addr_version = 0;
+	_sip_addr_cache_corrected_lock = 0;
+	sipcallerip_cache_corrected_version = (u_int32_t)-1;
+	sipcalledip_cache_corrected_version = (u_int32_t)-1;
+
 	_proxies_lock = 0;
+	_ua_map_lock = 0;
 	
 	whohanged = -1;
 	oneway = 1;
@@ -692,6 +698,56 @@ void CallBranch::proxies_undup(set<vmIP> *proxies_undup, list<vmIPport> *proxies
 		}
 	}
 	if(need_lock) proxies_unlock();
+}
+
+bool CallBranch::check_exists_ua(vmIP ip, vmPort port, bool is_response, bool maybe_proxy_ua) {
+	map<vmIPport, sUaData>::iterator iter = ua_map.find(vmIPport(ip, port));
+	if(iter == ua_map.end()) {
+		return(false);
+	}
+	if(is_response) {
+		return(!iter->second.ua_resp.empty() && (!iter->second.ua_resp_maybe_proxy || maybe_proxy_ua));
+	} else {
+		return(!iter->second.ua_req.empty());
+	}
+}
+
+void CallBranch::set_ua(vmIP ip, vmPort port, bool is_response, bool maybe_proxy_ua, const char *ua, unsigned ua_length) {
+	ua_map_lock();
+	sUaData *ua_data = &ua_map[vmIPport(ip, port)];
+	if(is_response) {
+		if(ua_data->ua_resp.empty() || (ua_data->ua_resp_maybe_proxy && !maybe_proxy_ua)) {
+			ua_data->ua_resp = string(ua, ua_length);
+			ua_data->ua_resp_maybe_proxy = maybe_proxy_ua;
+		}
+	} else {
+		if(ua_data->ua_req.empty()) {
+			ua_data->ua_req = string(ua, ua_length);
+		}
+	}
+	ua_map_unlock();
+}
+
+string CallBranch::get_ua(vmIP ip, vmPort port, bool prefer_resp) {
+	string rslt;
+	ua_map_lock();
+	map<vmIPport, sUaData>::iterator iter = ua_map.find(vmIPport(ip, port));
+	if(iter == ua_map.end()) {
+		for(iter = ua_map.begin(); iter != ua_map.end(); iter++) {
+			if(iter->first.ip == ip) {
+				break;
+			}
+		}
+	}
+	if(iter != ua_map.end()) {
+		if(prefer_resp) {
+			rslt = !iter->second.ua_resp.empty() ? iter->second.ua_resp : iter->second.ua_req;
+		} else {
+			rslt = !iter->second.ua_req.empty() ? iter->second.ua_req : iter->second.ua_resp;
+		}
+	}
+	ua_map_unlock();
+	return(rslt);
 }
 
 int64_t CallBranch::get_min_response_100_time_us() {
@@ -4964,16 +5020,16 @@ void Call::getValue(eCallField field, RecordArrayField *rfield, CallBranch *c_br
 		}
 		break;
 	case cf_caller_country:
-		rfield->set(getCountryByPhoneNumber(c_branch->caller.c_str(), getSipcallerip(c_branch, true), true).c_str());
+		rfield->set(getCountryByPhoneNumber(c_branch->caller.c_str(), getSipcallerip_corrected(c_branch), true).c_str());
 		break;
 	case cf_called_country:
-		rfield->set(getCountryByPhoneNumber(get_called(c_branch), getSipcalledip(c_branch, true, true), true).c_str());
+		rfield->set(getCountryByPhoneNumber(get_called(c_branch), getSipcalledip_corrected(c_branch), true).c_str());
 		break;
 	case cf_caller_international:
-		rfield->set(!isLocalByPhoneNumber(c_branch->caller.c_str(), getSipcallerip(c_branch, true)));
+		rfield->set(!isLocalByPhoneNumber(c_branch->caller.c_str(), getSipcallerip_corrected(c_branch)));
 		break;
 	case cf_called_international:
-		rfield->set(!isLocalByPhoneNumber(get_called(c_branch), getSipcalledip(c_branch, true, true)));
+		rfield->set(!isLocalByPhoneNumber(get_called(c_branch), getSipcalledip_corrected(c_branch)));
 		break;
 	case cf_callername:
 		{
@@ -4993,22 +5049,22 @@ void Call::getValue(eCallField field, RecordArrayField *rfield, CallBranch *c_br
 		rfield->set(get_called_domain(c_branch));
 		break;
 	case cf_calleragent:
-		rfield->set(c_branch->a_ua.c_str());
+		rfield->set(get_a_ua(c_branch).c_str());
 		break;
 	case cf_calledagent:
-		rfield->set(c_branch->b_ua.c_str());
+		rfield->set(get_b_ua(c_branch).c_str());
 		break;
 	case cf_callerip:
-		rfield->set(getSipcallerip(c_branch, true), RecordArrayField::tf_ip_n4_cmpstr);
+		rfield->set(getSipcallerip_corrected(c_branch), RecordArrayField::tf_ip_n4_cmpstr);
 		break;
 	case cf_calledip:
-		rfield->set(getSipcalledip(c_branch, true, true), RecordArrayField::tf_ip_n4_cmpstr);
+		rfield->set(getSipcalledip_corrected(c_branch), RecordArrayField::tf_ip_n4_cmpstr);
 		break;
 	case cf_callerip_country:
-		rfield->set(getCountryByIP(getSipcallerip(c_branch, true), true).c_str());
+		rfield->set(getCountryByIP(getSipcallerip_corrected(c_branch), true).c_str());
 		break;
 	case cf_calledip_country:
-		rfield->set(getCountryByIP(getSipcalledip(c_branch, true, true), true).c_str());
+		rfield->set(getCountryByIP(getSipcalledip_corrected(c_branch), true).c_str());
 		break;
 	case cf_callerip_encaps:
 		rfield->set(getSipcallerip_encaps(c_branch, true), RecordArrayField::tf_ip_n4_cmpstr);
@@ -5023,7 +5079,7 @@ void Call::getValue(eCallField field, RecordArrayField *rfield, CallBranch *c_br
 		rfield->set(getSipcalledip_encaps_prot(c_branch, true, true));
 		break;
 	case cf_sipproxies:
-		rfield->set(getProxies_str(c_branch, true, true).c_str());
+		rfield->set(getProxies_str(c_branch).c_str());
 		break;
 	case cf_lastSIPresponseNum:
 		rfield->set(c_branch->lastSIPresponseNum);
@@ -6445,7 +6501,7 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 		}
 		return(true);
 	} else if(*column == "ua") {
-		*value = cEvalFormula::sValue(table->find("a_ua") != string::npos ? branch_main()->a_ua : branch_main()->b_ua);
+		*value = cEvalFormula::sValue(table->find("a_ua") != string::npos ? get_a_ua(branch_main()) : get_b_ua(branch_main()));
 		if(ord) {
 			ord->u.s.column = table->find("a_ua") != string::npos ? 5 : 6;
 		}
@@ -7033,7 +7089,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	cdr_country_code.clear();
 	*/
 	
-	adjustUA(c_branch);
 	adjustReason(c_branch);
 	
 	if(opt_only_cdr_next) {
@@ -7302,6 +7357,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	set<vmIP> proxies_undup;
 	prepareSipIpForSave(c_branch, &proxies_undup);
+	adjustUA(c_branch);
 
 	list<sSipResponse> SIPresponseUnique;
 	for(list<Call::sSipResponse>::iterator iterSipresp = c_branch->SIPresponse.begin(); iterSipresp != c_branch->SIPresponse.end(); iterSipresp++) {
@@ -9624,11 +9680,11 @@ void Call::prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch
 	string n_branch_var_suffix = "_nb_" + intToString(indexRow + 1);
 	
 	adjustSipResponse(n_branch->lastSIPresponse);
-	adjustUA(n_branch);
 	adjustReason(n_branch);
 	
 	set<vmIP> n_branch_proxies_undup;
 	prepareSipIpForSave(n_branch, &n_branch_proxies_undup);
+	adjustUA(n_branch);
 	
 	if(batch) {
 		next_branch_row.setIgnoreCheckExistsField();
@@ -10360,6 +10416,8 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		sqlDbSaveCall->setEnableSqlStringInContent(true);
 	}
 	
+	c_branch->a_ua = get_a_ua(c_branch);
+	c_branch->b_ua = get_b_ua(c_branch);
 	adjustUA(c_branch);
 	
 	string sql_message_table = "message";
@@ -11091,6 +11149,18 @@ void Call::prepareRtcpXrData(sRtcpXrStreams *streams, bool checkOK) {
 	}
 }
 
+string Call::get_a_ua(CallBranch *c_branch) {
+	vmPort port;
+	vmIP ip = getSipcallerip_corrected(c_branch, &port);
+	return(c_branch->get_ua(ip, port, false));
+}
+
+string Call::get_b_ua(CallBranch *c_branch) {
+	vmPort port;
+	vmIP ip = getSipcalledip_corrected(c_branch, &port);
+	return(c_branch->get_ua(ip, port, true));
+}
+
 void Call::adjustUA(CallBranch *c_branch) {
 	if(!c_branch->a_ua.empty()) {
 		::adjustUA(c_branch->a_ua);
@@ -11385,6 +11455,8 @@ void Call::prepareSipIpForSave(CallBranch *c_branch, set<vmIP> *proxies_undup) {
 		vmIPport proxy_exclude(c_branch->sipcalledip_rslt, c_branch->sipcalledport_rslt);
 		c_branch->proxies_undup(proxies_undup, NULL, &proxy_exclude);
 	}
+	c_branch->a_ua = c_branch->get_ua(c_branch->sipcallerip_rslt, c_branch->sipcallerport_rslt, false);
+	c_branch->b_ua = c_branch->get_ua(c_branch->sipcalledip_rslt, c_branch->sipcalledport_rslt, true);
 }
 
 unsigned Call::getMaxRetransmissionInvite(CallBranch *c_branch) {
@@ -13262,7 +13334,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 			} else {
 				++counter;
 				if(needIpMap) {
-					ip_src = call->getSipcallerip(c_branch, true);
+					ip_src = call->getSipcallerip_corrected(c_branch);
 					ip_dst = call->getSipcalledip(c_branch, true, true, NULL, &proxies);
 					if(call->lastactivecallerrtp) {
 						rtp_ip_src = call->lastactivecallerrtp->saddr;
@@ -16316,7 +16388,7 @@ bool NoStoreCdrRule::check(Call *call, CallBranch *c_branch) {
  	if(ok && ip.isSet()) {
 		if(!check_ip(call->getSipcallerip(c_branch), ip, ip_mask_length) &&
 		   !check_ip(call->getSipcalledip(c_branch), ip, ip_mask_length) &&
-		   !check_ip(call->getSipcalledip(c_branch, true, true), ip, ip_mask_length)) {
+		   !check_ip(call->getSipcalledip_corrected(c_branch), ip, ip_mask_length)) {
 			ok = false;
 		}
 	}

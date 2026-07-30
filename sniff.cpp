@@ -4690,25 +4690,20 @@ static inline void parse_packet__message_content(char *message, unsigned int mes
 static inline Call *process_packet__merge(packet_s_process *packetS, char *callidstr, int *merged, bool preprocess);
 static inline bool checkEqNumbers(Call::sInviteSD_Addr *item1, Call::sInviteSD_Addr *item2);
 
-void process_ua(Call */*call*/, CallBranch *c_branch, packet_s_process *packetS, int iscaller, int iscalled) {
-	unsigned long l;
-	char *s;
-	if(iscaller > 0 && c_branch->b_ua.empty()) {
-		s = gettag_sip_ua(packetS, &l);
-		if(s) {
-			c_branch->b_ua = string(s, l);
-			if(sverb.set_ua) {
-					cout << "set b_ua " << c_branch->b_ua << endl;
-			}
-		}
+void process_ua(Call */*call*/, CallBranch *c_branch, packet_s_process *packetS) {
+	bool is_response = IS_SIP_RESXXX(packetS->sip_method);
+	bool maybe_proxy_ua = is_response && (packetS->sip_method == RES10X || packetS->cseq.method == CANCEL);
+	if(c_branch->check_exists_ua(packetS->saddr_(), packetS->source_(), is_response, maybe_proxy_ua)) {
+		return;
 	}
-	if(iscalled > 0 && c_branch->a_ua.empty()) {
-		s = gettag_sip_ua(packetS, &l);
-		if(s) {
-			c_branch->a_ua = string(s, l);
-			if(sverb.set_ua) {
-				cout << "set a_ua " << c_branch->a_ua << endl;
-			}
+	unsigned long l;
+	char *s = gettag_sip_ua(packetS, &l);
+	if(s) {
+		c_branch->set_ua(packetS->saddr_(), packetS->source_(), is_response, maybe_proxy_ua, s, l);
+		if(sverb.set_ua) {
+			cout << "set ua " << string(s, l)
+			     << " for " << packetS->saddr_().getString() << ":" << packetS->source_().getString()
+			     << (is_response ? (maybe_proxy_ua ? " (response maybe proxy)" : " (response)") : " (request)") << endl;
 		}
 	}
 }
@@ -5260,6 +5255,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 				c_branch->invite_sdaddr_bad_order = true;
 			}
 			c_branch->invite_sdaddr_last_ts = packet_time_us;
+			__SYNC_INC(c_branch->sip_addr_version);
 		}
 		c_branch->invite_list_unlock();
 		if(opt_enable_diameter && call->invite_packets_counter > 1) {
@@ -5580,7 +5576,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 		++call->onInvite_counter;
 		if(isSendCallInfoReady()) {
 			if(call && c_branch && detectCallerd) {
-				process_ua(call, c_branch, packetS, iscaller, iscalled);
+				process_ua(call, c_branch, packetS);
 			}
 			sSciPacketInfo *packet_info = NULL;
 			if(useAdditionalPacketInformationInSendCallInfo()) {
@@ -5982,6 +5978,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 						vector<Call::sInviteSD_Addr>::iterator iter = c_branch->invite_sdaddr.begin() + iter_index->second;
 						iter->confirmed = true;
 						c_branch->invite_sdaddr_all_confirmed = -1;
+						__SYNC_INC(c_branch->sip_addr_version);
 					}
 					c_branch->invite_list_unlock();
 					bool branch_answer_first = false;
@@ -6234,6 +6231,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 					if(iter_index != c_branch->invite_sdaddr_map.end() && iter_index->second < c_branch->invite_sdaddr.size()) {
 						vector<Call::sInviteSD_Addr>::iterator iter = c_branch->invite_sdaddr.begin() + iter_index->second;
 						iter->redirect = true;
+						__SYNC_INC(c_branch->sip_addr_version);
 					}
 					c_branch->invite_list_unlock();
 					// remove all RTP  
@@ -6701,7 +6699,7 @@ endsip:
 	}
 
 	if(call && c_branch && detectCallerd) {
-		process_ua(call, c_branch, packetS, iscaller, iscalled);
+		process_ua(call, c_branch, packetS);
 	}
 
 	if(logPacketSipMethodCall_enable) {

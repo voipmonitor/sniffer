@@ -18,7 +18,7 @@ public:
 		}
 		Call *call = (Call*)rec;
 		set<vmIP> proxies;
-		call->getProxies(((Call*)rec)->branch_main(), &proxies, true, true);
+		call->getProxies(((Call*)rec)->branch_main(), &proxies);
 		if(proxies.size()) {
 			for(set<vmIP>::iterator iter = proxies.begin(); iter != proxies.end(); iter++) {
 				bool _findInBlackList = false;
@@ -81,7 +81,7 @@ public:
 		case cf_connect_duration:
 			return(((Call*)rec)->connect_duration_active_s());
 		case cf_called_international:
-			return(!isLocalByPhoneNumber(((Call*)rec)->get_called(((Call*)rec)->branch_main()), ((Call*)rec)->getSipcalledip(((Call*)rec)->branch_main(), true, true)));
+			return(!isLocalByPhoneNumber(((Call*)rec)->get_called(((Call*)rec)->branch_main()), ((Call*)rec)->getSipcalledip_corrected(((Call*)rec)->branch_main())));
 		case cf_vlan:
 			return(((Call*)rec)->branch_main()->getVlan());
 		}
@@ -90,9 +90,9 @@ public:
 	vmIP getField_ip(void *rec, unsigned registerFieldIndex) {
 		switch(registerFieldIndex) {
 		case cf_callerip:
-			return(((Call*)rec)->getSipcallerip(((Call*)rec)->branch_main(), true));
+			return(((Call*)rec)->getSipcallerip_corrected(((Call*)rec)->branch_main()));
 		case cf_calledip:
-			return(((Call*)rec)->getSipcalledip(((Call*)rec)->branch_main(), true, true));
+			return(((Call*)rec)->getSipcalledip_corrected(((Call*)rec)->branch_main()));
 		case cf_callerip_encaps:
 			return(((Call*)rec)->getSipcallerip_encaps(((Call*)rec)->branch_main(), true));
 		case cf_calledip_encaps:
@@ -117,21 +117,21 @@ public:
 		case cf_calleddomain:
 			return(((Call*)rec)->get_called_domain(((Call*)rec)->branch_main()));
 		case cf_calleragent:
-			return(((Call*)rec)->branch_main()->a_ua);
+			return(((Call*)rec)->get_a_ua(((Call*)rec)->branch_main()));
 		case cf_calledagent:
-			return(((Call*)rec)->branch_main()->b_ua);
+			return(((Call*)rec)->get_b_ua(((Call*)rec)->branch_main()));
 		case cf_callid:
 			return(((Call*)rec)->fbasename);
 		case cf_callername:
 			return(((Call*)rec)->branch_main()->callername);
 		case cf_caller_country:
-			return(getCountryByPhoneNumber(((Call*)rec)->branch_main()->caller.c_str(), ((Call*)rec)->getSipcallerip(((Call*)rec)->branch_main(), true), true));
+			return(getCountryByPhoneNumber(((Call*)rec)->branch_main()->caller.c_str(), ((Call*)rec)->getSipcallerip_corrected(((Call*)rec)->branch_main()), true));
 		case cf_called_country:
-			return(getCountryByPhoneNumber(((Call*)rec)->get_called(((Call*)rec)->branch_main()), ((Call*)rec)->getSipcalledip(((Call*)rec)->branch_main(), true, true), true));
+			return(getCountryByPhoneNumber(((Call*)rec)->get_called(((Call*)rec)->branch_main()), ((Call*)rec)->getSipcalledip_corrected(((Call*)rec)->branch_main()), true));
 		case cf_callerip_country:
-			return(getCountryByIP(((Call*)rec)->getSipcallerip(((Call*)rec)->branch_main(), true), true));
+			return(getCountryByIP(((Call*)rec)->getSipcallerip_corrected(((Call*)rec)->branch_main()), true));
 		case cf_calledip_country:
-			return(getCountryByIP(((Call*)rec)->getSipcalledip(((Call*)rec)->branch_main(), true, true), true));
+			return(getCountryByIP(((Call*)rec)->getSipcalledip_corrected(((Call*)rec)->branch_main()), true));
 		}
 		return("");
 	}

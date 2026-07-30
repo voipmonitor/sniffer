@@ -388,8 +388,8 @@ void SendCallInfo::getSciFromCall(sSciInfo *sci, CallBranch *c_branch,
 	sci->called_domain_final = call->get_called_domain(c_branch);
 	sci->caller_ip = call->getSipcallerip(c_branch);
 	sci->called_ip = call->getSipcalledip(c_branch);
-	sci->caller_ua = c_branch->a_ua;
-	sci->called_ua = c_branch->b_ua;
+	sci->caller_ua = call->get_a_ua(c_branch);
+	sci->called_ua = call->get_b_ua(c_branch);
 	sci->typeSci = typeSci;
 	sci->at = at;
 	sci->counter = counter;

@@ -684,6 +684,15 @@ public:
 };
 
 class CallBranch : public CallStructs {
+public: 
+	struct sUaData {
+		sUaData() {
+			ua_resp_maybe_proxy = false;
+		}
+		string ua_req;
+		string ua_resp;
+		bool ua_resp_maybe_proxy;
+	};
 public:
 	CallBranch(Call *call = NULL, unsigned branch_id = 0);
 	virtual ~CallBranch();
@@ -722,6 +731,21 @@ public:
 	}
 	void proxies_unlock() {
 		__SYNC_UNLOCK(this->_proxies_lock);
+	}
+	bool check_exists_ua(vmIP ip, vmPort port, bool is_response, bool maybe_proxy_ua);
+	void set_ua(vmIP ip, vmPort port, bool is_response, bool maybe_proxy_ua, const char *ua, unsigned ua_length);
+	string get_ua(vmIP ip, vmPort port, bool prefer_resp);
+	void ua_map_lock() {
+		__SYNC_LOCK(this->_ua_map_lock);
+	}
+	void ua_map_unlock() {
+		__SYNC_UNLOCK(this->_ua_map_lock);
+	}
+	void sip_addr_cache_corrected_lock() {
+		__SYNC_LOCK(this->_sip_addr_cache_corrected_lock);
+	}
+	void sip_addr_cache_corrected_unlock() {
+		__SYNC_UNLOCK(this->_sip_addr_cache_corrected_lock);
 	}
 	int64_t get_min_response_100_time_us();
 	int64_t get_min_response_xxx_time_us();
@@ -863,9 +887,21 @@ public:
 	vmPort sipcalledport_rslt;
 	bool sipcallerdip_reverse;
 	
+	volatile u_int32_t sip_addr_version;
+	volatile int _sip_addr_cache_corrected_lock;
+	u_int32_t sipcallerip_cache_corrected_version;
+	u_int32_t sipcalledip_cache_corrected_version;
+	vmIP sipcallerip_cache_corrected;
+	vmIP sipcalledip_cache_corrected;
+	vmPort sipcallerport_cache_corrected;
+	vmPort sipcalledport_cache_corrected;
+
 	volatile int _proxies_lock;
 	list<vmIPport> proxies;
 	
+	volatile int _ua_map_lock;
+	map<vmIPport, sUaData> ua_map;
+
 	int whohanged;
 	char oneway;
 	vmIP lastsrcip;
@@ -2523,6 +2559,8 @@ public:
 	void applyRtcpXrDataToRtp();
 	void prepareRtcpXrData(sRtcpXrStreams *streams, bool checkOK);
 	
+	string get_a_ua(CallBranch *c_branch);
+	string get_b_ua(CallBranch *c_branch);
 	void adjustUA(CallBranch *c_branch);
 	void adjustReason(CallBranch *c_branch);
 	
@@ -2671,6 +2709,7 @@ public:
 			c_branch->map_sipcallerdip[call_id].sipcallerip[0] = ip;
 			c_branch->map_sipcallerdip[call_id].sipcallerport[0] = port;
 		}
+		__SYNC_INC(c_branch->sip_addr_version);
 	}
 	inline void setSipcalledip(CallBranch *c_branch, vmIP ip, vmIP ip_encaps, u_int8_t ip_encaps_prot, vmPort port, const char *call_id = NULL) {
 		if(c_branch->sipcalledip[0].isSet()) {
@@ -2692,6 +2731,7 @@ public:
 				c_branch->map_sipcallerdip[call_id].sipcalledport[0] = port;
 			}
 		}
+		__SYNC_INC(c_branch->sip_addr_version);
 	}
 	vmIP getSipcallerip(CallBranch *c_branch, bool correction_via_invite_list_if_need = false) {
 		if(correction_via_invite_list_if_need && c_branch->invite_sdaddr_bad_order) {
@@ -2809,13 +2849,73 @@ public:
 		}
 		return(c_branch->sipcalledport_mod.isSet() ? c_branch->sipcalledport_mod : c_branch->sipcalledport[0]);
 	}
-	void getProxies(CallBranch *c_branch, std::set<vmIP> *proxies = NULL, bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false) {
-		getSipcalledip(c_branch, correction_via_invite_list_if_need, confirm_via_invite_list, NULL, proxies);
+	vmIP getSipcallerip_corrected(CallBranch *c_branch, vmPort *port = NULL) {
+		if(!c_branch->invite_sdaddr_bad_order) {
+			if(port) {
+				*port = getSipcallerport(c_branch);
+			}
+			return(getSipcallerip(c_branch));
+		}
+		u_int32_t version = c_branch->sip_addr_version;
+		c_branch->sip_addr_cache_corrected_lock();
+		if(c_branch->sipcallerip_cache_corrected_version == version) {
+			vmIP ip = c_branch->sipcallerip_cache_corrected;
+			if(port) {
+				*port = c_branch->sipcallerport_cache_corrected;
+			}
+			c_branch->sip_addr_cache_corrected_unlock();
+			return(ip);
+		}
+		c_branch->sip_addr_cache_corrected_unlock();
+		vmIP ip = getSipcallerip(c_branch, true);
+		vmPort _port = getSipcallerport(c_branch, true);
+		c_branch->sip_addr_cache_corrected_lock();
+		c_branch->sipcallerip_cache_corrected = ip;
+		c_branch->sipcallerport_cache_corrected = _port;
+		c_branch->sipcallerip_cache_corrected_version = version;
+		c_branch->sip_addr_cache_corrected_unlock();
+		if(port) {
+			*port = _port;
+		}
+		return(ip);
 	}
-	string getProxies_str(CallBranch *c_branch, bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false) {
+	vmIP getSipcalledip_corrected(CallBranch *c_branch, vmPort *port = NULL) {
+		if(!c_branch->invite_sdaddr_bad_order && isAllInviteConfirmed(c_branch)) {
+			if(port) {
+				*port = getSipcalledport(c_branch);
+			}
+			return(getSipcalledip(c_branch));
+		}
+		u_int32_t version = c_branch->sip_addr_version;
+		c_branch->sip_addr_cache_corrected_lock();
+		if(c_branch->sipcalledip_cache_corrected_version == version) {
+			vmIP ip = c_branch->sipcalledip_cache_corrected;
+			if(port) {
+				*port = c_branch->sipcalledport_cache_corrected;
+			}
+			c_branch->sip_addr_cache_corrected_unlock();
+			return(ip);
+		}
+		c_branch->sip_addr_cache_corrected_unlock();
+		vmPort _port;
+		vmIP ip = getSipcalledip(c_branch, true, true, &_port);
+		c_branch->sip_addr_cache_corrected_lock();
+		c_branch->sipcalledip_cache_corrected = ip;
+		c_branch->sipcalledport_cache_corrected = _port;
+		c_branch->sipcalledip_cache_corrected_version = version;
+		c_branch->sip_addr_cache_corrected_unlock();
+		if(port) {
+			*port = _port;
+		}
+		return(ip);
+	}
+	void getProxies(CallBranch *c_branch, std::set<vmIP> *proxies = NULL) {
+		getSipcalledip(c_branch, true, true, NULL, proxies);
+	}
+	string getProxies_str(CallBranch *c_branch) {
 		string rslt;
 		std::set<vmIP> proxies;
-		getProxies(c_branch, &proxies, correction_via_invite_list_if_need, confirm_via_invite_list);
+		getProxies(c_branch, &proxies);
 		for(set<vmIP>::iterator iter = proxies.begin(); iter != proxies.end(); iter++) {
 			if(!rslt.empty()) {
 				rslt += ",";
