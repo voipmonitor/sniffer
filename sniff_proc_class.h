@@ -1593,6 +1593,7 @@ private:
 					  sipportmatrix[packet_data->source] || sipportmatrix[packet_data->dest] ||
 					  packet_data->pflags.is_skinny() ||
 					  packet_data->pflags.is_mgcp() ||
+					  packet_data->pflags.is_diameter() ||
 					  packet_data->pflags.is_ipfix_qos() ||
 					  packet_data->pflags.is_hep_log()))
 					#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
@@ -1605,7 +1606,14 @@ private:
 				packet_data->datalen > 2 &&
 				(IS_RTP(packet + packet_data->data_offset, packet_data->datalen) || 
 				 IS_DTLS(packet + packet_data->data_offset, packet_data->datalen) ||
+				 IS_STUN(packet + packet_data->data_offset, packet_data->datalen) ||
 				 packet_data->pflags.other_rtp_processing() ||
+				 #if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+				 (audiocodes &&
+				  (audiocodes->media_type == sAudiocodes::ac_mt_RTP ||
+				   audiocodes->media_type == sAudiocodes::ac_mt_RTCP ||
+				   audiocodes->media_type == sAudiocodes::ac_mt_RTP_RFC2833)) ||
+				 #endif
 				 (counter_calls_with_sdp_mt_image &&
 				  !need_sip_process &&
 				  !packet_data->pflags.get_tcp() &&
