@@ -15819,6 +15819,8 @@ void CustomHeaders::createMysqlPartitions(SqlDb *sqlDb) {
 		if((!next_day && type == 'd') ||
 		   isCloud() || cloud_db) {
 			sqlDb->setMaxQueryPass(1);
+		} else {
+			sqlDb->setMaxQueryPass(10);
 		}
 		this->createMysqlPartitions(sqlDb, type, next_day);
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
@@ -15953,12 +15955,15 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 		""));
 	
 	if(enableOldPartition && opt_cdr_partition && opt_create_old_partitions > 0) {
+		unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
+		sqlDb->setMaxQueryPass(10);
 		for(int i = opt_create_old_partitions - 1; i > 0; i--) {
 			this->createMysqlPartitions(sqlDb, tableName, 'd', -i);
 		}
 		for(int next_day = 0; next_day < LIMIT_DAY_PARTITIONS_INIT; next_day++) {
 			this->createMysqlPartitions(sqlDb, tableName, opt_cdr_partition_by_hours ? 'h' : 'd', next_day);
 		}
+		sqlDb->setMaxQueryPass(maxQueryPassOld);
 	}
 	
 	if(_createSqlObject) {

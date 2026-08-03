@@ -137,6 +137,12 @@ private:
 	void unlock_data() {
 		__SYNC_UNLOCK(_sync_data);
 	}
+	void lock_insert() {
+		__SYNC_LOCK_USLEEP(_sync_insert, 10);
+	}
+	void unlock_insert() {
+		__SYNC_UNLOCK(_sync_insert);
+	}
 	void lock_load() {
 		__SYNC_LOCK(_sync_load);
 	}
@@ -170,6 +176,7 @@ private:
 	bool loaded;
 	bool data_overflow;
 	volatile int _sync_data;
+	volatile int _sync_insert;
 	volatile int _sync_load;
 	u_long lastBeginLoadTime;
 	u_long lastEndLoadTime;

@@ -11808,6 +11808,7 @@ void createMysqlPartitionsCdr() {
 		sqlDb->setIgnoreErrorCode(ER_SAME_NAME_PARTITION);
 		sqlDb->setIgnoreErrorCode(ER_RANGE_NOT_INCREASING_ERROR);
 		sqlDb->setIgnoreErrorCode(ER_NO_SUCH_TABLE);
+		sqlDb->setMaxQueryPass(10);
 		if(isCloud() && connectId == 0) {
 			SqlDb_mysql *sqlDbMysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
 			if(sqlDbMysql) {
@@ -11963,6 +11964,8 @@ void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb) {
 		if(!day ||
 		   isCloud() || cloud_db) {
 			sqlDb->setMaxQueryPass(1);
+		} else {
+			sqlDb->setMaxQueryPass(10);
 		}
 		for(unsigned i = 0; i < typeParts.size(); i++) {
 			for(unsigned j = 0; j < 3; j++) {
@@ -12004,6 +12007,7 @@ void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool d
 	sqlDb->setIgnoreErrorCode(ER_SAME_NAME_PARTITION);
 	sqlDb->setIgnoreErrorCode(ER_RANGE_NOT_INCREASING_ERROR);
 	sqlDb->setIgnoreErrorCode(ER_NO_SUCH_TABLE);
+	sqlDb->setMaxQueryPass(10);
 	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
 	if(!type) {
 		type = opt_cdr_partition_by_hours && !disableHourPartitions ? 'h' : 'd';
@@ -12034,6 +12038,7 @@ void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool d
 void createMysqlPartitionsIpacc() {
 	partitionsServiceIsInProgress = 1;
 	SqlDb *sqlDb = createSqlObject();
+	sqlDb->setMaxQueryPass(10);
 	syslog(LOG_NOTICE, "%s", "create ipacc partitions - begin");
 	if(isCloud()) {
 		sqlDb->setMaxQueryPass(1);
@@ -12073,6 +12078,7 @@ void _createMysqlPartition(string table, char type, int next, bool old_ver, cons
 	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
+		sqlDb->setMaxQueryPass(10);
 		_createSqlObject = true;
 	}
 	SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
@@ -12217,6 +12223,8 @@ void dropMysqlPartitionsCdr() {
 		SqlDb *sqlDbHttp;
 		if(use_mysql_2_http()) {
 			sqlDbHttp = createSqlObject(1);
+			sqlDbHttp->setDisableLogError();
+			sqlDbHttp->setDisableNextAttemptIfError();
 		} else {
 			sqlDbHttp = sqlDb;
 		}
@@ -12307,6 +12315,8 @@ void dropMysqlPartitionsBillingAgregation() {
 	}
 	partitionsServiceIsInProgress = 1;
 	SqlDb *sqlDb = createSqlObject();
+	sqlDb->setDisableLogError();
+	sqlDb->setDisableNextAttemptIfError();
 	syslog(LOG_NOTICE, "%s", "drop billing old partitions - begin");
 	vector<cBilling::sAgregationTypePart> typeParts = cBilling::getAgregTypeParts(&agregSettings);
 		for(unsigned i = 0; i < typeParts.size(); i++) {
@@ -12894,6 +12904,7 @@ void sCreatePartitions::doDropPartitions() {
 
 void sCreatePartitions::setIndicPartitionOperations(bool set) {
 	SqlDb *sqlDb = createSqlObject();
+	sqlDb->setMaxQueryPass(10);
 	if(sqlDb->existsTable("system") && sqlDb->existsColumn("system", "cdatetime")) {
 		sqlDb->select("system", "cdatetime", "type", "partitions_operations");
 		SqlDb_row row = sqlDb->fetchRow();

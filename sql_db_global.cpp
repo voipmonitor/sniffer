@@ -146,6 +146,7 @@ cSqlDbCodebook::cSqlDbCodebook(eTypeCodebook type, const char *name,
 	loaded = false;
 	data_overflow = false;
 	_sync_data = 0;
+	_sync_insert = 0;
 	_sync_load = 0;
 	lastBeginLoadTime = 0;
 	lastEndLoadTime = 0;
@@ -247,6 +248,8 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 				}
 				(*data)[stringValue] = rslt;
 			} else if(enableInsert) {
+				unlock_data();
+				lock_insert();
 				bool _createSqlObject = false;
 				if(!sqlDb) {
 					sqlDb = createSqlObject();
@@ -287,8 +290,12 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 					delete sqlDb;
 				}
 				if(rslt > 0) {
+					lock_data();
 					(*data)[stringValue] = rslt;
+					unlock_data();
 				}
+				unlock_insert();
+				lock_data();
 			}
 		#endif
 		#ifdef CLOUD_ROUTER_SERVER
