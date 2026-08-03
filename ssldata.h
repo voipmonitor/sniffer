@@ -36,6 +36,9 @@ public:
 			return(header_version == 1 ? isOkV1() :
 			       header_version == 2 ? isOkV2() : false);
 		}
+		bool isComplete(u_int32_t datalen) {
+			return(isOk() && length && (u_int32_t)length + getDataOffsetLength() <= datalen);
+		}
 		bool isOkV1() {
 			return(content_type >= 20 && content_type <= 23 &&
 			       isOkVersion());

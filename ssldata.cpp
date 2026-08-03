@@ -137,6 +137,18 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 			}
 			(*debugStream) << endl;
 		}
+		if(reassemblyLink->getRemainDataFailCounter(dataItem->getDirection()) >= REMAIN_DATA_FAIL_LIMIT) {
+			SslHeader header(dataItem->getData(), dataItem->getDatalen());
+			if(header.isOk() && header.length) {
+				reassemblyLink->resetRemainDataFailCounter(dataItem->getDirection());
+			} else {
+				reassemblyLink->clearRemainData(dataItem->getDirection());
+				if(debugStream) {
+					(*debugStream) << "SKIP DATA - SSL PARSE FAIL LIMIT REACHED" << endl;
+				}
+				continue;
+			}
+		}
 		vector<string> rslt_decrypt;
 		bool ok_first_ssl_header = false;
 		u_char *ssl_data = NULL;
@@ -148,7 +160,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 			reassemblyLink->cleanupRemainData(dataItem->getDirection(), dataItem->getTime().tv_sec);
 			exists_remain_data = reassemblyLink->existsRemainData(dataItem->getDirection());
 			SslHeader header(dataItem->getData(), dataItem->getDatalen());
-			if(header.isOk() && header.length && (u_int32_t)header.length + header.getDataOffsetLength() <= dataItem->getDatalen()) {
+			if(header.isComplete(dataItem->getDatalen())) {
 				ok_first_ssl_header = true;
 				ignore_remain_data = true;
 				ssl_data = dataItem->getData();
@@ -161,6 +173,16 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 		if(exists_remain_data && !ignore_remain_data) {
 			u_int32_t remain_data_items = reassemblyLink->getRemainDataItems(dataItem->getDirection());
 			for(u_int32_t skip_first_remain_data_items = 0; skip_first_remain_data_items < remain_data_items; skip_first_remain_data_items++) {
+				u_char first_bytes_data[5];
+				u_int32_t all_datalen;
+				if(reassemblyLink->getFirstBytesOfCompleteRemainData(dataItem->getDirection(), skip_first_remain_data_items,
+										     dataItem->getAck(), dataItem->getSeq(), dataItem->getData(), dataItem->getDatalen(),
+										     first_bytes_data, &all_datalen)) {
+					SslHeader header(first_bytes_data, 5);
+					if(!header.isComplete(all_datalen)) {
+						continue;
+					}
+				}
 				if(alloc_ssl_data) {
 					delete [] ssl_data;
 					alloc_ssl_data = false;
@@ -170,7 +192,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 				ssl_data = reassemblyLink->completeRemainData(dataItem->getDirection(), &ssl_datalen, dataItem->getAck(), dataItem->getSeq(), dataItem->getData(), dataItem->getDatalen(), skip_first_remain_data_items);
 				alloc_ssl_data = true;
 				SslHeader header(ssl_data, ssl_datalen);
-				if(header.isOk() && header.length && (u_int32_t)header.length + header.getDataOffsetLength() <= ssl_datalen) {
+				if(header.isComplete(ssl_datalen)) {
 					ok_first_ssl_header = true;
 					if(debugStream) {
 						(*debugStream) << "APPLY PREVIOUS REMAIN DATA: " << remain_data_length << endl;
@@ -187,7 +209,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 			ssl_data = dataItem->getData();
 			ssl_datalen = dataItem->getDatalen();
 			SslHeader header(ssl_data, ssl_datalen);
-			if(header.isOk() && header.length && (u_int32_t)header.length + header.getDataOffsetLength() <= ssl_datalen) {
+			if(header.isComplete(ssl_datalen)) {
 				ok_first_ssl_header = true;
 				if(exists_remain_data) {
 					ignore_remain_data = true;
@@ -195,11 +217,12 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 			}
 		}
 		if(ok_first_ssl_header) {
+			reassemblyLink->resetRemainDataFailCounter(dataItem->getDirection());
 			u_int32_t ssl_data_offset = 0;
 			while(ssl_data_offset < ssl_datalen &&
 			      ssl_datalen - ssl_data_offset >= 5) {
 				SslHeader header(ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset);
-				if(header.isOk() && header.length && (u_int32_t)header.length + header.getDataOffsetLength() <= ssl_datalen - ssl_data_offset) {
+				if(header.isComplete(ssl_datalen - ssl_data_offset)) {
 					if(debugStream) {
 						(*debugStream)
 							<< "SSL HEADER "
@@ -240,6 +263,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 			}
 		} else {
 			reassemblyLink->addRemainData(dataItem->getDirection(), dataItem->getAck(), dataItem->getSeq(), ssl_data, ssl_datalen, dataItem->getTime().tv_sec);
+			reassemblyLink->incRemainDataFailCounter(dataItem->getDirection());
 			if(debugStream) {
 				(*debugStream) << (exists_remain_data ? "ADD" : "SET") << " REMAIN DATA: " << ssl_datalen << endl;
 			}

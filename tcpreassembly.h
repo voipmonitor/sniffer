@@ -40,6 +40,11 @@ extern int opt_tcpreassembly_thread;
 				      ((seq1) - (seq2)))
 
 
+#define REMAIN_DATA_LIMIT_ITEMS 300
+#define REMAIN_DATA_LIMIT_BYTES (2 * 1024 * 1024)
+#define REMAIN_DATA_FAIL_LIMIT 50
+
+
 class TcpReassemblyDataItem {
 public: 
 	enum eDirection {
@@ -715,6 +720,10 @@ public:
 		this->check_duplicity_seq_length = 10;
 		this->counter = 0;
 		this->exists_sip = false;
+		this->remainDataSize[0] = 0;
+		this->remainDataSize[1] = 0;
+		this->remainDataFailCounter[0] = 0;
+		this->remainDataFailCounter[1] = 0;
 	}
 	~TcpReassemblyLink();
 	bool push(TcpReassemblyStream::eDirection direction,
@@ -885,10 +894,30 @@ public:
 	void clearRemainData(TcpReassemblyDataItem::eDirection direction);
 	void cleanupRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t time_s);
 	u_char *completeRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t *rslt_datalen, u_int32_t ack, u_int32_t seq, u_char *data, u_int32_t datalen, u_int32_t skip_first_items);
+	bool getFirstBytesOfCompleteRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t skip_first_items,
+					       u_int32_t ack, u_int32_t seq, u_char *data, u_int32_t datalen,
+					       u_char *first_bytes_data, u_int32_t *all_datalen);
 	u_int32_t getRemainDataLength(TcpReassemblyDataItem::eDirection direction, u_int32_t skip_first_items);
 	u_int32_t getRemainDataItems(TcpReassemblyDataItem::eDirection direction);
 	bool existsRemainData(TcpReassemblyDataItem::eDirection direction);
 	bool existsAllAckSeq(TcpReassemblyDataItem::eDirection direction);
+	u_int32_t getRemainDataFailCounter(TcpReassemblyDataItem::eDirection direction) {
+		int index = direction == TcpReassemblyDataItem::DIRECTION_TO_DEST ? 0 :
+			    direction == TcpReassemblyDataItem::DIRECTION_TO_SOURCE ? 1 : -1;
+		return(index >= 0 ? remainDataFailCounter[index] : 0);
+	}
+	u_int32_t incRemainDataFailCounter(TcpReassemblyDataItem::eDirection direction) {
+		int index = direction == TcpReassemblyDataItem::DIRECTION_TO_DEST ? 0 :
+			    direction == TcpReassemblyDataItem::DIRECTION_TO_SOURCE ? 1 : -1;
+		return(index >= 0 ? ++remainDataFailCounter[index] : 0);
+	}
+	void resetRemainDataFailCounter(TcpReassemblyDataItem::eDirection direction) {
+		int index = direction == TcpReassemblyDataItem::DIRECTION_TO_DEST ? 0 :
+			    direction == TcpReassemblyDataItem::DIRECTION_TO_SOURCE ? 1 : -1;
+		if(index >= 0) {
+			remainDataFailCounter[index] = 0;
+		}
+	}
 	list<d_u_int32_t> *getSipOffsets();
 	void joinSipOffsets();
 	void clearCompleteStreamsData();
@@ -951,6 +980,8 @@ private:
 	void *uData2;
 	void *uData2_last;
 	deque<sRemainDataItem> remainData[2];
+	u_int32_t remainDataSize[2];
+	u_int32_t remainDataFailCounter[2];
 	u_int32_t *check_duplicity_seq;
 	unsigned check_duplicity_seq_length;
 	list<d_u_int32_t> sip_offsets;
