@@ -1498,8 +1498,13 @@ Call::~Call(){
 		unlock_add_remove_rtp_threads();
 		extern volatile int process_rtp_packets_distribute_threads_use;
 		extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
-		if(process_rtp_packets_distribute_threads_use) {
-			processRtpPacketDistribute[thread_num_rd]->decCalls();
+		int _distribute_threads_use = process_rtp_packets_distribute_threads_use;
+		if(_distribute_threads_use > 0 &&
+		   thread_num_rd >= 0 && thread_num_rd < _distribute_threads_use) {
+			ProcessRtpPacket *processRtpPacket_rd = processRtpPacketDistribute[thread_num_rd];
+			if(processRtpPacket_rd) {
+				processRtpPacket_rd->decCalls();
+			}
 		}
 	}
 	

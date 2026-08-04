@@ -1935,17 +1935,27 @@ void exit_handler_fork_mode() {
 	semaphoreClose();
 }
 
+volatile int terminating_signal_received = 0;
+
+void log_terminating_signal() {
+	int _signal = terminating_signal_received;
+	if(_signal) {
+		terminating_signal_received = 0;
+		syslog(LOG_ERR, "%s received, terminating\n", _signal == SIGINT ? "SIGINT" : "SIGTERM");
+	}
+}
+
 /* handler for INTERRUPT signal */
 void sigint_handler(int /*param*/)
 {
-	syslog(LOG_ERR, "SIGINT received, terminating\n");
+	terminating_signal_received = SIGINT;
 	vm_terminate();
 }
 
 /* handler for TERMINATE signal */
 void sigterm_handler(int /*param*/)
 {
-	syslog(LOG_ERR, "SIGTERM received, terminating\n");
+	terminating_signal_received = SIGTERM;
 	vm_terminate();
 }
 
@@ -2127,6 +2137,7 @@ void *database_backup(void */*dummy*/) {
 			sleep(1);
 		}
 	}
+	log_terminating_signal();
 	manager_parse_command_disable();
 	sqlStore->setEnableTerminatingIfSqlError(0, 0, true);
 	while(is_terminating() < 2 && sqlStore->getAllSize()) {
@@ -3232,6 +3243,10 @@ static void daemonize(void)
 				cout << buff;
 			}
 			unlink(daemonizeErrorTempFileName.c_str());
+		}
+		if(opt_fork && !sverb.memory_stat) {
+			fflush(stdout);
+			_exit(0);
 		}
 		opt_fork = 0;
 		exit(0);
@@ -4712,6 +4727,7 @@ int main(int argc, char *argv[]) {
 						syslog(LOG_NOTICE, "SQLf: [%s]", stat.c_str());
 					}
 				}
+				log_terminating_signal();
 				manager_parse_command_disable();
 			}
 			if(sqlStore) {
@@ -4769,6 +4785,7 @@ int main(int argc, char *argv[]) {
 					sleep(1);
 				}
 			}
+			log_terminating_signal();
 			manager_parse_command_disable();
 			if(!hot_restarting) {
 				_break = true;
@@ -5289,10 +5306,10 @@ int main_init_read() {
 		   (!opt_fork || opt_t2_boost) &&
 		   opt_enable_process_rtp_packet && enable_pcap_split &&
 		   is_enable_packetbuffer()) {
-			process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
 			for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
 				processRtpPacketDistribute[i] = new FILE_LINE(42023) ProcessRtpPacket(ProcessRtpPacket::distribute, i);
 			}
+			process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
 			processRtpPacketHash = new FILE_LINE(42024) ProcessRtpPacket(ProcessRtpPacket::hash, 0);
 		}
 	}
@@ -5886,6 +5903,7 @@ void terminate_processpacket() {
 }
 
 void main_term_read() {
+	log_terminating_signal();
 	set_readend();
 
 	if(is_read_from_file_simple() && global_pcap_handle) {

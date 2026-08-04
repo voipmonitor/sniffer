@@ -14397,11 +14397,13 @@ void ProcessRtpPacket::autoStartProcessRtpPacket() {
 	if(!processRtpPacketHash &&
 	   opt_enable_process_rtp_packet && enable_pcap_split &&
 	   !is_read_from_file_simple()) {
-		process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
 		ProcessRtpPacket *_processRtpPacketHash = new FILE_LINE(26032) ProcessRtpPacket(ProcessRtpPacket::hash, 0);
+		lockAddRtpRdThread();
 		for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
 			processRtpPacketDistribute[i] = new FILE_LINE(26033) ProcessRtpPacket(ProcessRtpPacket::distribute, i);
 		}
+		process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
+		unlockAddRtpRdThread();
 		processRtpPacketHash = _processRtpPacketHash;
 	}
 }
