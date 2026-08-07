@@ -45,6 +45,7 @@
 #include "hep.h"
 #include "ribbonsbc.h"
 #include "disk_io_monitor.h"
+#include "esp_decrypt.h"
 
 #ifndef FREEBSD
 #include <malloc.h>
@@ -263,6 +264,7 @@ extern MySqlStore *loadFromQFiles;
 extern PcapQueue_outputThread *pcapQueueQ_outThread_detach;
 extern PcapQueue_outputThread *pcapQueueQ_outThread_defrag;
 extern PcapQueue_outputThread *pcapQueueQ_outThread_dedup;
+extern PcapQueue_outputThread *pcapQueueQ_outThread_esp;
 extern PcapQueue_outputThread *pcapQueueQ_outThread_detach2;
 
 extern unsigned int glob_ssl_calls;
@@ -2009,6 +2011,13 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 					}
 				}
 			}
+			if(pcapQueueQ_outThread_esp) {
+				double esp_cpu = pcapQueueQ_outThread_esp->getCpuUsagePerc(0, pstatDataIndex);
+				if(task == pcapStatLog && esp_cpu >= 0) {
+					stat_data.t2.cpu_esp = esp_cpu;
+					stat_data.t2.cpu_esp_valid = true;
+				}
+			}
 			if(pcapQueueQ_outThread_dedup) {
 				double dedup_cpu = pcapQueueQ_outThread_dedup->getCpuUsagePerc(0, pstatDataIndex);
 				if(task == pcapStatLog && dedup_cpu >= 0) {
@@ -2496,6 +2505,11 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			if(stat_data.dtls.valid && sverb.log_profiler) {
 				lapTime.push_back(getTimeMS_rdtsc());
 				lapTimeDescr.push_back("dtls");
+			}
+			stat_data.esp.load();
+			if(stat_data.esp.valid && sverb.log_profiler) {
+				lapTime.push_back(getTimeMS_rdtsc());
+				lapTimeDescr.push_back("esp");
 			}
 			if(tcpReassemblySipExt) {
 				stat_data.sip_tcp.load(pstatDataIndex);
@@ -9445,6 +9459,9 @@ void PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp) {
 	} else if(pcapQueueQ_outThread_defrag) {
 		pcapQueueQ_outThread_defrag->push(hp);
 		return;
+	} else if(pcapQueueQ_outThread_esp) {
+		pcapQueueQ_outThread_esp->push(hp);
+		return;
 	} else if(pcapQueueQ_outThread_dedup) {
 		pcapQueueQ_outThread_dedup->push(hp);
 		return;
@@ -9512,9 +9529,11 @@ bool PcapQueue_readFromFifo::processPacket_analysis(sHeaderPacketPQout* hp) {
 			     (iphdr2*)(hp->packet + hp->header->header_ip_offset) :
 			     NULL;
 
-	if(header_ip && hp->header_ip_last_offset == 0xFFFF) {
+	extern bool opt_esp_decrypt;
+	if(header_ip && hp->header_ip_last_offset == 0xFFFF &&
+	   !(opt_esp_decrypt && header_ip->_get_protocol() == IPPROTO_ESP)) {
 		while(true) {
-			int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header->header_ip_offset, 
+			int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header->header_ip_offset,
 								     hp->packet, hp->header->get_caplen());
 			if(next_header_ip_offset == 0) {
 				break;
@@ -9747,6 +9766,8 @@ void PcapQueue_readFromFifo::pushBatchProcessPacket() {
 		pcapQueueQ_outThread_detach->push_batch();
 	} else if(pcapQueueQ_outThread_defrag) {
 		pcapQueueQ_outThread_defrag->push_batch();
+	} else if(pcapQueueQ_outThread_esp) {
+		pcapQueueQ_outThread_esp->push_batch();
 	} else if(pcapQueueQ_outThread_dedup) {
 		pcapQueueQ_outThread_dedup->push_batch();
 	} else if(pcapQueueQ_outThread_detach2) {
@@ -10534,6 +10555,9 @@ void *PcapQueue_outputThread::outThreadFunction() {
 					case dedup:
 						this->processDedup(&batch->batch[batch_index]);
 						break;
+					case esp:
+						this->processEsp(&batch->batch[batch_index]);
+						break;
 					case detach2:
 						this->processDetach2(&batch->batch[batch_index]);
 						break;
@@ -10588,6 +10612,11 @@ void PcapQueue_outputThread::flushDownstream() {
 			break;
 		}
 	case defrag:
+		if(pcapQueueQ_outThread_esp) {
+			pcapQueueQ_outThread_esp->push_batch();
+			break;
+		}
+	case esp:
 		if(pcapQueueQ_outThread_dedup) {
 			pcapQueueQ_outThread_dedup->push_batch();
 			break;
@@ -10765,8 +10794,12 @@ void PcapQueue_outputThread::processDetach_findHeaderIp(sHeaderPacketPQout *hp) 
 		hp->header_ip_last_offset = hp->header->header_ip_offset;
 		iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header_ip_last_offset);
 		if(header_ip) {
+			extern bool opt_esp_decrypt;
+			if(opt_esp_decrypt && header_ip->_get_protocol() == IPPROTO_ESP) {
+				return;
+			}
 			while(true) {
-				int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header_ip_last_offset, 
+				int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header_ip_last_offset,
 									     hp->packet, hp->header->get_caplen());
 				if(next_header_ip_offset == 0) {
 					break;
@@ -10785,6 +10818,10 @@ void PcapQueue_outputThread::processDetach_findHeaderIp(sHeaderPacketPQout *hp) 
 void PcapQueue_outputThread::processDetach_push(sHeaderPacketPQout *hp) {
 	if(pcapQueueQ_outThread_defrag) {
 		pcapQueueQ_outThread_defrag->push(hp);
+		tm_inc_packets_out(hp);
+		return;
+	} else if(pcapQueueQ_outThread_esp) {
+		pcapQueueQ_outThread_esp->push(hp);
 		tm_inc_packets_out(hp);
 		return;
 	} else if(pcapQueueQ_outThread_dedup) {
@@ -10893,12 +10930,16 @@ bool PcapQueue_outputThread::processDefrag_defrag(sHeaderPacketPQout *hp, int fd
 			return(false);
 		}
 	}
+	extern bool opt_esp_decrypt;
+	if(opt_esp_decrypt && header_ip->_get_protocol() == IPPROTO_ESP) {
+		return(true);
+	}
 	unsigned headers_ip_counter = 0;
 	unsigned headers_ip_offset[20];
 	while(headers_ip_counter < sizeof(headers_ip_offset) / sizeof(headers_ip_offset[0]) - 1) {
 		headers_ip_offset[headers_ip_counter] = hp->header->header_ip_offset;
 		++headers_ip_counter;
-		int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header->header_ip_offset, 
+		int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header->header_ip_offset,
 							     hp->packet, hp->header->get_caplen());
 		if(next_header_ip_offset == 0) {
 			break;
@@ -10975,7 +11016,11 @@ void PcapQueue_outputThread::processDefrag_push(sHeaderPacketPQout *hp) {
 		debug_alloc_packet_set(hp->packet, "PcapQueue_outputThread::processDefrag_push (1)");
 	}
 	#endif
-	if(pcapQueueQ_outThread_dedup) {
+	if(pcapQueueQ_outThread_esp) {
+		pcapQueueQ_outThread_esp->push(hp);
+		tm_inc_packets_out(hp);
+		return;
+	} else if(pcapQueueQ_outThread_dedup) {
 		pcapQueueQ_outThread_dedup->push(hp);
 		tm_inc_packets_out(hp);
 		return;
@@ -11148,6 +11193,68 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 			hp->destroy_or_unlock_blockstore();
 			return;
 		}
+	}
+	if(pcapQueueQ_outThread_detach2) {
+		pcapQueueQ_outThread_detach2->push(hp);
+		tm_inc_packets_out(hp);
+		return;
+	}
+	if(this->pcapQueue->processPacket_analysis(hp) &&
+	   this->pcapQueue->processPacket_push(hp)) {
+		tm_inc_packets_out(hp);
+		return;
+	}
+	hp->destroy_or_unlock_blockstore();
+}
+
+void PcapQueue_outputThread::processEsp(sHeaderPacketPQout *hp) {
+	if(hp->header->header_ip_offset != 0xFFFF &&
+	   hp->header->get_caplen() > hp->header->header_ip_offset) {
+		iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
+		if(header_ip->_get_protocol() == IPPROTO_ESP &&
+		   esp_decrypt_packet(header_ip, hp->header->get_caplen() - hp->header->header_ip_offset)) {
+			hp->header->set_caplen(hp->header->header_ip_offset + header_ip->get_tot_len());
+			hp->header->set_len(hp->header->get_caplen());
+			hp->header_ip_last_offset = 0xFFFF;
+			u_int8_t protocol = header_ip->_get_protocol();
+			if(protocol == IPPROTO_UDP || protocol == IPPROTO_TCP) {
+				char *data = NULL;
+				int datalen = 0;
+				vmPort sport;
+				vmPort dport;
+				u_int32_t seq = 0;
+				u_int32_t ack = 0;
+				if(protocol == IPPROTO_UDP) {
+					udphdr2 *header_udp = (udphdr2*)((char*)header_ip + header_ip->get_hdr_size());
+					datalen = get_udp_data_len(header_ip, header_udp, &data, hp->packet, hp->header->get_caplen());
+					sport = header_udp->get_source();
+					dport = header_udp->get_dest();
+				} else {
+					tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
+					datalen = get_tcp_data_len(header_ip, header_tcp, &data, hp->packet, hp->header->get_caplen());
+					sport = header_tcp->get_source();
+					dport = header_tcp->get_dest();
+					seq = ntohl(header_tcp->seq);
+					ack = ntohl(header_tcp->ack_seq);
+				}
+				if(data && datalen > 0 &&
+				   (sipportmatrix[sport] || sipportmatrix[dport])) {
+					esp_collect_keys((u_char*)data, datalen,
+							 header_ip->get_saddr(), sport,
+							 header_ip->get_daddr(), dport,
+							 seq, ack, hp->header->get_ts());
+				}
+			}
+		}
+	}
+	processEsp_push(hp);
+}
+
+void PcapQueue_outputThread::processEsp_push(sHeaderPacketPQout *hp) {
+	if(pcapQueueQ_outThread_dedup) {
+		pcapQueueQ_outThread_dedup->push(hp);
+		tm_inc_packets_out(hp);
+		return;
 	}
 	if(pcapQueueQ_outThread_detach2) {
 		pcapQueueQ_outThread_detach2->push(hp);

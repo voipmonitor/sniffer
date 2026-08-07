@@ -80,6 +80,7 @@ and insert them into Call class.
 #include "config_param.h"
 #include "separate_processing.h"
 #include "srtp.h"
+#include "esp_decrypt.h"
 
 #if HAVE_LIBTCMALLOC    
 #include <gperftools/malloc_extension.h>
@@ -7049,6 +7050,10 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			}
 			// the expire can be also in contact header Contact: 79438652 <sip:6600006@192.168.10.202:1026>;expires=240
 			get_expires_from_contact(packetS, NULL, &call->reg.register_expires, c_branch);
+			extern bool opt_esp_decrypt;
+			if(opt_esp_decrypt && call->reg.register_expires > 0) {
+				esp_decrypt_update_expires(call->call_id.c_str(), call->call_id.length(), call->reg.register_expires, packetS->getTime_s());
+			}
 		}
 		if(opt_enable_fraud && isFraudReady()) {
 			fraudConnectCall(call, packetS->getTimeval());

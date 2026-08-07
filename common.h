@@ -84,6 +84,8 @@ struct sVerbose {
 	int dedup_counter;
 	int reassembly_sip;
 	int reassembly_sip_output;
+	int esp_decrypt;
+	int esp_decrypt_content;
 	int log_manager_cmd;
 	int rtp_extend_stat;
 	int process_rtp_header;

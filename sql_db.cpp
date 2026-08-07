@@ -8678,6 +8678,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	if(opt_ssl_store_sessions) {
 		this->createTable("ssl_sessions:auto");
 	}
+	extern bool opt_esp_decrypt;
+	extern int opt_esp_store_sa;
+	if(opt_esp_decrypt && opt_esp_store_sa) {
+		this->createTable("esp_sa:auto");
+	}
 
 	return(true);
 }
@@ -10128,6 +10133,28 @@ void SqlDb_mysql::createTable(const char *tableName) {
 				`stored_at` datetime,\
 				`session` varchar(1024),\
 			PRIMARY KEY (`id_sensor`, `clientip`, `clientport`, `serverip`, `serverport`)\
+		) ENGINE=" + (mem ? "MEMORY" : "InnoDB") + " DEFAULT CHARSET=latin1;");
+	}
+	if(!strcmp(tableName, "esp_sa:auto") ||
+	   !strcmp(tableName, "esp_sa") ||
+	   !strcmp(tableName, "esp_sa_mem")) {
+		extern int opt_esp_store_sa;
+		bool mem = (!strcmp(tableName, "esp_sa:auto") && opt_esp_store_sa == 1) ||
+			   !strcmp(tableName, "esp_sa_mem");
+		this->query(string(
+		"CREATE TABLE IF NOT EXISTS `esp_sa") + (mem ? "_mem" : "") + "` (\
+				`id_sensor` int,\
+				`spi` int unsigned,\
+				`dst_ip` " + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
+				`ue_ip` " + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
+				`pcscf_ip` " + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
+				`ck` varchar(32),\
+				`ealg` tinyint,\
+				`icv_length` smallint unsigned,\
+				`ports` varchar(64),\
+				`timeout` int unsigned,\
+				`set_at` datetime,\
+			PRIMARY KEY (`id_sensor`, `spi`, `dst_ip`)\
 		) ENGINE=" + (mem ? "MEMORY" : "InnoDB") + " DEFAULT CHARSET=latin1;");
 	}
 }

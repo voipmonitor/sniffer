@@ -16,6 +16,7 @@
 #include "sniff_inline.h"
 #include "audiocodes.h"
 #include "filter_mysql.h"
+#include "esp_decrypt.h"
 
 
 #ifndef DEBUG_ALL_PACKETS
@@ -48,6 +49,7 @@ extern int opt_dup_check_ipheader;
 extern int opt_dup_check_ipheader_ignore_ttl;
 extern int opt_dup_check_udpheader_ignore_checksum;
 extern bool opt_dup_check_collision_test;
+extern bool opt_esp_decrypt;
 extern char *sipportmatrix;
 extern char *httpportmatrix;
 extern char *webrtcportmatrix;
@@ -694,9 +696,33 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				}
 			}
 		}
+		bool skip_headers_ip = false;
+		if(opt_esp_decrypt && ppd->header_ip->_get_protocol() == IPPROTO_ESP) {
+			extern PcapQueue_outputThread *pcapQueueQ_outThread_esp;
+			u_int32_t esp_caplen = header_packet ? HPH(*header_packet)->caplen : pcap_header_plus2->get_caplen();
+			if(!pcapQueueQ_outThread_esp &&
+			   esp_caplen > ppd->header_ip_offset &&
+			   esp_decrypt_packet(ppd->header_ip, esp_caplen - ppd->header_ip_offset)) {
+				unsigned esp_caplen_new = ppd->header_ip_offset + ppd->header_ip->get_tot_len();
+				if(header_packet) {
+					HPH(*header_packet)->caplen = esp_caplen_new;
+					HPH(*header_packet)->len = esp_caplen_new;
+				} else {
+					pcap_header_plus2->set_caplen(esp_caplen_new);
+					pcap_header_plus2->set_len(esp_caplen_new);
+				}
+			}
+			skip_headers_ip = ppd->header_ip->_get_protocol() == IPPROTO_ESP;
+			if(skip_headers_ip &&
+			   ppd->header_ip_encaps_offset == 0xFFFF &&
+			   !opt_save_ip_from_encaps_ipheader_only_gre) {
+				ppd->header_ip_encaps_offset = ppd->header_ip_offset;
+			}
+		}
 		unsigned headers_ip_counter = 0;
 		unsigned headers_ip_offset[20];
-		while(headers_ip_counter < sizeof(headers_ip_offset) / sizeof(headers_ip_offset[0]) - 1) {
+		while(!skip_headers_ip &&
+		      headers_ip_counter < sizeof(headers_ip_offset) / sizeof(headers_ip_offset[0]) - 1) {
 			headers_ip_offset[headers_ip_counter] = ppd->header_ip_offset;
 			++headers_ip_counter;
 			if(ppd->header_ip_encaps_offset == 0xFFFF &&
@@ -811,7 +837,12 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		}
 		if(ppd->header_ip) {
 			ppd->header_udp = &ppd->header_udp_tmp;
-			u_int8_t protocol = ppd->header_ip->get_protocol(caplen - ppd->header_ip_offset);
+			extern PcapQueue_outputThread *pcapQueueQ_outThread_esp;
+			bool esp_to_decrypt = opt_esp_decrypt && pcapQueueQ_outThread_esp &&
+					      ppd->header_ip->_get_protocol() == IPPROTO_ESP;
+			u_int8_t protocol = esp_to_decrypt ?
+					     IPPROTO_ESP :
+					     ppd->header_ip->get_protocol(caplen - ppd->header_ip_offset);
 			if (protocol == IPPROTO_UDP) {
 				// prepare packet pointers 
 				ppd->header_udp = (udphdr2*) ((char*) ppd->header_ip + ppd->header_ip->get_hdr_size());
@@ -862,12 +893,28 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			} else {
 				//packet is not UDP and is not TCP, we are not interested, go to the next packet (but if ipaccount is enabled, do not skip IP
 				ppd->datalen = 0;
-				if(!opt_ipaccount && !DEBUG_ALL_PACKETS && (ppf & ppf_returnZeroInCheckData)) {
+				if(!esp_to_decrypt && !opt_ipaccount && !DEBUG_ALL_PACKETS && (ppf & ppf_returnZeroInCheckData)) {
 					//cout << "pcapProcess exit 006 / protocol: " << (int)ppd->header_ip->protocol << endl;
 					if(pcap_header_plus2) {
 						pcap_header_plus2->ignore = true;
 					}
 					return(0);
+				}
+			}
+			if(opt_esp_decrypt && ppd->datalen > 0 &&
+			   (protocol == IPPROTO_TCP || protocol == IPPROTO_UDP) &&
+			   (sipportmatrix[ppd->header_udp->get_source()] || sipportmatrix[ppd->header_udp->get_dest()])) {
+				u_int8_t *detect_headers = header_packet ?
+							    &(*header_packet)->detect_headers :
+							    &pcap_header_plus2->detect_headers;
+				if(!(*detect_headers & 0x02)) {
+					*detect_headers |= 0x02;
+					esp_collect_keys((u_char*)ppd->data, ppd->datalen,
+							 ppd->header_ip->get_saddr(), ppd->header_udp->get_source(),
+							 ppd->header_ip->get_daddr(), ppd->header_udp->get_dest(),
+							 protocol == IPPROTO_TCP ? ntohl(ppd->header_tcp->seq) : 0,
+							 protocol == IPPROTO_TCP ? ntohl(ppd->header_tcp->ack_seq) : 0,
+							 header_packet ? HPH(*header_packet)->ts : pcap_header_plus2->get_ts());
 				}
 			}
 			if(ppd->datalen < 0 && (ppf & ppf_returnZeroInCheckData)) {

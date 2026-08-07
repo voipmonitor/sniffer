@@ -217,6 +217,17 @@ struct sPcapStatData {
 		sSectionValues() {}
 		sSectionValues(const string &sect_id) : sect_id(sect_id) {}
 	};
+	struct sHelp {
+		string title;
+		string descr;
+		vector<sValue> items;
+		void set(const string &descr) {
+			this->descr = descr;
+		}
+		void add(const string &name, const string &descr) {
+			items.push_back(sValue(name, descr));
+		}
+	};
 	struct sLoadState {
 		struct {
 			u_int64_t old_time_ms;
@@ -250,6 +261,18 @@ struct sPcapStatData {
 			u_int64_t counter_all_packets_old;
 			u_int64_t counter_user_packets_old[5];
 		} ps;
+		struct {
+			u_int64_t key_found_old;
+			u_int64_t sa_created_old;
+			u_int64_t decrypt_ok_old;
+			u_int64_t decrypt_no_key_old;
+			u_int64_t decrypt_failed_old;
+			u_int64_t packet_bad_old;
+			u_int64_t decrypt_learned_spi_old;
+			u_int64_t reassembly_used_old;
+			u_int64_t incomplete_header_old;
+			u_int64_t expires_updated_old;
+		} esp;
 		sLoadState() { reset(); }
 		void reset() { memset((void*)this, 0, sizeof(*this)); }
 	};
@@ -268,6 +291,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const;
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 		void rrd() const;
 	} calls;
 	struct sAudio {
@@ -280,6 +304,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} audio;
 	struct sTranscribe {
 		u_int64_t queue_size;
@@ -291,6 +316,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} transcribe;
 	struct sSS7 {
 		u_int64_t listmap_size;
@@ -302,6 +328,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} ss7;
 	struct sPS {
 		unsigned long calls_new;
@@ -338,6 +365,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 		void rrd() const;
 	} ps;
 	struct sSqlF {
@@ -359,6 +387,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 		void rrd() const;
 	} sqlf;
 	struct sSqlQ {
@@ -384,6 +413,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 		void rrd() const;
 	} sqlq;
 	struct sHeap {
@@ -404,6 +434,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 		void rrd() const;
 	} heap;
 	struct sDeq {
@@ -416,6 +447,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} deq;
 	struct sDrop {
 		struct sDropItem {
@@ -433,6 +465,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 		void rrd() const;
 	} drop;
 	struct sPbDiskBuffer {
@@ -445,6 +478,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} pb_disk_buffer;
 	struct sPbCompress {
 		double value;
@@ -455,6 +489,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} pb_compress;
 	struct sTraffic {
 		double mbps_in;
@@ -476,6 +511,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(name(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 		void rrd() const;
 	} traffic;
 	struct sIo {
@@ -490,6 +526,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(active || calibrating) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 		void rrd() const;
 	} disk_io;
 	struct sCacheDirQ {
@@ -502,6 +539,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} cdq;
 	struct sTarQueue {
 		u_int64_t count;
@@ -512,6 +550,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} tar_queue;
 	struct sTarCopyQueue {
 		u_int64_t length;
@@ -522,6 +561,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} tar_copy_queue;
 	struct sTarChunkBuffer {
 		double mb;
@@ -532,6 +572,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} tar_chunk_buffer;
 	struct sFileBuffer {
 		double mb;
@@ -542,6 +583,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} file_buffer;
 	struct sTarCPU {
 		vector_simple<double> cpu_spool1;
@@ -553,6 +595,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const;
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 		void rrd() const;
 	} tar_cpu;
 	struct sReadThreads {
@@ -603,6 +646,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const;
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} read_threads;
 	struct sT0 {
 		double cpu_capture;
@@ -615,6 +659,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 		void rrd() const;
 	} t0;
 	struct sT1 {
@@ -626,6 +671,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 		void rrd() const;
 	} t1;
 	struct sT2 {
@@ -649,6 +695,8 @@ struct sPcapStatData {
 		bool cpu_defrag_valid;
 		double cpu_dedup;
 		bool cpu_dedup_valid;
+		double cpu_esp;
+		bool cpu_esp_valid;
 		double cpu_detach2;
 		vector_simple<double> cpu_detach2_next;
 		bool cpu_detach2_valid;
@@ -668,6 +716,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 		void rrd() const;
 	} t2;
 	struct sRTP {
@@ -682,6 +731,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} rtp;
 	struct sHttp {
 		string_simple cpu_perc;
@@ -692,6 +742,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} http;
 	struct sWebrtc {
 		string_simple cpu_perc;
@@ -702,6 +753,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} webrtc;
 	struct sSsl {
 		string_simple cpu_perc;
@@ -712,6 +764,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} ssl;
 	struct sSslWs {
 		unsigned int calls;
@@ -723,6 +776,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} ssl_ws;
 	struct sDtls {
 		u_int32_t queue_links;
@@ -734,7 +788,28 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} dtls;
+	struct sEsp {
+		unsigned long key_found;
+		unsigned long sa_created;
+		unsigned long decrypt_ok;
+		unsigned long decrypt_no_key;
+		unsigned long decrypt_failed;
+		unsigned long packet_bad;
+		unsigned long decrypt_learned_spi;
+		unsigned long reassembly_used;
+		unsigned long incomplete_header;
+		unsigned long expires_updated;
+		bool valid;
+		sEsp() { memset((void*)this, 0, sizeof(*this)); }
+		void load();
+		string title() const { return("ESP"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
+	} esp;
 	struct sSipTcp {
 		string_simple cpu_perc;
 		bool valid;
@@ -744,6 +819,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} sip_tcp;
 	struct sIpfix {
 		string_simple value;
@@ -752,6 +828,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(!value.empty()) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} ipfix;
 	struct sHep {
 		string_simple value;
@@ -760,6 +837,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(!value.empty()) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} hep;
 	struct sRibbonsbc {
 		string_simple value;
@@ -768,6 +846,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(!value.empty()) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} ribbonsbc;
 	struct sAsyncCloseCPU {
 		vector_simple<double> cpu_perc;
@@ -778,6 +857,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 		void rrd() const;
 	} async_close_cpu;
 	struct sAsyncCloseQueue {
@@ -789,6 +869,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} async_close_queue;
 	struct sStoring {
 		vector_simple<double> cpu_perc;
@@ -799,6 +880,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} storing;
 	struct sCharts {
 		string_simple cpu_perc;
@@ -817,6 +899,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} charts;
 	struct sIpacc {
 		string_simple cpu_perc;
@@ -827,6 +910,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} ipacc;
 	struct sIpaccBuffer {
 		u_int64_t buffer_length;
@@ -838,6 +922,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} ipacc_buffer;
 	struct sRrd {
 		double cpu_perc;
@@ -848,6 +933,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} rrd;
 	struct sDedup {
 		u_int64_t counter;
@@ -859,6 +945,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} dedup;
 	struct sRssVsz {
 		u_int64_t rss_mb;
@@ -870,6 +957,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 		void rrd() const;
 	} rss_vsz;
 	struct sHugepages {
@@ -881,6 +969,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} hugepages;
 	struct sTcmAlloc {
 		u_int64_t heap;
@@ -895,6 +984,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} tcm_alloc;
 	struct sHeapHugepage {
 		u_int64_t mb;
@@ -905,6 +995,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} heap_hugepage;
 	struct sHeapHashtable {
 		u_int64_t alloc_mb;
@@ -916,6 +1007,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} heap_hashtable;
 	struct sLoadAvg {
 		double la1;
@@ -933,6 +1025,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(name(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 		void rrd() const;
 	} load_avg;
 	struct sTlb {
@@ -945,6 +1038,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} tlb;
 	struct sVersion {
 		string_simple value;
@@ -954,6 +1048,7 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(!value.empty()) { out.push_back(sValue(name(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} version;
 	struct sExternalError {
 		string_simple value;
@@ -963,11 +1058,13 @@ struct sPcapStatData {
 		string render(bool with_title = true) const;
 		void get_sections(vector<sValue> &out) const { if(!value.empty()) { out.push_back(sValue(name(), render(false))); } }
 		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
 	} external_error;
 	sPcapStatData() :
 		mode(_mode_standard),
 		initialized(false) {}
 	string render();
+	static string help();
 	void get_sections_all(vector<sValue> &out, eSectionNameBy by = _section_id_by_title) const;
 	void get_values_all(vector<sSectionValues> &out, eSectionNameBy by = _section_id_by_varname) const;
 	string get_sections_all_json(eSectionNameBy by = _section_id_by_title) const;
@@ -2122,6 +2219,7 @@ public:
 	enum eTypeOutputThread {
 		detach,
 		defrag,
+		esp,
 		dedup,
 		detach2
 	};
@@ -2239,6 +2337,8 @@ public:
 	inline void processDefrag_push(sHeaderPacketPQout *hp);
 	inline void processDefrag_cleanup(u_int32_t time_s);
 	inline void processDedup(sHeaderPacketPQout *hp);
+	inline void processEsp(sHeaderPacketPQout *hp);
+	inline void processEsp_push(sHeaderPacketPQout *hp);
 	inline void processDetach2(sHeaderPacketPQout *hp);
 	string getNameOutputThread() {
 		switch(typeOutputThread) {
@@ -2248,6 +2348,8 @@ public:
 			return("defrag");
 		case dedup:
 			return("dedup");
+		case esp:
+			return("esp");
 		case detach2:
 			return("detach2");
 		}

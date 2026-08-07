@@ -438,7 +438,7 @@ void cSslDsslSession::store_session(cSslDsslSessions *sessions, timeval ts, int 
 				sessions->sqlDb = createSqlObject();
 			}
 			sqlStore->query_lock(MYSQL_ADD_QUERY_END(
-					     sessions->sqlDb->insertOrUpdateQuery(sessions->storeSessionsTableName(), session_row_insert, session_row_update, false, true)),
+					     sessions->sqlDb->insertOrUpdateQuery(sessions->storeSessionsTableName(), session_row_insert, session_row_update, true, true)),
 					     STORE_PROC_ID_OTHER, 0);
 			this->stored_at = ts.tv_sec;
 			this->session->tls_session_server_seq_saved = this->session->tls_session_server_seq;
@@ -1143,6 +1143,7 @@ void cSslDsslSessions::loadSessions() {
 		syslog(LOG_NOTICE, "sessions table %s is missing", storeSessionsTableName().c_str());
 		return;
 	}
+	sqlDb->isIPv6Column(storeSessionsTableName(), "serverip");
 	list<SqlDb_condField> cond;
 	cond.push_back(SqlDb_condField("id_sensor", intToString(existsColumns.ssl_sessions_id_sensor_is_unsigned && opt_id_sensor < 0 ? 0 : opt_id_sensor)));
 	cond.push_back(SqlDb_condField("stored_at", sqlDateTimeString(getTimeS() - opt_ssl_store_sessions_expiration_hours * 3600)).setOper(">"));

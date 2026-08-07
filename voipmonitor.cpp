@@ -105,6 +105,7 @@
 #include "hep.h"
 #include "ribbonsbc.h"
 #include "separate_processing.h"
+#include "esp_decrypt.h"
 #include "crc.h"
 #include "transcribe.h"
 #include "siprec.h"
@@ -1381,6 +1382,8 @@ int ssl_client_random_maxwait_ms = 0;
 char ssl_master_secret_file[1024];
 bool ssl_client_random_keep = true;
 bool ssl_client_random_use = false;
+bool opt_esp_decrypt = false;
+int opt_esp_store_sa = 2;
 
 int opt_sdp_reverse_ipport = 0;
 bool opt_sdp_use_candidate_srflx = false;
@@ -3652,6 +3655,7 @@ PcapQueue_readFromFifo *pcapQueueQ;
 PcapQueue_outputThread *pcapQueueQ_outThread_detach;
 PcapQueue_outputThread *pcapQueueQ_outThread_defrag;
 PcapQueue_outputThread *pcapQueueQ_outThread_dedup;
+PcapQueue_outputThread *pcapQueueQ_outThread_esp;
 PcapQueue_outputThread *pcapQueueQ_outThread_detach2;
 
 void set_global_vars();
@@ -5386,6 +5390,9 @@ int main_init_read() {
 			tcpReassemblySsl->setIgnoreTcpHandshake();
 		}
 	}
+	if(opt_esp_decrypt) {
+		esp_decrypt_init();
+	}
 	if(opt_sip_tcp_reassembly_ext) {
 		tcpReassemblySipExt = new FILE_LINE(42031) TcpReassembly(TcpReassembly::sip);
 		tcpReassemblySipExt->setEnableIgnorePairReqResp();
@@ -5558,6 +5565,15 @@ int main_init_read() {
 						pcapQueueQ_outThread_defrag->start();
 					}
 				}
+				#if defined(HAVE_OPENSSL)
+				if(opt_esp_decrypt) {
+					if(pass == 0) {
+						pcapQueueQ_outThread_esp = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::esp, pcapQueueQ);
+					} else {
+						pcapQueueQ_outThread_esp->start();
+					}
+				}
+				#endif //HAVE_OPENSSL
 				if(opt_dup_check_type != _dedup_na && 
 				   (is_receiver() || is_server() ?
 				     !opt_receiver_check_id_sensor :
@@ -6455,6 +6471,9 @@ void terminate_packetbuffer() {
 		if(pcapQueueQ_outThread_defrag) {
 			pcapQueueQ_outThread_defrag->terminate();
 		}
+		if(pcapQueueQ_outThread_esp) {
+			pcapQueueQ_outThread_esp->terminate();
+		}
 		if(pcapQueueQ_outThread_dedup) {
 			pcapQueueQ_outThread_dedup->terminate();
 		}
@@ -6476,6 +6495,10 @@ void terminate_packetbuffer() {
 		if(pcapQueueQ_outThread_defrag) {
 			delete pcapQueueQ_outThread_defrag;
 			pcapQueueQ_outThread_defrag = NULL;
+		}
+		if(pcapQueueQ_outThread_esp) {
+			delete pcapQueueQ_outThread_esp;
+			pcapQueueQ_outThread_esp = NULL;
 		}
 		if(pcapQueueQ_outThread_dedup) {
 			delete pcapQueueQ_outThread_dedup;
@@ -7379,6 +7402,13 @@ void cConfig::addConfigItems() {
 				expert();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_reassembly_all_complete_after_zerodata_ack", &opt_ssl_reassembly_all_complete_after_zerodata_ack));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_reassembly_ipport_reverse_enable", &opt_ssl_reassembly_ipport_reverse_enable));
+		setDisableIfEnd();
+	group("ESP");
+		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
+		addConfigItem(new FILE_LINE(0) cConfigItem_yesno("esp_decrypt", &opt_esp_decrypt));
+			advanced();
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("esp_store_sa", &opt_esp_store_sa))
+				->addValues("memory:1|persistent:2"));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -8584,6 +8614,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"ssl-master-secret-file", 1, 0, _param_ssl_master_secret_file},
 	    {"t2_boost", 0, 0, _param_t2_boost},
 	    {"json_config", 1, 0, _param_json_config},
+	    {"help_log", 0, 0, _param_help_log},
 	    {"sip-msg-save", 0, 0, _param_sip_msg_save},
 	    {"dedup-pcap", 1, 0, _param_dedup_pcap},
 	    {"anonymize-pcap", 1, 0, _param_anonymize_pcap},
@@ -8734,6 +8765,8 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "dedup_counter")			sverb.dedup_counter = 1;
 	else if(verbParam == "reassembly_sip")			sverb.reassembly_sip = 1;
 	else if(verbParam == "reassembly_sip_output")		sverb.reassembly_sip_output = 1;
+	else if(verbParam == "esp_decrypt")			sverb.esp_decrypt = 1;
+	else if(verbParam == "esp_decrypt_content")		sverb.esp_decrypt_content = 1;
 	else if(verbParam == "log_manager_cmd")			sverb.log_manager_cmd = 1;
 	else if(verbParam == "rtp_extend_stat")			sverb.rtp_extend_stat = 1;
 	else if(verbParam == "process_rtp_header")		sverb.process_rtp_header = 1;
@@ -9292,6 +9325,10 @@ void get_command_line_arguments() {
 				break;
 			case _param_t2_boost:
 				opt_t2_boost = true;
+				break;
+			case _param_help_log:
+				cout << sPcapStatData::help();
+				exit(0);
 				break;
 			case _param_sip_msg_save:
 				opt_sip_options = true;

@@ -1427,8 +1427,9 @@ time_t stringToTime(const char *timeStr, bool useGlobalTimeCache) {
 	dateTime.tm_mday = day;
 	dateTime.tm_wday = 0;
 	dateTime.tm_hour = hour; 
-	dateTime.tm_min = min; 
+	dateTime.tm_min = min;
 	dateTime.tm_sec = sec;
+	dateTime.tm_isdst = -1;
 	return(mktime(&dateTime));
 }
 

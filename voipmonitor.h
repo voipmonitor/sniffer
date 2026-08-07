@@ -200,6 +200,7 @@ enum eCmdLineParams {
 	_param_ssl_master_secret_file,
 	_param_t2_boost,
 	_param_json_config,
+	_param_help_log,
 	_param_sip_msg_save,
 	_param_dedup_pcap,
 	_param_anonymize_pcap,
