@@ -466,6 +466,7 @@ bool opt_receiver_check_id_sensor = true;
 int opt_dscp = 0;
 int opt_cdrproxy = 1;
 int opt_messageproxy = 1;
+bool opt_proxy_ignore_port = false;
 int opt_cdr_country_code = 1;
 int opt_message_country_code = 1;
 int opt_register_country_code = 1;
@@ -7468,6 +7469,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42267) cConfigItem_integer("callslimit", &opt_callslimit));
 			addConfigItem(new FILE_LINE(42268) cConfigItem_yesno("cdrproxy", &opt_cdrproxy));
 			addConfigItem(new FILE_LINE(42269) cConfigItem_yesno("messageproxy", &opt_messageproxy));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("proxy_ignore_port", &opt_proxy_ignore_port));
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("cdr_country_code", &opt_cdr_country_code))
 				->addValues("id:2"));
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("message_country_code", &opt_message_country_code))

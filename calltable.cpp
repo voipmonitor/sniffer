@@ -11371,13 +11371,13 @@ vmIP Call::getSipcalledipFromInviteList(CallBranch *c_branch,
 			}
 			bool diff_src = iter->sport != _sport || iter->saddr != _saddr;
 			if(diff_src &&
-			   find(_proxies.begin(), _proxies.end(), vmIPport(iter->saddr,iter->sport)) == _proxies.end()) {
+			   !CallBranch::in_proxy_list(&_proxies, iter->saddr, iter->sport)) {
 				_proxies.push_back(vmIPport(iter->saddr, iter->sport));
 			}
 			if((onlyConfirmed || diff_src || iter->branch == last_via_branch) &&
 			   (iter->dport != _sport || iter->daddr != _saddr) &&
-			   (iter->dport != _dport || iter->daddr != _daddr) && 
-			   find(_proxies.begin(), _proxies.end(), vmIPport(iter->daddr, iter->dport)) == _proxies.end()) {
+			   (iter->dport != _dport || iter->daddr != _daddr) &&
+			   !CallBranch::in_proxy_list(&_proxies, iter->daddr, iter->dport)) {
 				if(!(!opt_call_branches &&
 				     opt_sdp_check_direction_ext &&
 				     iter->saddr == _saddr && iter->sport == _sport && 

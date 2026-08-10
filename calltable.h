@@ -719,9 +719,19 @@ public:
 			proxies_unlock();
 		}
 	}
+	static bool in_proxy_list(list<vmIPport> *proxies, vmIP ip, vmPort port) {
+		extern bool opt_proxy_ignore_port;
+		bool cmp_port = !opt_proxy_ignore_port || ip.isLocalhost();
+		for(list<vmIPport>::iterator iter = proxies->begin(); iter != proxies->end(); iter++) {
+			if(iter->ip == ip && (!cmp_port || iter->port == port)) {
+				return(true);
+			}
+		}
+		return(false);
+	}
 	bool in_proxy(vmIP ip, vmPort port) {
 		proxies_lock();
-		bool rslt = find(proxies.begin(), proxies.end(), vmIPport(ip, port)) != proxies.end();
+		bool rslt = in_proxy_list(&proxies, ip, port);
 		proxies_unlock();
 		return(rslt);
 	}
