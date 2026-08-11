@@ -736,11 +736,77 @@ public:
 		return(rslt);
 	}
 	void proxies_undup(set<vmIP> *proxies_undup, list<vmIPport> *proxies = NULL, vmIPport *exclude = NULL);
+	unsigned proxies_size() {
+		proxies_lock();
+		unsigned size = proxies.size();
+		proxies_unlock();
+		return(size);
+	}
+	bool proxies_at(unsigned index, vmIPport *rslt) {
+		bool exists = false;
+		proxies_lock();
+		if(index < proxies.size()) {
+			list<vmIPport>::iterator iter = proxies.begin();
+			for(unsigned i = 0; i < index; i++) {
+				++iter;
+			}
+			*rslt = *iter;
+			exists = true;
+		}
+		proxies_unlock();
+		return(exists);
+	}
 	void proxies_lock() {
 		__SYNC_LOCK(this->_proxies_lock);
 	}
 	void proxies_unlock() {
 		__SYNC_UNLOCK(this->_proxies_lock);
+	}
+	void sip_resp_hist_lock() {
+		__SYNC_LOCK(this->_sip_resp_hist_lock);
+	}
+	void sip_resp_hist_unlock() {
+		__SYNC_UNLOCK(this->_sip_resp_hist_lock);
+	}
+	unsigned SIPresponse_size() {
+		sip_resp_hist_lock();
+		unsigned size = SIPresponse.size();
+		sip_resp_hist_unlock();
+		return(size);
+	}
+	bool SIPresponse_at(unsigned index, sSipResponse *rslt) {
+		bool exists = false;
+		sip_resp_hist_lock();
+		if(index < SIPresponse.size()) {
+			list<sSipResponse>::iterator iter = SIPresponse.begin();
+			for(unsigned i = 0; i < index; i++) {
+				++iter;
+			}
+			*rslt = *iter;
+			exists = true;
+		}
+		sip_resp_hist_unlock();
+		return(exists);
+	}
+	unsigned SIPhistory_size() {
+		sip_resp_hist_lock();
+		unsigned size = SIPhistory.size();
+		sip_resp_hist_unlock();
+		return(size);
+	}
+	bool SIPhistory_at(unsigned index, sSipHistory *rslt) {
+		bool exists = false;
+		sip_resp_hist_lock();
+		if(index < SIPhistory.size()) {
+			list<sSipHistory>::iterator iter = SIPhistory.begin();
+			for(unsigned i = 0; i < index; i++) {
+				++iter;
+			}
+			*rslt = *iter;
+			exists = true;
+		}
+		sip_resp_hist_unlock();
+		return(exists);
 	}
 	bool check_exists_ua(vmIP ip, vmPort port, bool is_response, bool maybe_proxy_ua);
 	void set_ua(vmIP ip, vmPort port, bool is_response, bool maybe_proxy_ua, const char *ua, unsigned ua_length);
@@ -829,6 +895,8 @@ public:
 	map<vmIPportLink, unsigned> invite_sdaddr_map;
 	vector<sInviteSD_Addr> rinvite_sdaddr;
 	map<vmIPportLink, unsigned> rinvite_sdaddr_map;
+	vector<sInviteSD_Addr> tag_rinvite_sdaddr;
+	map<vmIPportLink, unsigned> tag_rinvite_sdaddr_map;
 	vector<sInviteSD_OrderItem> invite_sdaddr_order;
 	u_int64_t invite_sdaddr_last_ts;
 	int8_t invite_sdaddr_all_confirmed;
@@ -924,6 +992,7 @@ public:
 
 	string lastSIPresponse;
 	int lastSIPresponseNum;
+	volatile int _sip_resp_hist_lock;
 	list<sSipResponse> SIPresponse;
 	list<sSipHistory> SIPhistory;
 	list<sSipPacketInfo*> SIPpacketInfoList;
@@ -2350,7 +2419,7 @@ public:
 				    vmIP saddr, vmIP daddr, 
 				    vmIP saddr_first, vmIP daddr_first, u_int8_t first_protocol,
 				    vmPort sport, vmPort dport,  
-				    int *iscaller, int *iscalled = NULL, bool enableSetSipcallerdip = false);
+				    int *iscaller, int *iscalled = NULL, bool enableSetSipcallerdip = false, bool reverse_direction_by_tag = false);
 	
 	bool is_sipcaller(CallBranch *c_branch, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport);
 	bool is_sipcalled(CallBranch *c_branch, vmIP daddr, vmPort dport, vmIP saddr, vmPort sport);
@@ -2788,7 +2857,7 @@ public:
 					if(port) {
 						*port = sipcalledport_correction;
 					}
-					if(proxies && proxies_correction.size()) {
+					if(proxies) {
 						vmIPport proxy_exclude(sipcalledip_correction, sipcalledport_correction);
 						c_branch->proxies_undup(proxies, &proxies_correction, &proxy_exclude);
 					}

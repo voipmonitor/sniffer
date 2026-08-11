@@ -2938,9 +2938,12 @@ void cCdrProblems::cListIP::fetch_ip_from_call(sChartsCallData *call, vmIP *src,
 			*dst = call->call()->getSipcalledip(call->call()->branch_main());
 		}
 		if(proxy) {
-			for(list<vmIPport>::iterator iter = call->branch_main()->proxies.begin(); iter != call->branch_main()->proxies.end(); iter++) {
+			CallBranch *c_branch = call->branch_main();
+			c_branch->proxies_lock();
+			for(list<vmIPport>::iterator iter = c_branch->proxies.begin(); iter != c_branch->proxies.end(); iter++) {
 				proxy->push_back(iter->ip.getIPv4());
 			}
+			c_branch->proxies_unlock();
 		}
 	} else {
 		if(src) {
@@ -3023,9 +3026,11 @@ void cCdrProblems::add(sChartsCallData *call) {
 		}
 		ip_src = _call->getSipcallerip(_branch);
 		ip_dst = _call->getSipcalledip(_branch);
+		_branch->proxies_lock();
 		for(list<vmIPport>::iterator iter = _branch->proxies.begin(); iter != _branch->proxies.end(); iter++) {
 			ip_proxy.push_back(iter->ip.getIPv4());
 		}
+		_branch->proxies_unlock();
 		number_src = _branch->caller;
 		number_dst = _call->get_called(_branch);
 		extern bool opt_pii_enable;
@@ -3610,12 +3615,14 @@ void sFilterCache_call_ipv4_comb::set(sChartsCallData *call) {
 		u.d.src = c_branch->sipcallerip[0].getIPv4();
 		u.d.dst = c_branch->sipcalledip_rslt.getIPv4();
 		unsigned proxies_counter = 0;
-		for(list<vmIPport>::iterator iter = call->branch_main()->proxies.begin(); iter != call->branch_main()->proxies.end(); iter++) {
+		c_branch->proxies_lock();
+		for(list<vmIPport>::iterator iter = c_branch->proxies.begin(); iter != c_branch->proxies.end(); iter++) {
 			u.d.proxy[proxies_counter++] = iter->ip.getIPv4();
 			if(proxies_counter == sizeof(u.d.proxy) / sizeof(u.d.proxy[0]) - 1) {
 				break;
 			}
 		}
+		c_branch->proxies_unlock();
 	} else {
 		u.d.src = call->tables_content()->getValue_ip(_t_cdr, "sipcallerip").getIPv4();
 		u.d.dst = call->tables_content()->getValue_ip(_t_cdr, "sipcalledip").getIPv4();
@@ -3637,12 +3644,14 @@ void sFilterCache_call_ipv6_comb::set(sChartsCallData *call) {
 		src = c_branch->sipcallerip[0].getIPv6();
 		dst = c_branch->sipcalledip_rslt.getIPv6();
 		unsigned proxies_counter = 0;
-		for(list<vmIPport>::iterator iter = call->branch_main()->proxies.begin(); iter != call->branch_main()->proxies.end(); iter++) {
+		c_branch->proxies_lock();
+		for(list<vmIPport>::iterator iter = c_branch->proxies.begin(); iter != c_branch->proxies.end(); iter++) {
 			proxy[proxies_counter++] = iter->ip;
 			if(proxies_counter == sizeof(proxy) / sizeof(proxy[0]) - 1) {
 				break;
 			}
 		}
+		c_branch->proxies_unlock();
 		while(proxies_counter < sizeof(proxy) / sizeof(proxy[0])) {
 			proxy[proxies_counter++].clear();
 		}

@@ -176,6 +176,7 @@ extern char opt_scanpcapdir[2048];
 extern int opt_ipaccount;
 extern int opt_cdrproxy;
 extern int opt_messageproxy;
+extern bool opt_reverse_invite_by_tag;
 extern int rtp_threaded;
 extern int opt_rtpnosip;
 extern char opt_cachedir[1024];
@@ -4733,6 +4734,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 	bool existRInviteSdaddr = false;
 	bool reverseInviteSdaddr = false;
 	bool reverseInviteSdaddr_ignore_port = false;
+	bool reverseInviteSdaddr_by_tag = false;
 	bool reverseInviteConfirmSdaddr = false;
 	int mainInviteForReverse_index = -1;
 	int reverseInvite_index = -1;
@@ -5155,6 +5157,18 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 			}
 			goto endsip_save_packet;
 		}
+		if(opt_reverse_invite_by_tag && !c_branch->caller_tag.empty() && c_branch->called_tag_to.empty()) {
+			if(!tag_content_to_detected) {
+				get_sip_peertag(packetS, "\nTo:", "\nt:", tag_content_to, sizeof(tag_content_to), ppntt_to, ppndt_called_tag);
+				tag_content_to_detected = true;
+			}
+			if(tag_content_to[0] && c_branch->caller_tag == tag_content_to) {
+				reverseInviteSdaddr_by_tag = true;
+				if(sverb.reverse_invite) {
+					cout << "reverse invite by tag: invite / " << call->call_id << endl;
+				}
+			}
+		}
 		c_branch->invite_list_lock();
 		map<vmIPportLink, unsigned>::iterator iter_index = c_branch->invite_sdaddr_map.find(vmIPportLink(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_()));
 		if(iter_index != c_branch->invite_sdaddr_map.end() && iter_index->second < c_branch->invite_sdaddr.size()) {
@@ -5195,8 +5209,29 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 				}
 			}
 		}
-		if(!(existInviteSdaddr || (in_dialog_invite && reverseInviteSdaddr_ignore_port))) {
-		        if(!reverseInviteSdaddr) {
+		if(!reverseInviteSdaddr) {
+			if(reverseInviteSdaddr_by_tag && !existInviteSdaddr && !(in_dialog_invite && reverseInviteSdaddr_ignore_port)) {
+				map<vmIPportLink, unsigned>::iterator titer_index = c_branch->tag_rinvite_sdaddr_map.find(vmIPportLink(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_()));
+				if(titer_index != c_branch->tag_rinvite_sdaddr_map.end() && titer_index->second < c_branch->tag_rinvite_sdaddr.size()) {
+					vector<Call::sInviteSD_Addr>::iterator titer = c_branch->tag_rinvite_sdaddr.begin() + titer_index->second;
+					++titer->counter;
+					++titer->counter_by_cseq[packetS->cseq.number];
+				} else {
+					Call::sInviteSD_Addr tag_rinvite_sd;
+					tag_rinvite_sd.saddr = packetS->saddr_();
+					tag_rinvite_sd.daddr = packetS->daddr_();
+					tag_rinvite_sd.saddr_first = packetS->saddr_(true);
+					tag_rinvite_sd.daddr_first = packetS->daddr_(true);
+					tag_rinvite_sd.saddr_first_protocol =
+					tag_rinvite_sd.daddr_first_protocol = packetS->header_ip_protocol(true);
+					tag_rinvite_sd.sport = packetS->source_();
+					tag_rinvite_sd.dport = packetS->dest_();
+					tag_rinvite_sd.counter = 1;
+					tag_rinvite_sd.counter_by_cseq[packetS->cseq.number] = 1;
+					c_branch->tag_rinvite_sdaddr.push_back(tag_rinvite_sd);
+					c_branch->tag_rinvite_sdaddr_map[vmIPportLink(tag_rinvite_sd.saddr, tag_rinvite_sd.sport, tag_rinvite_sd.daddr, tag_rinvite_sd.dport)] = c_branch->tag_rinvite_sdaddr.size() - 1;
+				}
+			} else if(!(existInviteSdaddr || (in_dialog_invite && reverseInviteSdaddr_ignore_port))) {
 				Call::sInviteSD_Addr invite_sd;
 				invite_sd.saddr = packetS->saddr_();
 				invite_sd.daddr = packetS->daddr_();
@@ -5223,7 +5258,9 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 				inviteSdaddrIndex = c_branch->invite_sdaddr.size() - 1;
 				c_branch->invite_sdaddr_map[vmIPportLink(invite_sd.saddr, invite_sd.sport, invite_sd.daddr, invite_sd.dport)] = inviteSdaddrIndex;
 				c_branch->invite_sdaddr_all_confirmed = -1;
-			} else if(opt_sdp_check_direction_ext) {
+			}
+		} else if(opt_sdp_check_direction_ext) {
+			if(!(existInviteSdaddr || (in_dialog_invite && reverseInviteSdaddr_ignore_port))) {
 				map<vmIPportLink, unsigned>::iterator riter_index = c_branch->rinvite_sdaddr_map.find(vmIPportLink(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_()));
 				if(riter_index != c_branch->rinvite_sdaddr_map.end() && riter_index->second < c_branch->rinvite_sdaddr.size()) {
 					vector<Call::sInviteSD_Addr>::iterator riter = c_branch->rinvite_sdaddr.begin() + riter_index->second;
@@ -5335,7 +5372,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 		unsigned long ua_len = 0;
 		ua = gettag_sip_ua(packetS, &ua_len);
 		fraudSipPacket(packetS->saddr_(), packetS->daddr_(),
-			       packetS->sip_method == INVITE && (existInviteSdaddr || existRInviteSdaddr) ? REINVITE : packetS->sip_method,
+			       packetS->sip_method == INVITE && (existInviteSdaddr || existRInviteSdaddr || reverseInviteSdaddr_by_tag) ? REINVITE : packetS->sip_method,
 			       packetS->getTimeval(), ua, ua_len);
 	}
 
@@ -5347,8 +5384,9 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 						     packetS->saddr_(true), packetS->daddr_(true), packetS->header_ip_protocol(true),
 						     packetS->source_(), packetS->dest_(),
 						     &iscaller, &iscalled, 
-						     (packetS->sip_method == INVITE && !existInviteSdaddr && !reverseInviteSdaddr) || 
-						     IS_SIP_RES18X(packetS->sip_method));
+						     (packetS->sip_method == INVITE && !existInviteSdaddr && !reverseInviteSdaddr) ||
+						     IS_SIP_RES18X(packetS->sip_method),
+						     reverseInviteSdaddr_by_tag);
 	if(!detectCallerd && packetS->sip_method == RES2XX && packetS->cseq.method == INVITE) {
 		detectCallerd = call->check_is_caller_called(c_branch,
 							     packetS->get_callid(), RES2XX_INVITE, 0,
@@ -5401,7 +5439,9 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 		}
 	}
 	if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0') {
+		c_branch->sip_resp_hist_lock();
 		c_branch->SIPresponse.push_back(Call::sSipResponse(lastSIPresponse, lastSIPresponseNum));
+		c_branch->sip_resp_hist_unlock();
 	}
 	
 	if(existsColumns.cdr_reason &&
@@ -5986,7 +6026,26 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 						c_branch->invite_sdaddr_all_confirmed = -1;
 						__SYNC_INC(c_branch->sip_addr_version);
 					}
+					vmIP tag_rinvite_confirmed_ip;
+					vmPort tag_rinvite_confirmed_port;
+					map<vmIPportLink, unsigned>::iterator titer_index = c_branch->tag_rinvite_sdaddr_map.find(vmIPportLink(packetS->daddr_(), packetS->dest_(), packetS->saddr_(), packetS->source_()));
+					if(titer_index != c_branch->tag_rinvite_sdaddr_map.end() && titer_index->second < c_branch->tag_rinvite_sdaddr.size()) {
+						vector<Call::sInviteSD_Addr>::iterator titer = c_branch->tag_rinvite_sdaddr.begin() + titer_index->second;
+						titer->confirmed = true;
+						tag_rinvite_confirmed_ip = titer->saddr;
+						tag_rinvite_confirmed_port = titer->sport;
+						__SYNC_INC(c_branch->sip_addr_version);
+					}
 					c_branch->invite_list_unlock();
+					if(sverb.reverse_invite && tag_rinvite_confirmed_ip.isSet()) {
+						cout << "reverse invite by tag: confirm / " << call->call_id << endl;
+					}
+					if(tag_rinvite_confirmed_ip.isSet() &&
+					   (tag_rinvite_confirmed_port != call->getSipcallerport(c_branch) || tag_rinvite_confirmed_ip != call->getSipcallerip(c_branch)) &&
+					   tag_rinvite_confirmed_ip != call->getSipcalledip(c_branch) &&
+					   !c_branch->in_proxy(tag_rinvite_confirmed_ip, tag_rinvite_confirmed_port)) {
+						c_branch->proxy_add(tag_rinvite_confirmed_ip, tag_rinvite_confirmed_port);
+					}
 					bool branch_answer_first = false;
 					if(packetS->cseq.method == INVITE) {
 						c_branch->seeninviteok = true;
@@ -6290,7 +6349,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 						   &packetS->parseContents,
 						   true);
 		}
-		if(!(reverseInviteSdaddr || (in_dialog_invite && reverseInviteSdaddr_ignore_port))) {
+		if(!(reverseInviteSdaddr || (in_dialog_invite && reverseInviteSdaddr_ignore_port) || reverseInviteSdaddr_by_tag)) {
 			bool diff_src = packetS->source_() != call->getSipcallerport(c_branch) || packetS->saddr_() != call->getSipcallerip(c_branch);
 			if(diff_src && !c_branch->in_proxy(packetS->saddr_(), packetS->source_())) {
 				c_branch->proxy_add(packetS->saddr_(), packetS->source_());
@@ -6661,14 +6720,17 @@ endsip:
 				_lastSIPresponse = lastSIPresponse;
 				_lastSIPresponseNum = lastSIPresponseNum;
 			}
-			if((_request[0] || 
-			    (_lastSIPresponse && _lastSIPresponse[0]) || 
-			    _lastSIPresponseNum) &&
-			   c_branch->SIPhistory.size() < 1000) {
-				c_branch->SIPhistory.push_back(Call::sSipHistory(
-					packet_time_us,
-					_request,
-					_lastSIPresponse, _lastSIPresponseNum));
+			if(_request[0] ||
+			   (_lastSIPresponse && _lastSIPresponse[0]) ||
+			   _lastSIPresponseNum) {
+				c_branch->sip_resp_hist_lock();
+				if(c_branch->SIPhistory.size() < 1000) {
+					c_branch->SIPhistory.push_back(Call::sSipHistory(
+						packet_time_us,
+						_request,
+						_lastSIPresponse, _lastSIPresponseNum));
+				}
+				c_branch->sip_resp_hist_unlock();
 			}
 		}
 	}

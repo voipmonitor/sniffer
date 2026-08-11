@@ -618,6 +618,7 @@ CallBranch::CallBranch(Call *call, unsigned branch_id) {
 	sipcalledip_cache_corrected_version = (u_int32_t)-1;
 
 	_proxies_lock = 0;
+	_sip_resp_hist_lock = 0;
 	_ua_map_lock = 0;
 	
 	whohanged = -1;
@@ -698,6 +699,20 @@ void CallBranch::proxies_undup(set<vmIP> *proxies_undup, list<vmIPport> *proxies
 		}
 	}
 	if(need_lock) proxies_unlock();
+	extern bool opt_reverse_invite_by_tag;
+	if(opt_reverse_invite_by_tag) {
+		vmIP sipcalledip_act = sipcalledip_mod.isSet() ? sipcalledip_mod : sipcalledip[0];
+		invite_list_lock();
+		for(vector<sInviteSD_Addr>::iterator iter = tag_rinvite_sdaddr.begin(); iter != tag_rinvite_sdaddr.end(); iter++) {
+			if(iter->confirmed &&
+			   (iter->sport != sipcallerport[0] || iter->saddr != sipcallerip[0]) &&
+			   iter->saddr != sipcalledip_act &&
+			   (!exclude || !(vmIPport(iter->saddr, iter->sport) == *exclude))) {
+				proxies_undup->insert(iter->saddr);
+			}
+		}
+		invite_list_unlock();
+	}
 }
 
 bool CallBranch::check_exists_ua(vmIP ip, vmPort port, bool is_response, bool maybe_proxy_ua) {
@@ -6392,12 +6407,9 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 			switch(child_table_enum) {
 			case _t_cdr_proxy:
 				{
-				list<vmIPport>::iterator iter = branch_main()->proxies.begin();
-				for(unsigned i = 0; i < child_index; i++) {
-					++iter;
-				}
-				if(*column == "dst") {
-					*value = cEvalFormula::sValue(iter->ip);
+				vmIPport proxy;
+				if(branch_main()->proxies_at(child_index, &proxy) && *column == "dst") {
+					*value = cEvalFormula::sValue(proxy.ip);
 					column_index = 1;
 					return(true);
 				}
@@ -6405,12 +6417,9 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 				break;
 			case _t_cdr_sipresp:
 				{
-				list<sSipResponse>::iterator iter = branch_main()->SIPresponse.begin();
-				for(unsigned i = 0; i < child_index; i++) {
-					++iter;
-				}
-				if(*column == "lastsipresponse") {
-					*value = cEvalFormula::sValue(iter->SIPresponse);
+				sSipResponse sipresp;
+				if(branch_main()->SIPresponse_at(child_index, &sipresp) && *column == "lastsipresponse") {
+					*value = cEvalFormula::sValue(sipresp.SIPresponse);
 					column_index = 1;
 					return(true);
 				}
@@ -6418,19 +6427,18 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 				break;
 			case _t_cdr_siphistory:
 				{
-				list<sSipHistory>::iterator iter = branch_main()->SIPhistory.begin();
-				for(unsigned i = 0; i < child_index; i++) {
-					++iter;
-				}
-				if(*column == "lastsipresponse") {
-					*value = cEvalFormula::sValue(iter->SIPresponse);
-					column_index = 1;
-					return(true);
-				}
-				if(*column == "request") {
-					*value = cEvalFormula::sValue(iter->SIPrequest);
-					column_index = 2;
-					return(true);
+				sSipHistory siphistory;
+				if(branch_main()->SIPhistory_at(child_index, &siphistory)) {
+					if(*column == "lastsipresponse") {
+						*value = cEvalFormula::sValue(siphistory.SIPresponse);
+						column_index = 1;
+						return(true);
+					}
+					if(*column == "request") {
+						*value = cEvalFormula::sValue(siphistory.SIPrequest);
+						column_index = 2;
+						return(true);
+					}
 				}
 				}
 				break;
@@ -6682,11 +6690,11 @@ int Call::sqlChildTableSize(string *child_table, void */*_callData*/) {
 	} else {
 		switch(enumTable) {
 		case _t_cdr_proxy:
-			return(branch_main()->proxies.size());
+			return(branch_main()->proxies_size());
 		case _t_cdr_sipresp:
-			return(branch_main()->SIPresponse.size());
+			return(branch_main()->SIPresponse_size());
 		case _t_cdr_siphistory:
-			return(branch_main()->SIPhistory.size());
+			return(branch_main()->SIPhistory_size());
 		case _t_cdr_rtp:
 			return(rtp_rows_count);
 		case _t_cdr_sdp:
@@ -14628,7 +14636,9 @@ bool Call::check_is_caller_called(CallBranch *c_branch,
 				  vmIP saddr, vmIP daddr, 
 				  vmIP saddr_first, vmIP daddr_first, u_int8_t first_protocol,
 				  vmPort sport, vmPort dport,
-				  int *iscaller, int *iscalled, bool enableSetSipcallerdip) {
+				  int *iscaller, int *iscalled, bool enableSetSipcallerdip, bool reverse_direction_by_tag) {
+	extern bool opt_reverse_invite_by_tag;
+	bool reverse_direction = reverse_direction_by_tag && opt_reverse_invite_by_tag;
 	*iscaller = 0;
 	bool _iscalled = 0;
 	string debug_str_set;
@@ -14685,7 +14695,7 @@ bool Call::check_is_caller_called(CallBranch *c_branch,
 		int i;
 		for(i = 0; i < MAX_SIPCALLERDIP; i++) {
 			if(enableSetSipcallerdip && i > 0 && !sipcallerip[i].isSet() && saddr.isSet() && daddr.isSet()) {
-				if(sip_method == INVITE) {
+				if(sip_method == INVITE && !reverse_direction) {
 					sipcallerip[i] = saddr;
 					sipcalledip[i] = daddr;
 					sipcallerport[i] = sport;
@@ -14695,7 +14705,8 @@ bool Call::check_is_caller_called(CallBranch *c_branch,
 								 saddr.getString() + ':' + sport.getString() + " -> " +
 								 daddr.getString() + ':' + dport.getString();
 					}
-				} else if(IS_SIP_RES18X(sip_method) || sip_method == RES2XX_INVITE)  {
+				} else if(IS_SIP_RES18X(sip_method) || sip_method == RES2XX_INVITE ||
+					  (sip_method == INVITE && reverse_direction))  {
 					sipcallerip[i] = daddr;
 					sipcalledip[i] = saddr;
 					sipcallerport[i] = dport;
