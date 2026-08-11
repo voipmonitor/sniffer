@@ -364,6 +364,7 @@ cIPFixServer::cIPFixServer() {
 }
 
 cIPFixServer::~cIPFixServer() {
+	listen_stop_all();
 }
 
 void cIPFixServer::createConnection(cSocket *socket) {
@@ -385,6 +386,20 @@ cIPFixConnection::cIPFixConnection(cSocket *socket)
 }
 
 cIPFixConnection::~cIPFixConnection() {
+	stop();
+	if(opt_ipfix_via_pb) {
+		block_store_lock();
+		if(block_store) {
+			extern PcapQueue_readFromFifo *pcapQueueQ;
+			if(pcapQueueQ) {
+				pcapQueueQ->addBlockStoreToPcapStoreQueue_ext(block_store);
+			} else {
+				delete block_store;
+			}
+			block_store = NULL;
+		}
+		block_store_unlock();
+	}
 }
 
 void cIPFixConnection::connection_process() {

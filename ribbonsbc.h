@@ -10,6 +10,7 @@
 class cRibbonSbc_ProcessData : public cTimer {
 public:
 	cRibbonSbc_ProcessData();
+	virtual ~cRibbonSbc_ProcessData();
 	void processData(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port);
 private:
 	bool checkCompleteData(u_char *data, size_t dataLen);

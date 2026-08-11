@@ -30,6 +30,23 @@ cHEP_ProcessData::cHEP_ProcessData()
 	}
 }
 
+cHEP_ProcessData::~cHEP_ProcessData() {
+	stop();
+	if(opt_hep_via_pb) {
+		block_store_lock();
+		if(block_store) {
+			extern PcapQueue_readFromFifo *pcapQueueQ;
+			if(pcapQueueQ) {
+				pcapQueueQ->addBlockStoreToPcapStoreQueue_ext(block_store);
+			} else {
+				delete block_store;
+			}
+			block_store = NULL;
+		}
+		block_store_unlock();
+	}
+}
+
 void cHEP_ProcessData::processData(u_char *data, size_t dataLen, vmIP ip) {
 	/*
 	cout << " *** " << (isBeginHep(data, dataLen) ? "BEGIN" : "not begin") << endl;
@@ -639,6 +656,7 @@ cHEP_Server::cHEP_Server()
 }
 
 cHEP_Server::~cHEP_Server() {
+	listen_stop_all();
 }
 
 void cHEP_Server::createConnection(cSocket *socket) {

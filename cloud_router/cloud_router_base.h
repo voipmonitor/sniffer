@@ -705,6 +705,7 @@ public:
 	bool listen_start(const char *name, string host, u_int16_t port, unsigned index = 0);
 	bool _listen_start(const char *name, string host, u_int16_t port, bool udp, unsigned index = 0, bool verbose_start = true);
 	void listen_stop(unsigned index = 0);
+	void listen_stop_all();
 	static void *listen_process(void *arg);
 	void listen_process(int index);
 	virtual void createConnection(cSocket *socket);

@@ -1475,6 +1475,7 @@ cSipRecServer::cSipRecServer()
 }
 
 cSipRecServer::~cSipRecServer() {
+	listen_stop_all();
 }
 
 void cSipRecServer::createConnection(cSocket *socket) {
@@ -1518,8 +1519,19 @@ cSipRecPacketSender::cSipRecPacketSender()
 }
 
 cSipRecPacketSender::~cSipRecPacketSender() {
-	if(block_store) {
-		delete block_store;
+	stop();
+	if(opt_siprec_via_pb) {
+		block_store_lock();
+		if(block_store) {
+			extern PcapQueue_readFromFifo *pcapQueueQ;
+			if(pcapQueueQ) {
+				pcapQueueQ->addBlockStoreToPcapStoreQueue_ext(block_store);
+			} else {
+				delete block_store;
+			}
+			block_store = NULL;
+		}
+		block_store_unlock();
 	}
 }
 

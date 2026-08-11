@@ -1587,9 +1587,7 @@ cServer::cServer(eListenProtocol listen_protocol) {
 }
 
 cServer::~cServer() {
-	for(unsigned i = 0; i < MAX_LISTEN_SOCKETS; i++) {
-		listen_stop(i);
-	}
+	listen_stop_all();
 }
 
 bool cServer::listen_start(const char *name, string host, u_int16_t port, unsigned index) {
@@ -1639,6 +1637,12 @@ void cServer::listen_stop(unsigned index) {
 		}
 		delete listen_socket[index];
 		listen_socket[index] = NULL;
+	}
+}
+
+void cServer::listen_stop_all() {
+	for(unsigned i = 0; i < MAX_LISTEN_SOCKETS; i++) {
+		listen_stop(i);
 	}
 }
 

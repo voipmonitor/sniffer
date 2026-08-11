@@ -123,6 +123,7 @@ struct sHEP_Data {
 class cHEP_ProcessData : public cTimer {
 public:
 	cHEP_ProcessData();
+	virtual ~cHEP_ProcessData();
 	void processData(u_char *data, size_t dataLen, vmIP ip = 0);
 protected:
 	bool isCompleteHep(u_char *data, size_t dataLen);

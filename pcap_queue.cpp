@@ -7578,22 +7578,36 @@ bool PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(u_char *buffer, u_cha
 			   *block_counter + 1 != blockStore->block_counter) {
 				*warning = "loss packetbuffer block";
 			}
+			size_t countPackets = blockStore->count;
+			size_t sizePackets = blockStore->getSizePackets();
+			#if LOG_PACKETS_PER_SEC or LOG_PACKETS_SUM
+			size_t countAllPackets = blockStore->getCountPackets();
+			#endif
+			size_t sizeCompress = blockStore->size_compress;
+			u_int32_t blockCounter = blockStore->block_counter;
 			unsigned int usleepCounter = 0;
+			bool pushed = true;
 			while(!this->pcapStoreQueue.push(blockStore, false)) {
 				if(TERMINATING) {
+					pushed = false;
 					break;
 				} else {
 					USLEEP_C(100, usleepCounter++);
 				}
 			}
-			sumPacketsCounterIn[0] += blockStore->count;
-			sumPacketsSize[0] += blockStore->getSizePackets();
+			if(!pushed) {
+				delete blockStore;
+				*error = "terminating";
+				return(false);
+			}
+			sumPacketsCounterIn[0] += countPackets;
+			sumPacketsSize[0] += sizePackets;
 			#if LOG_PACKETS_PER_SEC or LOG_PACKETS_SUM
-			sumPacketsCount[0] += blockStore->getCountPackets();
+			sumPacketsCount[0] += countAllPackets;
 			#endif
-			sumPacketsSizeCompress[0] += blockStore->size_compress;
+			sumPacketsSizeCompress[0] += sizeCompress;
 			++sumBlocksCounterIn[0];
-			*block_counter = blockStore->block_counter;
+			*block_counter = blockCounter;
 		}
 		return(true);
 	} else {
@@ -7723,13 +7737,19 @@ pcap_block_store *PcapQueue_readFromFifo::getBlockStoreFromPool() {
 
 inline void PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(pcap_block_store *blockStore) {
 	unsigned int usleepCounter = 0;
+	size_t sizePackets = blockStore->getSizePackets();
+	bool pushed = false;
 	while(!TERMINATING) {
 		if(this->pcapStoreQueue.push(blockStore, false)) {
-			sumPacketsSize[0] += blockStore->getSizePackets();
+			sumPacketsSize[0] += sizePackets;
+			pushed = true;
 			break;
 		} else {
 			USLEEP_C(100, usleepCounter++);
 		}
+	}
+	if(!pushed) {
+		delete blockStore;
 	}
 }
 

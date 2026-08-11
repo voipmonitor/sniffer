@@ -32,6 +32,23 @@ cRibbonSbc_ProcessData::cRibbonSbc_ProcessData()
 	}
 }
 
+cRibbonSbc_ProcessData::~cRibbonSbc_ProcessData() {
+	stop();
+	if(opt_ribbonsbc_via_pb) {
+		block_store_lock();
+		if(block_store) {
+			extern PcapQueue_readFromFifo *pcapQueueQ;
+			if(pcapQueueQ) {
+				pcapQueueQ->addBlockStoreToPcapStoreQueue_ext(block_store);
+			} else {
+				delete block_store;
+			}
+			block_store = NULL;
+		}
+		block_store_unlock();
+	}
+}
+
 void cRibbonSbc_ProcessData::processData(u_char *data, size_t dataLen, vmIP ip, vmPort port, vmIP local_ip, vmPort local_port) {
 	if(opt_ribbonsbc_counter_log && ip.isSet()) {
 		 ribbonsbc_counter.inc(ip);
@@ -243,6 +260,7 @@ cRibbonSbc_Server::cRibbonSbc_Server()
 }
 
 cRibbonSbc_Server::~cRibbonSbc_Server() {
+	listen_stop_all();
 }
 
 void cRibbonSbc_Server::createConnection(cSocket *socket) {
