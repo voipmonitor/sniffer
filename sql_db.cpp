@@ -2440,6 +2440,16 @@ string SqlDb_mysql::routineParamCanonical(string type) {
 	for(size_t i = 0; i < type.length(); i++) {
 		type[i] = tolower((unsigned char)type[i]);
 	}
+	size_t cs = type.find(" character set");
+	if(cs == string::npos) {
+		cs = type.find(" charset");
+	}
+	if(cs == string::npos) {
+		cs = type.find(" collate");
+	}
+	if(cs != string::npos) {
+		type = type.substr(0, cs);
+	}
 	static const char *intTypes[] = { "tinyint", "smallint", "mediumint", "bigint", "int", NULL };
 	for(int i = 0; intTypes[i]; i++) {
 		size_t tl = strlen(intTypes[i]);
@@ -2468,7 +2478,31 @@ string SqlDb_mysql::routineParamCanonical(string type) {
 	return(type);
 }
 
-string SqlDb_mysql::routineTypeFromParam(string paramItem, bool hasName) {
+string SqlDb_mysql::routineCharsetCanonical(string charset) {
+	for(size_t i = 0; i < charset.length(); i++) {
+		charset[i] = tolower((unsigned char)charset[i]);
+	}
+	return(charset);
+}
+
+string SqlDb_mysql::routineBodyCanonical(string routine) {
+	string rslt;
+	for(size_t i = 0; i < routine.length(); i++) {
+		if(routine[i] == '\\' && i < routine.length() - 1 && routine[i + 1] == '\'') {
+			continue;
+		}
+		if(routine[i] == '\'' && !rslt.empty() && rslt[rslt.length() - 1] == '\'') {
+			continue;
+		}
+		rslt += routine[i];
+	}
+	return(rslt);
+}
+
+string SqlDb_mysql::routineTypeFromParam(string paramItem, bool hasName, string *charset) {
+	if(charset) {
+		*charset = "";
+	}
 	size_t a = paramItem.find_first_not_of(" \t");
 	if(a == string::npos) {
 		return(this->routineParamCanonical(""));
@@ -2518,6 +2552,8 @@ string SqlDb_mysql::routineTypeFromParam(string paramItem, bool hasName) {
 	}
 	string type = s.substr(0, te);
 	size_t pos = te;
+	bool typeTokens = true;
+	int charsetState = 0;
 	while(pos < s.length()) {
 		while(pos < s.length() && (s[pos] == ' ' || s[pos] == '\t')) {
 			pos++;
@@ -2534,37 +2570,57 @@ string SqlDb_mysql::routineTypeFromParam(string paramItem, bool hasName) {
 		for(size_t i = 0; i < tokLow.length(); i++) {
 			tokLow[i] = tolower((unsigned char)tokLow[i]);
 		}
-		if(tokLow == "unsigned" || tokLow == "zerofill") {
+		if(typeTokens && (tokLow == "unsigned" || tokLow == "zerofill")) {
 			type += " " + tok;
-		} else {
+			continue;
+		}
+		typeTokens = false;
+		if(!charset) {
 			break;
+		}
+		if(charsetState == 2) {
+			*charset = this->routineCharsetCanonical(tokLow);
+			break;
+		} else if(tokLow == "charset") {
+			charsetState = 2;
+		} else if(tokLow == "character") {
+			charsetState = 1;
+		} else if(charsetState == 1 && tokLow == "set") {
+			charsetState = 2;
+		} else {
+			charsetState = 0;
 		}
 	}
 	return(this->routineParamCanonical(type));
 }
 
-string SqlDb_mysql::routineParamsCanonicalFromDb(string routineName, eRoutineType routineType) {
-	this->query(string("select ordinal_position, dtd_identifier from information_schema.parameters where specific_schema='") + this->conn_database +
+string SqlDb_mysql::routineParamsCanonicalFromDb(string routineName, eRoutineType routineType, vector<string> *paramsCharset) {
+	this->query(string("select ordinal_position, dtd_identifier, character_set_name from information_schema.parameters where specific_schema='") + this->conn_database +
 		    "' and specific_name='" + routineName +
 		    "' and routine_type='" + (routineType == procedure ? "PROCEDURE" : "FUNCTION") + "' order by ordinal_position");
 	string params;
 	string ret;
+	string retCharset;
 	SqlDb_row row;
 	while((row = this->fetchRow())) {
 		string canonical = this->routineParamCanonical(row["dtd_identifier"]);
+		string charset = this->routineCharsetCanonical(row["character_set_name"]);
 		if(atoi(row["ordinal_position"].c_str()) == 0) {
 			ret = canonical;
+			retCharset = charset;
 		} else {
 			if(!params.empty()) {
 				params += ";";
 			}
 			params += canonical;
+			paramsCharset->push_back(charset);
 		}
 	}
+	paramsCharset->push_back(retCharset);
 	return(params + "#" + ret);
 }
 
-string SqlDb_mysql::routineParamsCanonicalFromDefinition(string routineParamsAndReturn) {
+string SqlDb_mysql::routineParamsCanonicalFromDefinition(string routineParamsAndReturn, vector<string> *paramsCharset) {
 	size_t start = routineParamsAndReturn.find('(');
 	if(start == string::npos) {
 		return("#");
@@ -2611,9 +2667,12 @@ string SqlDb_mysql::routineParamsCanonicalFromDefinition(string routineParamsAnd
 		if(!params.empty()) {
 			params += ";";
 		}
-		params += this->routineTypeFromParam(parts[i], true);
+		string charset;
+		params += this->routineTypeFromParam(parts[i], true, &charset);
+		paramsCharset->push_back(charset);
 	}
 	string ret;
+	string retCharset;
 	string after = routineParamsAndReturn.substr(end + 1);
 	string afterLow = after;
 	for(size_t i = 0; i < afterLow.length(); i++) {
@@ -2621,8 +2680,9 @@ string SqlDb_mysql::routineParamsCanonicalFromDefinition(string routineParamsAnd
 	}
 	size_t rp = afterLow.find("returns");
 	if(rp != string::npos) {
-		ret = this->routineTypeFromParam(after.substr(rp + 7), false);
+		ret = this->routineTypeFromParam(after.substr(rp + 7), false, &retCharset);
 	}
+	paramsCharset->push_back(retCharset);
 	return(params + "#" + ret);
 }
 
@@ -2645,28 +2705,25 @@ bool SqlDb_mysql::createRoutine(string routine, string routineName, string routi
 		SqlDb_row row = this->fetchRow();
 		if(!row) {
 			missing = true;
-		} else if(row["routine_definition"] != routine) {
-			size_t i = 0, j = 0;
-			while(i < routine.length() &&
-			      j < row["routine_definition"].length()) {
-				if(routine[i] == '\\' && i < routine.length() - 1) {
-					++i;
-				}
-				if(routine[i] != row["routine_definition"][j]) {
-					diff = true;
-					break;
-				}
-				++i;
-				++j;
-			}
-			if(!diff && 
-			   (i < routine.length() || j < row["routine_definition"].length())) {
-				diff = true;
-			}
-		}
-		if(!missing && !diff &&
-		   this->routineParamsCanonicalFromDefinition(routineParamsAndReturn) != this->routineParamsCanonicalFromDb(routineName, routineType)) {
+		} else if(row["routine_definition"] != routine &&
+			  this->routineBodyCanonical(routine) != this->routineBodyCanonical(row["routine_definition"])) {
 			diff = true;
+		}
+		if(!missing && !diff) {
+			vector<string> paramsCharsetDefinition;
+			vector<string> paramsCharsetDb;
+			if(this->routineParamsCanonicalFromDefinition(routineParamsAndReturn, &paramsCharsetDefinition) !=
+			   this->routineParamsCanonicalFromDb(routineName, routineType, &paramsCharsetDb)) {
+				diff = true;
+			} else {
+				for(size_t i = 0; i < paramsCharsetDefinition.size() && i < paramsCharsetDb.size(); i++) {
+					if(!paramsCharsetDefinition[i].empty() && paramsCharsetDefinition[i] != paramsCharsetDb[i] &&
+					   !(paramsCharsetDefinition[i] == "utf8" && paramsCharsetDb[i].compare(0, 4, "utf8") == 0)) {
+						diff = true;
+						break;
+					}
+				}
+			}
 		}
 	}
 	if(missing || diff) {

@@ -889,9 +889,11 @@ public:
 	void setSelectedCompressType(bool memoryEngine, const char *type, const char *subtype = NULL);
 private:
 	string routineParamCanonical(string type);
-	string routineTypeFromParam(string paramItem, bool hasName);
-	string routineParamsCanonicalFromDb(string routineName, eRoutineType routineType);
-	string routineParamsCanonicalFromDefinition(string routineParamsAndReturn);
+	string routineCharsetCanonical(string charset);
+	string routineBodyCanonical(string routine);
+	string routineTypeFromParam(string paramItem, bool hasName, string *charset);
+	string routineParamsCanonicalFromDb(string routineName, eRoutineType routineType, vector<string> *paramsCharset);
+	string routineParamsCanonicalFromDefinition(string routineParamsAndReturn, vector<string> *paramsCharset);
 	MYSQL *hMysql;
 	MYSQL *hMysqlConn;
 	MYSQL_RES *hMysqlRes;
