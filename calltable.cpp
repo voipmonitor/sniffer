@@ -7650,7 +7650,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		bye = 108;
 	} else if(max_sip_packets_exceeded || max_invite_packets_exceeded) {
 		bye = 109;
-	} else if(c_branch->oneway && typeIsNot(SKINNY_NEW) && typeIsNot(MGCP)) {
+	} else if(oneway_in_branches() && typeIsNot(SKINNY_NEW) && typeIsNot(MGCP)) {
 		bye = 101;
 	} else if(pcap_drop) {
 		bye = 100;
@@ -13833,7 +13833,7 @@ void Calltable::cleanup_calls__process_calls(sCleanupCallsData *cc_data) {
 				++cc_data->stat.close_max_invite_packets;
 			}
 			if(!closeCall &&
-			   (c_branch->oneway == 1 && currTimeS_unshift > call->get_last_packet_time_s() + opt_onewaytimeout)) {
+			   (call->oneway_in_branches() && currTimeS_unshift > call->get_last_packet_time_s() + opt_onewaytimeout)) {
 				/*
 				if(abs(call->time_shift_ms) > 2000) {
 					cout << " *** " << call->call_id << endl

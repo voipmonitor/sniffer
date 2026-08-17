@@ -2573,6 +2573,24 @@ public:
 		return(rslt);
 	}
 	
+	bool oneway_in_branches() {
+		if(!first_branch.oneway) {
+			return(false);
+		}
+		bool rslt = true;
+		if(next_branches.size()) {
+			branches_lock();
+			for(unsigned i = 0; i < next_branches.size(); i++) {
+				if(!next_branches[i]->oneway) {
+					rslt = false;
+					break;
+				}
+			}
+			branches_unlock();
+		}
+		return(rslt);
+	}
+	
 	bool is_closed_other_branches(CallBranch *c_branch) {
 		if(is_multibranch()) {
 			if(first_branch.branch_id != c_branch->branch_id &&
