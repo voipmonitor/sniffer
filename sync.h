@@ -59,6 +59,42 @@
 #define SAFE_ATOMIC_LOAD(vint) __sync_val_compare_and_swap(&(vint), 0, 0)
 #endif
 
+#ifdef __cplusplus
+#include <pthread.h>
+#include <syslog.h>
+struct sSyncRecursive {
+	sSyncRecursive() {
+		sync = 0;
+		owner = 0;
+		depth = 0;
+	}
+	volatile int sync;
+	volatile pthread_t owner;
+	volatile int depth;
+};
+#define __SYNC_LOCK_RECURSIVE(s) do { \
+	pthread_t _sync_self = pthread_self(); \
+	if(ATOMIC_LOAD((s).sync) && ATOMIC_LOAD((s).owner) == _sync_self) { \
+		__SYNC_SET_TO((s).depth, (s).depth + 1); \
+	} else { \
+		__SYNC_LOCK((s).sync); \
+		__SYNC_SET_TO((s).owner, _sync_self); \
+		__SYNC_SET_TO((s).depth, 1); \
+	} \
+} while(0)
+#define __SYNC_UNLOCK_RECURSIVE(s) do { \
+	if(ATOMIC_LOAD((s).depth) <= 0 || ATOMIC_LOAD((s).owner) != pthread_self()) { \
+		syslog(LOG_ERR, "invalid __SYNC_UNLOCK_RECURSIVE - depth %i", (s).depth); \
+	} else { \
+		__SYNC_SET_TO((s).depth, (s).depth - 1); \
+		if((s).depth == 0) { \
+			__SYNC_NULL((s).owner); \
+			__SYNC_UNLOCK((s).sync); \
+		} \
+	} \
+} while(0)
+#endif //__cplusplus
+
 #if defined(__arm__) || defined(__aarch64__)
     #define IS_ARM true
 #else

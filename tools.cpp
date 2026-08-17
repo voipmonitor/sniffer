@@ -4966,7 +4966,7 @@ void ParsePacket::refreshIfNeed() {
 			 this->timeSync_custom_headers_cdr = custom_headers_cdr->getLoadTime();
 		}
 		if(reload_for_custom_headers_message) {
-			 this->timeSync_custom_headers_message = custom_headers_cdr->getLoadTime();
+			 this->timeSync_custom_headers_message = custom_headers_message->getLoadTime();
 		}
 		if(reload_for_custom_headers_sip_msg) {
 			 this->timeSync_custom_headers_sip_msg = custom_headers_sip_msg->getLoadTime();

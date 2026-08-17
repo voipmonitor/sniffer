@@ -4779,8 +4779,8 @@ public:
 	};
 public:
 	CustomHeaders(eType type, SqlDb *sqlDb = NULL);
-	void load(SqlDb *sqlDb = NULL, bool enableCreatePartitions = true, bool lock = true);
-	void clear(bool lock = true);
+	void load(SqlDb *sqlDb = NULL, bool enableCreatePartitions = true);
+	void clear();
 	void refresh(SqlDb *sqlDb = NULL, bool enableCreatePartitions = true);
 	void prepareCustomNodes(ParsePacket *parsePacket);
 	void parse(Call *call, CallBranch *c_branch, int type, sCH_Content *ch_content, packet_s_process *packetS, eReqRespDirection reqRespDirection = dir_na);
@@ -4790,26 +4790,28 @@ public:
 	string getScreenPopupFieldsString(Call *call, int type);
 	string getDeleteQuery(const char *id, const char *prefix, const char *suffix);
 	list<string> getAllNextTables() {
-		return(allNextTables);
-	}
-	list<string> *getAllNextTablesPointer() {
-		return(&allNextTables);
+		lock_custom_headers();
+		list<string> rslt = allNextTables;
+		unlock_custom_headers();
+		return(rslt);
 	}
 	string getRelTimeColumn() {
 		return(relTimeColumn);
 	}
-	void createMysqlPartitions(class SqlDb *sqlDb);
-	void createMysqlPartitions(class SqlDb *sqlDb, char type, int next_day);
+	void createMysqlPartitions(class SqlDb *sqlDb, list<string> *tables = NULL);
+	void createMysqlPartitions(class SqlDb *sqlDb, char type, int next_day, list<string> *tables);
 	void createMysqlPartitions(class SqlDb *sqlDb, const char *tableName, char type, int next_day);
 	inline unsigned long getLoadTime() {
 		return(loadTime);
 	}
 	string getQueryForSaveUseInfo(Call *call, int type, sCH_Content *ch_content);
-	string getQueryForSaveUseInfo(u_int64_t time_us, sCH_Content *ch_content);
-	void createTablesIfNotExists(SqlDb *sqlDb = NULL, bool enableOldPartition = false);
+	string getQueryForSaveUseInfo(u_int64_t time_us, sCH_Content *ch_content, CallBranch *c_branch = NULL);
+	void createTablesIfNotExists(SqlDb *sqlDb = NULL, bool enableOldPartition = false, list<string> *tables = NULL);
 	void createTableIfNotExists(const char *tableName, SqlDb *sqlDb = NULL, bool enableOldPartition = false);
 	void checkTablesColumns(SqlDb *sqlDb = NULL, bool enableAlter = true);
 	void checkTableColumns(const char *tableName, int tableIndex, SqlDb *sqlDb, bool enableAlter);
+	bool relTimeColumnIsMs(const char *tableName, SqlDb *sqlDb);
+	int tableNameToIndex(const char *tableName);
 	void createColumnsForFixedHeaders(SqlDb *sqlDb = NULL);
 	bool getPosForDbId(unsigned db_id, d_u_int32_t *pos);
 	static sCH_Content *getCustomHeadersCallContent(CallBranch *c_branch, int type);
@@ -4824,10 +4826,16 @@ public:
 	string dump();
 private:
 	void lock_custom_headers() {
-		__SYNC_LOCK(this->_sync_custom_headers);
+		__SYNC_LOCK_RECURSIVE(this->_sync_custom_headers);
 	}
 	void unlock_custom_headers() {
-		__SYNC_UNLOCK(this->_sync_custom_headers);
+		__SYNC_UNLOCK_RECURSIVE(this->_sync_custom_headers);
+	}
+	void lock_refresh() {
+		__SYNC_LOCK_USLEEP(this->_sync_refresh, 100);
+	}
+	void unlock_refresh() {
+		__SYNC_UNLOCK(this->_sync_refresh);
 	}
 private:
 	eType type;
@@ -4842,7 +4850,8 @@ private:
 	map<int, bool> calldate_ms;
 	unsigned long loadTime;
 	unsigned lastTimeSaveUseInfo;
-	volatile int _sync_custom_headers;
+	sSyncRecursive _sync_custom_headers;
+	volatile int _sync_refresh;
 };
 
 

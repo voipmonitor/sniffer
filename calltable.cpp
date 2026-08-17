@@ -5327,7 +5327,7 @@ void Call::getRecordData(RecordArray *rec, bool setCountry) {
 	if(custom_headers_cdr) {
 		list<string> values;
 		custom_headers_cdr->getValues(this, INVITE, &values);
-		for(list<string>::iterator iter = values.begin(); iter != values.end(); iter++) {
+		for(list<string>::iterator iter = values.begin(); iter != values.end() && i < rec->max_fields; iter++) {
 			rec->fields[i++].set(iter->c_str());
 		}
 	}
@@ -15389,17 +15389,17 @@ CustomHeaders::CustomHeaders(eType type, SqlDb *sqlDb) {
 	}
 	this->loadTime = 0;
 	this->lastTimeSaveUseInfo = 0;
-	this->_sync_custom_headers = 0;
+	this->_sync_refresh = 0;
 	this->load(sqlDb);
 }
 
-void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
+void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions) {
 	if(sverb.disable_custom_headers) {
+		clear();
 		return;
 	}
-	if(lock) lock_custom_headers();
-	custom_headers.clear();
-	allNextTables.clear();
+	map<sCH_index, sCustomHeaderData> custom_headers_new;
+	list<string> allNextTables_new;
 	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
@@ -15473,19 +15473,19 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 				if(iter->type == "fixed") {
 					if(!this->fixedTable.empty()) {
 						if(sqlDb->existsColumn(this->fixedTable, "custom_header__" + iter->first_header())) {
-							custom_headers[sCH_index(0, fixed_column_index++)] = *iter;
+							custom_headers_new[sCH_index(0, fixed_column_index++)] = *iter;
 						}
 					}
 				} else {
-					custom_headers[sCH_index(iter->dynamic_table, iter->dynamic_column)] = *iter;
+					custom_headers_new[sCH_index(iter->dynamic_table, iter->dynamic_column)] = *iter;
 				}
 			}
 			set<int> addedTables;
-			for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
+			for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers_new.begin(); iter != custom_headers_new.end(); iter++) {
 				if(iter->first.i1 && addedTables.find(iter->first.i1) == addedTables.end()) {
 					char nextTable[100];
 					snprintf(nextTable, sizeof(nextTable), "%s%i", this->nextTablePrefix.c_str(), iter->first.i1);
-					allNextTables.push_back(nextTable);
+					allNextTables_new.push_back(nextTable);
 					addedTables.insert(iter->first.i1);
 				}
 			}
@@ -15512,7 +15512,7 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 			ch_data.setHeaderFindSuffix();
 			bool exists = false;
 			int max_fixed_index = -1;
-			for(map<sCH_index, sCustomHeaderData>::iterator it = custom_headers.begin(); it != custom_headers.end() && !exists; it++) {
+			for(map<sCH_index, sCustomHeaderData>::iterator it = custom_headers_new.begin(); it != custom_headers_new.end() && !exists; it++) {
 				if(it->first.i1 == 0) {
 					if(it->first.i2 > max_fixed_index) {
 						max_fixed_index = it->first.i2;
@@ -15526,45 +15526,53 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 				}
 			}
 			if(!exists) {
-				custom_headers[sCH_index(0, max_fixed_index + 1)] = ch_data;
+				custom_headers_new[sCH_index(0, max_fixed_index + 1)] = ch_data;
 			}
 		}
 	}
 	if(enableCreatePartitions) {
-		this->createTablesIfNotExists(sqlDb, true);
+		this->createTablesIfNotExists(sqlDb, true, &allNextTables_new);
 		extern bool opt_disable_partition_operations;
 		extern bool opt_disable_partition_operations_create;
 		if(!opt_disable_partition_operations && !opt_disable_partition_operations_create && !is_client()) {
 			sqlDb->setIgnoreErrorCode(ER_SAME_NAME_PARTITION);
 			sqlDb->setIgnoreErrorCode(ER_RANGE_NOT_INCREASING_ERROR);
 			sqlDb->setIgnoreErrorCode(ER_NO_SUCH_TABLE);
-			this->createMysqlPartitions(sqlDb);
+			this->createMysqlPartitions(sqlDb, &allNextTables_new);
 			if(!_createSqlObject) {
 				sqlDb->clearIgnoreErrorCodes();
 			}
 		}
 	}
+	map<int, bool> calldate_ms_new;
+	for(list<string>::iterator iter = allNextTables_new.begin(); iter != allNextTables_new.end(); iter++) {
+		calldate_ms_new[tableNameToIndex(iter->c_str())] = opt_time_precision_in_ms && this->relTimeColumnIsMs(iter->c_str(), sqlDb);
+	}
+	lock_custom_headers();
+	custom_headers.swap(custom_headers_new);
+	allNextTables.swap(allNextTables_new);
+	calldate_ms.swap(calldate_ms_new);
+	unlock_custom_headers();
 	if(_createSqlObject) {
 		delete sqlDb;
 	}
 	loadTime = getTimeMS();
-	if(lock) unlock_custom_headers();
 }
 
-void CustomHeaders::clear(bool lock) {
-	if(lock) lock_custom_headers();
+void CustomHeaders::clear() {
+	lock_custom_headers();
 	custom_headers.clear();
 	allNextTables.clear();
-	if(lock) unlock_custom_headers();
+	calldate_ms.clear();
+	unlock_custom_headers();
 }
 
 void CustomHeaders::refresh(SqlDb *sqlDb, bool enableCreatePartitions) {
-	lock_custom_headers();
-	clear(false);
-	load(sqlDb, enableCreatePartitions, false);
+	lock_refresh();
+	load(sqlDb, enableCreatePartitions);
 	extern int opt_disable_dbupgradecheck;
 	checkTablesColumns(sqlDb, !opt_disable_dbupgradecheck);
-	unlock_custom_headers();
+	unlock_refresh();
 }
 
 void CustomHeaders::prepareCustomNodes(ParsePacket *parsePacket) {
@@ -15760,22 +15768,30 @@ void CustomHeaders::prepareSaveRows(Call *call, CallBranch *c_branch, int type, 
 			return;
 		}
 	}
+	map<int, bool> calldate_ms_copy;
+	if(opt_cdr_partition) {
+		lock_custom_headers();
+		calldate_ms_copy = calldate_ms;
+		unlock_custom_headers();
+	}
 	if(c_branch) {
 		c_branch->custom_headers_content_lock();
 	}
 	for(map<sCH_index, sCH_ContentData*>::iterator iter = ch_content->data.begin(); iter != ch_content->data.end(); iter++) {
-		if(iter->first.i1 <= CDR_NEXT_MAX) {
+		if(iter->first.i1 >= 0 && iter->first.i1 <= CDR_NEXT_MAX) {
 			sCH_ContentDataItem content = iter->second->getContent();
 			if(!content.content.empty()) {
 				if(!iter->first.i1) {
-					cdr_next->add(sqlEscapeString(content.content), "custom_header__" + content.header);
+					if(cdr_next) {
+						cdr_next->add(sqlEscapeString(content.content), "custom_header__" + content.header);
+					}
 				} else {
 					if(!cdr_next_ch_name[iter->first.i1 - 1][0]) {
 						sprintf(cdr_next_ch_name[iter->first.i1 - 1], "%s%i", this->nextTablePrefix.c_str(), iter->first.i1);
 						if(opt_cdr_partition) {
 							bool use_ms = false;
-							map<int, bool>::iterator calldate_ms_iter = calldate_ms.find(iter->first.i1 - 1);
-							if(calldate_ms_iter != calldate_ms.end() && calldate_ms_iter->second) {
+							map<int, bool>::iterator calldate_ms_iter = calldate_ms_copy.find(iter->first.i1 - 1);
+							if(calldate_ms_iter != calldate_ms_copy.end() && calldate_ms_iter->second) {
 								use_ms = true;
 							}
 							cdr_next_ch[iter->first.i1 - 1].add_calldate(call ? call->calltime_us() : time_us, this->relTimeColumn, use_ms);
@@ -15795,7 +15811,13 @@ void CustomHeaders::prepareSaveRows(Call *call, CallBranch *c_branch, int type, 
 
 string CustomHeaders::getScreenPopupFieldsString(Call *call, int type) {
 	string fields;
-	sCH_Content *ch_content = getCustomHeadersCallContent(call->branch_main(), type);
+	CallBranch *c_branch = call->branch_main();
+	sCH_Content *ch_content = getCustomHeadersCallContent(c_branch, type);
+	if(!ch_content) {
+		return(fields);
+	}
+	lock_custom_headers();
+	c_branch->custom_headers_content_lock();
 	for(map<sCH_index, sCH_ContentData*>::iterator iter = ch_content->data.begin(); iter != ch_content->data.end(); iter++) {
 		map<sCH_index, sCustomHeaderData>::iterator ch_iter = custom_headers.find(iter->first);
 		if(ch_iter != custom_headers.end() && ch_iter->second.screenPopupField) {
@@ -15812,23 +15834,32 @@ string CustomHeaders::getScreenPopupFieldsString(Call *call, int type) {
 			}
 		}
 	}
+	c_branch->custom_headers_content_unlock();
+	unlock_custom_headers();
 	return(fields);
 }
 
 string CustomHeaders::getDeleteQuery(const char *id, const char *prefix, const char *suffix) {
 	string deleteQuery;
 	list<string>::iterator iter;
+	lock_custom_headers();
 	for(iter = allNextTables.begin(); iter != allNextTables.end(); iter++) {
-		 deleteQuery += string(prefix ? prefix : "") + 
-				"delete from " + *iter + 
-				" where " + this->relIdColumn + " = " + id + 
+		 deleteQuery += string(prefix ? prefix : "") +
+				"delete from " + *iter +
+				" where " + this->relIdColumn + " = " + id +
 				(suffix ? suffix : "");
 	}
+	unlock_custom_headers();
 	return(deleteQuery);
 }
 
-void CustomHeaders::createMysqlPartitions(SqlDb *sqlDb) {
+void CustomHeaders::createMysqlPartitions(SqlDb *sqlDb, list<string> *tables) {
 	extern bool cloud_db;
+	list<string> _tables;
+	if(!tables) {
+		_tables = getAllNextTables();
+		tables = &_tables;
+	}
 	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
 	char type = opt_cdr_partition_by_hours ? 'h' : 'd';
 	for(int next_day = 0; next_day < LIMIT_DAY_PARTITIONS; next_day++) {
@@ -15838,15 +15869,15 @@ void CustomHeaders::createMysqlPartitions(SqlDb *sqlDb) {
 		} else {
 			sqlDb->setMaxQueryPass(10);
 		}
-		this->createMysqlPartitions(sqlDb, type, next_day);
+		this->createMysqlPartitions(sqlDb, type, next_day, tables);
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
 	}
 }
 
-void CustomHeaders::createMysqlPartitions(class SqlDb *sqlDb, char type, int next_day) {
+void CustomHeaders::createMysqlPartitions(class SqlDb *sqlDb, char type, int next_day, list<string> *tables) {
 	extern bool opt_cdr_partition_oldver;
 	list<string>::iterator iter;
-	for(iter = allNextTables.begin(); iter != allNextTables.end(); iter++) {
+	for(iter = tables->begin(); iter != tables->end(); iter++) {
 		_createMysqlPartition(*iter, type, next_day, opt_cdr_partition_oldver, NULL, sqlDb);
 	}
 }
@@ -15857,20 +15888,22 @@ void CustomHeaders::createMysqlPartitions(class SqlDb *sqlDb, const char *tableN
 }
 
 string CustomHeaders::getQueryForSaveUseInfo(Call* call, int type, sCH_Content *ch_content) {
+	CallBranch *c_branch = call->branch_main();
 	if(!ch_content) {
-		if(call) {
-			ch_content = getCustomHeadersCallContent(call->branch_main(), type);
-		}
+		ch_content = getCustomHeadersCallContent(c_branch, type);
 		if(!ch_content) {
 			return("");
 		}
 	}
-	return(getQueryForSaveUseInfo(call->calltime_us(), ch_content));
+	return(getQueryForSaveUseInfo(call->calltime_us(), ch_content, c_branch));
 }
 
-string CustomHeaders::getQueryForSaveUseInfo(u_int64_t time_us, sCH_Content *ch_content) {
+string CustomHeaders::getQueryForSaveUseInfo(u_int64_t time_us, sCH_Content *ch_content, CallBranch *c_branch) {
 	string query = "";
 	if(TIME_US_TO_S(time_us) > this->lastTimeSaveUseInfo + 60) {
+		if(c_branch) {
+			c_branch->custom_headers_content_lock();
+		}
 		for(map<sCH_index, sCH_ContentData*>::iterator iter = ch_content->data.begin(); iter != ch_content->data.end(); iter++) {
 			if(iter->first.i1 > 0 && iter->first.i1 <= CDR_NEXT_MAX) {
 				sCH_ContentDataItem content = iter->second->getContent();
@@ -15889,14 +15922,21 @@ string CustomHeaders::getQueryForSaveUseInfo(u_int64_t time_us, sCH_Content *ch_
 				}
 			}
 		}
+		if(c_branch) {
+			c_branch->custom_headers_content_unlock();
+		}
 		this->lastTimeSaveUseInfo = TIME_US_TO_S(time_us);
 	}
 	return(query);
 }
 
-void CustomHeaders::createTablesIfNotExists(SqlDb *sqlDb, bool enableOldPartition) {
-	list<string> tables = getAllNextTables();
-	for(list<string>::iterator it = tables.begin(); it != tables.end(); it++) {
+void CustomHeaders::createTablesIfNotExists(SqlDb *sqlDb, bool enableOldPartition, list<string> *tables) {
+	list<string> _tables;
+	if(!tables) {
+		_tables = getAllNextTables();
+		tables = &_tables;
+	}
+	for(list<string>::iterator it = tables->begin(); it != tables->end(); it++) {
 		createTableIfNotExists(it->c_str(), sqlDb, enableOldPartition);
 	}
 }
@@ -15989,10 +16029,17 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 
 void CustomHeaders::checkTablesColumns(SqlDb *sqlDb, bool enableAlter) {
 	list<string> tables = getAllNextTables();
-	unsigned tableIndex = 0;
 	for(list<string>::iterator it = tables.begin(); it != tables.end(); it++) {
-		checkTableColumns(it->c_str(), tableIndex++, sqlDb, enableAlter);
+		checkTableColumns(it->c_str(), tableNameToIndex(it->c_str()), sqlDb, enableAlter);
 	}
+}
+
+bool CustomHeaders::relTimeColumnIsMs(const char *tableName, SqlDb *sqlDb) {
+	return(sqlDb->getTypeColumn(tableName, this->relTimeColumn).find("(3)") != string::npos);
+}
+
+int CustomHeaders::tableNameToIndex(const char *tableName) {
+	return(atoi(tableName + this->nextTablePrefix.length()) - 1);
 }
 
 void CustomHeaders::checkTableColumns(const char *tableName, int tableIndex, SqlDb *sqlDb, bool enableAlter) {
@@ -16005,8 +16052,10 @@ void CustomHeaders::checkTableColumns(const char *tableName, int tableIndex, Sql
 	map<string, u_int64_t> tableSize;
 	for(int pass = 0; pass < (enableAlter ? 2 : 1); pass++) {
 		string alter_ms;
-		bool col_is_high_prec = sqlDb->getTypeColumn(tableName, this->relTimeColumn).find("(3)") != string::npos;
+		bool col_is_high_prec = this->relTimeColumnIsMs(tableName, sqlDb);
+		lock_custom_headers();
 		calldate_ms[tableIndex] = col_is_high_prec && opt_time_precision_in_ms;
+		unlock_custom_headers();
 		if(opt_time_precision_in_ms && !col_is_high_prec && pass == 0 && enableAlter) {
 			alter_ms = "modify column " + this->relTimeColumn + " " + sqlDb_mysql->column_type_datetime_ms() + " not null";
 			if(sqlDb_mysql->isSupportForDatetimeMs()) {
@@ -16055,11 +16104,17 @@ void CustomHeaders::createColumnsForFixedHeaders(SqlDb *sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
+	list<string> fixedHeaders;
+	lock_custom_headers();
 	for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
 		if(iter->first.i1 == 0) {
-			if(!sqlDb->existsColumn(this->fixedTable, "custom_header__" + iter->second.first_header())) {
-				sqlDb->query(string("ALTER TABLE `") + this->fixedTable + "` ADD COLUMN `custom_header__" + iter->second.first_header() + "` VARCHAR(255);");
-			}
+			fixedHeaders.push_back(iter->second.first_header());
+		}
+	}
+	unlock_custom_headers();
+	for(list<string>::iterator iter = fixedHeaders.begin(); iter != fixedHeaders.end(); iter++) {
+		if(!sqlDb->existsColumn(this->fixedTable, "custom_header__" + *iter)) {
+			sqlDb->query(string("ALTER TABLE `") + this->fixedTable + "` ADD COLUMN `custom_header__" + *iter + "` VARCHAR(255);");
 		}
 	}
 	if(_createSqlObject) {
@@ -16188,6 +16243,7 @@ string CustomHeaders::dump() {
 	       << "fixedTable: " << fixedTable << endl
 	       << "relIdColumn: " << relIdColumn << endl
 	       << "relTimeColumn: " << relTimeColumn << endl;
+	lock_custom_headers();
 	outStr << "custom_headers: " << endl;
 	for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
 		outStr << "   " << iter->first.i1 << " / " << iter->first.i2 << endl;
@@ -16201,10 +16257,13 @@ string CustomHeaders::dump() {
 		}
 		calldate_ms_mpl += intToString(iter->first) + ":" + intToString(iter->second);
 	}
+	unlock_custom_headers();
 	outStr << "calldate_ms: " << calldate_ms_mpl << endl;
 	outStr << "loadTime: " << loadTime << endl
 	       << "lastTimeSaveUseInfo: " << lastTimeSaveUseInfo << endl
-	       << "_sync_custom_headers: " << _sync_custom_headers << endl;
+	       << "_sync_custom_headers: " << ATOMIC_LOAD(_sync_custom_headers.sync)
+	       << " / owner: " << (unsigned long)ATOMIC_LOAD(_sync_custom_headers.owner)
+	       << " / depth: " << ATOMIC_LOAD(_sync_custom_headers.depth) << endl;
 	return(outStr.str());
 }
 
@@ -16225,7 +16284,10 @@ bool NoHashMessageRule::checkNoHash(Call *call) {
 	}
 	bool noHashByHeader = false;
 	if(this->customHeader_ok) {
-		string header = call->branch_main()->custom_headers_content_message.getContent(this->customHeader_pos[0], this->customHeader_pos[1]).content;
+		CallBranch *c_branch = call->branch_main();
+		c_branch->custom_headers_content_lock();
+		string header = c_branch->custom_headers_content_message.getContent(this->customHeader_pos[0], this->customHeader_pos[1]).content;
+		c_branch->custom_headers_content_unlock();
 		if(header.length()) {
 			if(this->header_regexp.size()) {
 				list<cRegExp*>::iterator iter_header_regexp;
