@@ -6117,7 +6117,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 							ClientThreads.onCall(call->call_id.c_str(),
 									     lastSIPresponseNum, c_branch->callername.c_str(), c_branch->caller.c_str(), call->get_called(c_branch),
 									     call->getSipcallerip(c_branch), call->getSipcalledip(c_branch),
-									     custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str());
+									     custom_headers_cdr ? custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str() : "");
 						}
 					}
 					if(isSendCallInfoReady()) {
@@ -6189,7 +6189,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 					ClientThreads.onCall(call->call_id.c_str(),
 							     lastSIPresponseNum, c_branch->callername.c_str(), c_branch->caller.c_str(), call->get_called(c_branch),
 							     call->getSipcallerip(c_branch), call->getSipcalledip(c_branch),
-							     custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str());
+							     custom_headers_cdr ? custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str() : "");
 				}
 			}
 			if(isSendCallInfoReady()) {

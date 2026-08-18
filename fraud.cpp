@@ -3270,7 +3270,9 @@ void FraudAlerts::completeCallInfo(sFraudCallInfo *callInfo, Call *call,
 	if(useUserRestriction_custom_headers) {
 		extern CustomHeaders *custom_headers_cdr;
 		callInfo->custom_headers = new FILE_LINE(0) map<string, string>;
-		custom_headers_cdr->getHeaderValues(call, INVITE, callInfo->custom_headers);
+		if(custom_headers_cdr) {
+			custom_headers_cdr->getHeaderValues(call, INVITE, callInfo->custom_headers);
+		}
 	}
 	switch(typeCallInfo) {
 	case sFraudCallInfo::typeCallInfo_beginCall:

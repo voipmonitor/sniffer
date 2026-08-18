@@ -399,7 +399,7 @@ void SendCallInfo::getSciFromCall(sSciInfo *sci, CallBranch *c_branch,
 	} else {
 		sci->packet_info_set = false;
 	}
-	if(sendCallInfo->isSetCustHeaders) {
+	if(sendCallInfo->isSetCustHeaders && custom_headers_cdr) {
 		custom_headers_cdr->getNameValues(call, INVITE, &sci->custHeaders);
 	}
 }
