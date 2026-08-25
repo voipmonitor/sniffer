@@ -1522,12 +1522,20 @@ void *TarQueue::tarthreadworker(void *arg) {
 				tarthread->qunlock();
 				for(list<string>::iterator itTars = listTars.begin();  itTars != listTars.end(); itTars++) {
 					string processTarName = *itTars;
-					tarthreads_tq *processTarQueue = tarthread->queue_data[*itTars];
+					tarthread->qlock();
+					std::map<string, tarthreads_tq*>::iterator iter_queue_data = tarthread->queue_data.find(processTarName);
+					if(iter_queue_data == tarthread->queue_data.end()) {
+						tarthread->qunlock();
+						continue;
+					}
+					tarthreads_tq *processTarQueue = iter_queue_data->second;
+					size_t length_list = processTarQueue->size();
+					std::list<data_t>::iterator begin_list = processTarQueue->begin();
+					tarthread->qunlock();
 					bool doProcessDataTar = false;
 					size_t index_list = 0;
-					size_t length_list = processTarQueue->size();
 					size_t count_empty = 0;
-					for(std::list<data_t>::iterator it = processTarQueue->begin(); index_list < length_list;) {
+					for(std::list<data_t>::iterator it = begin_list; index_list < length_list;) {
 						if(index_list++) ++it;
 						if(!it->buffer) {
 							++count_empty;
@@ -1635,18 +1643,34 @@ void *TarQueue::tarthreadworker(void *arg) {
 						__prof_sum_4 += __prof_end2 - __prof_i2;
 						#endif
 					}
-					bool eraseTarQueueItem = false;
+					tarthreads_tq *eraseTarQueue = NULL;
 					//if(!tarthread->queue[processTar].size()) {
 					if(processTarQueue->size() == count_empty) {
 						pthread_mutex_lock(&this2->tarslock);
 						if(this2->tars.find(processTarName) == this2->tars.end()) {
-							delete tarthread->queue_data[processTarName];
-							tarthread->queue_data.erase(processTarName);
-							eraseTarQueueItem = true;
+							tarthread->qlock();
+							bool processTarQueueIsEmpty = true;
+							for(std::list<data_t>::iterator it = processTarQueue->begin(); it != processTarQueue->end(); it++) {
+								if(it->buffer) {
+									processTarQueueIsEmpty = false;
+									break;
+								}
+							}
+							if(processTarQueueIsEmpty) {
+								std::map<string, tarthreads_tq*>::iterator iter_erase = tarthread->queue_data.find(processTarName);
+								if(iter_erase != tarthread->queue_data.end() && iter_erase->second == processTarQueue) {
+									eraseTarQueue = iter_erase->second;
+									tarthread->queue_data.erase(iter_erase);
+								}
+							}
+							tarthread->qunlock();
 						}
 						pthread_mutex_unlock(&this2->tarslock);
+						if(eraseTarQueue) {
+							delete eraseTarQueue;
+						}
 					}
-					if(!eraseTarQueueItem) {
+					if(!eraseTarQueue) {
 						if(count_empty > processTarQueue->size() / 5) {
 							tarthread->qlock();
 							for(std::list<data_t>::iterator it = processTarQueue->begin(); it != processTarQueue->end();) {
@@ -1661,7 +1685,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 					}
 					if(!doProcessDataTar) {
 						unsigned int lastAddTime = 0;
-						if(!eraseTarQueueItem) {
+						if(!eraseTarQueue) {
 							tarthread->qlock();
 							lastAddTime = processTarQueue->getLastAddTime();
 							tarthread->qunlock();

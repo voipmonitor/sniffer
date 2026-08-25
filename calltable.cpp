@@ -13036,7 +13036,7 @@ Calltable::mgcpCleanupTransactions(Call *call) {
 	for(list<u_int32_t>::iterator iter_transactions = call->mgcp_transactions.begin(); iter_transactions != call->mgcp_transactions.end(); iter_transactions++) {
 		sStreamId2 streamId2(c_branch->saddr, c_branch->sport, c_branch->daddr, c_branch->dport, *iter_transactions, true);
 		map<sStreamId2, Call*>::iterator iter_streamid2 = calls_by_stream_id2_listMAP.find(streamId2);
-		if(iter_streamid2 != calls_by_stream_id2_listMAP.end()) {
+		if(iter_streamid2 != calls_by_stream_id2_listMAP.end() && iter_streamid2->second == call) {
 			calls_by_stream_id2_listMAP.erase(iter_streamid2);
 		}
 	}
@@ -13048,7 +13048,7 @@ Calltable::mgcpCleanupStream(Call *call) {
 	sStreamId streamId(c_branch->saddr, c_branch->sport, c_branch->daddr, c_branch->dport, true);
 	map<sStreamId, Call*>::iterator iter_stream = calls_by_stream_listMAP.find(streamId);
 	if(iter_stream != calls_by_stream_listMAP.end() && iter_stream->second == call) {
-		calls_by_stream_listMAP.erase(streamId);
+		calls_by_stream_listMAP.erase(iter_stream);
 	}
 }
 
@@ -14011,14 +14011,18 @@ void Calltable::cleanup_calls__remove_calls_from_map(sCleanupCallsData *cc_data)
 				}
 			}
 		}
+		for(unsigned i = 0; i < cc_data->closeCallsCount; i++) {
+			Call *call = cc_data->closeCalls[i];
+			if(call->typeIs(MGCP)) {
+				mgcpCleanupTransactions(call);
+				mgcpCleanupStream(call);
+			}
+		}
 		unlock_calls_listMAP();
 		for(unsigned i = 0; i < cc_data->closeCallsCount; i++) {
 			Call *call = cc_data->closeCalls[i];
 			if(!call->typeIs(MGCP)) {
 				call->removeMergeCalls();
-			} else {
-				mgcpCleanupTransactions(call);
-				mgcpCleanupStream(call);
 			}
 		}
 	}
