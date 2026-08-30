@@ -390,10 +390,24 @@ bool cSslDsslSession::restore_session_data(const char *data) {
 			return(false);
 		}
 	} else {
+		/* TLS 1.2 externally-seeded row (tls_ws=0): row was INSERTed by an
+		 * external tool from a keylog file, not by store_session(), so it
+		 * carries only crypto material and no runtime state.
+		 *
+		 * ssls_generate_keys() alone derives key material but doesn't build
+		 * the SslDecryptSession wrapper ssl_decrypt_record() needs — silent
+		 * decode failure. Instead, zero seq/state and call
+		 * tls_12_generate_keys(restore=true), same as the tls_ws=1 branch.
+		 * Any seq drift is absorbed by the AEAD try-seq walk
+		 * (±ssl_aead_try_seq_backward/forward). TLS 1.3 already handled. */
 		hexdecode(session->server_random, jsonData.getValue("server_random").c_str(), sizeof(session->server_random));
 		hexdecode(session->master_secret, jsonData.getValue("master_secret").c_str(), sizeof(session->master_secret));
-		if(ssls_generate_keys(session) != DSSL_RC_OK ||
-		   ssls_set_session_version(session, session->version) != DSSL_RC_OK) {
+		session->tls_session_server_seq =
+		session->tls_session_server_seq_saved = 0;
+		session->tls_session_client_seq =
+		session->tls_session_client_seq_saved = 0;
+		session->tls_session_state = 0;
+		if(!tls_12_generate_keys(session, true)) {
 			return(false);
 		}
 	}
