@@ -390,10 +390,41 @@ bool cSslDsslSession::restore_session_data(const char *data) {
 			return(false);
 		}
 	} else {
+		/* TLS 1.2 (or older) externally-seeded row: tls_ws=0 means the row
+		 * was written by something other than store_session() — typically an
+		 * external tool parsing a keylog file (e.g. kamailio's TUPLE-annotated
+		 * NSS log) and INSERTing into ssl_sessions so the sniffer can decrypt
+		 * a session it never observed the handshake for. Such rows carry only
+		 * crypto material (server_random + master_secret + cipher_suite +
+		 * version) — no runtime state.
+		 *
+		 * The pre-existing fall-through called ssls_generate_keys() which
+		 * derives correct key material BUT does not create the
+		 * SslDecryptSession wrapper that ssl_decrypt_record() needs
+		 * downstream — silent decode failure, no CDR. Verified 2026-08-30 on
+		 * julien-dev with a hand-crafted INSERT.
+		 *
+		 * Fix: seed seq/state to fresh-handshake defaults (all zero — matches
+		 * ssl_decode_hs.c:351's live path which also lets SslDecoder's
+		 * constructor-initialized seq=0 stand) and call tls_12_generate_keys
+		 * with restore=true, the same path the tls_ws=1 branch uses. Any
+		 * drift between our zero seq and the actual wire seq is absorbed by
+		 * the AEAD try-seq walk (±TRY_SEQ_BACKWARD/FORWARD = ±1000 by
+		 * default, dssl/tls.cpp:1803).
+		 *
+		 * TLS 1.3 externally-seeded rows work without modification: the
+		 * TLS 1.3 branch above already accepts all 6 traffic secrets from
+		 * JSON, defaults seq_server/seq_client to atoll("") = 0 when the
+		 * JSON lacks those keys, and calls tls_13_generate_keys(true). Only
+		 * TLS 1.2 needed this fix. */
 		hexdecode(session->server_random, jsonData.getValue("server_random").c_str(), sizeof(session->server_random));
 		hexdecode(session->master_secret, jsonData.getValue("master_secret").c_str(), sizeof(session->master_secret));
-		if(ssls_generate_keys(session) != DSSL_RC_OK ||
-		   ssls_set_session_version(session, session->version) != DSSL_RC_OK) {
+		session->tls_session_server_seq =
+		session->tls_session_server_seq_saved = 0;
+		session->tls_session_client_seq =
+		session->tls_session_client_seq_saved = 0;
+		session->tls_session_state = 0;
+		if(!tls_12_generate_keys(session, true)) {
 			return(false);
 		}
 	}
