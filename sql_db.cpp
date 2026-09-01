@@ -3486,7 +3486,27 @@ string SqlDb_mysql::getOptimalCompressType(bool memoryEngine, bool useCache) {
 		return("");
 	}
 	if(opt_mysqlcompress_type[0]) {
-		return(opt_mysqlcompress_type);
+		int *state = memoryEngine ? &configCompressTypeState_memoryEngine : &configCompressTypeState;
+		if(!*state) {
+			clearLastError();
+			if(testCreateTable(memoryEngine, opt_mysqlcompress_type)) {
+				*state = 1;
+			} else {
+				unsigned int err = getLastError();
+				if(err && (err < CR_MIN_ERROR || err > CR_MAX_ERROR) && connected()) {
+					*state = -1;
+					cLogSensor::log(cLogSensor::warning,
+							"unsupported mysqlcompress_type",
+							"the configured mysqlcompress_type '%s' is not supported by your database server (%s, %s engine) - the compression type will be selected automatically",
+							opt_mysqlcompress_type,
+							getDbName().c_str(),
+							memoryEngine ? "memory" : "innodb");
+				}
+			}
+		}
+		if(*state > 0) {
+			return(opt_mysqlcompress_type);
+		}
 	}
 	string dbname = getDbName();
 	if(dbname == "mysql") {
@@ -3631,6 +3651,9 @@ void SqlDb_mysql::setSelectedCompressType(bool memoryEngine, const char *type, c
 }
 
 bool SqlDb_mysql::connect_options_ok = false;
+
+int SqlDb_mysql::configCompressTypeState = 0;
+int SqlDb_mysql::configCompressTypeState_memoryEngine = 0;
 
 
 SqlDb_odbc_bindBufferItem::SqlDb_odbc_bindBufferItem(SQLUSMALLINT colNumber, string fieldName, SQLSMALLINT dataType, SQLULEN columnSize, SQLHSTMT hStatement) {

@@ -907,6 +907,8 @@ private:
 	string selectedCompressType_memoryEngine;
 	string selectedCompressSubtype_memoryEngine;
 	static bool connect_options_ok;
+	static int configCompressTypeState;
+	static int configCompressTypeState_memoryEngine;
 };
 
 class SqlDb_odbc_bindBufferItem {
