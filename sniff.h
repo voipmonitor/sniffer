@@ -750,7 +750,6 @@ struct packet_s_process_rtp_call_info {
 	int8_t iscaller;
 	bool is_rtcp;
 	s_sdp_flags sdp_flags;
-	bool use_sync;
 	bool multiple_calls;
 	u_int8_t thread_num_rd;
 };

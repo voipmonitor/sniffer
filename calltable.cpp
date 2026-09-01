@@ -13763,7 +13763,6 @@ void Calltable::cleanup_calls__process_calls(sCleanupCallsData *cc_data) {
 	cc_data->rejectedCallsCount = 0;
 	for(unsigned iCalls = 0; iCalls < cc_data->allCallsCount; iCalls++) {
 		Call *call = cc_data->allCalls[iCalls];
-		CallBranch *c_branch = call->branch_main();
 		++cc_data->stat.all;
 		u_int32_t currTimeS_unshift = usePacketTime && cc_data->packet_time_s ?
 					       cc_data->packet_time_s :
@@ -13919,13 +13918,21 @@ void Calltable::cleanup_calls__process_calls(sCleanupCallsData *cc_data) {
 				call->removeFindTables(NULL, true);
 			#endif
 			++call->attemptsClose;
-			if(!cc_data->closeAll &&
-			   ((hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
-			    call->isRtpPacketsInQueue() ||
-			    call->useInListCalls)) {
-				closeCall = false;
-				++cc_data->rejectedCallsCount;
-				++cc_data->stat.rejected_hash_or_rtppacketsinqueue;
+			if(!cc_data->closeAll) {
+				if(!(opt_safe_cleanup_calls && !opt_quick_save_cdr) &&
+				   hash_modify_queue_length_ms && call->hash_queue_counter > 0) {
+					closeCall = false;
+					++cc_data->rejectedCallsCount;
+					++cc_data->stat.rejected_hash;
+				} else if(call->isRtpPacketsInQueue()) {
+					closeCall = false;
+					++cc_data->rejectedCallsCount;
+					++cc_data->stat.rejected_rtppacketsinqueue;
+				} else if(call->useInListCalls) {
+					closeCall = false;
+					++cc_data->rejectedCallsCount;
+					++cc_data->stat.rejected_use_in_list_calls;
+				}
 			}
 			if(opt_safe_cleanup_calls && !opt_quick_save_cdr && !cc_data->closeAll && closeCall) {
 				if(!call->stopProcessing) {
@@ -13933,10 +13940,14 @@ void Calltable::cleanup_calls__process_calls(sCleanupCallsData *cc_data) {
 					call->stopProcessingAt_s = currTimeS;
 					closeCall = false;
 					++cc_data->rejectedCallsCount;
-					++cc_data->stat.rejected_set_stop_processing;;
+					++cc_data->stat.rejected_set_stop_processing;
 					/*
 					cout << " *** set stop processing" << endl;
 					*/
+				} else if(hash_modify_queue_length_ms && call->hash_queue_counter > 0) {
+					closeCall = false;
+					++cc_data->rejectedCallsCount;
+					++cc_data->stat.rejected_hash;
 				} else if(currTimeS < call->stopProcessingAt_s + (opt_safe_cleanup_calls == 2 ? 15 : 5) ||
 					  (opt_safe_cleanup_calls == 2 && TIME_US_TO_S(call->first_packet_time_us) / 60 >= currTimeS_unshift / 60)) {
 					closeCall = false;

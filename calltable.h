@@ -3448,7 +3448,7 @@ public:
 	volatile int attemptsClose;
 	volatile bool stopProcessing;
 	u_int32_t stopProcessingAt_s;
-	bool bad_flags_warning[2];
+	bool bad_flags_warning[3];
 	volatile int useInListCalls;
 	bool use_rtcp_mux;
 	bool use_sdp_sendonly;
@@ -3759,7 +3759,9 @@ public:
 		u_int32_t in_preprocess_issue;
 		u_int32_t sp_sent_close_call;
 		u_int32_t sp_arrived_rtp_streams;
-		u_int32_t rejected_hash_or_rtppacketsinqueue;
+		u_int32_t rejected_hash;
+		u_int32_t rejected_rtppacketsinqueue;
+		u_int32_t rejected_use_in_list_calls;
 		u_int32_t rejected_set_stop_processing;
 		u_int32_t rejected_wait_for_stop_processing;
 		u_int32_t ok;
@@ -3783,7 +3785,9 @@ public:
 				if(in_preprocess_issue) str << "in_preprocess_issue " << in_preprocess_issue << endl;
 				if(sp_sent_close_call) str << "sp_sent_close_call " << sp_sent_close_call << endl;
 				if(sp_arrived_rtp_streams) str << "sp_arrived_rtp_streams " << sp_arrived_rtp_streams << endl;
-				if(rejected_hash_or_rtppacketsinqueue) str << "rejected_hash_or_rtppacketsinqueue " << rejected_hash_or_rtppacketsinqueue << endl;
+				if(rejected_hash) str << "rejected_hash " << rejected_hash << endl;
+				if(rejected_rtppacketsinqueue) str << "rejected_rtppacketsinqueue " << rejected_rtppacketsinqueue << endl;
+				if(rejected_use_in_list_calls) str << "rejected_use_in_list_calls " << rejected_use_in_list_calls << endl;
 				if(rejected_set_stop_processing) str << "rejected_set_stop_processing " << rejected_set_stop_processing << endl;
 				if(rejected_wait_for_stop_processing) str << "rejected_wait_for_stop_processing " << rejected_wait_for_stop_processing << endl;
 				if(ok) str << "ok " << ok << endl;
