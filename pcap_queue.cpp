@@ -3872,6 +3872,12 @@ void PcapQueue_readFromInterface_base::restoreOneshotBuffer() {
 	}
 }
 
+void PcapQueue_readFromInterface_base::pcapBreakloopIface() {
+	if(this->pcapHandle && !opt_pb_read_from_file[0] && !opt_scanpcapdir[0]) {
+		pcap_breakloop(this->pcapHandle);
+	}
+}
+
 /*
 inline void __pcap_dispatch_handler(u_char *user, const pcap_pkthdr *header, const u_char *data) {
 	if(header && data) {
@@ -6390,6 +6396,7 @@ void PcapQueue_readFromInterfaceThread::terminate() {
 		this->serviceThread->terminate();
 	}
 	this->threadDoTerminate = true;
+	this->pcapBreakloopIface();
 }
 
 const char *PcapQueue_readFromInterfaceThread::getTypeThreadName() {
@@ -6493,6 +6500,7 @@ void PcapQueue_readFromInterface::terminate() {
 		this->readThreads[i]->terminate();
 	}
 	PcapQueue::terminate();
+	this->pcapBreakloopIface();
 }
 
 bool PcapQueue_readFromInterface::init() {
@@ -6925,15 +6933,17 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 	}
 	
 	while(this->readThreadsCount) {
+		this->readThreads[this->readThreadsCount - 1]->terminate();
 		unsigned counter = 0;
 		while(!this->readThreads[this->readThreadsCount - 1]->isTerminated() && counter < 50) {
 			USLEEP(100000);
 			++counter;
 		}
 		if(!this->readThreads[this->readThreadsCount - 1]->isTerminated()) {
-			this->readThreads[this->readThreadsCount - 1]->restoreOneshotBuffer();
 			this->readThreads[this->readThreadsCount - 1]->cancelThread();
 		}
+		pthread_join(this->readThreads[this->readThreadsCount - 1]->threadHandle, NULL);
+		this->readThreads[this->readThreadsCount - 1]->restoreOneshotBuffer();
 		delete this->readThreads[this->readThreadsCount - 1];
 		--this->readThreadsCount;
 	}
@@ -7000,15 +7010,17 @@ void PcapQueue_readFromInterface::threadFunction_blocks() {
 	}
 
 	while(this->readThreadsCount) {
+		this->readThreads[this->readThreadsCount - 1]->terminate();
 		unsigned counter = 0;
 		while(!this->readThreads[this->readThreadsCount - 1]->isTerminated() && counter < 50) {
 			USLEEP(100000);
 			++counter;
 		}
 		if(!this->readThreads[this->readThreadsCount - 1]->isTerminated()) {
-			this->readThreads[this->readThreadsCount - 1]->restoreOneshotBuffer();
 			this->readThreads[this->readThreadsCount - 1]->cancelThread();
 		}
+		pthread_join(this->readThreads[this->readThreadsCount - 1]->threadHandle, NULL);
+		this->readThreads[this->readThreadsCount - 1]->restoreOneshotBuffer();
 		delete this->readThreads[this->readThreadsCount - 1];
 		--this->readThreadsCount;
 	}

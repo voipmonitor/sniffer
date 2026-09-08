@@ -1301,6 +1301,7 @@ protected:
 	inline bool check_protocol(pcap_pkthdr* header, u_char* packet, sCheckProtocolData *checkProtocolData);
 	inline bool check_filter_ip(pcap_pkthdr* header, u_char* packet, sCheckProtocolData *checkProtocolData);
 	void restoreOneshotBuffer();
+	void pcapBreakloopIface();
 	inline int pcap_dispatch(pcap_t *pcapHandle);
 	inline int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			       pcap_block_store *block_store, int block_store_index,
