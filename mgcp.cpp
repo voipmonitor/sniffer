@@ -194,7 +194,7 @@ void *handle_mgcp(packet_s_process *packetS, bool batch_process) {
 				unsigned long int flags = 0;
 				sNatAliases *nat_aliases = NULL;
 				set_global_flags(flags);
-				IPfilter::add_call_flags(&flags, &nat_aliases, packetS->saddr_(), packetS->daddr_());
+				IPfilter::add_call_flags(&flags, &nat_aliases, packetS->saddr_(), packetS->daddr_(), packetS->sensor_id_());
 				if(flags & FLAG_SKIPCDR) {
 					if(nat_aliases) {
 						delete nat_aliases;

@@ -3894,11 +3894,12 @@ inline unsigned int setCallFlags(unsigned long int flags, sNatAliases **nat_alia
 				 const char *caller, const char *called,
 				 const char *caller_domain, const char *called_domain,
 				 ParsePacket::ppContentsX *parseContents,
+				 int sensor_id,
 				 bool reconfigure) {
 	unsigned long int flags_old = flags;
 	string nat_aliases_str_old = "";
 	cFilters::applyReload();
-	IPfilter::add_call_flags(&flags, nat_aliases, ip_src, ip_dst, reconfigure);
+	IPfilter::add_call_flags(&flags, nat_aliases, ip_src, ip_dst, sensor_id, reconfigure);
 	if(sverb.dump_call_flags) {
 		if(flags != flags_old) {
 			cout << "set flags for ip " << ip_src.getString() << " -> " << ip_dst.getString() << " : " << printCallFlags(flags) << endl;
@@ -3913,7 +3914,7 @@ inline unsigned int setCallFlags(unsigned long int flags, sNatAliases **nat_alia
 			}
 		}
 	}
-	TELNUMfilter::add_call_flags(&flags, nat_aliases, caller, called, reconfigure);
+	TELNUMfilter::add_call_flags(&flags, nat_aliases, caller, called, sensor_id, reconfigure);
 	if(sverb.dump_call_flags) {
 		if(flags != flags_old) {
 			cout << "set flags for number " << caller << " -> " << called << " : " << printCallFlags(flags) << endl;
@@ -3928,7 +3929,7 @@ inline unsigned int setCallFlags(unsigned long int flags, sNatAliases **nat_alia
 			}
 		}
 	}
-	DOMAINfilter::add_call_flags(&flags, nat_aliases, caller_domain, called_domain, reconfigure);
+	DOMAINfilter::add_call_flags(&flags, nat_aliases, caller_domain, called_domain, sensor_id, reconfigure);
 	if(sverb.dump_call_flags) {
 		if(flags != flags_old) {
 			cout << "set flags for domain " << caller_domain << " -> " << called_domain << " : " << printCallFlags(flags) << endl;
@@ -3943,7 +3944,7 @@ inline unsigned int setCallFlags(unsigned long int flags, sNatAliases **nat_alia
 			}
 		}
 	}
-	SIP_HEADERfilter::add_call_flags(parseContents, &flags, nat_aliases, reconfigure);
+	SIP_HEADERfilter::add_call_flags(parseContents, &flags, nat_aliases, sensor_id, reconfigure);
 	if(sverb.dump_call_flags) {
 		if(flags != flags_old) {
 			cout << "set flags for headers : " << printCallFlags(flags) << endl;
@@ -4349,7 +4350,8 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 			     packetS->saddr_(), packetS->daddr_(),
 			     data_callerd.caller.c_str(), data_callerd.called().c_str(),
 			     data_callerd.caller_domain.c_str(), data_callerd.called_domain().c_str(),
-			     &packetS->parseContents);
+			     &packetS->parseContents,
+			     packetS->sensor_id_());
 	
 	if(flags & FLAG_SKIPCDR) {
 		if(nat_aliases) {
@@ -4480,7 +4482,8 @@ inline Call *new_premature_response_call_register(packet_s_process *packetS, int
 			     packetS->saddr_(), packetS->daddr_(),
 			     data_callerd.caller.c_str(), data_callerd.called().c_str(),
 			     data_callerd.caller_domain.c_str(), data_callerd.called_domain().c_str(),
-			     &packetS->parseContents);
+			     &packetS->parseContents,
+			     packetS->sensor_id_());
 	if(nat_aliases) {
 		delete nat_aliases;
 	}
@@ -5051,7 +5054,8 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 				     packetS->saddr_(), packetS->daddr_(),
 				     data_callerd.caller.c_str(), data_callerd.called().c_str(),
 				     data_callerd.caller_domain.c_str(), data_callerd.called_domain().c_str(),
-				     &packetS->parseContents);
+				     &packetS->parseContents,
+				     packetS->sensor_id_());
 		if(flags & FLAG_SKIPCDR) {
 			if(nat_aliases) {
 				delete nat_aliases;
@@ -5142,7 +5146,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 	
 	if(!packetS->_createCall) {
 		unsigned long int flags = call->flags;
-		if(SIP_HEADERfilter::add_call_flags(&packetS->parseContents, &flags, NULL)) {
+		if(SIP_HEADERfilter::add_call_flags(&packetS->parseContents, &flags, NULL, packetS->sensor_id_())) {
 			if(sverb.dump_call_flags) {
 				if(flags != call->flags) {
 					cout << "set flags for headers (re-evaluation) " << call->call_id << " : " << printCallFlags(flags) << endl;
@@ -6360,6 +6364,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 						   c_branch->caller.c_str(), call->get_called(c_branch),
 						   c_branch->caller_domain.c_str(), call->get_called_domain(c_branch),
 						   &packetS->parseContents,
+						   packetS->sensor_id_(),
 						   true);
 		}
 		if(!(reverseInviteSdaddr || (in_dialog_invite && reverseInviteSdaddr_ignore_port) || reverseInviteSdaddr_by_tag)) {
@@ -6997,7 +7002,8 @@ void process_packet_sip_register(packet_s_process *packetS) {
 					     packetS->saddr_(), packetS->daddr_(),
 					     data_callerd.caller.c_str(), data_callerd.called().c_str(),
 					     data_callerd.caller_domain.c_str(), data_callerd.called_domain().c_str(),
-					     &packetS->parseContents);
+					     &packetS->parseContents,
+					     packetS->sensor_id_());
 			if(flags & FLAG_SKIPCDR) {
 				if(nat_aliases) {
 					delete nat_aliases;
@@ -7608,7 +7614,7 @@ Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort de
 	unsigned long int flags = 0;
 	sNatAliases *nat_aliases = NULL;
 	set_global_flags(flags);
-	IPfilter::add_call_flags(&flags, &nat_aliases, saddr, daddr);
+	IPfilter::add_call_flags(&flags, &nat_aliases, saddr, daddr, sensor_id);
 	if(flags & FLAG_SKIPCDR) {
 		if(nat_aliases) {
 			delete nat_aliases;

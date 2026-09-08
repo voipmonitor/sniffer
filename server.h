@@ -362,6 +362,7 @@ protected:
 	cSnifferServer *server;
 private:
 	eTypeConnection typeConnection;
+	int pb_id_sensor;
 };
 
 

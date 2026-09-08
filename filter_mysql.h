@@ -10,6 +10,7 @@
 #include <vector>
 #include <deque>
 #include <deque>
+#include <set>
 
 #include "calltable.h"
 #include "sniff.h"
@@ -177,13 +178,14 @@ private:
 public: 
         IPfilter();
         ~IPfilter();
-        void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
+        void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL, int sensor_id = 0);
 	int _add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, vmIP saddr, vmIP daddr, bool reconfigure = false);
+	void _dump2man(ostringstream &oss);
         static void dump2man(ostringstream &oss);
-	static int add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, vmIP saddr, vmIP daddr, bool reconfigure = false);
-	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
+	static int add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, vmIP saddr, vmIP daddr, int sensor_id, bool reconfigure = false);
+	static void loadActive(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb = NULL);
 	static void freeActive();
-	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
+	static void prepareReload(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb = NULL);
 	static void applyReload();
 	static void lock() {
 		__SYNC_LOCK(_sync);
@@ -201,6 +203,8 @@ private:
 	int count;
 	static IPfilter *filter_active;
 	static IPfilter *filter_reload;
+	static std::map<int, IPfilter*> *filter_active_by_sensor;
+	static std::map<int, IPfilter*> *filter_reload_by_sensor;
 	static volatile bool reload_do;
 	static volatile int _sync;
 	static volatile int _sync_reload;
@@ -248,15 +252,16 @@ private:
 public:
         TELNUMfilter();
         ~TELNUMfilter();
-        void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
+        void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL, int sensor_id = 0);
 	void loadFile(u_int32_t *global_flags);
 	void add_payload(t_payload *payload);
 	int _add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *telnum_src, const char *telnum_dst, bool reconfigure = false);
+	void _dump2man(ostringstream &oss);
         static void dump2man(ostringstream &oss);
-	static int add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *telnum_src, const char *telnum_dst, bool reconfigure = false);
-	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
+	static int add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *telnum_src, const char *telnum_dst, int sensor_id, bool reconfigure = false);
+	static void loadActive(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb = NULL);
 	static void freeActive();
-	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
+	static void prepareReload(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb = NULL);
 	static void applyReload();
 	static void lock() {
 		__SYNC_LOCK(_sync);
@@ -274,6 +279,8 @@ private:
 	int count;
 	static TELNUMfilter *filter_active;
 	static TELNUMfilter *filter_reload;
+	static std::map<int, TELNUMfilter*> *filter_active_by_sensor;
+	static std::map<int, TELNUMfilter*> *filter_reload_by_sensor;
 	static volatile bool reload_do;
 	static volatile int _sync;
 	static volatile int _sync_reload;
@@ -308,13 +315,14 @@ private:
 public: 
 	DOMAINfilter();
 	~DOMAINfilter();
-	void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
+	void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL, int sensor_id = 0);
 	int _add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *domain_src, const char *domain_dst, bool reconfigure = false);
+	void _dump2man(ostringstream &oss);
         static void dump2man(ostringstream &oss);
-	static int add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *domain_src, const char *domain_dst, bool reconfigure = false);
-	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
+	static int add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *domain_src, const char *domain_dst, int sensor_id, bool reconfigure = false);
+	static void loadActive(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb = NULL);
 	static void freeActive();
-	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
+	static void prepareReload(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb = NULL);
 	static void applyReload();
 	static void lock() {
 		__SYNC_LOCK(_sync);
@@ -332,6 +340,8 @@ private:
 	int count;
 	static DOMAINfilter *filter_active;
 	static DOMAINfilter *filter_reload;
+	static std::map<int, DOMAINfilter*> *filter_active_by_sensor;
+	static std::map<int, DOMAINfilter*> *filter_reload_by_sensor;
 	static volatile bool reload_do;
 	static volatile int _sync;
 	static volatile int _sync_reload;
@@ -382,16 +392,17 @@ private:
 public: 
 	SIP_HEADERfilter();
 	~SIP_HEADERfilter();
-	void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
+	void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL, int sensor_id = 0);
 	void loadFile(u_int32_t *global_flags);
 	int _add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, sNatAliases **nat_aliases, bool reconfigure = false);
+	void _dump2man(ostringstream &oss);
         static void dump2man(ostringstream &oss);
 	void _prepareCustomNodes(ParsePacket *parsePacket);
-	static int add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, sNatAliases **nat_aliases, bool reconfigure = false);
+	static int add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, sNatAliases **nat_aliases, int sensor_id, bool reconfigure = false);
 	static void prepareCustomNodes(ParsePacket *parsePacket);
-	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
+	static void loadActive(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb = NULL);
 	static void freeActive();
-	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
+	static void prepareReload(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb = NULL);
 	static void applyReload();
 	static inline unsigned long getLoadTime() {
 		return(loadTime);
@@ -412,6 +423,8 @@ private:
 	int count;
 	static SIP_HEADERfilter *filter_active;
 	static SIP_HEADERfilter *filter_reload;
+	static std::map<int, SIP_HEADERfilter*> *filter_active_by_sensor;
+	static std::map<int, SIP_HEADERfilter*> *filter_reload_by_sensor;
 	static volatile bool reload_do;
 	static volatile unsigned long loadTime;
 	static volatile int _sync;
@@ -426,14 +439,23 @@ public:
 	};
 public:
 	static void loadActive(SqlDb *sqlDb = NULL);
-	static void prepareReload(SqlDb *sqlDb = NULL);
+	static void prepareReload(SqlDb *sqlDb = NULL, bool only_if_reload_requested = false);
 	static void applyReload();
 	static void freeActive();
+	static bool registerPacketbufferSensor(int sensor_id);
+	static bool requestReloadForPacketbufferSensor(int sensor_id);
+	static void getPacketbufferSensors(std::set<int> *pb_sensors);
 	static void lock_reload() {
 		__SYNC_LOCK(_sync_reload);
 	}
 	static void unlock_reload() {
 		__SYNC_UNLOCK(_sync_reload);
+	}
+	static void lock_packetbuffer_sensors() {
+		__SYNC_LOCK(_sync_packetbuffer_sensors);
+	}
+	static void unlock_packetbuffer_sensors() {
+		__SYNC_UNLOCK(_sync_packetbuffer_sensors);
 	}
 	static inline u_int32_t getGlobalFlags() {
 		return(global_flags);
@@ -453,6 +475,11 @@ public:
 	static u_int32_t reload_global_flags;
 	static volatile bool reload_do;
 	static volatile int _sync_reload;
+	static std::set<int> packetbuffer_sensors;
+	// set by the registration of a new packetbuffer sensor or by a reload request for it, cleared when
+	// a reload snapshots the registry - a burst of requests (connects, gui reloads) coalesces to <= 2 reloads
+	static volatile bool reload_requested;
+	static volatile int _sync_packetbuffer_sensors;
 };
 
 inline void set_global_flags(volatile unsigned long int &flags) {

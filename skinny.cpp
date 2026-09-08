@@ -1343,7 +1343,7 @@ Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap
 	unsigned long int flags = 0;
 	sNatAliases *nat_aliases = NULL;
 	set_global_flags(flags);
-	IPfilter::add_call_flags(&flags, &nat_aliases, saddr, daddr);
+	IPfilter::add_call_flags(&flags, &nat_aliases, saddr, daddr, sensor_id);
 	if(flags & FLAG_SKIPCDR) {
 		if(nat_aliases) {
 			delete nat_aliases;

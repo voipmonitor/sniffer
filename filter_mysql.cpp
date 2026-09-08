@@ -11,12 +11,58 @@
 #include <vector>
 
 
-extern bool selectSensorsContainSensorId(string select_sensors);
+extern bool selectSensorsContainSensorId(const string &select_sensors, int sensor_id);
 
 
 using namespace std;
 
 extern int opt_nocdr;
+extern int opt_id_sensor;
+
+
+template <class type_filter>
+static void freeFilterMap(std::map<int, type_filter*> *&filter_map) {
+	if(filter_map) {
+		for(typename std::map<int, type_filter*>::iterator iter = filter_map->begin(); iter != filter_map->end(); iter++) {
+			delete iter->second;
+		}
+		delete filter_map;
+		filter_map = NULL;
+	}
+}
+
+template <class type_filter>
+static void loadFilterMapBySensor(std::map<int, type_filter*> *&filter_map, const std::set<int> &pb_sensors, u_int32_t *global_flags, SqlDb *sqlDb) {
+	if(pb_sensors.size()) {
+		filter_map = new FILE_LINE(0) std::map<int, type_filter*>;
+		for(std::set<int>::const_iterator iter = pb_sensors.begin(); iter != pb_sensors.end(); iter++) {
+			type_filter *filter = new FILE_LINE(0) type_filter;
+			filter->load(global_flags, sqlDb, *iter);
+			(*filter_map)[*iter] = filter;
+		}
+	}
+}
+
+template <class type_filter>
+static type_filter *selectFilterBySensor(type_filter *filter_default, std::map<int, type_filter*> *filter_map, int sensor_id) {
+	if(sensor_id > 0 && filter_map) {
+		typename std::map<int, type_filter*>::iterator iter = filter_map->find(sensor_id);
+		if(iter != filter_map->end()) {
+			return(iter->second);
+		}
+	}
+	return(filter_default);
+}
+
+template <class type_filter>
+static void dumpFilterMapBySensor(std::map<int, type_filter*> *filter_map, ostringstream &oss) {
+	if(filter_map) {
+		for(typename std::map<int, type_filter*>::iterator iter = filter_map->begin(); iter != filter_map->end(); iter++) {
+			oss << dec << "sensor " << iter->first << ":" << endl;
+			iter->second->_dump2man(oss);
+		}
+	}
+}
 
 
 bool isStringNull(string &str) {
@@ -276,7 +322,6 @@ void filter_base::setCallFlagsFromFilterFlags(volatile unsigned long int *callFl
 IPfilter::IPfilter() {
 	first_node = NULL;
 	count = 0;
-	reload_do = false;
 };
 
 // destructor
@@ -289,7 +334,7 @@ IPfilter::~IPfilter() {
 	}
 };
 
-void IPfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
+void IPfilter::load(u_int32_t *global_flags, SqlDb *sqlDb, int sensor_id) {
 	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
 		return;
 	}
@@ -311,7 +356,7 @@ void IPfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
 	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
 	while((row = rows.fetchRow())) {
-		if(!(!existsSensorsTable || selectSensorsContainSensorId(row["sensors_id"]))) {
+		if(!(!existsSensorsTable || selectSensorsContainSensorId(row["sensors_id"], sensor_id))) {
 			continue;
 		}
 		count++;
@@ -387,29 +432,39 @@ int IPfilter::_add_call_flags(volatile unsigned long int *flags, sNatAliases **n
 	return found;
 }
 
-void IPfilter::dump2man(ostringstream &oss) {
+void IPfilter::_dump2man(ostringstream &oss) {
 	t_node *node;
-	lock();
-	for(node = filter_active->first_node; node != NULL; node = node->next) {
+	for(node = first_node; node != NULL; node = node->next) {
 		oss << "ip[" << node->network.getString() << "/" << node->mask << "] direction[" << node->direction << "] flags[0x" << hex << node->flags << "]" << endl;
 	}
+}
+
+void IPfilter::dump2man(ostringstream &oss) {
+	lock();
+	if(filter_active) {
+		filter_active->_dump2man(oss);
+	}
+	dumpFilterMapBySensor(filter_active_by_sensor, oss);
 	unlock();
 }
 
-int IPfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, vmIP saddr, vmIP daddr, bool reconfigure) {
+int IPfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, vmIP saddr, vmIP daddr, int sensor_id, bool reconfigure) {
 	int rslt = 0;
 	lock();
-	if(filter_active) {
-		rslt = filter_active->_add_call_flags(flags, nat_aliases, saddr, daddr, reconfigure);
+	IPfilter *filter = selectFilterBySensor(filter_active, filter_active_by_sensor, sensor_id);
+	if(filter) {
+		rslt = filter->_add_call_flags(flags, nat_aliases, saddr, daddr, reconfigure);
 	}
 	unlock();
 	return(rslt);
 }
 
-void IPfilter::loadActive(u_int32_t *global_flags, SqlDb *sqlDb) {
+void IPfilter::loadActive(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb) {
 	lock();
 	filter_active = new FILE_LINE(4002) IPfilter();
 	filter_active->load(global_flags, sqlDb);
+	freeFilterMap(filter_active_by_sensor);
+	loadFilterMapBySensor(filter_active_by_sensor, pb_sensors, global_flags, sqlDb);
 	unlock();
 }
 
@@ -419,16 +474,19 @@ void IPfilter::freeActive() {
 		delete filter_active;
 		filter_active = NULL;
 	}
+	freeFilterMap(filter_active_by_sensor);
 	unlock();
 }
 
-void IPfilter::prepareReload(u_int32_t *global_flags, SqlDb *sqlDb) {
+void IPfilter::prepareReload(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb) {
 	lock_reload();
 	if(filter_reload) {
 		delete filter_reload;
 	}
+	freeFilterMap(filter_reload_by_sensor);
 	filter_reload = new FILE_LINE(4003) IPfilter;
 	filter_reload->load(global_flags, sqlDb);
+	loadFilterMapBySensor(filter_reload_by_sensor, pb_sensors, global_flags, sqlDb);
 	reload_do = true;
 	syslog(LOG_NOTICE, "IPfilter::prepareReload");
 	unlock_reload();
@@ -439,10 +497,16 @@ void IPfilter::applyReload() {
 		lock_reload();
 		if(reload_do) {
 			lock();
-			delete filter_active;
+			IPfilter *filter_active_old = filter_active;
+			std::map<int, IPfilter*> *filter_active_by_sensor_old = filter_active_by_sensor;
 			filter_active = filter_reload;
+			filter_active_by_sensor = filter_reload_by_sensor;
 			unlock();
+			// free the previous sets outside the lock of the packet path
+			delete filter_active_old;
+			freeFilterMap(filter_active_by_sensor_old);
 			filter_reload = NULL;
+			filter_reload_by_sensor = NULL;
 			reload_do = false;
 			syslog(LOG_NOTICE, "IPfilter::applyReload");
 		}
@@ -452,6 +516,8 @@ void IPfilter::applyReload() {
 
 IPfilter *IPfilter::filter_active = NULL;
 IPfilter *IPfilter::filter_reload = NULL;
+std::map<int, IPfilter*> *IPfilter::filter_active_by_sensor = NULL;
+std::map<int, IPfilter*> *IPfilter::filter_reload_by_sensor = NULL;
 volatile bool IPfilter::reload_do = 0;
 volatile int IPfilter::_sync = 0;
 volatile int IPfilter::_sync_reload = 0;
@@ -466,7 +532,6 @@ TELNUMfilter::TELNUMfilter() {
                 first_node->nodes[i] = NULL;
 	}
 	count = 0;
-	reload_do = false;
 };
 
 // destructor
@@ -538,7 +603,7 @@ void TELNUMfilter::add_payload(t_payload *payload) {
 };
 
 
-void TELNUMfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
+void TELNUMfilter::load(u_int32_t *global_flags, SqlDb *sqlDb, int sensor_id) {
 	this->loadFile(global_flags);
 	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
 		return;
@@ -561,7 +626,7 @@ void TELNUMfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
 	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
 	while((row = rows.fetchRow())) {
-		if(!(!existsSensorsTable || selectSensorsContainSensorId(row["sensors_id"]))) {
+		if(!(!existsSensorsTable || selectSensorsContainSensorId(row["sensors_id"], sensor_id))) {
 			continue;
 		}
 		count++;
@@ -693,12 +758,19 @@ int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, sNatAliases
 	return(found_length > 0);
 }
 
+void TELNUMfilter::_dump2man(ostringstream &oss) {
+	dump_trie_node(oss, first_node);
+	for(size_t i = 0; i < wildcard_payloads.size(); i++) {
+		dump_payload_line(oss, wildcard_payloads[i], true);
+	}
+}
+
 void TELNUMfilter::dump2man(ostringstream &oss) {
 	lock();
-	dump_trie_node(oss, filter_active->first_node);
-	for(size_t i = 0; i < filter_active->wildcard_payloads.size(); i++) {
-		dump_payload_line(oss, filter_active->wildcard_payloads[i], true);
+	if(filter_active) {
+		filter_active->_dump2man(oss);
 	}
+	dumpFilterMapBySensor(filter_active_by_sensor, oss);
 	unlock();
 }
 
@@ -721,20 +793,23 @@ void TELNUMfilter::dump_payload_line(ostringstream &oss, t_payload *p, bool wild
 	oss << endl;
 }
 
-int TELNUMfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *telnum_src, const char *telnum_dst, bool reconfigure) {
+int TELNUMfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *telnum_src, const char *telnum_dst, int sensor_id, bool reconfigure) {
 	int rslt = 0;
 	lock();
-	if(filter_active) {
-		rslt = filter_active->_add_call_flags(flags, nat_aliases, telnum_src, telnum_dst, reconfigure);
+	TELNUMfilter *filter = selectFilterBySensor(filter_active, filter_active_by_sensor, sensor_id);
+	if(filter) {
+		rslt = filter->_add_call_flags(flags, nat_aliases, telnum_src, telnum_dst, reconfigure);
 	}
 	unlock();
 	return(rslt);
 }
 
-void TELNUMfilter::loadActive(u_int32_t *global_flags, SqlDb *sqlDb) {
+void TELNUMfilter::loadActive(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb) {
 	lock();
 	filter_active = new FILE_LINE(4004) TELNUMfilter();
 	filter_active->load(global_flags, sqlDb);
+	freeFilterMap(filter_active_by_sensor);
+	loadFilterMapBySensor(filter_active_by_sensor, pb_sensors, global_flags, sqlDb);
 	unlock();
 }
 
@@ -744,16 +819,19 @@ void TELNUMfilter::freeActive() {
 		delete filter_active;
 		filter_active = NULL;
 	}
+	freeFilterMap(filter_active_by_sensor);
 	unlock();
 }
 
-void TELNUMfilter::prepareReload(u_int32_t *global_flags, SqlDb *sqlDb) {
+void TELNUMfilter::prepareReload(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb) {
 	lock_reload();
 	if(filter_reload) {
 		delete filter_reload;
 	}
+	freeFilterMap(filter_reload_by_sensor);
 	filter_reload = new FILE_LINE(4005) TELNUMfilter;
 	filter_reload->load(global_flags, sqlDb);
+	loadFilterMapBySensor(filter_reload_by_sensor, pb_sensors, global_flags, sqlDb);
 	reload_do = true;
 	syslog(LOG_NOTICE, "TELNUMfilter::prepareReload");
 	unlock_reload();
@@ -764,11 +842,17 @@ void TELNUMfilter::applyReload() {
 		lock_reload();
 		if(reload_do) {
 			lock();
-			delete filter_active;
+			TELNUMfilter *filter_active_old = filter_active;
+			std::map<int, TELNUMfilter*> *filter_active_by_sensor_old = filter_active_by_sensor;
 			filter_active = filter_reload;
+			filter_active_by_sensor = filter_reload_by_sensor;
 			unlock();
+			// free the previous sets outside the lock of the packet path
+			delete filter_active_old;
+			freeFilterMap(filter_active_by_sensor_old);
 			filter_reload = NULL;
-			reload_do = false; 
+			filter_reload_by_sensor = NULL;
+			reload_do = false;
 			syslog(LOG_NOTICE, "TELNUMfilter::applyReload");
 		}
 		unlock_reload();
@@ -777,6 +861,8 @@ void TELNUMfilter::applyReload() {
 
 TELNUMfilter *TELNUMfilter::filter_active = NULL;
 TELNUMfilter *TELNUMfilter::filter_reload = NULL;
+std::map<int, TELNUMfilter*> *TELNUMfilter::filter_active_by_sensor = NULL;
+std::map<int, TELNUMfilter*> *TELNUMfilter::filter_reload_by_sensor = NULL;
 volatile bool TELNUMfilter::reload_do = 0;
 volatile int TELNUMfilter::_sync = 0;
 volatile int TELNUMfilter::_sync_reload = 0;
@@ -787,7 +873,6 @@ volatile int TELNUMfilter::_sync_reload = 0;
 DOMAINfilter::DOMAINfilter() {
 	first_node = NULL;
 	count = 0;
-	reload_do = false;
 };
 
 // destructor
@@ -800,7 +885,7 @@ DOMAINfilter::~DOMAINfilter() {
 	}
 };
 
-void DOMAINfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
+void DOMAINfilter::load(u_int32_t *global_flags, SqlDb *sqlDb, int sensor_id) {
 	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
 		return;
 	}
@@ -822,7 +907,7 @@ void DOMAINfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
 	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
 	while((row = rows.fetchRow())) {
-		if(!(!existsSensorsTable || selectSensorsContainSensorId(row["sensors_id"]))) {
+		if(!(!existsSensorsTable || selectSensorsContainSensorId(row["sensors_id"], sensor_id))) {
 			continue;
 		}
 		count++;
@@ -877,29 +962,39 @@ DOMAINfilter::_add_call_flags(volatile unsigned long int *flags, sNatAliases **n
 	return 0;
 }
 
-void DOMAINfilter::dump2man(ostringstream &oss) {
+void DOMAINfilter::_dump2man(ostringstream &oss) {
 	t_node *node;
-	lock();
-	for(node = filter_active->first_node; node != NULL; node = node->next) {
+	for(node = first_node; node != NULL; node = node->next) {
 		oss << "domain[" << node->domain << "] direction[" << node->direction << "] flags[0x" << hex << node->flags << "]" << endl;
 	}
+}
+
+void DOMAINfilter::dump2man(ostringstream &oss) {
+	lock();
+	if(filter_active) {
+		filter_active->_dump2man(oss);
+	}
+	dumpFilterMapBySensor(filter_active_by_sensor, oss);
 	unlock();
 }
 
-int DOMAINfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *domain_src, const char *domain_dst, bool reconfigure) {
+int DOMAINfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *domain_src, const char *domain_dst, int sensor_id, bool reconfigure) {
 	int rslt = 0;
 	lock();
-	if(filter_active) {
-		rslt = filter_active->_add_call_flags(flags, nat_aliases, domain_src, domain_dst, reconfigure);
+	DOMAINfilter *filter = selectFilterBySensor(filter_active, filter_active_by_sensor, sensor_id);
+	if(filter) {
+		rslt = filter->_add_call_flags(flags, nat_aliases, domain_src, domain_dst, reconfigure);
 	}
 	unlock();
 	return(rslt);
 }
 
-void DOMAINfilter::loadActive(u_int32_t *global_flags, SqlDb *sqlDb) {
+void DOMAINfilter::loadActive(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb) {
 	lock();
 	filter_active = new FILE_LINE(4007) DOMAINfilter();
 	filter_active->load(global_flags, sqlDb);
+	freeFilterMap(filter_active_by_sensor);
+	loadFilterMapBySensor(filter_active_by_sensor, pb_sensors, global_flags, sqlDb);
 	unlock();
 }
 
@@ -909,16 +1004,19 @@ void DOMAINfilter::freeActive() {
 		delete filter_active;
 		filter_active = NULL;
 	}
+	freeFilterMap(filter_active_by_sensor);
 	unlock();
 }
 
-void DOMAINfilter::prepareReload(u_int32_t *global_flags, SqlDb *sqlDb) {
+void DOMAINfilter::prepareReload(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb) {
 	lock_reload();
 	if(filter_reload) {
 		delete filter_reload;
 	}
+	freeFilterMap(filter_reload_by_sensor);
 	filter_reload = new FILE_LINE(4008) DOMAINfilter;
 	filter_reload->load(global_flags, sqlDb);
+	loadFilterMapBySensor(filter_reload_by_sensor, pb_sensors, global_flags, sqlDb);
 	reload_do = true;
 	syslog(LOG_NOTICE, "DOMAINfilter::prepareReload");
 	unlock_reload();
@@ -929,11 +1027,17 @@ void DOMAINfilter::applyReload() {
 		lock_reload();
 		if(reload_do) {
 			lock();
-			delete filter_active;
+			DOMAINfilter *filter_active_old = filter_active;
+			std::map<int, DOMAINfilter*> *filter_active_by_sensor_old = filter_active_by_sensor;
 			filter_active = filter_reload;
+			filter_active_by_sensor = filter_reload_by_sensor;
 			unlock();
+			// free the previous sets outside the lock of the packet path
+			delete filter_active_old;
+			freeFilterMap(filter_active_by_sensor_old);
 			filter_reload = NULL;
-			reload_do = false; 
+			filter_reload_by_sensor = NULL;
+			reload_do = false;
 			syslog(LOG_NOTICE, "DOMAINfilter::applyReload");
 		}
 		unlock_reload();
@@ -942,6 +1046,8 @@ void DOMAINfilter::applyReload() {
 
 DOMAINfilter *DOMAINfilter::filter_active = NULL;
 DOMAINfilter *DOMAINfilter::filter_reload = NULL;
+std::map<int, DOMAINfilter*> *DOMAINfilter::filter_active_by_sensor = NULL;
+std::map<int, DOMAINfilter*> *DOMAINfilter::filter_reload_by_sensor = NULL;
 volatile bool DOMAINfilter::reload_do = 0;
 volatile int DOMAINfilter::_sync = 0;
 volatile int DOMAINfilter::_sync_reload = 0;
@@ -951,8 +1057,6 @@ volatile int DOMAINfilter::_sync_reload = 0;
 // constructor
 SIP_HEADERfilter::SIP_HEADERfilter() {
 	count = 0;
-	loadTime = 0;
-	reload_do = false;
 }
 
 // destructor
@@ -962,7 +1066,7 @@ SIP_HEADERfilter::~SIP_HEADERfilter() {
 	}
 }
 
-void SIP_HEADERfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
+void SIP_HEADERfilter::load(u_int32_t *global_flags, SqlDb *sqlDb, int sensor_id) {
 	this->loadFile(global_flags);
 	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
 		return;
@@ -985,7 +1089,7 @@ void SIP_HEADERfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
 	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
 	while((row = rows.fetchRow())) {
-		if(!(!existsSensorsTable || selectSensorsContainSensorId(row["sensors_id"]))) {
+		if(!(!existsSensorsTable || selectSensorsContainSensorId(row["sensors_id"], sensor_id))) {
 			continue;
 		}
 		count++;
@@ -1015,7 +1119,6 @@ void SIP_HEADERfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
 		}
 		++count;
 	}
-	loadTime = getTimeMS();
 	if(sverb.capture_filter) {
 		syslog(LOG_NOTICE, "SIP_HEADERfilter::load");
 	}
@@ -1133,9 +1236,8 @@ int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, v
 	return 0;
 }
 
-void SIP_HEADERfilter::dump2man(ostringstream &oss) {
-	lock();
-	for(map<string, header_data>::iterator it_header = filter_active->data.begin(); it_header != filter_active->data.end(); it_header++) {
+void SIP_HEADERfilter::_dump2man(ostringstream &oss) {
+	for(map<string, header_data>::iterator it_header = this->data.begin(); it_header != this->data.end(); it_header++) {
 		header_data *data = &it_header->second;
 		for(map<string, item_data*>::iterator it_content = data->regexp.begin(); it_content != data->regexp.end(); it_content++) {
 			oss << "Regex header[" << it_header->first << "] content[" << it_content->first << "] direction[" << it_content->second->direction << "] flags[0x" << hex << it_content->second->flags << "]" << endl;
@@ -1144,6 +1246,14 @@ void SIP_HEADERfilter::dump2man(ostringstream &oss) {
 			oss << "Prefix header[" << it_header->first << "] content[" << it_content->first << "] direction[" << it_content->second->direction << "] flags[0x" << hex << it_content->second->flags << "]" << endl;
 		}
 	}
+}
+
+void SIP_HEADERfilter::dump2man(ostringstream &oss) {
+	lock();
+	if(filter_active) {
+		filter_active->_dump2man(oss);
+	}
+	dumpFilterMapBySensor(filter_active_by_sensor, oss);
 	unlock();
 }
 
@@ -1153,11 +1263,12 @@ void SIP_HEADERfilter::_prepareCustomNodes(ParsePacket *parsePacket) {
 	}
 }
 
-int SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, sNatAliases **nat_aliases, bool reconfigure) {
+int SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, sNatAliases **nat_aliases, int sensor_id, bool reconfigure) {
 	int rslt = 0;
 	lock();
-	if(filter_active) {
-		rslt = filter_active->_add_call_flags(parseContents, flags, nat_aliases, reconfigure);
+	SIP_HEADERfilter *filter = selectFilterBySensor(filter_active, filter_active_by_sensor, sensor_id);
+	if(filter) {
+		rslt = filter->_add_call_flags(parseContents, flags, nat_aliases, reconfigure);
 	}
 	unlock();
 	return(rslt);
@@ -1171,13 +1282,22 @@ void SIP_HEADERfilter::prepareCustomNodes(ParsePacket *parsePacket) {
 	if(filter_active) {
 		filter_active->_prepareCustomNodes(parsePacket);
 	}
+	if(filter_active_by_sensor) {
+		// register the union of the header names over all per-sensor sets
+		for(std::map<int, SIP_HEADERfilter*>::iterator iter = filter_active_by_sensor->begin(); iter != filter_active_by_sensor->end(); iter++) {
+			iter->second->_prepareCustomNodes(parsePacket);
+		}
+	}
 	unlock();
 }
 
-void SIP_HEADERfilter::loadActive(u_int32_t *global_flags, SqlDb *sqlDb) {
+void SIP_HEADERfilter::loadActive(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb) {
 	lock();
 	filter_active = new FILE_LINE(4010) SIP_HEADERfilter();
 	filter_active->load(global_flags, sqlDb);
+	freeFilterMap(filter_active_by_sensor);
+	loadFilterMapBySensor(filter_active_by_sensor, pb_sensors, global_flags, sqlDb);
+	loadTime = getTimeMS();
 	unlock();
 }
 
@@ -1187,16 +1307,21 @@ void SIP_HEADERfilter::freeActive() {
 		delete filter_active;
 		filter_active = NULL;
 	}
+	freeFilterMap(filter_active_by_sensor);
 	unlock();
 }
 
-void SIP_HEADERfilter::prepareReload(u_int32_t *global_flags, SqlDb *sqlDb) {
+void SIP_HEADERfilter::prepareReload(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb) {
 	lock_reload();
 	if(filter_reload) {
 		delete filter_reload;
 	}
+	freeFilterMap(filter_reload_by_sensor);
 	filter_reload = new FILE_LINE(4011) SIP_HEADERfilter;
 	filter_reload->load(global_flags, sqlDb);
+	loadFilterMapBySensor(filter_reload_by_sensor, pb_sensors, global_flags, sqlDb);
+	// one bump after all sets are built - the parser (ParsePacket::refreshIfNeed) rebuilds its nodes once
+	loadTime = getTimeMS();
 	reload_do = true;
 	syslog(LOG_NOTICE, "SIP_HEADERfilter::prepareReload");
 	unlock_reload();
@@ -1207,11 +1332,17 @@ void SIP_HEADERfilter::applyReload() {
 		lock_reload();
 		if(reload_do) {
 			lock();
-			delete filter_active;
+			SIP_HEADERfilter *filter_active_old = filter_active;
+			std::map<int, SIP_HEADERfilter*> *filter_active_by_sensor_old = filter_active_by_sensor;
 			filter_active = filter_reload;
+			filter_active_by_sensor = filter_reload_by_sensor;
 			unlock();
+			// free the previous sets outside the lock of the packet path
+			delete filter_active_old;
+			freeFilterMap(filter_active_by_sensor_old);
 			filter_reload = NULL;
-			reload_do = false; 
+			filter_reload_by_sensor = NULL;
+			reload_do = false;
 			syslog(LOG_NOTICE, "SIP_HEADERfilter::applyReload");
 		}
 		unlock_reload();
@@ -1220,6 +1351,8 @@ void SIP_HEADERfilter::applyReload() {
 
 SIP_HEADERfilter *SIP_HEADERfilter::filter_active = NULL;
 SIP_HEADERfilter *SIP_HEADERfilter::filter_reload = NULL;
+std::map<int, SIP_HEADERfilter*> *SIP_HEADERfilter::filter_active_by_sensor = NULL;
+std::map<int, SIP_HEADERfilter*> *SIP_HEADERfilter::filter_reload_by_sensor = NULL;
 volatile bool SIP_HEADERfilter::reload_do = 0;
 volatile unsigned long SIP_HEADERfilter::loadTime = 0;
 volatile int SIP_HEADERfilter::_sync = 0;
@@ -1233,33 +1366,85 @@ void cFilters::loadActive(SqlDb *sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
+	std::set<int> pb_sensors;
+	getPacketbufferSensors(&pb_sensors);
 	global_flags = 0;
-	IPfilter::loadActive(&global_flags, sqlDb);
-	TELNUMfilter::loadActive(&global_flags, sqlDb);
-	DOMAINfilter::loadActive(&global_flags, sqlDb);
-	SIP_HEADERfilter::loadActive(&global_flags, sqlDb);
+	IPfilter::loadActive(&global_flags, pb_sensors, sqlDb);
+	TELNUMfilter::loadActive(&global_flags, pb_sensors, sqlDb);
+	DOMAINfilter::loadActive(&global_flags, pb_sensors, sqlDb);
+	SIP_HEADERfilter::loadActive(&global_flags, pb_sensors, sqlDb);
 	if(_createSqlObject) {
 		delete sqlDb;
 	}
 }
 
-void cFilters::prepareReload(SqlDb *sqlDb) {
+void cFilters::prepareReload(SqlDb *sqlDb, bool only_if_reload_requested) {
+	if(only_if_reload_requested && !reload_requested) {
+		// already covered by a reload which ran after the request
+		return;
+	}
 	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
 	lock_reload();
-	reload_global_flags = 0;
-	IPfilter::prepareReload(&reload_global_flags, sqlDb);
-	TELNUMfilter::prepareReload(&reload_global_flags, sqlDb);
-	DOMAINfilter::prepareReload(&reload_global_flags, sqlDb);
-	SIP_HEADERfilter::prepareReload(&reload_global_flags, sqlDb);
-	reload_do = true;
+	if(!only_if_reload_requested || reload_requested) {
+		if(!(opt_nocdr || is_sender() || is_client_packetbuffer_sender())) {
+			// refresh the id_sensor -> sensors.id translation used by the sensors_id row filter
+			extern SensorsMap sensorsMap;
+			sensorsMap.fillSensors(sqlDb);
+		}
+		std::set<int> pb_sensors;
+		getPacketbufferSensors(&pb_sensors);
+		reload_global_flags = 0;
+		IPfilter::prepareReload(&reload_global_flags, pb_sensors, sqlDb);
+		TELNUMfilter::prepareReload(&reload_global_flags, pb_sensors, sqlDb);
+		DOMAINfilter::prepareReload(&reload_global_flags, pb_sensors, sqlDb);
+		SIP_HEADERfilter::prepareReload(&reload_global_flags, pb_sensors, sqlDb);
+		reload_do = true;
+	}
 	unlock_reload();
 	if(_createSqlObject) {
 		delete sqlDb;
 	}
+}
+
+bool cFilters::registerPacketbufferSensor(int sensor_id) {
+	// only sensors sending via the packetbuffer connections are registered here;
+	// traffic received via the mirror (receiver) transport keeps the default rules
+	if(opt_nocdr || sensor_id <= 0 || sensor_id == opt_id_sensor) {
+		return(false);
+	}
+	bool is_new = false;
+	lock_packetbuffer_sensors();
+	if(packetbuffer_sensors.insert(sensor_id).second) {
+		reload_requested = true;
+		is_new = true;
+	}
+	unlock_packetbuffer_sensors();
+	return(is_new);
+}
+
+bool cFilters::requestReloadForPacketbufferSensor(int sensor_id) {
+	// the packetbuffer sensor does not process the capture rules itself,
+	// so the reload command addressed to it must reload its rule set here on the server
+	bool registered = false;
+	lock_packetbuffer_sensors();
+	if(packetbuffer_sensors.find(sensor_id) != packetbuffer_sensors.end()) {
+		reload_requested = true;
+		registered = true;
+	}
+	unlock_packetbuffer_sensors();
+	return(registered);
+}
+
+void cFilters::getPacketbufferSensors(std::set<int> *pb_sensors) {
+	lock_packetbuffer_sensors();
+	*pb_sensors = packetbuffer_sensors;
+	// the sets built from this snapshot cover all requests made until now
+	reload_requested = false;
+	unlock_packetbuffer_sensors();
 }
 
 void cFilters::applyReload() {
@@ -1282,9 +1467,16 @@ void cFilters::freeActive() {
 	TELNUMfilter::freeActive();
 	DOMAINfilter::freeActive();
 	SIP_HEADERfilter::freeActive();
+	lock_packetbuffer_sensors();
+	packetbuffer_sensors.clear();
+	reload_requested = false;
+	unlock_packetbuffer_sensors();
 }
 
 u_int32_t cFilters::global_flags = 0;
 u_int32_t cFilters::reload_global_flags = 0;
 volatile bool cFilters::reload_do = 0;
 volatile int cFilters::_sync_reload = 0;
+std::set<int> cFilters::packetbuffer_sensors;
+volatile bool cFilters::reload_requested = false;
+volatile int cFilters::_sync_packetbuffer_sensors = 0;

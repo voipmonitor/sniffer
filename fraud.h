@@ -1408,7 +1408,7 @@ void fraudRegister(Call *call, eRegisterState state, eRegisterState prev_state =
 void fraudRegister(Register *reg, RegisterState *regState, eRegisterState state, eRegisterState prev_state = rs_na, u_int64_t prev_state_at = 0);
 string whereCondFraudAlerts();
 bool isExistsFraudAlerts(bool *storePcaps = NULL, SqlDb *sqlDb = NULL);
-bool selectSensorsContainSensorId(string select_sensors);
+bool selectSensorsContainSensorId(const string &select_sensors, int sensor_id = 0);
 
 void fraudRccDump(string *dump);
 

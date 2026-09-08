@@ -3740,6 +3740,7 @@ public:
 		int table_id;
 		string name;
 		string name_file;
+		bool name_announced;
 	};
 public:
 	SensorsMap();

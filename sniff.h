@@ -173,6 +173,7 @@ unsigned int setCallFlags(unsigned long int flags, sNatAliases **nat_aliases,
 			  const char *caller, const char *called,
 			  const char *caller_domain, const char *called_domain,
 			  ParsePacket::ppContentsX *parseContents,
+			  int sensor_id,
 			  bool reconfigure = false);
 
 extern bool opt_audiocodes;
