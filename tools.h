@@ -3747,6 +3747,7 @@ public:
 	void fillSensors(class SqlDb *sqlDb = NULL);
 	void setSensorName(int sensorId, const char *sensorName);
 	int getSensorTableId(int sensorId);
+	void getSensorsIdFromTable(set<int> *sensorsId);
 	string getSensorName(int sensorId, bool file = false);
 	string getSensorNameFile(int sensorId) {
 		return(getSensorName(sensorId, true));

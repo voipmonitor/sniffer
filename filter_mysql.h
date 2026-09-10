@@ -439,23 +439,20 @@ public:
 	};
 public:
 	static void loadActive(SqlDb *sqlDb = NULL);
-	static void prepareReload(SqlDb *sqlDb = NULL, bool only_if_reload_requested = false);
+	static void prepareReload(SqlDb *sqlDb = NULL);
 	static void applyReload();
 	static void freeActive();
-	static bool registerPacketbufferSensor(int sensor_id);
-	static bool requestReloadForPacketbufferSensor(int sensor_id);
-	static void getPacketbufferSensors(std::set<int> *pb_sensors);
+	static void getReloadSensors(std::set<int> *sensors);
 	static void lock_reload() {
 		__SYNC_LOCK(_sync_reload);
 	}
 	static void unlock_reload() {
 		__SYNC_UNLOCK(_sync_reload);
 	}
-	static void lock_packetbuffer_sensors() {
-		__SYNC_LOCK(_sync_packetbuffer_sensors);
-	}
-	static void unlock_packetbuffer_sensors() {
-		__SYNC_UNLOCK(_sync_packetbuffer_sensors);
+	static inline bool useDbRules() {
+		// the modes which do not process the capture rules from the database at all
+		extern int opt_nocdr;
+		return(!(opt_nocdr || is_sender() || is_client_packetbuffer_sender()));
 	}
 	static inline u_int32_t getGlobalFlags() {
 		return(global_flags);
@@ -475,11 +472,6 @@ public:
 	static u_int32_t reload_global_flags;
 	static volatile bool reload_do;
 	static volatile int _sync_reload;
-	static std::set<int> packetbuffer_sensors;
-	// set by the registration of a new packetbuffer sensor or by a reload request for it, cleared when
-	// a reload snapshots the registry - a burst of requests (connects, gui reloads) coalesces to <= 2 reloads
-	static volatile bool reload_requested;
-	static volatile int _sync_packetbuffer_sensors;
 };
 
 inline void set_global_flags(volatile unsigned long int &flags) {

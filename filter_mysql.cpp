@@ -335,7 +335,7 @@ IPfilter::~IPfilter() {
 };
 
 void IPfilter::load(u_int32_t *global_flags, SqlDb *sqlDb, int sensor_id) {
-	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
+	if(!cFilters::useDbRules()) {
 		return;
 	}
 	vector<db_row> vectDbRow;
@@ -605,7 +605,7 @@ void TELNUMfilter::add_payload(t_payload *payload) {
 
 void TELNUMfilter::load(u_int32_t *global_flags, SqlDb *sqlDb, int sensor_id) {
 	this->loadFile(global_flags);
-	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
+	if(!cFilters::useDbRules()) {
 		return;
 	}
 	vector<db_row> vectDbRow;
@@ -886,7 +886,7 @@ DOMAINfilter::~DOMAINfilter() {
 };
 
 void DOMAINfilter::load(u_int32_t *global_flags, SqlDb *sqlDb, int sensor_id) {
-	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
+	if(!cFilters::useDbRules()) {
 		return;
 	}
 	vector<db_row> vectDbRow;
@@ -1068,7 +1068,7 @@ SIP_HEADERfilter::~SIP_HEADERfilter() {
 
 void SIP_HEADERfilter::load(u_int32_t *global_flags, SqlDb *sqlDb, int sensor_id) {
 	this->loadFile(global_flags);
-	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
+	if(!cFilters::useDbRules()) {
 		return;
 	}
 	vector<db_row> vectDbRow;
@@ -1366,85 +1366,70 @@ void cFilters::loadActive(SqlDb *sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
-	std::set<int> pb_sensors;
-	getPacketbufferSensors(&pb_sensors);
+	if(useDbRules()) {
+		// refresh the id_sensor -> sensors.id translation used by the sensors_id row filter
+		extern SensorsMap sensorsMap;
+		sensorsMap.fillSensors(sqlDb);
+	}
+	// must be called after fillSensors - the sensors table is the main source of the rule sets
+	std::set<int> rule_sensors;
+	getReloadSensors(&rule_sensors);
 	global_flags = 0;
-	IPfilter::loadActive(&global_flags, pb_sensors, sqlDb);
-	TELNUMfilter::loadActive(&global_flags, pb_sensors, sqlDb);
-	DOMAINfilter::loadActive(&global_flags, pb_sensors, sqlDb);
-	SIP_HEADERfilter::loadActive(&global_flags, pb_sensors, sqlDb);
+	// the existence of the filter_*_sensors tables cannot change during the load
+	sqlDb->startExistsTableCache();
+	IPfilter::loadActive(&global_flags, rule_sensors, sqlDb);
+	TELNUMfilter::loadActive(&global_flags, rule_sensors, sqlDb);
+	DOMAINfilter::loadActive(&global_flags, rule_sensors, sqlDb);
+	SIP_HEADERfilter::loadActive(&global_flags, rule_sensors, sqlDb);
+	sqlDb->stopExistsTableCache();
 	if(_createSqlObject) {
 		delete sqlDb;
 	}
 }
 
-void cFilters::prepareReload(SqlDb *sqlDb, bool only_if_reload_requested) {
-	if(only_if_reload_requested && !reload_requested) {
-		// already covered by a reload which ran after the request
-		return;
-	}
+void cFilters::prepareReload(SqlDb *sqlDb) {
 	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
-	lock_reload();
-	if(!only_if_reload_requested || reload_requested) {
-		if(!(opt_nocdr || is_sender() || is_client_packetbuffer_sender())) {
-			// refresh the id_sensor -> sensors.id translation used by the sensors_id row filter
-			extern SensorsMap sensorsMap;
-			sensorsMap.fillSensors(sqlDb);
-		}
-		std::set<int> pb_sensors;
-		getPacketbufferSensors(&pb_sensors);
-		reload_global_flags = 0;
-		IPfilter::prepareReload(&reload_global_flags, pb_sensors, sqlDb);
-		TELNUMfilter::prepareReload(&reload_global_flags, pb_sensors, sqlDb);
-		DOMAINfilter::prepareReload(&reload_global_flags, pb_sensors, sqlDb);
-		SIP_HEADERfilter::prepareReload(&reload_global_flags, pb_sensors, sqlDb);
-		reload_do = true;
+	if(useDbRules()) {
+		// refresh the id_sensor -> sensors.id translation used by the sensors_id row filter
+		extern SensorsMap sensorsMap;
+		sensorsMap.fillSensors(sqlDb);
 	}
+	// must be called after fillSensors - the sensors table is the main source of the rule sets;
+	// both are kept out of the reload lock, they only prepare the input of the load
+	std::set<int> rule_sensors;
+	getReloadSensors(&rule_sensors);
+	lock_reload();
+	reload_global_flags = 0;
+	// the existence of the filter_*_sensors tables cannot change during the load
+	sqlDb->startExistsTableCache();
+	IPfilter::prepareReload(&reload_global_flags, rule_sensors, sqlDb);
+	TELNUMfilter::prepareReload(&reload_global_flags, rule_sensors, sqlDb);
+	DOMAINfilter::prepareReload(&reload_global_flags, rule_sensors, sqlDb);
+	SIP_HEADERfilter::prepareReload(&reload_global_flags, rule_sensors, sqlDb);
+	sqlDb->stopExistsTableCache();
+	reload_do = true;
 	unlock_reload();
 	if(_createSqlObject) {
 		delete sqlDb;
 	}
 }
 
-bool cFilters::registerPacketbufferSensor(int sensor_id) {
-	// only sensors sending via the packetbuffer connections are registered here;
-	// traffic received via the mirror (receiver) transport keeps the default rules
-	if(opt_nocdr || sensor_id <= 0 || sensor_id == opt_id_sensor) {
-		return(false);
+void cFilters::getReloadSensors(std::set<int> *sensors) {
+	// the own rule set is built for every sensor of the sensors table, so a remote sensor
+	// has its rules ready before it connects; a sensor which is missing in the table cannot
+	// be referenced by any rule (filter_*_sensors.sensor_id is the sensors.id) and uses the
+	// default set through selectFilterBySensor
+	sensors->clear();
+	if(is_server() && useDbRules()) {
+		extern SensorsMap sensorsMap;
+		sensorsMap.getSensorsIdFromTable(sensors);
+		// the local sensor is covered by the default (global) set
+		sensors->erase(opt_id_sensor);
 	}
-	bool is_new = false;
-	lock_packetbuffer_sensors();
-	if(packetbuffer_sensors.insert(sensor_id).second) {
-		reload_requested = true;
-		is_new = true;
-	}
-	unlock_packetbuffer_sensors();
-	return(is_new);
-}
-
-bool cFilters::requestReloadForPacketbufferSensor(int sensor_id) {
-	// the packetbuffer sensor does not process the capture rules itself,
-	// so the reload command addressed to it must reload its rule set here on the server
-	bool registered = false;
-	lock_packetbuffer_sensors();
-	if(packetbuffer_sensors.find(sensor_id) != packetbuffer_sensors.end()) {
-		reload_requested = true;
-		registered = true;
-	}
-	unlock_packetbuffer_sensors();
-	return(registered);
-}
-
-void cFilters::getPacketbufferSensors(std::set<int> *pb_sensors) {
-	lock_packetbuffer_sensors();
-	*pb_sensors = packetbuffer_sensors;
-	// the sets built from this snapshot cover all requests made until now
-	reload_requested = false;
-	unlock_packetbuffer_sensors();
 }
 
 void cFilters::applyReload() {
@@ -1467,16 +1452,9 @@ void cFilters::freeActive() {
 	TELNUMfilter::freeActive();
 	DOMAINfilter::freeActive();
 	SIP_HEADERfilter::freeActive();
-	lock_packetbuffer_sensors();
-	packetbuffer_sensors.clear();
-	reload_requested = false;
-	unlock_packetbuffer_sensors();
 }
 
 u_int32_t cFilters::global_flags = 0;
 u_int32_t cFilters::reload_global_flags = 0;
 volatile bool cFilters::reload_do = 0;
 volatile int cFilters::_sync_reload = 0;
-std::set<int> cFilters::packetbuffer_sensors;
-volatile bool cFilters::reload_requested = false;
-volatile int cFilters::_sync_packetbuffer_sensors = 0;

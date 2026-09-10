@@ -3309,7 +3309,6 @@ void reload_config(const char *jsonConfig) {
 	set_default_values();
 	set_context_config();
 	create_spool_dirs();
-	reload_capture_rules();
 }
 
 void hot_restart() {
