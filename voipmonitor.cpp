@@ -975,6 +975,7 @@ bool opt_cdr_force_primary_index_in_all_tables = 0;
 bool opt_cdr_sipport = 0;
 bool opt_cdr_rtpport = 0;
 bool opt_cdr_rtpsrcport = 0;
+int opt_cdr_rtp_extended_stats = 0;
 int opt_cdr_check_exists_callid = 0;
 string opt_cdr_check_unique_callid_in_sensors;
 set<int> opt_cdr_check_unique_callid_in_sensors_list;
@@ -7170,7 +7171,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42210) cConfigItem_yesno("savertcp", &opt_saveRTCP));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignorertcpjitter", &opt_ignoreRTCPjitter));
 			addConfigItem(new FILE_LINE(42211) cConfigItem_yesno("saveudptl", &opt_saveudptl));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("rtpip_find_endpoints", &opt_rtpip_find_endpoints));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("rtpip_find_endpoints", &opt_rtpip_find_endpoints))
+				->addValues("leg:2"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-energylevels", &opt_save_energylevels));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-energylevels-check-seq", &opt_save_energylevels_check_seq));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-energylevels-via-jb", &opt_save_energylevels_via_jb));
@@ -7652,6 +7654,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42304) cConfigItem_integer("rtptimeout", &rtptimeout));
 			addConfigItem(new FILE_LINE(42305) cConfigItem_yesno("cdr_rtpport", &opt_cdr_rtpport));
 			addConfigItem(new FILE_LINE(42306) cConfigItem_yesno("cdr_rtpsrcport", &opt_cdr_rtpsrcport));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("cdr_rtp_extended_stats", &opt_cdr_rtp_extended_stats))
+				->addValues("ext:2"));
 			addConfigItem(new FILE_LINE(42307) cConfigItem_integer("sipwithoutrtptimeout", &sipwithoutrtptimeout));
 			addConfigItem(new FILE_LINE(42308) cConfigItem_yesno("allow-zerossrc", &opt_allow_zerossrc));
 			addConfigItem(new FILE_LINE(42309) cConfigItem_yesno("rtp-check-timestamp", &opt_rtp_check_timestamp));

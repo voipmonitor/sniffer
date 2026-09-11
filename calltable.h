@@ -384,6 +384,7 @@ struct s_sdp_store_data {
 	vmIPport ip_port;
 	bool is_caller;
 	u_int16_t ptime;
+	int8_t leg_index;
 	inline const bool operator == (const s_sdp_store_data &other) {
 		return(this->ip_port == other.ip_port &&
 		       this->is_caller == other.is_caller);
@@ -396,6 +397,7 @@ struct ip_port_call_info {
 		srtp_crypto_config_list = NULL;
 		srtp_fingerprint = NULL;
 		canceled = false;
+		leg_index = -1;
 	}
 	~ip_port_call_info() {
 		if(srtp_crypto_config_list) {
@@ -462,6 +464,7 @@ struct ip_port_call_info {
 	string domain_to_uri;
 	string branch;
 	vmIP sip_src_addr;
+	int8_t leg_index;
 	s_sdp_flags sdp_flags;
 	u_int16_t ptime;
 	ip_port_call_info_rtp rtp[2];
@@ -1753,6 +1756,67 @@ public:
 		sCseq cseq;
 		packet_s_process *packet;
 	};
+	struct sMediaLeg {
+		inline void addAddr(bool side_a, vmIP addr) {
+			vector<vmIP> *addrs = side_a ? &addr_a : &addr_b;
+			for(unsigned i = 0; i < addrs->size(); i++) {
+				if((*addrs)[i] == addr) {
+					return;
+				}
+			}
+			addrs->push_back(addr);
+		}
+		vmPort port_a;
+		vmPort port_b;
+		vector<vmIP> addr_a;
+		vector<vmIP> addr_b;
+		vmIP sip_addr_a;
+		vmIP sip_addr_b;
+	};
+	struct sMediaLegViewKey {
+		vmIP addr_1;
+		vmPort port_1;
+		vmIP addr_2;
+		vmPort port_2;
+	};
+	struct sMediaLegGroup {
+		sMediaLegGroup() {
+			final_leg = -1;
+		}
+		inline void addAddr(bool side_a, vmIP addr) {
+			vector<vmIP> *addrs = side_a ? &addr_a : &addr_b;
+			for(unsigned i = 0; i < addrs->size(); i++) {
+				if((*addrs)[i] == addr) {
+					return;
+				}
+			}
+			addrs->push_back(addr);
+		}
+		inline bool addrContains(bool side_a, vmIP addr) {
+			vector<vmIP> *addrs = side_a ? &addr_a : &addr_b;
+			for(unsigned i = 0; i < addrs->size(); i++) {
+				if((*addrs)[i] == addr) {
+					return(true);
+				}
+			}
+			return(false);
+		}
+		inline bool addrsOverlap(bool side_a, sMediaLegGroup *other, bool other_side_a) {
+			vector<vmIP> *addrs = side_a ? &addr_a : &addr_b;
+			for(unsigned i = 0; i < addrs->size(); i++) {
+				if(other->addrContains(other_side_a, (*addrs)[i])) {
+					return(true);
+				}
+			}
+			return(false);
+		}
+		vmPort port_a;
+		vmPort port_b;
+		vector<vmIP> addr_a;
+		vector<vmIP> addr_b;
+		vector<int> streams;
+		int final_leg;
+	};
 public:
 	bool is_ssl;			//!< call was decrypted
 	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
@@ -2274,6 +2338,10 @@ public:
 	int convertRawToWav(void **transcribe_call, int thread_index);
 	
 	void selectRtpAB();
+	void selectRtpAB_by_legs(bool *rtpab_ok);
+	bool selectRtpAB_better_candidate(RTP *cand, RTP *best);
+	void classifyMediaLegs();
+	int rtp_stream_leg_index(RTP *rtp_i);
  
 	/**
 	 * @brief save call to database
@@ -2281,6 +2349,7 @@ public:
 	*/
 	int saveToDb(bool enableBatchIfPossible = true);
 	void prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch *n_branch, int indexRow, string &table, bool batch, string *query_str);
+	void prepareDbRow_cdr_rtp_ext_stats(SqlDb_row &rtps, RTP *rtp_i);
 	int saveAloneByeToDb(bool enableBatchIfPossible = true);
 
 	/**
@@ -3441,6 +3510,8 @@ private:
 	map<string, bool> diameter_callid;
 	list<sTextDataItem*> text_data;
 	list<sPrematureResponse> *prematureResponses;
+	vector<sMediaLeg> media_legs;
+	bool media_legs_classified;
 public:
 	list<vmPort> sdp_ip0_ports[2];
 	bool error_negative_payload_length;

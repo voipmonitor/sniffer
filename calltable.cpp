@@ -899,6 +899,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	_rtp_remove_sync = 0;
 	rtpab[0] = NULL;
 	rtpab[1] = NULL;
+	media_legs_classified = false;
 	dtls = NULL;
 	dtls_exists = false;
 	dtls_queue_move = 0;
@@ -6781,7 +6782,7 @@ void Call::selectRtpAB() {
 	if(!rtp_size()) {
 		return;
 	}
-	
+	classifyMediaLegs();
 	if(sverb.rtp_streams) {
 		cout << "call " << call_id << endl;
 		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
@@ -6875,6 +6876,9 @@ void Call::selectRtpAB() {
 		}
 	}
 	
+	if(!rtpab_ok && opt_rtpip_find_endpoints) {
+		selectRtpAB_by_legs(&rtpab_ok);
+	}
 	if(!rtpab_ok) {
 		if(opt_rtpip_find_endpoints) {
 			for(int i = 0; i < 2; i++) {
@@ -7041,8 +7045,414 @@ void Call::selectRtpAB() {
 	}
 }
 
+void Call::selectRtpAB_by_legs(bool *rtpab_ok) {
+	CallBranch *c_branch = branch_main();
+	classifyMediaLegs();
+	unsigned legs_count = media_legs.size();
+	if(!legs_count) {
+		return;
+	}
+	vector<RTP*> best_caller(legs_count, (RTP*)NULL);
+	vector<RTP*> best_called(legs_count, (RTP*)NULL);
+	for(int i = 0; i < rtp_size(); i++) {
+		RTP *rtp_i = rtp_stream_by_index(i);
+		if(!rtp_i->allowed_for_ab()) {
+			continue;
+		}
+		int leg = rtp_i->leg_index;
+		if(leg < 0 || leg >= (int)legs_count) {
+			continue;
+		}
+		RTP **best = rtp_i->iscaller ? &best_caller[leg] : &best_called[leg];
+		if(!*best || selectRtpAB_better_candidate(rtp_i, *best)) {
+			*best = rtp_i;
+		}
+	}
+	if(opt_rtpip_find_endpoints == 2) {
+		int sel = -1;
+		bool sel_has_sipcaller = false;
+		u_int64_t sel_received = 0;
+		for(unsigned l = 0; l < legs_count; l++) {
+			if(!best_caller[l] || !best_called[l]) {
+				continue;
+			}
+			bool has_sipcaller = media_legs[l].sip_addr_a == c_branch->saddr ||
+					     media_legs[l].sip_addr_b == c_branch->saddr;
+			u_int64_t received = (u_int64_t)best_caller[l]->received_() + best_called[l]->received_();
+			if(sel < 0 ||
+			   (has_sipcaller && !sel_has_sipcaller) ||
+			   (has_sipcaller == sel_has_sipcaller && received > sel_received)) {
+				sel = l;
+				sel_has_sipcaller = has_sipcaller;
+				sel_received = received;
+			}
+		}
+		if(sel >= 0) {
+			rtpab[0] = best_caller[sel];
+			rtpab[1] = best_called[sel];
+			*rtpab_ok = true;
+		}
+	} else {
+		RTP *a_cand = NULL;
+		RTP *b_cand = NULL;
+		for(unsigned l = 0; l < legs_count; l++) {
+			if(best_caller[l] &&
+			   (media_legs[l].sip_addr_a == c_branch->saddr ||
+			    media_legs[l].sip_addr_b == c_branch->saddr)) {
+				a_cand = best_caller[l];
+				break;
+			}
+		}
+		if(!a_cand) {
+			for(unsigned l = 0; l < legs_count; l++) {
+				if(best_caller[l]) {
+					a_cand = best_caller[l];
+					break;
+				}
+			}
+		}
+		for(unsigned l = 0; l < legs_count; l++) {
+			if(!best_called[l]) {
+				continue;
+			}
+			bool has_saddr = media_legs[l].sip_addr_a == c_branch->saddr ||
+					 media_legs[l].sip_addr_b == c_branch->saddr;
+			bool has_daddr = media_legs[l].sip_addr_a == c_branch->daddr ||
+					 media_legs[l].sip_addr_b == c_branch->daddr;
+			if(has_daddr && !has_saddr) {
+				b_cand = best_called[l];
+			}
+		}
+		if(!b_cand) {
+			for(unsigned l = 0; l < legs_count; l++) {
+				if(best_called[l] &&
+				   media_legs[l].sip_addr_a != c_branch->saddr &&
+				   media_legs[l].sip_addr_b != c_branch->saddr) {
+					b_cand = best_called[l];
+				}
+			}
+		}
+		if(!b_cand) {
+			for(unsigned l = 0; l < legs_count; l++) {
+				if(best_called[l]) {
+					b_cand = best_called[l];
+				}
+			}
+		}
+		if(a_cand && b_cand) {
+			rtpab[0] = a_cand;
+			rtpab[1] = b_cand;
+			*rtpab_ok = true;
+		}
+	}
+	if(*rtpab_ok && (sverb.process_rtp || sverb.read_rtp || sverb.rtp_streams)) {
+		cout << "RTP - select by legs (" << (opt_rtpip_find_endpoints == 2 ? "leg" : "endpoints") << " mode)" << endl;
+	}
+}
+
+bool Call::selectRtpAB_better_candidate(RTP *cand, RTP *best) {
+	if(cand->ok_other_ip_side_by_sip_() != best->ok_other_ip_side_by_sip_()) {
+		return(cand->ok_other_ip_side_by_sip_());
+	}
+	if((cand->first_codec_() >= 0) != (best->first_codec_() >= 0)) {
+		return(cand->first_codec_() >= 0);
+	}
+	return(cand->received_() > best->received_());
+}
+
+void Call::classifyMediaLegs() {
+	if(media_legs_classified) {
+		return;
+	}
+	media_legs_classified = true;
+	media_legs.clear();
+	vector<sMediaLegGroup> groups;
+	for(int i = 0; i < rtp_size(); i++) {
+		RTP *rtp_i = rtp_stream_by_index(i);
+		rtp_i->leg_index = -1;
+		u_int16_t p_lo = MIN(rtp_i->sport.getPort(), rtp_i->dport.getPort());
+		u_int16_t p_hi = MAX(rtp_i->sport.getPort(), rtp_i->dport.getPort());
+		int g = -1;
+		for(unsigned k = 0; k < groups.size(); k++) {
+			u_int16_t g_lo = MIN(groups[k].port_a.getPort(), groups[k].port_b.getPort());
+			u_int16_t g_hi = MAX(groups[k].port_a.getPort(), groups[k].port_b.getPort());
+			if(g_lo == p_lo && g_hi == p_hi) {
+				g = k;
+				break;
+			}
+		}
+		if(g < 0) {
+			sMediaLegGroup new_group;
+			new_group.port_a = rtp_i->sport;
+			new_group.port_b = rtp_i->dport;
+			groups.push_back(new_group);
+			g = groups.size() - 1;
+		}
+		sMediaLegGroup *gr = &groups[g];
+		if(gr->port_a.getPort() != gr->port_b.getPort()) {
+			if(rtp_i->sport == gr->port_a) {
+				gr->addAddr(true, rtp_i->saddr);
+				gr->addAddr(false, rtp_i->daddr);
+			} else {
+				gr->addAddr(false, rtp_i->saddr);
+				gr->addAddr(true, rtp_i->daddr);
+			}
+		} else {
+			if(gr->addrContains(false, rtp_i->saddr)) {
+				gr->addAddr(false, rtp_i->saddr);
+				gr->addAddr(true, rtp_i->daddr);
+			} else {
+				gr->addAddr(true, rtp_i->saddr);
+				gr->addAddr(false, rtp_i->daddr);
+			}
+		}
+		gr->streams.push_back(i);
+	}
+	int legs_count = 0;
+	for(unsigned k = 0; k < groups.size(); k++) {
+		if(groups[k].final_leg >= 0) {
+			continue;
+		}
+		groups[k].final_leg = legs_count;
+		for(unsigned m = k + 1; m < groups.size(); m++) {
+			if(groups[m].final_leg >= 0) {
+				continue;
+			}
+			if((groups[k].addrsOverlap(true, &groups[m], true) &&
+			    groups[k].addrsOverlap(false, &groups[m], false)) ||
+			   (groups[k].addrsOverlap(true, &groups[m], false) &&
+			    groups[k].addrsOverlap(false, &groups[m], true))) {
+				groups[m].final_leg = legs_count;
+			}
+		}
+		++legs_count;
+	}
+	media_legs.resize(legs_count);
+	for(unsigned k = 0; k < groups.size(); k++) {
+		sMediaLeg *ml = &media_legs[groups[k].final_leg];
+		if(!ml->addr_a.size() && !ml->addr_b.size()) {
+			ml->port_a = groups[k].port_a;
+			ml->port_b = groups[k].port_b;
+		}
+		for(unsigned i = 0; i < groups[k].addr_a.size(); i++) {
+			ml->addAddr(true, groups[k].addr_a[i]);
+		}
+		for(unsigned i = 0; i < groups[k].addr_b.size(); i++) {
+			ml->addAddr(false, groups[k].addr_b[i]);
+		}
+		for(unsigned i = 0; i < groups[k].streams.size(); i++) {
+			rtp_stream_by_index(groups[k].streams[i])->leg_index = groups[k].final_leg;
+		}
+	}
+	vector<vector<sMediaLegViewKey> > leg_views;
+	leg_views.resize(media_legs.size());
+	for(int i = 0; i < rtp_size(); i++) {
+		RTP *rtp_i = rtp_stream_by_index(i);
+		rtp_i->leg_view_index = -1;
+		if(rtp_i->leg_index < 0) {
+			continue;
+		}
+		sMediaLegViewKey view;
+		if(rtp_i->saddr < rtp_i->daddr ||
+		   (rtp_i->saddr == rtp_i->daddr && rtp_i->sport.getPort() < rtp_i->dport.getPort())) {
+			view.addr_1 = rtp_i->saddr;
+			view.port_1 = rtp_i->sport;
+			view.addr_2 = rtp_i->daddr;
+			view.port_2 = rtp_i->dport;
+		} else {
+			view.addr_1 = rtp_i->daddr;
+			view.port_1 = rtp_i->dport;
+			view.addr_2 = rtp_i->saddr;
+			view.port_2 = rtp_i->sport;
+		}
+		vector<sMediaLegViewKey> *views = &leg_views[rtp_i->leg_index];
+		int v = -1;
+		for(unsigned k = 0; k < views->size(); k++) {
+			if((*views)[k].addr_1 == view.addr_1 && (*views)[k].port_1 == view.port_1 &&
+			   (*views)[k].addr_2 == view.addr_2 && (*views)[k].port_2 == view.port_2) {
+				v = k;
+				break;
+			}
+		}
+		if(v < 0) {
+			v = views->size();
+			views->push_back(view);
+		}
+		rtp_i->leg_view_index = v;
+	}
+	CallBranch *c_branch = branch_main();
+	for(int i = 0; i < c_branch->ipport_n; i++) {
+		c_branch->ip_port[i].leg_index = -1;
+		for(int pass = 0; pass < 2 && c_branch->ip_port[i].leg_index < 0; pass++) {
+			int leg = -1;
+			bool side_a = false;
+			int count = 0;
+			vector<int> seen_legs;
+			for(unsigned k = 0; k < groups.size(); k++) {
+				bool match_a = groups[k].port_a == c_branch->ip_port[i].port &&
+					       (pass == 1 || groups[k].addrContains(true, c_branch->ip_port[i].addr));
+				bool match_b = groups[k].port_b == c_branch->ip_port[i].port &&
+					       (pass == 1 || groups[k].addrContains(false, c_branch->ip_port[i].addr));
+				if(match_a || match_b) {
+					bool seen = false;
+					for(unsigned s = 0; s < seen_legs.size(); s++) {
+						if(seen_legs[s] == groups[k].final_leg) {
+							seen = true;
+							break;
+						}
+					}
+					if(!seen) {
+						seen_legs.push_back(groups[k].final_leg);
+						leg = groups[k].final_leg;
+						side_a = match_a;
+						++count;
+					}
+				}
+			}
+			if(count == 1) {
+				c_branch->ip_port[i].leg_index = LIMIT_TINYINT_SIGNED(leg);
+				if(side_a) {
+					if(!media_legs[leg].sip_addr_a.isSet()) {
+						media_legs[leg].sip_addr_a = c_branch->ip_port[i].sip_src_addr;
+					}
+				} else {
+					if(!media_legs[leg].sip_addr_b.isSet()) {
+						media_legs[leg].sip_addr_b = c_branch->ip_port[i].sip_src_addr;
+					}
+				}
+			}
+		}
+	}
+	if(sverb.rtp_streams) {
+		for(unsigned l = 0; l < media_legs.size(); l++) {
+			cout << "media leg " << l << " : port " << media_legs[l].port_a.getString() << " <-> " << media_legs[l].port_b.getString() << " addr";
+			for(unsigned i = 0; i < media_legs[l].addr_a.size(); i++) {
+				cout << (i ? "," : " ") << media_legs[l].addr_a[i].getString();
+			}
+			cout << " <->";
+			for(unsigned i = 0; i < media_legs[l].addr_b.size(); i++) {
+				cout << (i ? "," : " ") << media_legs[l].addr_b[i].getString();
+			}
+			cout << " sip " << media_legs[l].sip_addr_a.getString() << " <-> " << media_legs[l].sip_addr_b.getString() << endl;
+		}
+	}
+}
+
 volatile u_int64_t counter_calls_save_1;
 volatile u_int64_t counter_calls_save_2;
+
+int Call::rtp_stream_leg_index(RTP *rtp_i) {
+	classifyMediaLegs();
+	return(rtp_i->leg_index);
+}
+
+#if not EXPERIMENTAL_LITE_RTP_MOD
+void Call::prepareDbRow_cdr_rtp_ext_stats(SqlDb_row &rtps, RTP *rtp_i) {
+	if(existsColumns.cdr_rtp_leg) {
+		int leg = rtp_stream_leg_index(rtp_i);
+		rtps.add(leg >= 0 ? LIMIT_TINYINT_UNSIGNED(leg) : 0, "leg", leg < 0);
+	}
+	if(existsColumns.cdr_rtp_leg_view) {
+		rtp_stream_leg_index(rtp_i);
+		rtps.add(rtp_i->leg_view_index >= 0 ? LIMIT_TINYINT_UNSIGNED(rtp_i->leg_view_index) : 0, "leg_view", rtp_i->leg_view_index < 0);
+	}
+	if(existsColumns.cdr_rtp_ext_jitter) {
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED((int)ceil(rtp_i->stats.avgjitter * 10)), "avgjitter_mult10");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->stats.reordered), "reordered");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED((int)round((double)rtp_i->lost_() /
+							(rtp_i->received_() + 2 + rtp_i->lost_()) * 100 * 1000)), "packet_loss_perc_mult1000");
+		unsigned delay_sum = rtp_i->stats.d50 * 60 +
+				     rtp_i->stats.d70 * 80 +
+				     rtp_i->stats.d90 * 105 +
+				     rtp_i->stats.d120 * 135 +
+				     rtp_i->stats.d150 * 175 +
+				     rtp_i->stats.d200 * 250 +
+				     rtp_i->stats.d300 * 300;
+		unsigned delay_cnt = rtp_i->stats.d50 +
+				     rtp_i->stats.d70 +
+				     rtp_i->stats.d90 +
+				     rtp_i->stats.d120 +
+				     rtp_i->stats.d150 +
+				     rtp_i->stats.d200 +
+				     rtp_i->stats.d300;
+		unsigned delay_avg_mult100 = delay_cnt != 0 ? (unsigned)round((double)delay_sum / delay_cnt * 100) : 0;
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(delay_sum), "delay_sum");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(delay_avg_mult100), "delay_avg_mult100");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(delay_cnt), "delay_cnt");
+		if(rtp_i->last_packet_time_us) {
+			rtps.add_duration((int64_t)((typeIs(MGCP) ? last_mgcp_connect_packet_time_us : last_signal_packet_time_us) - rtp_i->last_packet_time_us),
+					  "last_rtp_from_end", existsColumns.cdr_rtp_ext_last_rtp_from_end_ms,
+					  false, existsColumns.cdr_rtp_ext_last_rtp_from_end_ms ? 999999 : 32767);
+		} else {
+			rtps.add(0, "last_rtp_from_end", true);
+		}
+	}
+	if(existsColumns.cdr_rtp_ext_sl_d) {
+		for(int j = 1; j < 11; j++) {
+			char str_j[3];
+			snprintf(str_j, sizeof(str_j), "%d", j);
+			rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->stats.slost[j]), string("sl") + str_j);
+		}
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->stats.d50), "d50");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->stats.d70), "d70");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->stats.d90), "d90");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->stats.d120), "d120");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->stats.d150), "d150");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->stats.d200), "d200");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->stats.d300), "d300");
+	}
+	if(existsColumns.cdr_rtp_ext_mos) {
+		bool mos_f1_ok = rtp_i->mosf1_avg > 0;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_f1_ok ? (int)rtp_i->mosf1_avg : 0), "mos_f1_mult10", !mos_f1_ok);
+		bool mos_f1_min_ok = rtp_i->mosf1_min > 0 && rtp_i->mosf1_min != (uint8_t)-1;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_f1_min_ok ? rtp_i->mosf1_min : 0), "mos_f1_min_mult10", !mos_f1_min_ok);
+		bool mos_f2_ok = rtp_i->mosf2_avg > 0;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_f2_ok ? (int)round(rtp_i->mosf2_avg) : 0), "mos_f2_mult10", !mos_f2_ok);
+		bool mos_f2_min_ok = rtp_i->mosf2_min > 0 && rtp_i->mosf2_min != (uint8_t)-1;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_f2_min_ok ? rtp_i->mosf2_min : 0), "mos_f2_min_mult10", !mos_f2_min_ok);
+		bool mos_adapt_ok = rtp_i->mosAD_avg > 0;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_adapt_ok ? (int)round(rtp_i->mosAD_avg) : 0), "mos_adapt_mult10", !mos_adapt_ok);
+		bool mos_adapt_min_ok = rtp_i->mosAD_min > 0 && rtp_i->mosAD_min != (uint8_t)-1;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_adapt_min_ok ? rtp_i->mosAD_min : 0), "mos_adapt_min_mult10", !mos_adapt_min_ok);
+		bool mos_silence_valid = rtp_i->mosSilence_min != (uint8_t)-1;
+		int mos_silence_mult10 = mos_silence_valid ? (int)round(rtp_i->mosSilence_avg) : 0;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_silence_mult10 > 0 ? mos_silence_mult10 : 0), "mos_silence_mult10", !(mos_silence_valid && mos_silence_mult10 > 0));
+		bool mos_silence_min_ok = mos_silence_valid && rtp_i->mosSilence_min > 0;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_silence_min_ok ? rtp_i->mosSilence_min : 0), "mos_silence_min_mult10", !mos_silence_min_ok);
+		bool mos_xr_valid = rtp_i->rtcp_xr.counter_mos > 0;
+		int mos_xr_mult10 = mos_xr_valid ? (int)round(rtp_i->rtcp_xr.avgmos) : 0;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_xr_mult10 > 0 ? mos_xr_mult10 : 0), "mos_xr_mult10", !(mos_xr_valid && mos_xr_mult10 > 0));
+		bool mos_xr_min_ok = mos_xr_valid && rtp_i->rtcp_xr.minmos > 0;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_xr_min_ok ? rtp_i->rtcp_xr.minmos : 0), "mos_xr_min_mult10", !mos_xr_min_ok);
+	}
+	if(existsColumns.cdr_rtp_ext_rtcp) {
+		bool rtcp_ok = rtp_i->rtcp.counter != 0;
+		rtps.add(rtcp_ok ? LIMIT_MEDIUMINT_SIGNED(rtp_i->rtcp.loss) : 0, "rtcp_loss", !rtcp_ok);
+		rtps.add(rtcp_ok ? LIMIT_SMALLINT_UNSIGNED(rtp_i->rtcp.maxfr) : 0, "rtcp_maxfr", !rtcp_ok);
+		rtps.add(rtcp_ok ? LIMIT_SMALLINT_UNSIGNED((int)round(rtp_i->rtcp.avgfr * 10)) : 0, "rtcp_avgfr_mult10", !rtcp_ok);
+		int rtcp_maxjitter = 0;
+		int rtcp_avgjitter_mult10 = 0;
+		if(rtcp_ok) {
+			rtcp_maxjitter = (int)round((double)rtp_i->rtcp.maxjitter / get_ticks_bycodec(rtp_i->first_codec));
+			rtcp_avgjitter_mult10 = (int)round(rtp_i->rtcp.avgjitter / get_ticks_bycodec(rtp_i->first_codec) * 10);
+			if(rtcp_maxjitter * 10 < rtcp_avgjitter_mult10) {
+				++rtcp_maxjitter;
+			}
+		}
+		rtps.add(LIMIT_SMALLINT_UNSIGNED(rtcp_maxjitter), "rtcp_maxjitter", !rtcp_ok);
+		rtps.add(LIMIT_SMALLINT_UNSIGNED(rtcp_avgjitter_mult10), "rtcp_avgjitter_mult10", !rtcp_ok);
+		bool rtd_rfc_ok = rtcp_ok && rtp_i->rtcp.rtd_rfc_count > 0;
+		bool rtd_ws_ok = rtcp_ok && !rtd_rfc_ok && rtp_i->rtcp.rtd_ws_count > 0;
+		rtps.add(rtd_rfc_ok ? LIMIT_SMALLINT_UNSIGNED(rtp_i->rtcp.rtd_rfc_max * 10) :
+			 rtd_ws_ok ? LIMIT_SMALLINT_UNSIGNED(rtp_i->rtcp.rtd_ws_max * 10) : 0,
+			 "rtcp_maxrtd_mult10", !rtd_rfc_ok && !rtd_ws_ok);
+		rtps.add(rtd_rfc_ok ? LIMIT_SMALLINT_UNSIGNED(rtp_i->rtcp.rtd_rfc_sum * 10 / rtp_i->rtcp.rtd_rfc_count) :
+			 rtd_ws_ok ? LIMIT_SMALLINT_UNSIGNED(rtp_i->rtcp.rtd_ws_sum * 10 / rtp_i->rtcp.rtd_ws_count) : 0,
+			 "rtcp_avgrtd_mult10", !rtd_rfc_ok && !rtd_ws_ok);
+		rtps.add(rtcp_ok ? rtp_i->rtcp.fraclost_pkt_counter : 0, "rtcp_fraclost_pktcount", !rtcp_ok);
+	}
+}
+#endif
 
 /* TODO: implement failover -> write INSERT into file */
 int
@@ -7393,6 +7803,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	if(opt_save_sdp_ipport) {
+		classifyMediaLegs();
 		bool save_iscaller = false;
 		bool save_iscalled = false;
 		for(int i = c_branch->ipport_n - 1; i >= 0; i--) {
@@ -7404,6 +7815,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				sdp_s_data.ip_port = vmIPport(c_branch->ip_port[i].addr, c_branch->ip_port[i].port);
 				sdp_s_data.is_caller = c_branch->ip_port[i].iscaller;
 				sdp_s_data.ptime = c_branch->ip_port[i].ptime;
+				sdp_s_data.leg_index = c_branch->ip_port[i].leg_index;
 				if(std::find(sdp_rows_list.begin(), sdp_rows_list.end(), sdp_s_data) == sdp_rows_list.end()) {
 					sdp_rows_list.push_back(sdp_s_data);
 					if(opt_save_sdp_ipport == 1) {
@@ -7848,6 +8260,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			string c = i == 0 ? "a" : "b";
 			
 			cdr.add(LIMIT_TINYINT_UNSIGNED(rtpab[i]->ssrc_index), c+"_index");
+			if(existsColumns.cdr_ab_leg) {
+				int leg = rtp_stream_leg_index(rtpab[i]);
+				cdr.add(LIMIT_TINYINT_SIGNED(leg), c+"_leg", leg < 0);
+			}
 			
 			cdr.add(LIMIT_MEDIUMINT_UNSIGNED(rtpab[i]->received_() + (rtpab[i]->first_codec_() >= 0 ? 2 : 0)), c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
 			lost[i] = rtpab[i]->lost_();
@@ -8757,6 +9173,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					rtps.add(rtp_i->ttl_count > 0 ? rtp_i->ttl_max : 0, "ttl_max", rtp_i->ttl_count == 0);
 					rtps.add(rtp_i->ttl_count > 0 ? (int)round((double)rtp_i->ttl_sum / rtp_i->ttl_count * 10) : 0, "ttl_avg_mult10", rtp_i->ttl_count == 0);
 				}
+				prepareDbRow_cdr_rtp_ext_stats(rtps, rtp_i);
 				#endif
 				if(existsColumns.cdr_rtp_calldate) {
 					rtps.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_rtp_calldate_ms);
@@ -8913,6 +9330,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					sdp.add(iter->is_caller, "is_caller");
 					if(existsColumns.cdr_sdp_ptime) {
 						sdp.add(LIMIT_TINYINT_UNSIGNED(iter->ptime), "ptime", !iter->ptime);
+					}
+					if(existsColumns.cdr_sdp_leg_index) {
+						sdp.add(iter->leg_index, "leg_index", iter->leg_index < 0);
 					}
 					if(existsColumns.cdr_sdp_calldate) {
 						sdp.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_sdp_calldate_ms);
@@ -9495,6 +9915,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp_i->ttl_count > 0 ? rtp_i->ttl_max : 0, "ttl_max", rtp_i->ttl_count == 0);
 				rtps.add(rtp_i->ttl_count > 0 ? (int)round((double)rtp_i->ttl_sum / rtp_i->ttl_count * 10) : 0, "ttl_avg_mult10", rtp_i->ttl_count == 0);
 			}
+			prepareDbRow_cdr_rtp_ext_stats(rtps, rtp_i);
 			#endif
 			if(existsColumns.cdr_rtp_calldate) {
 				rtps.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_rtp_calldate_ms);
@@ -9549,6 +9970,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					sdp.add(iter->is_caller, "is_caller");
 					if(existsColumns.cdr_sdp_ptime) {
 						sdp.add(LIMIT_TINYINT_UNSIGNED(iter->ptime), "ptime", !iter->ptime);
+					}
+					if(existsColumns.cdr_sdp_leg_index) {
+						sdp.add(iter->leg_index, "leg_index", iter->leg_index < 0);
 					}
 					if(existsColumns.cdr_sdp_calldate) {
 						sdp.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_sdp_calldate_ms);
