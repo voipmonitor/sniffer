@@ -8115,6 +8115,19 @@ int SensorsMap::getSensorTableId(int sensorId) {
 	return(sensorTableId);
 }
 
+void SensorsMap::getSensorsIdFromTable(set<int> *sensorsId) {
+	// only the sensors which resolve to a sensors.id, i.e. getSensorTableId() > 0 - the entries
+	// created just by setSensorName (announced by a connection handshake) have table_id 0
+	sensorsId->clear();
+	lock();
+	for(map<int, sSensorData>::iterator iter = sensors.begin(); iter != sensors.end(); iter++) {
+		if(iter->first > 0 && iter->second.table_id > 0) {
+			sensorsId->insert(iter->first);
+		}
+	}
+	unlock();
+}
+
 string SensorsMap::getSensorName(int sensorId, bool file) {
 	extern int opt_id_sensor;
 	extern char opt_name_sensor[256];

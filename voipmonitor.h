@@ -27,7 +27,6 @@ using namespace std;
 void reload_config(const char *jsonConfig = NULL);
 void hot_restart();
 void hot_restart_with_json_config(const char *jsonConfig);
-void set_request_for_reload_capture_rules();
 void reload_capture_rules();
 
 void terminate_packetbuffer();

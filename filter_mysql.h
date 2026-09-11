@@ -131,19 +131,20 @@ struct filter_db_row_base {
 
 class filter_base {
 protected:
-	string _string(SqlDb_row *sqlRow, map<string, string> *row, const char *column);
-	bool _value_is_null(SqlDb_row *sqlRow, map<string, string> *row, const char *column);
-	int _value(SqlDb_row *sqlRow, map<string, string> *row, const char *column);
-	void _loadBaseDataRow(SqlDb_row *sqlRow, map<string, string> *row, filter_db_row_base *baseRow);
-	void loadBaseDataRow(SqlDb_row *sqlRow, filter_db_row_base *baseRow);
-	void loadBaseDataRow(map<string, string> *row, filter_db_row_base *baseRow);
-	u_int64_t getFlagsFromBaseData(filter_db_row_base *baseRow, u_int32_t *global_flags);
-	void parseNatAliases(filter_db_row_base *baseRow, sNatAliases **nat_aliases);
+	// stateless row parsing helpers
+	static string _string(SqlDb_row *sqlRow, map<string, string> *row, const char *column);
+	static bool _value_is_null(SqlDb_row *sqlRow, map<string, string> *row, const char *column);
+	static int _value(SqlDb_row *sqlRow, map<string, string> *row, const char *column);
+	static void _loadBaseDataRow(SqlDb_row *sqlRow, map<string, string> *row, filter_db_row_base *baseRow);
+	static void loadBaseDataRow(SqlDb_row *sqlRow, filter_db_row_base *baseRow);
+	static void loadBaseDataRow(map<string, string> *row, filter_db_row_base *baseRow);
+	static u_int64_t getFlagsFromBaseData(filter_db_row_base *baseRow, u_int32_t *global_flags);
+	static void parseNatAliases(filter_db_row_base *baseRow, sNatAliases **nat_aliases);
 	void setCallFlagsFromFilterFlags(volatile unsigned long int *callFlags, u_int64_t filterFlags, bool reconfigure = false);
 };
 
 class IPfilter : public filter_base {
-private:
+public:
 	struct db_row : filter_db_row_base {
 		db_row() {
 			ip.clear();
@@ -152,6 +153,7 @@ private:
 		vmIP ip;
 		int mask;
 	};
+private:
         struct t_node {
 		t_node() {
 			mask = 0;
@@ -178,7 +180,10 @@ private:
 public: 
         IPfilter();
         ~IPfilter();
-        void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL, int sensor_id = 0);
+	// one select; the rows are distributed to the default set and to every per-sensor set
+	static void load(IPfilter *filter_default, std::map<int, IPfilter*> *filter_by_sensor, u_int32_t *global_flags, SqlDb *sqlDb = NULL);
+	static void parseDbRow(SqlDb_row *row, db_row *dbRow);
+	void add_db_row(db_row *dbRow, u_int32_t *global_flags);
 	int _add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, vmIP saddr, vmIP daddr, bool reconfigure = false);
 	void _dump2man(ostringstream &oss);
         static void dump2man(ostringstream &oss);
@@ -211,13 +216,14 @@ private:
 };
 
 class TELNUMfilter : public filter_base {
-private:
+public:
 	struct db_row : filter_db_row_base {
 		db_row() {
 			memset(prefix, 0, sizeof(prefix));
 		}
 		char prefix[MAX_PREFIX];
 	};
+private:
 	struct t_payload {
 		t_payload() {
 			direction = 0;
@@ -252,8 +258,12 @@ private:
 public:
         TELNUMfilter();
         ~TELNUMfilter();
-        void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL, int sensor_id = 0);
+	// the file rules (loadFile) into every set first, then one select; the rows are distributed
+	// to the default set and to every per-sensor set
+	static void load(TELNUMfilter *filter_default, std::map<int, TELNUMfilter*> *filter_by_sensor, u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	void loadFile(u_int32_t *global_flags);
+	static void parseDbRow(SqlDb_row *row, db_row *dbRow);
+	void add_db_row(db_row *dbRow, u_int32_t *global_flags);
 	void add_payload(t_payload *payload);
 	int _add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *telnum_src, const char *telnum_dst, bool reconfigure = false);
 	void _dump2man(ostringstream &oss);
@@ -287,12 +297,13 @@ private:
 };
 
 class DOMAINfilter : public filter_base {
-private:
+public:
 	struct db_row : filter_db_row_base{
 		db_row() {
 		}
 		std::string domain;
 	};
+private:
         struct t_node {
 		t_node() {
 			direction = 0;
@@ -315,7 +326,10 @@ private:
 public: 
 	DOMAINfilter();
 	~DOMAINfilter();
-	void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL, int sensor_id = 0);
+	// one select; the rows are distributed to the default set and to every per-sensor set
+	static void load(DOMAINfilter *filter_default, std::map<int, DOMAINfilter*> *filter_by_sensor, u_int32_t *global_flags, SqlDb *sqlDb = NULL);
+	static void parseDbRow(SqlDb_row *row, db_row *dbRow);
+	void add_db_row(db_row *dbRow, u_int32_t *global_flags);
 	int _add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *domain_src, const char *domain_dst, bool reconfigure = false);
 	void _dump2man(ostringstream &oss);
         static void dump2man(ostringstream &oss);
@@ -348,15 +362,18 @@ private:
 };
 
 class SIP_HEADERfilter : public filter_base {
-private:
+public:
 	struct db_row : filter_db_row_base{
 		db_row() {
+			prefix = false;
+			regexp = false;
 		}
 		std::string header;
 		std::string content;
 		bool prefix;
 		bool regexp;
 	};
+private:
         struct item_data {
 		item_data() {
 			direction = 0;
@@ -392,8 +409,12 @@ private:
 public: 
 	SIP_HEADERfilter();
 	~SIP_HEADERfilter();
-	void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL, int sensor_id = 0);
+	// the file rules (loadFile) into every set first, then one select; the rows are distributed
+	// to the default set and to every per-sensor set
+	static void load(SIP_HEADERfilter *filter_default, std::map<int, SIP_HEADERfilter*> *filter_by_sensor, u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	void loadFile(u_int32_t *global_flags);
+	static void parseDbRow(SqlDb_row *row, db_row *dbRow);
+	void add_db_row(db_row *dbRow, u_int32_t *global_flags);
 	int _add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, sNatAliases **nat_aliases, bool reconfigure = false);
 	void _dump2man(ostringstream &oss);
         static void dump2man(ostringstream &oss);
@@ -439,23 +460,20 @@ public:
 	};
 public:
 	static void loadActive(SqlDb *sqlDb = NULL);
-	static void prepareReload(SqlDb *sqlDb = NULL, bool only_if_reload_requested = false);
+	static void prepareReload(SqlDb *sqlDb = NULL);
 	static void applyReload();
 	static void freeActive();
-	static bool registerPacketbufferSensor(int sensor_id);
-	static bool requestReloadForPacketbufferSensor(int sensor_id);
-	static void getPacketbufferSensors(std::set<int> *pb_sensors);
+	static void getReloadSensors(std::set<int> *sensors);
 	static void lock_reload() {
 		__SYNC_LOCK(_sync_reload);
 	}
 	static void unlock_reload() {
 		__SYNC_UNLOCK(_sync_reload);
 	}
-	static void lock_packetbuffer_sensors() {
-		__SYNC_LOCK(_sync_packetbuffer_sensors);
-	}
-	static void unlock_packetbuffer_sensors() {
-		__SYNC_UNLOCK(_sync_packetbuffer_sensors);
+	static inline bool useDbRules() {
+		// the modes which do not process the capture rules from the database at all
+		extern int opt_nocdr;
+		return(!(opt_nocdr || is_sender() || is_client_packetbuffer_sender()));
 	}
 	static inline u_int32_t getGlobalFlags() {
 		return(global_flags);
@@ -475,11 +493,6 @@ public:
 	static u_int32_t reload_global_flags;
 	static volatile bool reload_do;
 	static volatile int _sync_reload;
-	static std::set<int> packetbuffer_sensors;
-	// set by the registration of a new packetbuffer sensor or by a reload request for it, cleared when
-	// a reload snapshots the registry - a burst of requests (connects, gui reloads) coalesces to <= 2 reloads
-	static volatile bool reload_requested;
-	static volatile int _sync_packetbuffer_sensors;
 };
 
 inline void set_global_flags(volatile unsigned long int &flags) {

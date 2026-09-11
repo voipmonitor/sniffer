@@ -8,7 +8,6 @@
 #include "pcap_queue.h"
 #include "manager.h"
 #include "tools.h"
-#include "filter_mysql.h"
 
 
 extern int opt_id_sensor;
@@ -509,11 +508,6 @@ void cSnifferServerConnection::cp_gui_command(int32_t sensor_id, string command,
 		syslog(LOG_INFO, "%s", verbstr.str().c_str());
 	}
 	bool need_aes = !aes_key && !cManagerAes::notNeedAesForCommand((char*)command.c_str()) && cManagerAes::checkExistsAesKey();
-	if(!need_aes && command == "reload" && cFilters::requestReloadForPacketbufferSensor(sensor_id)) {
-		// the capture rules of a packetbuffer sensor are processed here on the server - reload them
-		// on its behalf (independently of the relay of the command to the sensor)
-		cFilters::prepareReload(NULL, true);
-	}
 	cSnifferServerConnection *service_connection = snifferServerServices->getServiceConnection(sensor_id, NULL);
 	if(!service_connection) {
 		socket->write("missing sniffer service - connect sensor?");
@@ -1197,13 +1191,6 @@ void cSnifferServerConnection::cp_packetbuffer_block() {
 	if(!rsaAesInit()) {
 		delete this;
 		return;
-	}
-	if(cFilters::registerPacketbufferSensor(pb_id_sensor)) {
-		// load the capture rules of a new packetbuffer sensor before its packets are processed
-		if(!opt_server_log_suppress) {
-			syslog(LOG_NOTICE, "load capture rules for packetbuffer sensor id: %i", pb_id_sensor);
-		}
-		cFilters::prepareReload(NULL, true);
 	}
 	u_char *block;
 	size_t blockLength;
