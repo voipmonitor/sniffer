@@ -1437,7 +1437,6 @@ struct sExistsColumns {
 	bool cdr_sipcallerdip_encaps;
 	bool cdr_sipcallerdip_v6;
 	bool cdr_reordered;
-	bool cdr_ab_leg;
 	bool cdr_next_calldate;
 	bool cdr_next_digest_username;
 	bool cdr_next_spool_index;

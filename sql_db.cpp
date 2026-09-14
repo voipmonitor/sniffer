@@ -6747,8 +6747,6 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`dscp` int unsigned DEFAULT NULL,\
 			`a_index` tinyint DEFAULT NULL,\
 			`b_index` tinyint DEFAULT NULL,\
-			`a_leg` tinyint DEFAULT NULL,\
-			`b_leg` tinyint DEFAULT NULL,\
 			`a_payload` int DEFAULT NULL,\
 			`b_payload` int DEFAULT NULL,\
 			`a_saddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
@@ -10664,11 +10662,6 @@ void SqlDb_mysql::checkColumns_cdr(bool enableAlter) {
 				&tableSize, &existsColumns.cdr_reordered,
 				"a_reordered", "mediumint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"b_reordered", "mediumint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				NULL_CHAR_PTR);
-	this->checkExistsColumn("cdr", "RTP Legs Info", enableAlter,
-				&tableSize, &existsColumns.cdr_ab_leg,
-				"a_leg", "tinyint DEFAULT NULL AFTER `b_index`", NULL_CHAR_PTR,
-				"b_leg", "tinyint DEFAULT NULL AFTER `a_leg`", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 }
 

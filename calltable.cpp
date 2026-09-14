@@ -8260,10 +8260,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			string c = i == 0 ? "a" : "b";
 			
 			cdr.add(LIMIT_TINYINT_UNSIGNED(rtpab[i]->ssrc_index), c+"_index");
-			if(existsColumns.cdr_ab_leg) {
-				int leg = rtp_stream_leg_index(rtpab[i]);
-				cdr.add(LIMIT_TINYINT_SIGNED(leg), c+"_leg", leg < 0);
-			}
 			
 			cdr.add(LIMIT_MEDIUMINT_UNSIGNED(rtpab[i]->received_() + (rtpab[i]->first_codec_() >= 0 ? 2 : 0)), c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
 			lost[i] = rtpab[i]->lost_();
