@@ -975,7 +975,7 @@ bool opt_cdr_force_primary_index_in_all_tables = 0;
 bool opt_cdr_sipport = 0;
 bool opt_cdr_rtpport = 0;
 bool opt_cdr_rtpsrcport = 0;
-int opt_cdr_rtp_extended_stats = 0;
+int opt_cdr_rtp_extended_stats = 2;
 int opt_cdr_check_exists_callid = 0;
 string opt_cdr_check_unique_callid_in_sensors;
 set<int> opt_cdr_check_unique_callid_in_sensors_list;
