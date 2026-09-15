@@ -550,6 +550,7 @@ SqlDb_row& SqlDb_rows::fetchRow() {
 void SqlDb_rows::initFetch() {
 	if(iter_rows) {
 		delete iter_rows;
+		iter_rows = NULL;
 	}
 }
 
@@ -562,9 +563,7 @@ SqlDb_rows::operator unsigned() {
 }
 
 void SqlDb_rows::clear() {
-	if(iter_rows) {
-		delete iter_rows;
-	}
+	initFetch();
 	rows.clear();
 }
 

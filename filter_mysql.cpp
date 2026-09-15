@@ -18,12 +18,18 @@ using namespace std;
 
 extern int opt_nocdr;
 extern int opt_id_sensor;
+extern SensorsMap sensorsMap;
 
 
-template <class type_filter>
-static void freeFilterMap(std::map<int, type_filter*> *&filter_map) {
+bool isStringNull(string &str) {
+	return(str == "" || str == "\\N");
+}
+
+/* filter_base class */
+
+void filter_base::freeFilterMap(std::map<int, filter_base*> *&filter_map) {
 	if(filter_map) {
-		for(typename std::map<int, type_filter*>::iterator iter = filter_map->begin(); iter != filter_map->end(); iter++) {
+		for(std::map<int, filter_base*>::iterator iter = filter_map->begin(); iter != filter_map->end(); iter++) {
 			delete iter->second;
 		}
 		delete filter_map;
@@ -31,80 +37,98 @@ static void freeFilterMap(std::map<int, type_filter*> *&filter_map) {
 	}
 }
 
-template <class type_filter>
-static void createFilterMapBySensor(std::map<int, type_filter*> *&filter_map, const std::set<int> &pb_sensors) {
-	if(pb_sensors.size()) {
-		filter_map = new FILE_LINE(0) std::map<int, type_filter*>;
-		for(std::set<int>::const_iterator iter = pb_sensors.begin(); iter != pb_sensors.end(); iter++) {
-			(*filter_map)[*iter] = new FILE_LINE(0) type_filter;
-		}
+void filter_base::load(std::map<int, filter_base*> *&filter_map, u_int32_t *global_flags, SqlDb *sqlDb) {
+	freeFilterMap(filter_map);
+	// the rules from the file (if configured) must precede the db rules (a duplicate rule overwrites the item)
+	loadFile(global_flags);
+	if(!cFilters::useDbRules()) {
+		return;
 	}
-}
-
-// the rules from the file (if configured) go to the default set and to every per-sensor set
-template <class type_filter>
-static void loadFilterFileBySensors(type_filter *filter_default, std::map<int, type_filter*> *filter_map, u_int32_t *global_flags) {
-	filter_default->loadFile(global_flags);
-	if(filter_map) {
-		for(typename std::map<int, type_filter*>::iterator iter = filter_map->begin(); iter != filter_map->end(); iter++) {
-			iter->second->loadFile(global_flags);
-		}
-	}
-}
-
-// hand one parsed db row to the default set (sensor_id 0 - the local sensor) and to every per-sensor set whose
-// sensor passes the sensors_id test (an empty sensors_id means all sensors); the caller holds lock() or lock_reload()
-template <class type_filter>
-static void addFilterDbRowBySensors(type_filter *filter_default, std::map<int, type_filter*> *filter_map,
-				    const string &sensors_id, typename type_filter::db_row *dbRow, u_int32_t *global_flags) {
-	if(selectSensorsContainSensorId(sensors_id, 0)) {
-		filter_default->add_db_row(dbRow, global_flags);
-	}
-	if(filter_map) {
-		for(typename std::map<int, type_filter*>::iterator iter = filter_map->begin(); iter != filter_map->end(); iter++) {
-			if(selectSensorsContainSensorId(sensors_id, iter->first)) {
-				iter->second->add_db_row(dbRow, global_flags);
-			}
-		}
+	loadDbBySensors(filter_map, global_flags, sqlDb);
+	if(sverb.capture_filter) {
+		syslog(LOG_NOTICE, "%s: load", getDbTable());
 	}
 }
 
 // one select of the enabled rules of the table - with the sensors_id column (group_concat of the <table>_sensors
-// rows) if that table exists; every row is parsed once and distributed to the sets, so the rules are read from
-// the db only once per type regardless of the number of sensors
-template <class type_filter>
-static void loadFilterDbBySensors(type_filter *filter_default, std::map<int, type_filter*> *filter_map, u_int32_t *global_flags,
-				  SqlDb *sqlDb, const char *table, const char *order_by) {
+// rows) if that table exists; every row is parsed once and distributed to the sets
+void filter_base::loadDbBySensors(std::map<int, filter_base*> *&filter_map, u_int32_t *global_flags, SqlDb *sqlDb) {
 	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
-	string sensors_table = string(table) + "_sensors";
+	string table = getDbTable();
+	string sensors_table = table + "_sensors";
 	bool existsSensorsTable = sqlDb->existsTable(sensors_table);
-	sqlDb->query(string("SELECT ") + table + ".*" +
+	sqlDb->query("SELECT " + table + ".*" +
 		     (existsSensorsTable ?
 		       ",(select group_concat(coalesce(sensor_id, -2)) from " + sensors_table +
 		       " where " + table + "_id = " + table + ".id) as sensors_id" :
 		       string()) +
-		     " FROM " + table + " where enabled = 1" + order_by);
+		     " FROM " + table + " where enabled = 1" + getDbOrderBy());
 	SqlDb_rows rows;
 	sqlDb->fetchRows(&rows);
+	if(is_server() && existsSensorsTable) {
+		createFilterMapBySensors(&rows, filter_map, global_flags);
+	}
 	SqlDb_row row;
 	while((row = rows.fetchRow())) {
-		typename type_filter::db_row dbRow;
-		type_filter::parseDbRow(&row, &dbRow);
-		addFilterDbRowBySensors(filter_default, filter_map, row["sensors_id"], &dbRow, global_flags);
+		filter_db_row_base *dbRow = parseDbRow(&row);
+		addDbRowBySensors(filter_map, row["sensors_id"], dbRow, global_flags);
+		delete dbRow;
 	}
 	if(_createSqlObject) {
 		delete sqlDb;
 	}
 }
 
-template <class type_filter>
-static type_filter *selectFilterBySensor(type_filter *filter_default, std::map<int, type_filter*> *filter_map, int sensor_id) {
+// the per-sensor sets exist only for the sensors referenced by the sensors_id of a row (the sensors.id of the
+// <table>_sensors rows, -1: all sensors, -2: null sensor_id); a sensor without a pinned rule and the local sensor
+// use the default set through selectFilterBySensor
+void filter_base::createFilterMapBySensors(SqlDb_rows *rows, std::map<int, filter_base*> *&filter_map, u_int32_t *global_flags) {
+	std::set<int> sensorsTableId;
+	vector<string> delim = split(",", '|');
+	SqlDb_row row;
+	while((row = rows->fetchRow())) {
+		split2int(row["sensors_id"], delim, &sensorsTableId);
+	}
+	rows->initFetch();
+	std::set<int> sensors;
+	sensorsMap.getSensorsIdByTableId(sensorsTableId, &sensors);
+	sensors.erase(opt_id_sensor);
+	if(sensors.empty()) {
+		return;
+	}
+	filter_map = new FILE_LINE(0) std::map<int, filter_base*>;
+	for(std::set<int>::iterator iter = sensors.begin(); iter != sensors.end(); iter++) {
+		filter_base *filter = createInstance();
+		// the file rules first (see load)
+		filter->loadFile(global_flags);
+		(*filter_map)[*iter] = filter;
+	}
+}
+
+// hand one parsed db row to the sets: every set gets the rows which pass for the local sensor (sensor_id 0;
+// an empty sensors_id means all sensors), so the rules of the server sensor apply to its clients too;
+// a per-sensor set additionally gets the rows pinned to its sensor; the caller holds lock() or lock_reload()
+void filter_base::addDbRowBySensors(std::map<int, filter_base*> *filter_map, const string &sensors_id, filter_db_row_base *dbRow, u_int32_t *global_flags) {
+	bool forLocalSensor = selectSensorsContainSensorId(sensors_id, 0);
+	if(forLocalSensor) {
+		add_db_row(dbRow, global_flags);
+	}
+	if(filter_map) {
+		for(std::map<int, filter_base*>::iterator iter = filter_map->begin(); iter != filter_map->end(); iter++) {
+			if(forLocalSensor || selectSensorsContainSensorId(sensors_id, iter->first)) {
+				iter->second->add_db_row(dbRow, global_flags);
+			}
+		}
+	}
+}
+
+filter_base *filter_base::selectFilterBySensor(filter_base *filter_default, std::map<int, filter_base*> *filter_map, int sensor_id) {
 	if(sensor_id > 0 && filter_map) {
-		typename std::map<int, type_filter*>::iterator iter = filter_map->find(sensor_id);
+		std::map<int, filter_base*>::iterator iter = filter_map->find(sensor_id);
 		if(iter != filter_map->end()) {
 			return(iter->second);
 		}
@@ -112,19 +136,13 @@ static type_filter *selectFilterBySensor(type_filter *filter_default, std::map<i
 	return(filter_default);
 }
 
-template <class type_filter>
-static void dumpFilterMapBySensor(std::map<int, type_filter*> *filter_map, ostringstream &oss) {
+void filter_base::dumpFilterMapBySensor(std::map<int, filter_base*> *filter_map, ostringstream &oss) {
 	if(filter_map) {
-		for(typename std::map<int, type_filter*>::iterator iter = filter_map->begin(); iter != filter_map->end(); iter++) {
+		for(std::map<int, filter_base*>::iterator iter = filter_map->begin(); iter != filter_map->end(); iter++) {
 			oss << dec << "sensor " << iter->first << ":" << endl;
 			iter->second->_dump2man(oss);
 		}
 	}
-}
-
-
-bool isStringNull(string &str) {
-	return(str == "" || str == "\\N");
 }
 
 string filter_base::_string(SqlDb_row *sqlRow, map<string, string> *row, const char *column) {
@@ -392,20 +410,16 @@ IPfilter::~IPfilter() {
 	}
 };
 
-void IPfilter::load(IPfilter *filter_default, std::map<int, IPfilter*> *filter_by_sensor, u_int32_t *global_flags, SqlDb *sqlDb) {
-	if(!cFilters::useDbRules()) {
-		return;
-	}
-	loadFilterDbBySensors(filter_default, filter_by_sensor, global_flags, sqlDb, "filter_ip", " ORDER BY ip desc, mask desc");
-};
-
-void IPfilter::parseDbRow(SqlDb_row *row, db_row *dbRow) {
+filter_db_row_base *IPfilter::parseDbRow(SqlDb_row *row) {
+	db_row *dbRow = new FILE_LINE(0) db_row;
 	dbRow->ip.setIP(row, "ip");
 	dbRow->mask = atoi((*row)["mask"].c_str());
 	loadBaseDataRow(row, dbRow);
+	return(dbRow);
 }
 
-void IPfilter::add_db_row(db_row *dbRow, u_int32_t *global_flags) {
+void IPfilter::add_db_row(filter_db_row_base *dbRow_, u_int32_t *global_flags) {
+	db_row *dbRow = (db_row*)dbRow_;
 	count++;
 	t_node *node = new FILE_LINE(0) t_node;
 	node->direction = dbRow->direction;
@@ -483,7 +497,7 @@ void IPfilter::dump2man(ostringstream &oss) {
 int IPfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, vmIP saddr, vmIP daddr, int sensor_id, bool reconfigure) {
 	int rslt = 0;
 	lock();
-	IPfilter *filter = selectFilterBySensor(filter_active, filter_active_by_sensor, sensor_id);
+	IPfilter *filter = (IPfilter*)selectFilterBySensor(filter_active, filter_active_by_sensor, sensor_id);
 	if(filter) {
 		rslt = filter->_add_call_flags(flags, nat_aliases, saddr, daddr, reconfigure);
 	}
@@ -491,12 +505,10 @@ int IPfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases **na
 	return(rslt);
 }
 
-void IPfilter::loadActive(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb) {
+void IPfilter::loadActive(u_int32_t *global_flags, SqlDb *sqlDb) {
 	lock();
 	filter_active = new FILE_LINE(4002) IPfilter();
-	freeFilterMap(filter_active_by_sensor);
-	createFilterMapBySensor(filter_active_by_sensor, pb_sensors);
-	IPfilter::load(filter_active, filter_active_by_sensor, global_flags, sqlDb);
+	filter_active->load(filter_active_by_sensor, global_flags, sqlDb);
 	unlock();
 }
 
@@ -510,15 +522,13 @@ void IPfilter::freeActive() {
 	unlock();
 }
 
-void IPfilter::prepareReload(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb) {
+void IPfilter::prepareReload(u_int32_t *global_flags, SqlDb *sqlDb) {
 	lock_reload();
 	if(filter_reload) {
 		delete filter_reload;
 	}
-	freeFilterMap(filter_reload_by_sensor);
 	filter_reload = new FILE_LINE(4003) IPfilter;
-	createFilterMapBySensor(filter_reload_by_sensor, pb_sensors);
-	IPfilter::load(filter_reload, filter_reload_by_sensor, global_flags, sqlDb);
+	filter_reload->load(filter_reload_by_sensor, global_flags, sqlDb);
 	reload_do = true;
 	syslog(LOG_NOTICE, "IPfilter::prepareReload");
 	unlock_reload();
@@ -530,7 +540,7 @@ void IPfilter::applyReload() {
 		if(reload_do) {
 			lock();
 			IPfilter *filter_active_old = filter_active;
-			std::map<int, IPfilter*> *filter_active_by_sensor_old = filter_active_by_sensor;
+			std::map<int, filter_base*> *filter_active_by_sensor_old = filter_active_by_sensor;
 			filter_active = filter_reload;
 			filter_active_by_sensor = filter_reload_by_sensor;
 			unlock();
@@ -548,8 +558,8 @@ void IPfilter::applyReload() {
 
 IPfilter *IPfilter::filter_active = NULL;
 IPfilter *IPfilter::filter_reload = NULL;
-std::map<int, IPfilter*> *IPfilter::filter_active_by_sensor = NULL;
-std::map<int, IPfilter*> *IPfilter::filter_reload_by_sensor = NULL;
+std::map<int, filter_base*> *IPfilter::filter_active_by_sensor = NULL;
+std::map<int, filter_base*> *IPfilter::filter_reload_by_sensor = NULL;
 volatile bool IPfilter::reload_do = 0;
 volatile int IPfilter::_sync = 0;
 volatile int IPfilter::_sync_reload = 0;
@@ -635,21 +645,15 @@ void TELNUMfilter::add_payload(t_payload *payload) {
 };
 
 
-void TELNUMfilter::load(TELNUMfilter *filter_default, std::map<int, TELNUMfilter*> *filter_by_sensor, u_int32_t *global_flags, SqlDb *sqlDb) {
-	// the file rules must precede the db rules in every set (add_payload overwrites a duplicate prefix)
-	loadFilterFileBySensors(filter_default, filter_by_sensor, global_flags);
-	if(!cFilters::useDbRules()) {
-		return;
-	}
-	loadFilterDbBySensors(filter_default, filter_by_sensor, global_flags, sqlDb, "filter_telnum", "");
-};
-
-void TELNUMfilter::parseDbRow(SqlDb_row *row, db_row *dbRow) {
+filter_db_row_base *TELNUMfilter::parseDbRow(SqlDb_row *row) {
+	db_row *dbRow = new FILE_LINE(0) db_row;
 	strcpy_null_term(dbRow->prefix, trim_str((*row)["prefix"]).c_str());
 	loadBaseDataRow(row, dbRow);
+	return(dbRow);
 }
 
-void TELNUMfilter::add_db_row(db_row *dbRow, u_int32_t *global_flags) {
+void TELNUMfilter::add_db_row(filter_db_row_base *dbRow_, u_int32_t *global_flags) {
+	db_row *dbRow = (db_row*)dbRow_;
 	count++;
 	t_payload *np = new FILE_LINE(0) t_payload;
 	np->direction = dbRow->direction;
@@ -795,7 +799,7 @@ void TELNUMfilter::dump_payload_line(ostringstream &oss, t_payload *p, bool wild
 int TELNUMfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *telnum_src, const char *telnum_dst, int sensor_id, bool reconfigure) {
 	int rslt = 0;
 	lock();
-	TELNUMfilter *filter = selectFilterBySensor(filter_active, filter_active_by_sensor, sensor_id);
+	TELNUMfilter *filter = (TELNUMfilter*)selectFilterBySensor(filter_active, filter_active_by_sensor, sensor_id);
 	if(filter) {
 		rslt = filter->_add_call_flags(flags, nat_aliases, telnum_src, telnum_dst, reconfigure);
 	}
@@ -803,12 +807,10 @@ int TELNUMfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases 
 	return(rslt);
 }
 
-void TELNUMfilter::loadActive(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb) {
+void TELNUMfilter::loadActive(u_int32_t *global_flags, SqlDb *sqlDb) {
 	lock();
 	filter_active = new FILE_LINE(4004) TELNUMfilter();
-	freeFilterMap(filter_active_by_sensor);
-	createFilterMapBySensor(filter_active_by_sensor, pb_sensors);
-	TELNUMfilter::load(filter_active, filter_active_by_sensor, global_flags, sqlDb);
+	filter_active->load(filter_active_by_sensor, global_flags, sqlDb);
 	unlock();
 }
 
@@ -822,15 +824,13 @@ void TELNUMfilter::freeActive() {
 	unlock();
 }
 
-void TELNUMfilter::prepareReload(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb) {
+void TELNUMfilter::prepareReload(u_int32_t *global_flags, SqlDb *sqlDb) {
 	lock_reload();
 	if(filter_reload) {
 		delete filter_reload;
 	}
-	freeFilterMap(filter_reload_by_sensor);
 	filter_reload = new FILE_LINE(4005) TELNUMfilter;
-	createFilterMapBySensor(filter_reload_by_sensor, pb_sensors);
-	TELNUMfilter::load(filter_reload, filter_reload_by_sensor, global_flags, sqlDb);
+	filter_reload->load(filter_reload_by_sensor, global_flags, sqlDb);
 	reload_do = true;
 	syslog(LOG_NOTICE, "TELNUMfilter::prepareReload");
 	unlock_reload();
@@ -842,7 +842,7 @@ void TELNUMfilter::applyReload() {
 		if(reload_do) {
 			lock();
 			TELNUMfilter *filter_active_old = filter_active;
-			std::map<int, TELNUMfilter*> *filter_active_by_sensor_old = filter_active_by_sensor;
+			std::map<int, filter_base*> *filter_active_by_sensor_old = filter_active_by_sensor;
 			filter_active = filter_reload;
 			filter_active_by_sensor = filter_reload_by_sensor;
 			unlock();
@@ -860,8 +860,8 @@ void TELNUMfilter::applyReload() {
 
 TELNUMfilter *TELNUMfilter::filter_active = NULL;
 TELNUMfilter *TELNUMfilter::filter_reload = NULL;
-std::map<int, TELNUMfilter*> *TELNUMfilter::filter_active_by_sensor = NULL;
-std::map<int, TELNUMfilter*> *TELNUMfilter::filter_reload_by_sensor = NULL;
+std::map<int, filter_base*> *TELNUMfilter::filter_active_by_sensor = NULL;
+std::map<int, filter_base*> *TELNUMfilter::filter_reload_by_sensor = NULL;
 volatile bool TELNUMfilter::reload_do = 0;
 volatile int TELNUMfilter::_sync = 0;
 volatile int TELNUMfilter::_sync_reload = 0;
@@ -884,19 +884,15 @@ DOMAINfilter::~DOMAINfilter() {
 	}
 };
 
-void DOMAINfilter::load(DOMAINfilter *filter_default, std::map<int, DOMAINfilter*> *filter_by_sensor, u_int32_t *global_flags, SqlDb *sqlDb) {
-	if(!cFilters::useDbRules()) {
-		return;
-	}
-	loadFilterDbBySensors(filter_default, filter_by_sensor, global_flags, sqlDb, "filter_domain", "");
-};
-
-void DOMAINfilter::parseDbRow(SqlDb_row *row, db_row *dbRow) {
+filter_db_row_base *DOMAINfilter::parseDbRow(SqlDb_row *row) {
+	db_row *dbRow = new FILE_LINE(0) db_row;
 	dbRow->domain = trim_str((*row)["domain"]);
 	loadBaseDataRow(row, dbRow);
+	return(dbRow);
 }
 
-void DOMAINfilter::add_db_row(db_row *dbRow, u_int32_t *global_flags) {
+void DOMAINfilter::add_db_row(filter_db_row_base *dbRow_, u_int32_t *global_flags) {
+	db_row *dbRow = (db_row*)dbRow_;
 	count++;
 	t_node *node = new FILE_LINE(0) t_node;
 	node->direction = dbRow->direction;
@@ -954,7 +950,7 @@ void DOMAINfilter::dump2man(ostringstream &oss) {
 int DOMAINfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *domain_src, const char *domain_dst, int sensor_id, bool reconfigure) {
 	int rslt = 0;
 	lock();
-	DOMAINfilter *filter = selectFilterBySensor(filter_active, filter_active_by_sensor, sensor_id);
+	DOMAINfilter *filter = (DOMAINfilter*)selectFilterBySensor(filter_active, filter_active_by_sensor, sensor_id);
 	if(filter) {
 		rslt = filter->_add_call_flags(flags, nat_aliases, domain_src, domain_dst, reconfigure);
 	}
@@ -962,12 +958,10 @@ int DOMAINfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases 
 	return(rslt);
 }
 
-void DOMAINfilter::loadActive(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb) {
+void DOMAINfilter::loadActive(u_int32_t *global_flags, SqlDb *sqlDb) {
 	lock();
 	filter_active = new FILE_LINE(4007) DOMAINfilter();
-	freeFilterMap(filter_active_by_sensor);
-	createFilterMapBySensor(filter_active_by_sensor, pb_sensors);
-	DOMAINfilter::load(filter_active, filter_active_by_sensor, global_flags, sqlDb);
+	filter_active->load(filter_active_by_sensor, global_flags, sqlDb);
 	unlock();
 }
 
@@ -981,15 +975,13 @@ void DOMAINfilter::freeActive() {
 	unlock();
 }
 
-void DOMAINfilter::prepareReload(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb) {
+void DOMAINfilter::prepareReload(u_int32_t *global_flags, SqlDb *sqlDb) {
 	lock_reload();
 	if(filter_reload) {
 		delete filter_reload;
 	}
-	freeFilterMap(filter_reload_by_sensor);
 	filter_reload = new FILE_LINE(4008) DOMAINfilter;
-	createFilterMapBySensor(filter_reload_by_sensor, pb_sensors);
-	DOMAINfilter::load(filter_reload, filter_reload_by_sensor, global_flags, sqlDb);
+	filter_reload->load(filter_reload_by_sensor, global_flags, sqlDb);
 	reload_do = true;
 	syslog(LOG_NOTICE, "DOMAINfilter::prepareReload");
 	unlock_reload();
@@ -1001,7 +993,7 @@ void DOMAINfilter::applyReload() {
 		if(reload_do) {
 			lock();
 			DOMAINfilter *filter_active_old = filter_active;
-			std::map<int, DOMAINfilter*> *filter_active_by_sensor_old = filter_active_by_sensor;
+			std::map<int, filter_base*> *filter_active_by_sensor_old = filter_active_by_sensor;
 			filter_active = filter_reload;
 			filter_active_by_sensor = filter_reload_by_sensor;
 			unlock();
@@ -1019,8 +1011,8 @@ void DOMAINfilter::applyReload() {
 
 DOMAINfilter *DOMAINfilter::filter_active = NULL;
 DOMAINfilter *DOMAINfilter::filter_reload = NULL;
-std::map<int, DOMAINfilter*> *DOMAINfilter::filter_active_by_sensor = NULL;
-std::map<int, DOMAINfilter*> *DOMAINfilter::filter_reload_by_sensor = NULL;
+std::map<int, filter_base*> *DOMAINfilter::filter_active_by_sensor = NULL;
+std::map<int, filter_base*> *DOMAINfilter::filter_reload_by_sensor = NULL;
 volatile bool DOMAINfilter::reload_do = 0;
 volatile int DOMAINfilter::_sync = 0;
 volatile int DOMAINfilter::_sync_reload = 0;
@@ -1039,27 +1031,18 @@ SIP_HEADERfilter::~SIP_HEADERfilter() {
 	}
 }
 
-void SIP_HEADERfilter::load(SIP_HEADERfilter *filter_default, std::map<int, SIP_HEADERfilter*> *filter_by_sensor, u_int32_t *global_flags, SqlDb *sqlDb) {
-	// the file rules must precede the db rules in every set (a duplicate header/content overwrites the item)
-	loadFilterFileBySensors(filter_default, filter_by_sensor, global_flags);
-	if(!cFilters::useDbRules()) {
-		return;
-	}
-	loadFilterDbBySensors(filter_default, filter_by_sensor, global_flags, sqlDb, "filter_sip_header", "");
-	if(sverb.capture_filter) {
-		syslog(LOG_NOTICE, "SIP_HEADERfilter::load");
-	}
-}
-
-void SIP_HEADERfilter::parseDbRow(SqlDb_row *row, db_row *dbRow) {
+filter_db_row_base *SIP_HEADERfilter::parseDbRow(SqlDb_row *row) {
+	db_row *dbRow = new FILE_LINE(0) db_row;
 	dbRow->header = trim_str((*row)["header"]);
 	dbRow->content = trim_str((*row)["content"]);
 	dbRow->prefix = (*row)["content_type"] == "prefix";
 	dbRow->regexp = (*row)["content_type"] == "regexp";
 	loadBaseDataRow(row, dbRow);
+	return(dbRow);
 }
 
-void SIP_HEADERfilter::add_db_row(db_row *dbRow, u_int32_t *global_flags) {
+void SIP_HEADERfilter::add_db_row(filter_db_row_base *dbRow_, u_int32_t *global_flags) {
+	db_row *dbRow = (db_row*)dbRow_;
 	count++;
 	item_data *item = new FILE_LINE(0) item_data;
 	item->prefix = dbRow->prefix;
@@ -1214,7 +1197,7 @@ void SIP_HEADERfilter::_prepareCustomNodes(ParsePacket *parsePacket) {
 int SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, sNatAliases **nat_aliases, int sensor_id, bool reconfigure) {
 	int rslt = 0;
 	lock();
-	SIP_HEADERfilter *filter = selectFilterBySensor(filter_active, filter_active_by_sensor, sensor_id);
+	SIP_HEADERfilter *filter = (SIP_HEADERfilter*)selectFilterBySensor(filter_active, filter_active_by_sensor, sensor_id);
 	if(filter) {
 		rslt = filter->_add_call_flags(parseContents, flags, nat_aliases, reconfigure);
 	}
@@ -1232,19 +1215,17 @@ void SIP_HEADERfilter::prepareCustomNodes(ParsePacket *parsePacket) {
 	}
 	if(filter_active_by_sensor) {
 		// register the union of the header names over all per-sensor sets
-		for(std::map<int, SIP_HEADERfilter*>::iterator iter = filter_active_by_sensor->begin(); iter != filter_active_by_sensor->end(); iter++) {
-			iter->second->_prepareCustomNodes(parsePacket);
+		for(std::map<int, filter_base*>::iterator iter = filter_active_by_sensor->begin(); iter != filter_active_by_sensor->end(); iter++) {
+			((SIP_HEADERfilter*)iter->second)->_prepareCustomNodes(parsePacket);
 		}
 	}
 	unlock();
 }
 
-void SIP_HEADERfilter::loadActive(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb) {
+void SIP_HEADERfilter::loadActive(u_int32_t *global_flags, SqlDb *sqlDb) {
 	lock();
 	filter_active = new FILE_LINE(4010) SIP_HEADERfilter();
-	freeFilterMap(filter_active_by_sensor);
-	createFilterMapBySensor(filter_active_by_sensor, pb_sensors);
-	SIP_HEADERfilter::load(filter_active, filter_active_by_sensor, global_flags, sqlDb);
+	filter_active->load(filter_active_by_sensor, global_flags, sqlDb);
 	loadTime = getTimeMS();
 	unlock();
 }
@@ -1259,15 +1240,13 @@ void SIP_HEADERfilter::freeActive() {
 	unlock();
 }
 
-void SIP_HEADERfilter::prepareReload(u_int32_t *global_flags, const std::set<int> &pb_sensors, SqlDb *sqlDb) {
+void SIP_HEADERfilter::prepareReload(u_int32_t *global_flags, SqlDb *sqlDb) {
 	lock_reload();
 	if(filter_reload) {
 		delete filter_reload;
 	}
-	freeFilterMap(filter_reload_by_sensor);
 	filter_reload = new FILE_LINE(4011) SIP_HEADERfilter;
-	createFilterMapBySensor(filter_reload_by_sensor, pb_sensors);
-	SIP_HEADERfilter::load(filter_reload, filter_reload_by_sensor, global_flags, sqlDb);
+	filter_reload->load(filter_reload_by_sensor, global_flags, sqlDb);
 	// one bump after all sets are built - the parser (ParsePacket::refreshIfNeed) rebuilds its nodes once
 	loadTime = getTimeMS();
 	reload_do = true;
@@ -1281,7 +1260,7 @@ void SIP_HEADERfilter::applyReload() {
 		if(reload_do) {
 			lock();
 			SIP_HEADERfilter *filter_active_old = filter_active;
-			std::map<int, SIP_HEADERfilter*> *filter_active_by_sensor_old = filter_active_by_sensor;
+			std::map<int, filter_base*> *filter_active_by_sensor_old = filter_active_by_sensor;
 			filter_active = filter_reload;
 			filter_active_by_sensor = filter_reload_by_sensor;
 			unlock();
@@ -1299,8 +1278,8 @@ void SIP_HEADERfilter::applyReload() {
 
 SIP_HEADERfilter *SIP_HEADERfilter::filter_active = NULL;
 SIP_HEADERfilter *SIP_HEADERfilter::filter_reload = NULL;
-std::map<int, SIP_HEADERfilter*> *SIP_HEADERfilter::filter_active_by_sensor = NULL;
-std::map<int, SIP_HEADERfilter*> *SIP_HEADERfilter::filter_reload_by_sensor = NULL;
+std::map<int, filter_base*> *SIP_HEADERfilter::filter_active_by_sensor = NULL;
+std::map<int, filter_base*> *SIP_HEADERfilter::filter_reload_by_sensor = NULL;
 volatile bool SIP_HEADERfilter::reload_do = 0;
 volatile unsigned long SIP_HEADERfilter::loadTime = 0;
 volatile int SIP_HEADERfilter::_sync = 0;
@@ -1315,20 +1294,17 @@ void cFilters::loadActive(SqlDb *sqlDb) {
 		_createSqlObject = true;
 	}
 	if(useDbRules()) {
-		// refresh the id_sensor -> sensors.id translation used by the sensors_id row filter
-		extern SensorsMap sensorsMap;
+		// refresh the id_sensor <-> sensors.id translation used by the sensors_id row filter
+		// and by the creation of the per-sensor sets
 		sensorsMap.fillSensors(sqlDb);
 	}
-	// must be called after fillSensors - the sensors table is the main source of the rule sets
-	std::set<int> rule_sensors;
-	getReloadSensors(&rule_sensors);
 	global_flags = 0;
 	// the existence of the filter_*_sensors tables cannot change during the load
 	sqlDb->startExistsTableCache();
-	IPfilter::loadActive(&global_flags, rule_sensors, sqlDb);
-	TELNUMfilter::loadActive(&global_flags, rule_sensors, sqlDb);
-	DOMAINfilter::loadActive(&global_flags, rule_sensors, sqlDb);
-	SIP_HEADERfilter::loadActive(&global_flags, rule_sensors, sqlDb);
+	IPfilter::loadActive(&global_flags, sqlDb);
+	TELNUMfilter::loadActive(&global_flags, sqlDb);
+	DOMAINfilter::loadActive(&global_flags, sqlDb);
+	SIP_HEADERfilter::loadActive(&global_flags, sqlDb);
 	sqlDb->stopExistsTableCache();
 	if(_createSqlObject) {
 		delete sqlDb;
@@ -1342,41 +1318,22 @@ void cFilters::prepareReload(SqlDb *sqlDb) {
 		_createSqlObject = true;
 	}
 	if(useDbRules()) {
-		// refresh the id_sensor -> sensors.id translation used by the sensors_id row filter
-		extern SensorsMap sensorsMap;
+		// see loadActive; kept out of the reload lock
 		sensorsMap.fillSensors(sqlDb);
 	}
-	// must be called after fillSensors - the sensors table is the main source of the rule sets;
-	// both are kept out of the reload lock, they only prepare the input of the load
-	std::set<int> rule_sensors;
-	getReloadSensors(&rule_sensors);
 	lock_reload();
 	reload_global_flags = 0;
 	// the existence of the filter_*_sensors tables cannot change during the load
 	sqlDb->startExistsTableCache();
-	IPfilter::prepareReload(&reload_global_flags, rule_sensors, sqlDb);
-	TELNUMfilter::prepareReload(&reload_global_flags, rule_sensors, sqlDb);
-	DOMAINfilter::prepareReload(&reload_global_flags, rule_sensors, sqlDb);
-	SIP_HEADERfilter::prepareReload(&reload_global_flags, rule_sensors, sqlDb);
+	IPfilter::prepareReload(&reload_global_flags, sqlDb);
+	TELNUMfilter::prepareReload(&reload_global_flags, sqlDb);
+	DOMAINfilter::prepareReload(&reload_global_flags, sqlDb);
+	SIP_HEADERfilter::prepareReload(&reload_global_flags, sqlDb);
 	sqlDb->stopExistsTableCache();
 	reload_do = true;
 	unlock_reload();
 	if(_createSqlObject) {
 		delete sqlDb;
-	}
-}
-
-void cFilters::getReloadSensors(std::set<int> *sensors) {
-	// the own rule set is built for every sensor of the sensors table, so a remote sensor
-	// has its rules ready before it connects; a sensor which is missing in the table cannot
-	// be referenced by any rule (filter_*_sensors.sensor_id is the sensors.id) and uses the
-	// default set through selectFilterBySensor
-	sensors->clear();
-	if(is_server() && useDbRules()) {
-		extern SensorsMap sensorsMap;
-		sensorsMap.getSensorsIdFromTable(sensors);
-		// the local sensor is covered by the default (global) set
-		sensors->erase(opt_id_sensor);
 	}
 }
 
