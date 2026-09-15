@@ -70,7 +70,7 @@ void filter_base::loadDbBySensors(std::map<int, filter_base*> *&filter_map, u_in
 	SqlDb_rows rows;
 	sqlDb->fetchRows(&rows);
 	if(is_server() && existsSensorsTable) {
-		createFilterMapBySensors(&rows, filter_map, global_flags);
+		createFilterMapBySensors(&rows, filter_map);
 	}
 	SqlDb_row row;
 	while((row = rows.fetchRow())) {
@@ -83,15 +83,18 @@ void filter_base::loadDbBySensors(std::map<int, filter_base*> *&filter_map, u_in
 	}
 }
 
-// the per-sensor sets exist only for the sensors referenced by the sensors_id of a row (the sensors.id of the
-// <table>_sensors rows, -1: all sensors, -2: null sensor_id); a sensor without a pinned rule and the local sensor
-// use the default set through selectFilterBySensor
-void filter_base::createFilterMapBySensors(SqlDb_rows *rows, std::map<int, filter_base*> *&filter_map, u_int32_t *global_flags) {
+// the per-sensor sets exist only for the sensors referenced by the sensors_id of a row which does not pass for the
+// local sensor (the sensors.id of the <table>_sensors rows, -1: all sensors, -2: null sensor_id); a sensor without
+// a pinned rule and the local sensor use only the default set
+void filter_base::createFilterMapBySensors(SqlDb_rows *rows, std::map<int, filter_base*> *&filter_map) {
 	std::set<int> sensorsTableId;
-	vector<string> delim = split(",", '|');
 	SqlDb_row row;
 	while((row = rows->fetchRow())) {
-		split2int(row["sensors_id"], delim, &sensorsTableId);
+		string sensors_id = row["sensors_id"];
+		if(!selectSensorsContainSensorId(sensors_id, 0)) {
+			vector<int> tableIds = split2int(sensors_id, ',');
+			sensorsTableId.insert(tableIds.begin(), tableIds.end());
+		}
 	}
 	rows->initFetch();
 	std::set<int> sensors;
@@ -102,38 +105,34 @@ void filter_base::createFilterMapBySensors(SqlDb_rows *rows, std::map<int, filte
 	}
 	filter_map = new FILE_LINE(0) std::map<int, filter_base*>;
 	for(std::set<int>::iterator iter = sensors.begin(); iter != sensors.end(); iter++) {
-		filter_base *filter = createInstance();
-		// the file rules first (see load)
-		filter->loadFile(global_flags);
-		(*filter_map)[*iter] = filter;
+		(*filter_map)[*iter] = createInstance();
 	}
 }
 
-// hand one parsed db row to the sets: every set gets the rows which pass for the local sensor (sensor_id 0;
-// an empty sensors_id means all sensors), so the rules of the server sensor apply to its clients too;
-// a per-sensor set additionally gets the rows pinned to its sensor; the caller holds lock() or lock_reload()
+// hand one parsed db row to the sets: a row which passes for the local sensor (sensor_id 0; an empty sensors_id
+// means all sensors) goes to the default set only, any other row to the per-sensor sets of its sensors -
+// add_call_flags evaluates the per-sensor set (only if cFilters::isClientPacketOnServer) and then the default set;
+// the caller holds lock() or lock_reload()
 void filter_base::addDbRowBySensors(std::map<int, filter_base*> *filter_map, const string &sensors_id, filter_db_row_base *dbRow, u_int32_t *global_flags) {
-	bool forLocalSensor = selectSensorsContainSensorId(sensors_id, 0);
-	if(forLocalSensor) {
+	if(selectSensorsContainSensorId(sensors_id, 0)) {
 		add_db_row(dbRow, global_flags);
-	}
-	if(filter_map) {
+	} else if(filter_map) {
 		for(std::map<int, filter_base*>::iterator iter = filter_map->begin(); iter != filter_map->end(); iter++) {
-			if(forLocalSensor || selectSensorsContainSensorId(sensors_id, iter->first)) {
+			if(selectSensorsContainSensorId(sensors_id, iter->first)) {
 				iter->second->add_db_row(dbRow, global_flags);
 			}
 		}
 	}
 }
 
-filter_base *filter_base::selectFilterBySensor(filter_base *filter_default, std::map<int, filter_base*> *filter_map, int sensor_id) {
-	if(sensor_id > 0 && filter_map) {
+filter_base *filter_base::selectFilterBySensor(std::map<int, filter_base*> *filter_map, int sensor_id) {
+	if(filter_map) {
 		std::map<int, filter_base*>::iterator iter = filter_map->find(sensor_id);
 		if(iter != filter_map->end()) {
 			return(iter->second);
 		}
 	}
-	return(filter_default);
+	return(NULL);
 }
 
 void filter_base::dumpFilterMapBySensor(std::map<int, filter_base*> *filter_map, ostringstream &oss) {
@@ -497,9 +496,14 @@ void IPfilter::dump2man(ostringstream &oss) {
 int IPfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, vmIP saddr, vmIP daddr, int sensor_id, bool reconfigure) {
 	int rslt = 0;
 	lock();
-	IPfilter *filter = (IPfilter*)selectFilterBySensor(filter_active, filter_active_by_sensor, sensor_id);
-	if(filter) {
-		rslt = filter->_add_call_flags(flags, nat_aliases, saddr, daddr, reconfigure);
+	if(cFilters::isClientPacketOnServer(sensor_id)) {
+		IPfilter *filter_sensor = (IPfilter*)selectFilterBySensor(filter_active_by_sensor, sensor_id);
+		if(filter_sensor) {
+			rslt = filter_sensor->_add_call_flags(flags, nat_aliases, saddr, daddr, reconfigure);
+		}
+	}
+	if(filter_active) {
+		rslt |= filter_active->_add_call_flags(flags, nat_aliases, saddr, daddr, reconfigure);
 	}
 	unlock();
 	return(rslt);
@@ -799,9 +803,14 @@ void TELNUMfilter::dump_payload_line(ostringstream &oss, t_payload *p, bool wild
 int TELNUMfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *telnum_src, const char *telnum_dst, int sensor_id, bool reconfigure) {
 	int rslt = 0;
 	lock();
-	TELNUMfilter *filter = (TELNUMfilter*)selectFilterBySensor(filter_active, filter_active_by_sensor, sensor_id);
-	if(filter) {
-		rslt = filter->_add_call_flags(flags, nat_aliases, telnum_src, telnum_dst, reconfigure);
+	if(cFilters::isClientPacketOnServer(sensor_id)) {
+		TELNUMfilter *filter_sensor = (TELNUMfilter*)selectFilterBySensor(filter_active_by_sensor, sensor_id);
+		if(filter_sensor) {
+			rslt = filter_sensor->_add_call_flags(flags, nat_aliases, telnum_src, telnum_dst, reconfigure);
+		}
+	}
+	if(filter_active) {
+		rslt |= filter_active->_add_call_flags(flags, nat_aliases, telnum_src, telnum_dst, reconfigure);
 	}
 	unlock();
 	return(rslt);
@@ -950,9 +959,14 @@ void DOMAINfilter::dump2man(ostringstream &oss) {
 int DOMAINfilter::add_call_flags(volatile unsigned long int *flags, sNatAliases **nat_aliases, const char *domain_src, const char *domain_dst, int sensor_id, bool reconfigure) {
 	int rslt = 0;
 	lock();
-	DOMAINfilter *filter = (DOMAINfilter*)selectFilterBySensor(filter_active, filter_active_by_sensor, sensor_id);
-	if(filter) {
-		rslt = filter->_add_call_flags(flags, nat_aliases, domain_src, domain_dst, reconfigure);
+	if(cFilters::isClientPacketOnServer(sensor_id)) {
+		DOMAINfilter *filter_sensor = (DOMAINfilter*)selectFilterBySensor(filter_active_by_sensor, sensor_id);
+		if(filter_sensor) {
+			rslt = filter_sensor->_add_call_flags(flags, nat_aliases, domain_src, domain_dst, reconfigure);
+		}
+	}
+	if(filter_active) {
+		rslt |= filter_active->_add_call_flags(flags, nat_aliases, domain_src, domain_dst, reconfigure);
 	}
 	unlock();
 	return(rslt);
@@ -1197,9 +1211,14 @@ void SIP_HEADERfilter::_prepareCustomNodes(ParsePacket *parsePacket) {
 int SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, sNatAliases **nat_aliases, int sensor_id, bool reconfigure) {
 	int rslt = 0;
 	lock();
-	SIP_HEADERfilter *filter = (SIP_HEADERfilter*)selectFilterBySensor(filter_active, filter_active_by_sensor, sensor_id);
-	if(filter) {
-		rslt = filter->_add_call_flags(parseContents, flags, nat_aliases, reconfigure);
+	if(cFilters::isClientPacketOnServer(sensor_id)) {
+		SIP_HEADERfilter *filter_sensor = (SIP_HEADERfilter*)selectFilterBySensor(filter_active_by_sensor, sensor_id);
+		if(filter_sensor) {
+			rslt = filter_sensor->_add_call_flags(parseContents, flags, nat_aliases, reconfigure);
+		}
+	}
+	if(filter_active) {
+		rslt |= filter_active->_add_call_flags(parseContents, flags, nat_aliases, reconfigure);
 	}
 	unlock();
 	return(rslt);

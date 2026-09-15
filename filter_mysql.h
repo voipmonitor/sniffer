@@ -147,9 +147,9 @@ protected:
 	// (re)builds the default set and the per-sensor sets (server only) - see loadDbBySensors
 	void load(std::map<int, filter_base*> *&filter_map, u_int32_t *global_flags, SqlDb *sqlDb);
 	void loadDbBySensors(std::map<int, filter_base*> *&filter_map, u_int32_t *global_flags, SqlDb *sqlDb);
-	void createFilterMapBySensors(SqlDb_rows *rows, std::map<int, filter_base*> *&filter_map, u_int32_t *global_flags);
+	void createFilterMapBySensors(SqlDb_rows *rows, std::map<int, filter_base*> *&filter_map);
 	void addDbRowBySensors(std::map<int, filter_base*> *filter_map, const string &sensors_id, filter_db_row_base *dbRow, u_int32_t *global_flags);
-	static filter_base *selectFilterBySensor(filter_base *filter_default, std::map<int, filter_base*> *filter_map, int sensor_id);
+	static filter_base *selectFilterBySensor(std::map<int, filter_base*> *filter_map, int sensor_id);
 	static void dumpFilterMapBySensor(std::map<int, filter_base*> *filter_map, ostringstream &oss);
 	// stateless row parsing helpers
 	static string _string(SqlDb_row *sqlRow, map<string, string> *row, const char *column);
@@ -496,6 +496,10 @@ public:
 		// the modes which do not process the capture rules from the database at all
 		extern int opt_nocdr;
 		return(!(opt_nocdr || is_sender() || is_client_packetbuffer_sender()));
+	}
+	static inline bool isClientPacketOnServer(int sensor_id) {
+		extern int opt_id_sensor;
+		return(is_server() && sensor_id > 0 && sensor_id != opt_id_sensor);
 	}
 	static inline u_int32_t getGlobalFlags() {
 		return(global_flags);
