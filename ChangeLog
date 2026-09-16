@@ -1,3 +1,32 @@
+2026.09.0 16.09.2026
+====================
+- Add support for decryption of SIP protected by IPsec ESP (3GPP IMS AKA, TS 33.203) - the cipher key is taken from the WWW-Authenticate header of the 401 on the Mw interface, SPI and algorithms from the Security-Server header on the Gm interface; the security associations can be stored in the database so they survive a restart (esp_decrypt, esp_store_sa) [VS-1869]
+- Add processing of the capture rules of packetbuffer_sender clients on the server sensor - the rules pinned to a client are applied first, then the server rules; the rules of all sensors are read at once (one query per rule type instead of one per sensor) and the reload is prepared only on demand from the GUI [VS-1215]
+- RTP media legs: classify RTP streams into media legs and views, leg-aware selection of the main A/B streams (rtpip_find_endpoints = leg), new leg / leg_view columns in cdr_rtp and optional extended per-stream statistics (cdr_rtp_extended_stats, default 'ext')
+- Add mysql_latin1_utf_bytes option (default yes) - store non-ASCII values into latin1 columns as raw UTF-8 bytes instead of letting MySQL replace them with '?'; add mysql_codebook_utf_in_set_id_mode to keep UTF-8 in the codebook values in set-id mode [VG-3147]
+- Add silence_detect_after_answer option - measure the initial dead air from the called party after answer, helps to detect dead-air FAS variants and answering delays [VS-983]
+- Add reverse_invite_by_tag option [NO/yes] - detect reverse INVITE by the To-tag instead of addresses, prevents corruption of the called IP / proxies by re-INVITE from the called side [VS-1870]
+- Add proxy_ignore_port option [NO/yes] - ignore the port when checking whether an address is already in the detected proxies (except localhost) [VS-1870]
+- call_branches: enable call_branches = yes in the sample config (new installations track call branches by default); add call_branches_find_by_from_tag and call_branches_max options; oneway timeout and bye=101 consider all branches, not only the main one - prevents termination of a ringing call with a dead first leg; debugging and optimization [VS-1511]
+- Add --help_log command line parameter explaining the sections of the stat log line
+- Test the configured mysqlcompress_type against the database server - if it is not supported, log a warning and select the compression type automatically
+- Custom headers: debugging and optimization - reload of the custom headers definition no longer blocks packet processing [VS-1873]
+- tcp reassembly / SSL optimization: limit the remaining data and skip data after repeated parse failures
+- Faster closing and saving of calls in t2_boost=high_traffic mode; unify rtppacketsinqueue in/out handling
+- Fix UA detection for calls through proxy; optimize retrieval of resulting SIP addresses and ports [VS-1865]
+- Use all INVITEs of unconfirmed legs in merged calls for sipcalledip and proxies [VG-3152]
+- Fix listregisters duplicity check for IP/port fields [VG-3151]
+- Fix loss of UDPTL packets in t2_boost=high_traffic [VG-3154]
+- Fix potential problems with packet processing in t2_boost=high_traffic (diameter, audiocodes rtp/rtcp)
+- hep3, ipfix and similar: enforce sending of pending data to processing after connection close [VS-1872]
+- Better fix for the -O3 crash: ensure the required alignment of objects [VS-1864]
+- Fix potential use-after-free race in RTP packet accounting in non t2_boost mode and other potential races
+- Fix potential crashes on termination (signal handlers, daemonize parent exit, decCalls guard, stuck libpcap read)
+- Prevent blocking of all store queues on persistent SQL error (partition operations retry limit, codebook insert outside cache lock)
+- Fix endless routine update on MariaDB (compare routine parameter charsets in createRoutine)
+- Fix force-stop in sysV init script
+
+
 2026.07.1 21.07.2026
 ====================
 - Add hep_rtcp_mos_from_hep option - take the MOS value from the HEP MOS chunk (0x20) sent alongside RTCP-JSON (e.g. by Heplify) and store it in the CDR via a synthesized RTCP-XR record; useful when RTP is not mirrored to the sniffer [VS-1861]
