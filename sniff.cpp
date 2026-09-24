@@ -14346,13 +14346,11 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, unsigned *counters
 				#if not EXPERIMENTAL_SUPPRESS_CALL_CONFIRMATION_FOR_RTP_PROCESSING
 				}
 				#endif
-			} else {
-				if(!call->bad_flags_warning[1]) {
-					syslog(LOG_WARNING, "WARNING: bad flags in call: %s: alloc_flag: %i, stop_processing: %i (find_hash)", 
-					       call->call_id.c_str(),
-					       call->alloc_flag, call->stopProcessing);
-					call->bad_flags_warning[1] = true;
-				}
+			} else if(!call->isAllocFlagOK() && !call->bad_flags_warning[1]) {
+				syslog(LOG_WARNING, "WARNING: bad flags in call: %s: alloc_flag: %i, stop_processing: %i (find_hash)", 
+				       call->call_id.c_str(),
+				       call->alloc_flag, call->stopProcessing);
+				call->bad_flags_warning[1] = true;
 			}
 		}
 		if(counter_rtp_only_packets > 1
