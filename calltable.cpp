@@ -934,6 +934,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	push_register_to_registers_engine = 0;
 	push_register_to_registers_queue = 0;
 	push_call_to_storing_cdr_queue = 0;
+	pcaps_graphs_closed = false;
 	message = NULL;
 	message_info = NULL;
 	contenttype = NULL;

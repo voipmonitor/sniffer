@@ -2538,6 +2538,8 @@ void *check_activity_or_crash(void *) {
 void *storing_cdr( void */*dummy*/ ) {
 	bool firstIter = true;
 	storing_cdr_tid = get_unix_tid();
+	vector<Call*> calls_queue_snapshot;
+	vector<char> calls_queue_remove;
 	while(1) {
 		extern volatile int partitionsServiceIsInProgress;
 		if(!opt_nocdr && !opt_disable_partition_operations && 
@@ -2561,6 +2563,7 @@ void *storing_cdr( void */*dummy*/ ) {
 			size_t calls_queue_position = 0;
 			list<Call*> calls_for_store;
 			int _calls_for_store_counter = 0;
+			bool maximum_cdr_per_iteration_reached = false;
 			__SYNC_LOCK(storing_cdr_next_threads_count_sync);
 			storing_cdr_next_threads_count_mod = storing_cdr_next_threads_count_mod_request;
 			storing_cdr_next_threads_count_mod_request = 0;
@@ -2588,13 +2591,19 @@ void *storing_cdr( void */*dummy*/ ) {
 				USLEEP(250000);
 			}
 			calltable->lock_calls_queue();
-			while(calls_queue_position < calls_queue_size) {
-				Call *call = calltable->calls_queue[calls_queue_position];
-				calltable->unlock_calls_queue();
-				if(call->closePcaps() || call->closeGraphs() ||
-				   !call->isEmptyChunkBuffersCount()) {
-					++calls_queue_position;
-					calltable->lock_calls_queue();
+			calls_queue_snapshot.assign(calltable->calls_queue.begin(), calltable->calls_queue.begin() + calls_queue_size);
+			calltable->unlock_calls_queue();
+			calls_queue_remove.assign(calls_queue_size, 0);
+			size_t calls_queue_remove_count = 0;
+			for(; calls_queue_position < calls_queue_size; calls_queue_position++) {
+				Call *call = calls_queue_snapshot[calls_queue_position];
+				if(!call->pcaps_graphs_closed) {
+					if(call->closePcaps() || call->closeGraphs()) {
+						continue;
+					}
+					call->pcaps_graphs_closed = true;
+				}
+				if(maximum_cdr_per_iteration_reached || !call->isEmptyChunkBuffersCount()) {
 					continue;
 				}
 				if(call->isReadyForWriteCdr()) {
@@ -2614,20 +2623,32 @@ void *storing_cdr( void */*dummy*/ ) {
 						}
 					}
 					++_calls_for_store_counter;
-					calltable->lock_calls_queue();
-					calltable->calls_queue.erase(calltable->calls_queue.begin() + calls_queue_position);
-					--calls_queue_size;
-					--calls_queue_position;
+					calls_queue_remove[calls_queue_position] = 1;
+					++calls_queue_remove_count;
 					if(opt_storing_cdr_maximum_cdr_per_iteration &&
 					   _calls_for_store_counter >= opt_storing_cdr_maximum_cdr_per_iteration) {
-						break;
+						maximum_cdr_per_iteration_reached = true;
 					}
 				} else {
-					calltable->lock_calls_queue();
+					call->pcaps_graphs_closed = false;
 				}
-				++calls_queue_position;
 			}
-			calltable->unlock_calls_queue();
+			if(calls_queue_remove_count) {
+				calltable->lock_calls_queue();
+				size_t calls_queue_write_position = 0;
+				for(size_t i = 0; i < calls_queue_size; i++) {
+					if(!calls_queue_remove[i]) {
+						if(calls_queue_write_position != i) {
+							calltable->calls_queue[calls_queue_write_position] = calls_queue_snapshot[i];
+						}
+						++calls_queue_write_position;
+					}
+				}
+				calltable->calls_queue.erase(calltable->calls_queue.begin() + calls_queue_write_position,
+							     calltable->calls_queue.begin() + calls_queue_size);
+				calltable->unlock_calls_queue();
+				calls_queue_size = calls_queue_write_position;
+			}
 			calls_for_store_counter = _calls_for_store_counter;
 			if(_calls_for_store_counter || storing_cdr_next_threads_count_mod < 0) {
 				if(storing_cdr_next_threads_count) {
@@ -2746,7 +2767,9 @@ void *storing_cdr( void */*dummy*/ ) {
 			if(terminating_storing_cdr && (!calls_queue_size || terminating > 1)) {
 				break;
 			}
-			USLEEP(100000);
+			if(!maximum_cdr_per_iteration_reached) {
+				USLEEP(100000);
+			}
 		}
 		
 		calltable->lock_calls_queue();

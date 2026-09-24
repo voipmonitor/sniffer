@@ -1997,6 +1997,7 @@ public:
 	volatile int push_register_to_registers_engine;
 	volatile int push_register_to_registers_queue;
 	volatile int push_call_to_storing_cdr_queue;
+	bool pcaps_graphs_closed;
 	unsigned int ps_drop;
 	unsigned int ps_ifdrop;
 	vector<u_int64_t> forcemark_time;
