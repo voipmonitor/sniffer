@@ -295,6 +295,7 @@ extern bool opt_ignore_rtp_after_cancel_confirmed;
 extern bool opt_ignore_rtp_after_auth_failed;
 extern bool opt_ignore_rtp_after_response;
 extern vector<int> opt_ignore_rtp_after_response_list;
+extern bool opt_ignore_rtp_before_connect;
 extern bool opt_detect_alone_bye;
 extern bool opt_get_reason_from_bye_cancel;
 extern int hash_modify_queue_length_ms;
@@ -5453,6 +5454,9 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 		   packetS->cseq.is_set() &&
 		   c_branch->invitecseq_next.size() && find(c_branch->invitecseq_next.begin(), c_branch->invitecseq_next.end(), packetS->cseq) != c_branch->invitecseq_next.end()) {
 			c_branch->new_invite_after_lsr3xx = false;
+		} else if(lastSIPresponseNum >= 400 && packetS->cseq.method == INVITE &&
+			  c_branch->new_invite_after_lsr3xx && c_branch->is_closed()) {
+			c_branch->new_invite_after_lsr3xx = false;
 		}
 	}
 	if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0') {
@@ -7732,6 +7736,7 @@ inline bool call_confirmation_for_rtp_processing(Call *call, call_rtp *call_rtp,
 		   (opt_ignore_rtp_after_response &&
 		    c_branch->ignore_rtp_after_response_time_usec &&
 		    packetS->getTimeUS() > c_branch->ignore_rtp_after_response_time_usec) ||
+		   (opt_ignore_rtp_before_connect && !call->connect_time_us) ||
 		   (hash_modify_queue_length_ms && c_branch->end_call_rtp) ||
 		   (call->flags & FLAG_SKIPCDR)) {
 			return(false);

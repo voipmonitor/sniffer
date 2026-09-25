@@ -675,6 +675,7 @@ bool opt_ignore_rtp_after_cancel_confirmed = false;
 bool opt_ignore_rtp_after_auth_failed = true;
 bool opt_ignore_rtp_after_response = false;
 vector<int> opt_ignore_rtp_after_response_list;
+bool opt_ignore_rtp_before_connect = false;
 int opt_saveaudio_reversestereo = 0;
 bool opt_saveaudio_adaptive_jitterbuffer = false;
 bool opt_saveaudio_resync_jitterbuffer = false;
@@ -7478,6 +7479,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_cancel_confirmed", &opt_ignore_rtp_after_cancel_confirmed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_auth_failed", &opt_ignore_rtp_after_auth_failed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignore_rtp_after_response", &opt_ignore_rtp_after_response_list));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_before_connect", &opt_ignore_rtp_before_connect));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("get_reason_from_bye_cancel", &opt_get_reason_from_bye_cancel));
 			addConfigItem(new FILE_LINE(42261) cConfigItem_yesno("nocdr", &opt_nocdr));
 			addConfigItem((new FILE_LINE(42262) cConfigItem_string("cdr_ignore_response", opt_nocdr_for_last_responses, sizeof(opt_nocdr_for_last_responses)))
