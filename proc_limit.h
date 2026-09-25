@@ -33,6 +33,12 @@ public:
 	}
 	void incLimitations(eType type, bool force = false);
 	void decLimitations(eType type, bool force = false);
+	inline bool isActive() {
+		return(suppress_rtp_read ||
+		       suppress_rtp_selective_processing ||
+		       suppress_rtp_all_processing ||
+		       active_calls_cache_timeout > active_calls_cache_timeout_min);
+	}
 	inline bool suppressRtpRead() {
 		return(suppress_rtp_read);
 	}

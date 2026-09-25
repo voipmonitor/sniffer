@@ -1685,6 +1685,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 	heap_pb_trash_perc = buffersControl.getPerc_pb_trash();
 	heap_pb_pool_perc = buffersControl.getPerc_pb_pool();
 	
+	bool enable_remove_threads = true;
 	if(task == pcapStatCpuCheck) {
 		extern bool opt_processing_limitations;
 		extern int opt_processing_limitations_heap_high_limit;
@@ -1703,6 +1704,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 								       cProcessingLimitations::_pl_rtp);
 			}
 		}
+		enable_remove_threads = !processing_limitations.isActive();
 	}
 	
 	if(task == pcapStatLog && sverb.log_profiler) {
@@ -1963,7 +1965,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 							do_add_thread_counter = 0;
 						}
 						do_remove_thread_counter = 0;
-					} else if(detach_cpu < opt_cpu_limit_delete_thread) {
+					} else if(detach_cpu < opt_cpu_limit_delete_thread && enable_remove_threads) {
 						if((++do_remove_thread_counter) >= 2) {
 							pcapQueueQ_outThread_detach->removeNextThread();
 							do_remove_thread_counter = 0;
@@ -1999,7 +2001,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 							do_add_thread_counter = 0;
 						}
 						do_remove_thread_counter = 0;
-					} else if(defrag_cpu < opt_cpu_limit_delete_thread) {
+					} else if(defrag_cpu < opt_cpu_limit_delete_thread && enable_remove_threads) {
 						if((++do_remove_thread_counter) >= 2) {
 							pcapQueueQ_outThread_defrag->removeNextThread();
 							do_remove_thread_counter = 0;
@@ -2049,7 +2051,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 							do_add_thread_counter = 0;
 						}
 						do_remove_thread_counter = 0;
-					} else if(detach_cpu < opt_cpu_limit_delete_thread) {
+					} else if(detach_cpu < opt_cpu_limit_delete_thread && enable_remove_threads) {
 						if((++do_remove_thread_counter) >= 2) {
 							pcapQueueQ_outThread_detach2->removeNextThread();
 							do_remove_thread_counter = 0;
@@ -2191,7 +2193,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 									do_add_thread_counter[i] = 0;
 								}
 								do_remove_thread_counter[i] = 0;
-							} else if(t2cpu_preprocess_packet_thread_max < opt_cpu_limit_delete_thread) {
+							} else if(t2cpu_preprocess_packet_thread_max < opt_cpu_limit_delete_thread && enable_remove_threads) {
 								if(preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip &&
 								   opt_sip_thread_log_ext) {
 									debugStr << "; -cond";
@@ -2263,7 +2265,8 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				   heap_pb_used_perc > opt_heap_limit_new_thread) {
 					needAddRtpRhThread = true;
 				} else if(countRtpRhThreads > 0 &&
-					  t2cpu_rh_max < opt_cpu_limit_delete_thread) {
+					  t2cpu_rh_max < opt_cpu_limit_delete_thread &&
+					  enable_remove_threads) {
 					needRemoveRtpRhThread = true;
 				}
 				double t2cpu_rd_sum = 0;
@@ -2299,7 +2302,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 							do_start_last_level_counter = 0;
 						}
 						do_stop_last_level_counter = 0;
-					} else if(last_t2cpu_preprocess_packet_out_thread_check_next_level < opt_cpu_limit_delete_t2sip_thread) {
+					} else if(last_t2cpu_preprocess_packet_out_thread_check_next_level < opt_cpu_limit_delete_t2sip_thread && enable_remove_threads) {
 						if((++do_stop_last_level_counter) >= 10) {
 							PreProcessPacket::autoStopLastLevelPreProcessPacket();
 							do_stop_last_level_counter = 0;
@@ -2454,7 +2457,8 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 					  tRTPcpuSum / num_threads_active < opt_cpu_limit_delete_thread &&
 					  tRTPcpuMax < opt_cpu_limit_delete_thread &&
 					  pcapStatCpuCheckCounter > 60 &&
-					  !sverb.disable_read_rtp) {
+					  !sverb.disable_read_rtp &&
+					  enable_remove_threads) {
 					if((++do_remove_thread_counter) >= 10) {
 						if(set_remove_rtp_read_thread()) {
 							syslog(LOG_NOTICE, "remove rtp thread");
@@ -2557,7 +2561,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 						do_add_thread_counter = 0;
 					}
 					do_remove_thread_counter = 0;
-				} else if(last_tac_cpu < opt_cpu_limit_delete_thread) {
+				} else if(last_tac_cpu < opt_cpu_limit_delete_thread && enable_remove_threads) {
 					if((++do_remove_thread_counter) >= 10) {
 						if(asyncClose->removeThread()) {
 							syslog(LOG_NOTICE, "remove tac thread");
@@ -2590,7 +2594,8 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				}
 				do_remove_thread_counter = 0;
 			} else if(storing_cdr_cpu_avg < opt_cpu_limit_delete_thread &&
-				  calls_counter < (int)count_calls * 1.5) {
+				  calls_counter < (int)count_calls * 1.5 &&
+				  enable_remove_threads) {
 				if((++do_remove_thread_counter) >= 10) {
 					extern void storing_cdr_next_thread_remove();
 					storing_cdr_next_thread_remove();
@@ -2621,7 +2626,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 							do_add_thread_counter = 0;
 						}
 						do_remove_thread_counter = 0;
-					} else if(chc_cpu_avg < opt_cpu_limit_delete_thread) {
+					} else if(chc_cpu_avg < opt_cpu_limit_delete_thread && enable_remove_threads) {
 						if((++do_remove_thread_counter) >= 10) {
 							calltable->processCallsInChartsCache_thread_remove();
 							do_remove_thread_counter = 0;
