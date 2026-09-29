@@ -11589,12 +11589,19 @@ void Call::prepareRtcpXrData(sRtcpXrStreams *streams, bool checkOK) {
 }
 
 string Call::get_a_ua(CallBranch *c_branch) {
+	// REGISTER does not fill ua_map - UA is stored directly into a_ua/b_ua (init_call_branch, process_packet_sip_register)
+	if(typeIs(REGISTER)) {
+		return(c_branch->a_ua);
+	}
 	vmPort port;
 	vmIP ip = getSipcallerip_corrected(c_branch, &port);
 	return(c_branch->get_ua(ip, port, false));
 }
 
 string Call::get_b_ua(CallBranch *c_branch) {
+	if(typeIs(REGISTER)) {
+		return(c_branch->b_ua);
+	}
 	vmPort port;
 	vmIP ip = getSipcalledip_corrected(c_branch, &port);
 	return(c_branch->get_ua(ip, port, true));
