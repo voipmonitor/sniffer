@@ -14,6 +14,7 @@ extern bool opt_hep_counter_log;
 extern bool opt_hep_via_pb;
 extern bool opt_hep_use_system_time;
 extern bool opt_hep_rtcp_mos_from_hep;
+extern bool opt_hep_rtcp_mos_calc;
 
 cHepCounter hep_counter;
 
@@ -190,13 +191,13 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen, vmIP ip) {
 			}
 		} else if(hepData.protocol_type == _hep_prot_RTCP_JSON &&
 			  payload_len > 0 && payload_data[0] == '{' && payload_data[payload_len - 1] == '}') {
-			extern bool createRtcpPayloadFromJson(const char *json, SimpleBuffer *buffer);
+			extern bool createRtcpPayloadFromJson(const char *json, SimpleBuffer *buffer, bool calc_mos);
 			string rtcp_json((char*)payload_data, payload_len);
 			if(opt_hep_rtcp_mos_from_hep && (hepData.set_flags & (1ull << _hep_chunk_mos_value)) && hepData.mos_value > 0 &&
 			   rtcp_json.find("\"mos_lq\"") == string::npos) {
 				rtcp_json.insert(1, "\"mos_lq\":" + intToString(hepData.mos_value / 10) + ",");
 			}
-			if(createRtcpPayloadFromJson(rtcp_json.c_str(), &payload_buf)) {
+			if(createRtcpPayloadFromJson(rtcp_json.c_str(), &payload_buf, opt_hep_rtcp_mos_calc)) {
 				payload_data = payload_buf.data();
 				payload_len = payload_buf.size();
 			}
