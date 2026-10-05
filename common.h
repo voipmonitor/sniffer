@@ -135,6 +135,7 @@ struct sVerbose {
 	int cleanup_calls_log;
 	int cleanup_calls_stat;
 	int charts_cache_only;
+	int charts_cache_multiply;
 	int charts_cache_filters_eval;
 	int charts_cache_filters_eval_rslt;
 	int charts_cache_filters_eval_rslt_true;

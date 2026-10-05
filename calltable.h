@@ -3944,7 +3944,6 @@ private:
 		pstat_data pstat[2][2];
 		sem_t sem[2];
 		bool init;
-		list<sChartsCallData> *calls;
 		class cFiltersCache *cache;
 	};
 	struct sSrvccPostCall {
@@ -4680,10 +4679,15 @@ public:
 	void processCallsInChartsCache_start();
 	void processCallsInChartsCache_stop();
 	void processCallsInChartsCache_thread(int threadIndex);
+	void processCallsInChartsCache_batch(int threadIndex);
+	void processCallsInChartsCache_add(sChartsCallData *call_data, int threadIndex);
 	static void *_processCallsInChartsCache_thread(void *_threadIndex);
+	void processCallsInChartsCache_store_thread();
+	static void *_processCallsInChartsCache_store_thread(void *);
 	void processCallsInChartsCache_thread_add();
 	void processCallsInChartsCache_thread_remove();
 	string processCallsInChartsCache_cpuUsagePerc(double *avg, int pstatDataIndex);
+	double processCallsInChartsCache_store_thread_cpuUsagePerc(int pstatDataIndex);
 
 	void destroyCallsIfPcapsClosed();
 	void destroyRegistersIfPcapsClosed();
@@ -4771,6 +4775,11 @@ private:
 	volatile int chc_threads_count_mod_request;
 	volatile int chc_threads_count_sync;
 	unsigned chc_threads_count_last_change;
+	vector<sChartsCallData> chc_batch;
+	volatile u_int32_t chc_batch_pos;
+	pthread_t chc_store_thread;
+	int chc_store_thread_tid;
+	pstat_data chc_store_thread_pstat[2][2];
 	
 	Call **active_calls_cache;
 	u_int32_t active_calls_cache_size;

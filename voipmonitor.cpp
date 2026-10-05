@@ -8855,6 +8855,8 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "cleanup_calls_log")		sverb.cleanup_calls_log = 1;
 	else if(verbParam == "cleanup_calls_stat")		sverb.cleanup_calls_stat = 1;
 	else if(verbParam == "charts_cache_only")		sverb.charts_cache_only = 1;
+	else if(verbParam.substr(0, 22) == "charts_cache_multiply=")
+								sverb.charts_cache_multiply = atoi(verbParam.c_str() + 22);
 	else if(verbParam == "charts_cache_filters_eval")	sverb.charts_cache_filters_eval = 1;
 	else if(verbParam == "charts_cache_filters_eval_rslt")	sverb.charts_cache_filters_eval_rslt = 1;
 	else if(verbParam == "charts_cache_filters_eval_rslt_true")	

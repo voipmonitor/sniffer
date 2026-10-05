@@ -427,13 +427,17 @@ public:
 			}
 			store_counter = 0;
 			counter_add = 0;
+			sync_counters = 0;
 		}
+		void lock_counters() { __SYNC_LOCK(sync_counters); }
+		void unlock_counters() { __SYNC_UNLOCK(sync_counters); }
 		unsigned count;
 		unsigned count_connected;
 		unsigned count_lsr_3_6[4];
 		map<u_int16_t, cChartIntervalSeriesData*> data;
 		u_int32_t store_counter;
 		volatile u_int32_t counter_add;
+		volatile int sync_counters;
 	};
 	struct sCdrProblems {
 		sCdrProblems() {
@@ -443,6 +447,8 @@ public:
 		void store(int sensor_id, const vmIP *ip, const string *number, eProblemType pt, int src_dst, int by_type,
 			   u_int32_t timeFrom, u_int32_t created_at_real, SqlDb *sqlDb);
 		void store(SqlDb_row *row);
+		void lock_counters() { __SYNC_LOCK(sync_counters); }
+		void unlock_counters() { __SYNC_UNLOCK(sync_counters); }
 		unsigned count_all;
 		unsigned count_connected;
 		unsigned count_mos_lt_31;
@@ -469,6 +475,7 @@ public:
 		unsigned count_bye_code_110;
 		u_int32_t store_counter;
 		volatile u_int32_t counter_add;
+		volatile int sync_counters;
 	};
 	struct sSeriesDataCdrSummary {
 		sSeriesDataCdrSummary() {
@@ -477,13 +484,17 @@ public:
 			count_exists_rtp = 0;
 			store_counter = 0;
 			counter_add = 0;
+			sync_counters = 0;
 		}
+		void lock_counters() { __SYNC_LOCK(sync_counters); }
+		void unlock_counters() { __SYNC_UNLOCK(sync_counters); }
 		unsigned count;
 		unsigned count_connected;
 		unsigned count_exists_rtp;
 		map<u_int16_t, cChartIntervalSeriesData*> data;
 		u_int32_t store_counter;
 		volatile u_int32_t counter_add;
+		volatile int sync_counters;
 	};
 	struct sFieldValue {
 		string field;
@@ -517,6 +528,17 @@ public:
 public:
 	void lock_interval() { __SYNC_LOCK(sync_interval); }
 	void unlock_interval() { __SYNC_UNLOCK(sync_interval); }
+	template<class type_map>
+	void getMapItems(type_map **map_src, vector<typename type_map::iterator> *items) {
+		lock_interval();
+		if(*map_src) {
+			items->reserve((*map_src)->size());
+			for(typename type_map::iterator iter = (*map_src)->begin(); iter != (*map_src)->end(); iter++) {
+				items->push_back(iter);
+			}
+		}
+		unlock_interval();
+	}
 	void inc_processing() { __SYNC_INC(processing_counter); }
 	void dec_processing() { __SYNC_DEC(processing_counter); }
 	bool is_processing() { return(processing_counter > 0); }
@@ -662,6 +684,9 @@ public:
 	cCharts();
 	~cCharts();
 	void load(SqlDb *sqlDb);
+	bool fetchSeriesRows(SqlDb *sqlDb, SqlDb_rows *rows);
+	void applySeriesRows(SqlDb_rows *rows);
+	void reloadPrepare();
 	void reload();
 	void initIntervals();
 	void clear();
@@ -675,6 +700,8 @@ public:
 	bool seriesIsUsed(cChartSeriesId series_id);
 	void lock_intervals() { __SYNC_LOCK(sync_intervals); }
 	void unlock_intervals() { __SYNC_UNLOCK(sync_intervals); }
+	void lock_store() { __SYNC_LOCK_USLEEP(sync_store, 100); }
+	void unlock_store() { __SYNC_UNLOCK(sync_store); }
 private:
 	map<cChartSeriesId, cChartSeries*> series;
 	map<u_int32_t, cChartInterval*> intervals;
@@ -693,7 +720,9 @@ private:
 	u_int32_t last_cleanup_at_real;
 	u_int32_t last_reload_at;
 	u_int32_t last_reload_at_real;
+	SqlDb_rows *reload_rows;
 	volatile int sync_intervals;
+	volatile int sync_store;
 friend class cChartDataItem;
 friend class cChartInterval;
 friend class Call;
@@ -729,6 +758,8 @@ public:
 	void cleanup(bool forceAll = false);
 	void lock_intervals() { __SYNC_LOCK(sync_intervals); }
 	void unlock_intervals() { __SYNC_UNLOCK(sync_intervals); }
+	void lock_store() { __SYNC_LOCK_USLEEP(sync_store, 100); }
+	void unlock_store() { __SYNC_UNLOCK(sync_store); }
 	static string metrics_db_fields(vector<dstring> *fields = NULL);
 	static bool exists_columns_check(const char *column, int src_dst);
 	static void exists_columns_clear(int src_dst);
@@ -768,6 +799,7 @@ private:
 	u_int32_t last_cleanup_at;
 	u_int32_t last_cleanup_at_real;
 	volatile int sync_intervals;
+	volatile int sync_store;
 	static map<string, bool> exists_columns[2];
 	static volatile int exists_column_sync;
 friend class cChartDataItem;
@@ -796,6 +828,8 @@ public:
 	void cleanup(bool forceAll = false);
 	void lock_intervals() { __SYNC_LOCK(sync_intervals); }
 	void unlock_intervals() { __SYNC_UNLOCK(sync_intervals); }
+	void lock_store() { __SYNC_LOCK_USLEEP(sync_store, 100); }
+	void unlock_store() { __SYNC_UNLOCK(sync_store); }
 	void lock_list_ip() { __SYNC_LOCK(list_ip_sync); }
 	void unlock_list_ip() { __SYNC_UNLOCK(list_ip_sync); }
 	void load_list_ip();
@@ -854,6 +888,7 @@ private:
 	u_int32_t last_cleanup_at;
 	u_int32_t last_cleanup_at_real;
 	volatile int sync_intervals;
+	volatile int sync_store;
 	static map<string, bool> exists_columns[3];
 	static volatile int exists_column_sync;
 	cListIP *list_ip;
@@ -897,6 +932,8 @@ public:
 	void cleanup(bool forceAll = false);
 	void lock_intervals() { __SYNC_LOCK(sync_intervals); }
 	void unlock_intervals() { __SYNC_UNLOCK(sync_intervals); }
+	void lock_store() { __SYNC_LOCK_USLEEP(sync_store, 100); }
+	void unlock_store() { __SYNC_UNLOCK(sync_store); }
 	static string db_fields(vector<dstring> *fields = NULL);
 	static bool exists_columns_check(const char *column, bool nc);
 	static void exists_columns_clear(bool nc);
@@ -918,6 +955,7 @@ private:
 	u_int32_t last_cleanup_at;
 	u_int32_t last_cleanup_at_real;
 	volatile int sync_intervals;
+	volatile int sync_store;
 	static map<string, bool> exists_columns[2];
 	static volatile int exists_column_sync;
 friend class cChartDataItem;
@@ -1211,6 +1249,7 @@ bool chartsCacheIsSet();
 void chartsCacheAddCall(sChartsCallData *call, void *callData, cFiltersCache *filtersCache, int threadIndex);
 void chartsCacheStore(bool forceAll = false);
 void chartsCacheCleanup(bool forceAll = false);
+void chartsCacheReloadPrepare();
 void chartsCacheReload();
 void chartsCacheInitIntervals();
 

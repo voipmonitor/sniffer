@@ -201,6 +201,9 @@ string sSnifferServerServices::listJsonServices() {
 }
 
 bool sSnifferServerServices::add_rchs_query(const char *query, bool checkMaxSize) {
+	if(checkMaxSize && rchs_query_queue.size() >= rchs_query_queue_max_size) {
+		return(false);
+	}
 	bool rslt;
 	string *query_string = new FILE_LINE(0) string(query);
 	lock_rchs();
@@ -233,14 +236,14 @@ bool sSnifferServerServices::add_rchs_query(string *query, bool checkMaxSize) {
 string *sSnifferServerServices::get_rchs_query() {
 	string *query_string = NULL;
 	if(rchs_query_queue.size()) {
-		lock();
+		lock_rchs();
 		if(rchs_query_queue.size()) {
 			query_string = rchs_query_queue.front();
 			if(query_string) {
 				rchs_query_queue.pop();
 			}
 		}
-		unlock();
+		unlock_rchs();
 	}
 	return(query_string);
 }

@@ -12407,7 +12407,6 @@ Calltable::Calltable(SqlDb *sqlDb) {
 			chc_threads[i].thread = 0;
 			memset(chc_threads[i].pstat, 0, sizeof(chc_threads[i].pstat));
 			chc_threads[i].init = false;
-			chc_threads[i].calls = NULL;
 			chc_threads[i].cache = NULL;
 		}
 		chc_threads_count = 0;
@@ -12415,6 +12414,10 @@ Calltable::Calltable(SqlDb *sqlDb) {
 		chc_threads_count_mod_request = 0;
 		chc_threads_count_sync = 0;
 		chc_threads_count_last_change = 0;
+		chc_batch_pos = 0;
+		chc_store_thread = 0;
+		chc_store_thread_tid = 0;
+		memset(chc_store_thread_pstat, 0, sizeof(chc_store_thread_pstat));
 	}
 	
 	active_calls_cache = NULL;
@@ -13115,6 +13118,8 @@ void Calltable::processCallsInChartsCache_start() {
 	chc_threads_count = 1;
 	vm_pthread_create("charts cache - main thread",
 			  &chc_threads[0].thread, NULL, _processCallsInChartsCache_thread, (void*)(long)0, __FILE__, __LINE__);
+	vm_pthread_create("charts cache - store thread",
+			  &chc_store_thread, NULL, _processCallsInChartsCache_store_thread, NULL, __FILE__, __LINE__);
 }
 
 void Calltable::processCallsInChartsCache_stop() {
@@ -13132,6 +13137,10 @@ void Calltable::processCallsInChartsCache_stop() {
 		}
 	}
 	__SYNC_UNLOCK(chc_threads_count_sync);
+	if(chc_store_thread) {
+		pthread_join(chc_store_thread, NULL);
+		chc_store_thread = 0;
+	}
 }
 
 u_int32_t counter_charts_cache;
@@ -13143,7 +13152,6 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 		chc_threads[threadIndex].cache = new FILE_LINE(0) cFiltersCache(2000, 10000);
 	}
 	if(threadIndex == 0) {
-		chc_threads[0].calls = new FILE_LINE(0) list<sChartsCallData>;
 		while(1) {
 			__SYNC_LOCK(chc_threads_count_sync);
 			chc_threads_count_mod = chc_threads_count_mod_request;
@@ -13155,7 +13163,6 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 			if(chc_threads_count_mod > 0) {
 				syslog(LOG_NOTICE, "charts cache - creating next thread %i", chc_threads_count);
 				if(!chc_threads[chc_threads_count].init) {
-					chc_threads[chc_threads_count].calls = new FILE_LINE(0) list<sChartsCallData>;
 					for(int i = 0; i < 2; i++) {
 						sem_init(&chc_threads[chc_threads_count].sem[i], 0, 0);
 					}
@@ -13173,13 +13180,9 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 			calltable->lock_calls_charts_cache_queue();
 			size_t chc_count = 0;
 			size_t chc_size = calltable->calls_charts_cache_queue.size();
+			chc_batch.clear();
 			while(chc_size > 0) {
-				sChartsCallData callData = calltable->calls_charts_cache_queue.front();
-				if(chc_threads_count > 1) {
-					chc_threads[chc_count % chc_threads_count].calls->push_back(callData);
-				} else {
-					chc_threads[0].calls->push_back(callData);
-				}
+				chc_batch.push_back(calltable->calls_charts_cache_queue.front());
 				++chc_count;
 				calltable->calls_charts_cache_queue.pop_front();
 				--chc_size;
@@ -13190,64 +13193,20 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 			calltable->unlock_calls_charts_cache_queue();
 			if(chc_count) {
 				u_int64_t _start = getTimeUS();
+				chc_batch_pos = 0;
 				if(chc_threads_count > 1) {
 					for(int i = 1; i < chc_threads_count; i++) {
 						sem_post(&chc_threads[i].sem[0]);
 					}
 				}
-				list<Call*> calls_for_delete;
-				for(list<sChartsCallData>::iterator iter_call_data = chc_threads[threadIndex].calls->begin(); iter_call_data != chc_threads[threadIndex].calls->end(); iter_call_data++) {
-					switch(iter_call_data->type) {
-					case sChartsCallData::_call:
-						{
-						Call *call = (Call*)iter_call_data->data;
-						if(!call->isEmptyCdrRow()) {
-							sChartsCacheCallData chartsCacheCallData;
-							chartsCacheAndCdrStatAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
-						}
-						calls_for_delete.push_back(call);
-						}
-						break;
-					case sChartsCallData::_tables_content:
-						{
-						cDbTablesContent *tablesContent = (cDbTablesContent*)iter_call_data->data;
-						sChartsCacheCallData chartsCacheCallData;
-						chartsCacheAndCdrStatAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
-						delete tablesContent;
-						}
-						break;
-					case sChartsCallData::_csv:
-						{
-						string *csv = (string*)iter_call_data->data;
-						cDbTablesContent *tablesContent = new FILE_LINE(0) cDbTablesContent;
-						vector<string> query_vect = split(csv->c_str(), "\n", false, false);
-						for(unsigned i = 0; i < query_vect.size(); i++) {
-							tablesContent->addCsvRow(query_vect[i].c_str());
-						}
-						sChartsCallData call_data(sChartsCallData::_tables_content, tablesContent);
-						sChartsCacheCallData chartsCacheCallData;
-						chartsCacheAndCdrStatAddCall(&call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
-						delete tablesContent;
-						delete csv;
-						}
-						break;
-					}
-				}
-				if(calls_for_delete.size()) {
-					calltable->lock_calls_deletequeue();
-					for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
-						calltable->calls_deletequeue.push_back(*iter_call);
-					}
-					calltable->unlock_calls_deletequeue();
-				}
-				chc_threads[threadIndex].calls->clear();
+				processCallsInChartsCache_batch(threadIndex);
 				if(chc_threads_count > 1) {
 					for(int i = 1; i < chc_threads_count; i++) {
 						sem_wait(&chc_threads[i].sem[1]);
 					}
 				}
 				u_int64_t _end = getTimeUS();
-				counter_charts_cache += chc_count;
+				counter_charts_cache += chc_count * max(sverb.charts_cache_multiply, 1);
 				counter_charts_cache_delay_us += _end - _start;
 				if(chc_threads_count_mod < 0) {
 					--chc_threads_count;
@@ -13255,10 +13214,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 				}
 			}
 			__SYNC_UNLOCK(chc_threads_count_sync);
-			chartsCacheAndCdrStatStore();
-			chartsCacheAndCdrStatCleanup();
 			chartsCacheReload();
-			chartsCacheInitIntervals();
 			if(!chc_size) {
 				USLEEP(100000);
 			}
@@ -13277,52 +13233,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 			if(terminating_charts_cache == 2) {
 				break;
 			}
-			list<Call*> calls_for_delete;
-			for(list<sChartsCallData>::iterator iter_call_data = chc_threads[threadIndex].calls->begin(); iter_call_data != chc_threads[threadIndex].calls->end(); iter_call_data++) {
-				switch(iter_call_data->type) {
-				case sChartsCallData::_call:
-					{
-					Call *call = (Call*)iter_call_data->data;
-					if(!call->isEmptyCdrRow()) {
-						sChartsCacheCallData chartsCacheCallData;
-						chartsCacheAndCdrStatAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
-					}
-					calls_for_delete.push_back(call);
-					}
-					break;
-				case sChartsCallData::_tables_content:
-					{
-					cDbTablesContent *tablesContent = (cDbTablesContent*)iter_call_data->data;
-					sChartsCacheCallData chartsCacheCallData;
-					chartsCacheAndCdrStatAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
-					delete tablesContent;
-					}
-					break;
-				case sChartsCallData::_csv:
-					{
-					string *csv = (string*)iter_call_data->data;
-					cDbTablesContent *tablesContent = new FILE_LINE(0) cDbTablesContent;
-					vector<string> query_vect = split(csv->c_str(), "\n", false, false);
-					for(unsigned i = 0; i < query_vect.size(); i++) {
-						tablesContent->addCsvRow(query_vect[i].c_str());
-					}
-					sChartsCallData call_data(sChartsCallData::_tables_content, tablesContent);
-					sChartsCacheCallData chartsCacheCallData;
-					chartsCacheAndCdrStatAddCall(&call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
-					delete tablesContent;
-					delete csv;
-					}
-					break;
-				}
-			}
-			if(calls_for_delete.size()) {
-				calltable->lock_calls_deletequeue();
-				for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
-					calltable->calls_deletequeue.push_back(*iter_call);
-				}
-				calltable->unlock_calls_deletequeue();
-			}
-			chc_threads[threadIndex].calls->clear();
+			processCallsInChartsCache_batch(threadIndex);
 			bool stop = false;
 			if(chc_threads_count_mod < 0 &&
 			   (threadIndex + 1) == chc_threads_count) {
@@ -13337,11 +13248,82 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 	}
 	chc_threads[threadIndex].tid = 0;
 	chc_threads[threadIndex].thread = 0;
-	delete chc_threads[threadIndex].calls;
+}
+
+void Calltable::processCallsInChartsCache_batch(int threadIndex) {
+	list<Call*> calls_for_delete;
+	u_int32_t batch_index;
+	while((batch_index = __sync_fetch_and_add(&chc_batch_pos, 1)) < chc_batch.size()) {
+		sChartsCallData *batch_item = &chc_batch[batch_index];
+		switch(batch_item->type) {
+		case sChartsCallData::_call:
+			{
+			Call *call = (Call*)batch_item->data;
+			if(!call->isEmptyCdrRow()) {
+				processCallsInChartsCache_add(batch_item, threadIndex);
+			}
+			calls_for_delete.push_back(call);
+			}
+			break;
+		case sChartsCallData::_tables_content:
+			{
+			cDbTablesContent *tablesContent = (cDbTablesContent*)batch_item->data;
+			processCallsInChartsCache_add(batch_item, threadIndex);
+			delete tablesContent;
+			}
+			break;
+		case sChartsCallData::_csv:
+			{
+			string *csv = (string*)batch_item->data;
+			cDbTablesContent *tablesContent = new FILE_LINE(0) cDbTablesContent;
+			vector<string> query_vect = split(csv->c_str(), "\n", false, false);
+			for(unsigned i = 0; i < query_vect.size(); i++) {
+				tablesContent->addCsvRow(query_vect[i].c_str());
+			}
+			sChartsCallData call_data(sChartsCallData::_tables_content, tablesContent);
+			processCallsInChartsCache_add(&call_data, threadIndex);
+			delete tablesContent;
+			delete csv;
+			}
+			break;
+		}
+	}
+	if(calls_for_delete.size()) {
+		calltable->lock_calls_deletequeue();
+		for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
+			calltable->calls_deletequeue.push_back(*iter_call);
+		}
+		calltable->unlock_calls_deletequeue();
+	}
+}
+
+void Calltable::processCallsInChartsCache_add(sChartsCallData *call_data, int threadIndex) {
+	int multiply = max(sverb.charts_cache_multiply, 1);
+	for(int i = 0; i < multiply; i++) {
+		sChartsCacheCallData chartsCacheCallData;
+		chartsCacheAndCdrStatAddCall(call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
+	}
 }
 
 void *Calltable::_processCallsInChartsCache_thread(void *_threadIndex) {
 	calltable->processCallsInChartsCache_thread((int)(long)_threadIndex);
+	return(NULL);
+}
+
+void Calltable::processCallsInChartsCache_store_thread() {
+	chc_store_thread_tid = get_unix_tid();
+	while(terminating_charts_cache < 2) {
+		chartsCacheAndCdrStatStore();
+		chartsCacheAndCdrStatCleanup();
+		chartsCacheReloadPrepare();
+		chartsCacheInitIntervals();
+		USLEEP(100000);
+	}
+	chc_store_thread_tid = 0;
+}
+
+void *Calltable::_processCallsInChartsCache_store_thread(void *) {
+	calltable->processCallsInChartsCache_store_thread();
 	return(NULL);
 }
 
@@ -13396,6 +13378,13 @@ string Calltable::processCallsInChartsCache_cpuUsagePerc(double *avg, int pstatD
 		*avg = cpu_count ? cpu_sum / cpu_count : 0;
 	}
 	return(cpuStr.str());
+}
+
+double Calltable::processCallsInChartsCache_store_thread_cpuUsagePerc(int pstatDataIndex) {
+	if(!useChartsCacheOrCdrStatProcessThreads()) {
+		return(-1);
+	}
+	return(get_cpu_usage_perc(chc_store_thread_tid, chc_store_thread_pstat[pstatDataIndex]));
 }
 
 void

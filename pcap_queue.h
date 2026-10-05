@@ -901,6 +901,17 @@ struct sPcapStatData {
 		void get_values(vector<sValue> &out) const;
 		void get_help(sHelp &out) const;
 	} charts;
+	struct sChartsStore {
+		double cpu_perc;
+		bool valid;
+		sChartsStore() { memset((void*)this, 0, sizeof(*this)); }
+		void load(int pstatDataIndex);
+		string title() const { return("chartsStoreCPU"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
+	} charts_store;
 	struct sIpacc {
 		string_simple cpu_perc;
 		bool valid;

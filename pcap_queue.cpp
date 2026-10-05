@@ -2611,6 +2611,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 		if(opt_charts_cache || snifferClientOptions.remote_chart_server || existsRemoteChartServer()) {
 			if(task == pcapStatLog) {
 				stat_data.charts.load(pstatDataIndex);
+				stat_data.charts_store.load(pstatDataIndex);
 			}
 			if(task == pcapStatCpuCheck) {
 				extern int opt_charts_cache_queue_limit;

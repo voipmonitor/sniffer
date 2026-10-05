@@ -98,6 +98,7 @@ static void appendSection(string &out, const string &s) {
 	X(async_close_queue) \
 	X(storing)           \
 	X(charts)            \
+	X(charts_store)      \
 	X(ipacc)             \
 	X(ipacc_buffer)      \
 	X(rrd)               \
@@ -2312,6 +2313,31 @@ void sPcapStatData::sCharts::get_values(vector<sValue> &out) const {
 	if(remote_queue_valid) out.push_back(sValue("remote_queue_size", intToString(remote_queue_size), "qr"));
 }
 
+void sPcapStatData::sChartsStore::load(int pstatDataIndex) {
+	extern Calltable *calltable;
+	double store_cpu = calltable->processCallsInChartsCache_store_thread_cpuUsagePerc(pstatDataIndex);
+	if(store_cpu > 0) {
+		cpu_perc = store_cpu;
+		valid = true;
+	}
+}
+
+string sPcapStatData::sChartsStore::render(bool with_title) const {
+	if(!valid) {
+		return("");
+	}
+	string out;
+	if(with_title) out += title() + "[";
+	out += floatToString(cpu_perc, (unsigned)1) + "%";
+	if(with_title) out += "] ";
+	return(out);
+}
+
+void sPcapStatData::sChartsStore::get_values(vector<sValue> &out) const {
+	if(!valid) return;
+	out.push_back(sValue("cpu_perc", floatToString(cpu_perc, (unsigned)1), "%"));
+}
+
 void sPcapStatData::sIpacc::load() {
 	string ipaccCpu = getIpaccCpuUsagePerc(0);
 	if(!ipaccCpu.empty()) {
@@ -3062,6 +3088,11 @@ void sPcapStatData::sCharts::get_help(sHelp &out) const {
 	out.add("rate", "requests per second of processing time - the count divided by the time actually spent on them, not by the length of the stat period");
 	out.add("queue", "calls waiting in the charts cache queue");
 	out.add("remote", "queue size reported by the remote chart server");
+}
+
+void sPcapStatData::sChartsStore::get_help(sHelp &out) const {
+	out.set("cpu of the charts cache store thread (storing and cleanup of charts cache, cdr stat, cdr problems and cdr summary, creating future chart intervals and loading chart series from the database for reload - applying the loaded series runs in the charts main thread) - format: [<cpu>%], printed only while it does something");
+	out.add("cpu", "cpu usage in %");
 }
 
 void sPcapStatData::sIpacc::get_help(sHelp &out) const {
