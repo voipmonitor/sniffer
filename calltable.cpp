@@ -1683,6 +1683,7 @@ int Call::add_ip_port(CallBranch *c_branch,
 	if(branch) {
 		c_branch->ip_port[c_branch->ipport_n].branch = branch;
 	}
+	c_branch->ip_port[c_branch->ipport_n].canceled = false;
 	c_branch->ip_port[c_branch->ipport_n].skip_close_check_due_to_reverse_direction = skip_close_check_due_to_reverse_direction;
 	nullIpPortInfoRtpStream(c_branch, c_branch->ipport_n);
 	

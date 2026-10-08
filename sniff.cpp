@@ -10332,6 +10332,7 @@ packet_s_process *packet_s_process::clone() {
 	newPacketS->header_pt = new_header;
 	newPacketS->packet = new_packet;
 	newPacketS->_packet_alloc_type = _t_packet_alloc_header_std;
+	newPacketS->rebase_parse_contents(this);
 	return(newPacketS);
 }
 
@@ -10354,12 +10355,13 @@ packet_s_process *packet_s_process::clone(u_char *newData, unsigned newDataLengt
 	iphdr2 *newHeaderIpInNewPacket = (iphdr2*)(new_packet + newPacketS->header_ip_offset);
 	newHeaderIpInNewPacket->set_tot_len(newLen - newPacketS->header_ip_offset);
 	//newPacketS->data = (char*)newDataInNewPacket;
-	newPacketS->_datalen = newDataLength;
+	newPacketS->_datalen = newLen - newPacketS->_dataoffset;
 	newPacketS->_datalen_set = 0;
 	newPacketS->header_pt = new_header;
 	newPacketS->packet = new_packet;
 	//newPacketS->header_ip = newHeaderIpInNewPacket;
 	newPacketS->_packet_alloc_type = _t_packet_alloc_header_std;
+	newPacketS->parseContents.clean();
 	return(newPacketS);
 }
 
@@ -13146,6 +13148,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, pack
 				partPacketS->blockstore_relock(18 /*pb lock flag*/);
 				if(partPacketS->_packet_alloc_type > _t_packet_alloc_na) {
 					partPacketS->new_alloc_packet_header();
+					partPacketS->rebase_parse_contents(packetS);
 				}
 				if(packetS_orig && packetS_orig->next_action) {
 					packetS_orig->register_child_packet(partPacketS);

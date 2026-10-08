@@ -305,7 +305,7 @@ bool sAudiocodes::parse(u_char *ac_header, unsigned /*length*/) {
 				set_ip(&packet_source_ip, ac_header + header_length);
 				set_ip(&packet_dest_ip, ac_header + header_length + 4);
 				set_port(&packet_source_port, ac_header + header_length + 8);
-				set_port(&packet_source_port, ac_header + header_length + 10);
+				set_port(&packet_dest_port, ac_header + header_length + 10);
 				ip_protocol_type = ac_header[header_length + 12];
 				packet_direction = ac_header[header_length + 13];
 			} else {
