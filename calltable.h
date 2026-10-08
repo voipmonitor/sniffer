@@ -397,6 +397,7 @@ struct ip_port_call_info {
 		srtp_crypto_config_list = NULL;
 		srtp_fingerprint = NULL;
 		canceled = false;
+		skip_close_check_due_to_reverse_direction = false;
 		leg_index = -1;
 	}
 	~ip_port_call_info() {
@@ -469,6 +470,7 @@ struct ip_port_call_info {
 	u_int16_t ptime;
 	ip_port_call_info_rtp rtp[2];
 	bool canceled;
+	bool skip_close_check_due_to_reverse_direction;
 };
 
 struct sCseq {
@@ -892,6 +894,7 @@ public:
 	unsigned branch_id;
 	string branch_call_id;
 	string branch_fbasename;
+	bool has_merged_leg;
 	u_int64_t connect_time_us;
 
 	vector<sInviteSD_Addr> invite_sdaddr;
@@ -913,6 +916,8 @@ public:
 	sCseq invitecseq;
 	list<sCseq> invitecseq_next;
 	deque<sCseq> invitecseq_in_dialog;
+	string premature_response_via_branch;
+	sCseq premature_response_cseq;
 	sCseq byecseq[2];
 	sCseq messagecseq;
 	sCseq cancelcseq;		
@@ -1001,6 +1006,7 @@ public:
 	list<sSipPacketInfo*> SIPpacketInfoList;
 	bool new_invite_after_lsr487;
 	bool new_invite_after_lsr3xx;
+	string new_invite_after_lsr3xx_via_branch;
 	bool cancel_lsr487;
 	
 	int reason_sip_cause;
@@ -1756,6 +1762,10 @@ public:
 		sCseq cseq;
 		packet_s_process *packet;
 	};
+	struct sPrematureResponseByFromTag {
+		string from_tag;
+		packet_s_process *packet;
+	};
 	struct sMediaLeg {
 		inline void addAddr(bool side_a, vmIP addr) {
 			vector<vmIP> *addrs = side_a ? &addr_a : &addr_b;
@@ -2247,7 +2257,8 @@ public:
 			char *sessid, char *sdp_label, 
 			list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
 			char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch,
-			int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags, u_int16_t ptime);
+			int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags, u_int16_t ptime,
+			bool skip_close_check_due_to_reverse_direction = false);
 	bool refresh_data_ip_port(CallBranch *c_branch,
 				  vmIP addr, vmPort port, struct timeval *ts, 
 				  list<srtp_crypto_config> *srtp_crypto_config_list, string *rtp_fingerprint,
@@ -2257,7 +2268,8 @@ public:
 			      char *sessid, char *sdp_label, bool multipleSdpMedia, 
 			      list<srtp_crypto_config> *srtp_crypto_config_list, string *rtp_fingerprint,
 			      char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch,
-			      int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags, u_int16_t ptime);
+			      int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags, u_int16_t ptime,
+			      bool skip_close_check_due_to_reverse_direction = false);
 	void cancel_ip_port_hash(CallBranch *c_branch, vmIP sip_src_addr, char *to, char *branch);
 	
 	/**
@@ -2623,6 +2635,15 @@ public:
 		return((!cseq || !c_branch->invitecseq_in_dialog.size() || find(c_branch->invitecseq_in_dialog.begin(),c_branch->invitecseq_in_dialog.end(), *cseq) == c_branch->invitecseq_in_dialog.end()) &&
 		       (!this->has_second_merged_leg || (this->has_second_merged_leg && merged) ||
 			(opt_call_branches && opt_callidmerge_force_separate_branches)));
+	}
+	bool is_enable_set_destroy_call_at_for_failed_call(CallBranch *c_branch, sCseq *cseq, int merged) {
+		extern bool opt_call_branches;
+		extern bool opt_callidmerge_force_separate_branches;
+		return((!cseq || !c_branch->invitecseq_in_dialog.size() || find(c_branch->invitecseq_in_dialog.begin(),c_branch->invitecseq_in_dialog.end(), *cseq) == c_branch->invitecseq_in_dialog.end()) &&
+		       (!this->has_second_merged_leg || (this->has_second_merged_leg && merged) ||
+			(opt_call_branches &&
+			 (opt_callidmerge_force_separate_branches ||
+			  (is_multibranch() && !c_branch->has_merged_leg)))));
 	}
 	
 	bool seenRES18X_or_2XX_in_branches() {
@@ -3488,6 +3509,11 @@ public:
 	void addPrematureResponse(packet_s_process *packetS, sCseq cseq);
 	void processPrematureResponses(bool batch_process, sCseq cseq);
 	void processPrematureRegisterResponses(sCseq cseq);
+	bool addPrematureResponseByFromTag(packet_s_process *packetS, const char *from_tag);
+	void processPrematureResponsesByFromTag(bool batch_process, const char *from_tag);
+	inline bool existsPrematureResponsesByFromTag() {
+		return(prematureResponsesByFromTag != NULL);
+	}
 	void clearPrematureResponses();
 	
 	void addTextData(eTextDataType type, u_int64_t time, vmIP ip_src, vmIP ip_dst, vmPort port_src, vmPort port_dst, const char *log);
@@ -3511,6 +3537,7 @@ private:
 	map<string, bool> diameter_callid;
 	list<sTextDataItem*> text_data;
 	list<sPrematureResponse> *prematureResponses;
+	list<sPrematureResponseByFromTag> *prematureResponsesByFromTag;
 	vector<sMediaLeg> media_legs;
 	bool media_legs_classified;
 public:

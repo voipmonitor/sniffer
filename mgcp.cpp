@@ -19,6 +19,7 @@ using namespace std;
 
 extern void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, int iscaller, char *from, unsigned sdplen,
 			char *callidstr, char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch,
+			bool skip_close_check_due_to_reverse_direction,
 			bool batch_process);
 extern void detect_to_extern(packet_s_process *packetS, char *to, unsigned to_length, bool *detected);
 extern void detect_domain_to_extern(packet_s_process *packetS, char *domain_to, unsigned domain_to_length, bool *detected);
@@ -309,6 +310,7 @@ void *handle_mgcp(packet_s_process *packetS, bool batch_process) {
 			detect_branch_extern(packetS, branch, sizeof(branch), NULL);
 			process_sdp(call, call->branch_main(), packetS, iscaller, (char*)(sdp + sdp_separator_length), 0,
 				    (char*)call->call_id.c_str(), to, NULL, domain, NULL, branch,
+				    false,
 				    batch_process);
 		}
 		if(!call->connect_time_us && is_request) {

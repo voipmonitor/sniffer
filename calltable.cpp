@@ -587,6 +587,7 @@ string CallStructs::sSipPacketInfo::getJson() {
 CallBranch::CallBranch(Call *call, unsigned branch_id) {
 	this->call = call;
 	this->branch_id = branch_id;
+	has_merged_leg = false;
 	connect_time_us = 0;
 	_custom_headers_content_sync = 0;
 	invite_sdaddr_last_ts = 0;
@@ -599,6 +600,7 @@ CallBranch::CallBranch(Call *call, unsigned branch_id) {
 	dport.clear();
 	
 	invitecseq.null();
+	premature_response_cseq.null();
 	for(unsigned i = 0; i < (sizeof(byecseq) / sizeof(byecseq[0])); i++) {
 		byecseq[i].null();
 	}
@@ -1041,6 +1043,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	_hash_add_lock = 0;
 	
 	prematureResponses = NULL;
+	prematureResponsesByFromTag = NULL;
 	
 	counter = ++counter_s;
 	
@@ -1601,7 +1604,8 @@ int Call::add_ip_port(CallBranch *c_branch,
 		      char *sessid, char *sdp_label, 
 		      list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
 		      char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch, 
-		      int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags, u_int16_t ptime) {
+		      int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags, u_int16_t ptime,
+		      bool skip_close_check_due_to_reverse_direction) {
 	/*
 	cout << "** add_ip_port "
 	     << addr.getString() << ":" << port.getString() << " -> "
@@ -1679,6 +1683,7 @@ int Call::add_ip_port(CallBranch *c_branch,
 	if(branch) {
 		c_branch->ip_port[c_branch->ipport_n].branch = branch;
 	}
+	c_branch->ip_port[c_branch->ipport_n].skip_close_check_due_to_reverse_direction = skip_close_check_due_to_reverse_direction;
 	nullIpPortInfoRtpStream(c_branch, c_branch->ipport_n);
 	
 	if(!opt_rtpmap_by_callerd || iscaller_is_set(iscaller)) {
@@ -1771,7 +1776,8 @@ void Call::add_ip_port_hash(CallBranch *c_branch,
 			    char *sessid, char *sdp_label, bool multipleSdpMedia, 
 			    list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
 			    char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch,
-			    int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags, u_int16_t ptime) {
+			    int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags, u_int16_t ptime,
+			    bool skip_close_check_due_to_reverse_direction) {
 	if(c_branch->end_call_rtp) {
 		return;
 	}
@@ -1810,7 +1816,8 @@ void Call::add_ip_port_hash(CallBranch *c_branch,
 			     sessid, sdp_label, 
 			     srtp_crypto_config_list, srtp_fingerprint,
 			     to, to_uri, domain_to, domain_to_uri, branch,
-			     iscaller, rtpmap, sdp_flags, ptime) != -1) {
+			     iscaller, rtpmap, sdp_flags, ptime,
+			     skip_close_check_due_to_reverse_direction) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, getTimeUS(ts), c_branch, iscaller, 0, sdp_flags, type_addr);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
 			((Calltable*)calltable)->hashAdd(addr, port.inc(), getTimeUS(ts), c_branch, iscaller, 1, sdp_flags, type_addr);
@@ -1891,10 +1898,12 @@ int Call::get_index_by_iscaller(CallBranch *c_branch, int iscaller) {
 
 bool Call::is_multiple_to_branch(CallBranch *c_branch) {
 	for(int i = 0; i < c_branch->ipport_n; i++) {
-		if(c_branch->sipcallerip[0] == c_branch->ip_port[i].sip_src_addr) {
+		if(c_branch->sipcallerip[0] == c_branch->ip_port[i].sip_src_addr &&
+		   !c_branch->ip_port[i].skip_close_check_due_to_reverse_direction) {
 			for(int j = 0; j < c_branch->ipport_n; j++) {
 				if(j != i &&
 				   c_branch->sipcallerip[0] == c_branch->ip_port[j].sip_src_addr &&
+				   !c_branch->ip_port[j].skip_close_check_due_to_reverse_direction &&
 				   c_branch->ip_port[i].to.length() && c_branch->ip_port[j].to.length() &&
 				   c_branch->ip_port[i].to != c_branch->ip_port[j].to &&
 				   c_branch->ip_port[i].branch.length() && c_branch->ip_port[j].branch.length() &&
@@ -1952,7 +1961,8 @@ bool Call::to_is_canceled(CallBranch *c_branch, const char *to) {
 bool Call::all_branches_is_canceled(CallBranch *c_branch, bool check_ip) {
 	map<cBranchInfo, bool> branches;
 	for(int i = 0; i < c_branch->ipport_n; i++) {
-		if(!c_branch->ip_port[i].to.empty() && !c_branch->ip_port[i].branch.empty()) {
+		if(!c_branch->ip_port[i].to.empty() && !c_branch->ip_port[i].branch.empty() &&
+		   !c_branch->ip_port[i].skip_close_check_due_to_reverse_direction) {
 			cBranchInfo bi;
 			if(check_ip) {
 				bi.sip_src_addr = c_branch->ip_port[i].sip_src_addr;
@@ -1981,7 +1991,8 @@ const char* Call::get_to_not_canceled(CallBranch *c_branch, bool uri) {
 	for(int i = 0; i < c_branch->ipport_n; i++) {
 		if(c_branch->sipcallerip[0] == c_branch->ip_port[i].sip_src_addr &&
 		   c_branch->ip_port[i].to.length() &&
-		   !c_branch->ip_port[i].canceled) {
+		   !c_branch->ip_port[i].canceled &&
+		   !c_branch->ip_port[i].skip_close_check_due_to_reverse_direction) {
 			return(uri && c_branch->ip_port[i].to_uri.length() ?
 				c_branch->ip_port[i].to_uri.c_str() :
 				c_branch->ip_port[i].to.c_str());
@@ -1994,7 +2005,8 @@ const char* Call::get_domain_to_not_canceled(CallBranch *c_branch, bool uri) {
 	for(int i = 0; i < c_branch->ipport_n; i++) {
 		if(c_branch->sipcallerip[0] == c_branch->ip_port[i].sip_src_addr &&
 		   c_branch->ip_port[i].domain_to.length() &&
-		   !c_branch->ip_port[i].canceled) {
+		   !c_branch->ip_port[i].canceled &&
+		   !c_branch->ip_port[i].skip_close_check_due_to_reverse_direction) {
 			return(uri && c_branch->ip_port[i].domain_to_uri.length() ?
 				c_branch->ip_port[i].domain_to_uri.c_str() :
 				c_branch->ip_port[i].domain_to.c_str());
@@ -15655,6 +15667,44 @@ void Call::processPrematureRegisterResponses(sCseq cseq) {
 		}
 	}
 }
+
+bool Call::addPrematureResponseByFromTag(packet_s_process *packetS, const char *from_tag) {
+	if(!prematureResponsesByFromTag) {
+		prematureResponsesByFromTag = new FILE_LINE(0) list<sPrematureResponseByFromTag>;
+	} else if(prematureResponsesByFromTag->size() >= 10) {
+		return(false);
+	}
+	sPrematureResponseByFromTag item;
+	item.from_tag = from_tag;
+	item.packet = packetS->clone();
+	item.packet->call = this;
+	prematureResponsesByFromTag->push_back(item);
+	return(true);
+}
+
+void Call::processPrematureResponsesByFromTag(bool batch_process, const char *from_tag) {
+	if(prematureResponsesByFromTag) {
+		extern void process_packet_sip_call(packet_s_process *packetS, bool batch_process);
+		list<sPrematureResponseByFromTag> items;
+		for(list<sPrematureResponseByFromTag>::iterator iter = prematureResponsesByFromTag->begin(); iter != prematureResponsesByFromTag->end(); ) {
+			if(iter->from_tag == from_tag) {
+				items.push_back(*iter);
+				iter = prematureResponsesByFromTag->erase(iter);
+			} else {
+				++iter;
+			}
+		}
+		if(prematureResponsesByFromTag->empty()) {
+			delete prematureResponsesByFromTag;
+			prematureResponsesByFromTag = NULL;
+		}
+		for(list<sPrematureResponseByFromTag>::iterator iter = items.begin(); iter != items.end(); iter++) {
+			process_packet_sip_call(iter->packet, batch_process);
+			PACKET_S_PROCESS_DESTROY(&iter->packet);
+		}
+	}
+}
+
 void Call::clearPrematureResponses() {
 	if(prematureResponses) {
 		for(list<sPrematureResponse>::iterator iter = prematureResponses->begin(); iter != prematureResponses->end(); iter++) {
@@ -15662,6 +15712,13 @@ void Call::clearPrematureResponses() {
 		}
 		delete prematureResponses;
 		prematureResponses = NULL;
+	}
+	if(prematureResponsesByFromTag) {
+		for(list<sPrematureResponseByFromTag>::iterator iter = prematureResponsesByFromTag->begin(); iter != prematureResponsesByFromTag->end(); iter++) {
+			PACKET_S_PROCESS_DESTROY(&iter->packet);
+		}
+		delete prematureResponsesByFromTag;
+		prematureResponsesByFromTag = NULL;
 	}
 }
 
