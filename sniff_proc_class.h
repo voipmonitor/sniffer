@@ -503,7 +503,7 @@ public:
 		}
 		inline void push(packet_s_process *packet) {
 			batch[count] = packet;
-			++count;
+			__SYNC_INC(count);
 		}
 		packet_s_process **batch;
 		u_int64_t batch_time_ms;

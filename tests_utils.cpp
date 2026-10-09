@@ -6,6 +6,7 @@
 #include "sniff_proc_class.h"
 #include "voipmonitor.h"
 #include "audio_convert.h"
+#include "filter_call.h"
 
 
 extern void dns_lookup_common_hostnames();
@@ -1693,6 +1694,33 @@ void test() {
 			     << "example: -X90/coredump,outfile" << endl;
 		} else {
 			parse_heapsafeplus_coredump(param[0].c_str(), param.size() > 1 ? param[1].c_str() : NULL);
+		}
+		}
+		break;
+	case 91:
+		{
+		char *pointToSepOptTest = strchr(opt_test_str, '/');
+		if(!pointToSepOptTest) {
+			cout << "missing parameters" << endl
+			     << "example: -X91/filters_src.json" << endl;
+			break;
+		}
+		SimpleBuffer content;
+		string error;
+		if(!file_get_contents(pointToSepOptTest + 1, &content, &error)) {
+			cout << error << endl;
+			break;
+		}
+		JsonItem jsonFilters;
+		jsonFilters.parse(trim_str((char*)content));
+		unsigned countFilters = jsonFilters.getLocalCount();
+		for(unsigned i = 0; i < (countFilters ? countFilters : 1); i++) {
+			string filter_src = countFilters ? jsonFilters.getLocalItem(i)->getLocalValue() : trim_str((char*)content);
+			cCallFilter filter_call(filter_src.c_str(), "f");
+			cout << "filter: " << filter_src << endl
+			     << " * " << (filter_call.existsUnsupportedKeys() ?
+					   "sql - unsupported keys: " + filter_call.getUnsupportedKeys() :
+					   string("native")) << endl;
 		}
 		}
 		break;

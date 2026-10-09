@@ -822,7 +822,7 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 	if(error) {
 		*error = "";
 	}
-	if(system("which wget > /dev/null 2>&1") != 0) {
+	if(!binaryFileExists("wget")) {
 		if(error) {
 			*error = "wget not found (curl library not available and wget is not installed)";
 		}
@@ -849,7 +849,9 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 	if(verbosity > 1) {
 		syslog(LOG_NOTICE, "get_url_file using wget: %s", wget_cmd.c_str());
 	}
-	int ret = system(wget_cmd.c_str());
+	SimpleBuffer wget_out, wget_err;
+	int ret = -1;
+	vm_pexec(wget_cmd.c_str(), &wget_out, &wget_err, &ret, 0);
 	if(ret == 0) {
 		struct stat st;
 		if(stat(toFile, &st) == 0 && st.st_size > 0) {
@@ -863,9 +865,8 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 		}
 	} else {
 		if(error) {
-			if(WIFEXITED(ret)) {
-				int exit_code = WEXITSTATUS(ret);
-				switch(exit_code) {
+			if(ret > 0) {
+				switch(ret) {
 					case 1:
 						*error = "wget: Generic error code";
 						break;
@@ -891,7 +892,7 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 						*error = "wget: Server issued an error response";
 						break;
 					default:
-						*error = "wget failed with exit code " + intToString(exit_code);
+						*error = "wget failed with exit code " + intToString(ret);
 						break;
 				}
 			} else {
@@ -2293,7 +2294,7 @@ bool AsyncClose::addThread() {
 		memset(this->threadPstatData[countPcapThreads], 0, sizeof(this->threadPstatData[countPcapThreads]));
 		vm_pthread_create("async store",
 				  &this->thread[countPcapThreads], NULL, AsyncClose_process, &startThreadData[countPcapThreads], __FILE__, __LINE__);
-		++countPcapThreads;
+		__SYNC_INC(countPcapThreads);
 		lastThreadOperationAt_s = getTimeS_rdtsc();
 		rslt = true;
 	}
@@ -2306,7 +2307,7 @@ bool AsyncClose::removeThread() {
 	   !removeThreadProcessedAt_ms && cpuPeak[countPcapThreads - 1] > 10 &&
 	   lastThreadOperationAt_s + 60 < getTimeS_rdtsc()) {
 		removeThreadProcessedAt_ms = getTimeMS_rdtsc();
-		--countPcapThreads;
+		__SYNC_DEC(countPcapThreads);
 		lastThreadOperationAt_s = getTimeS_rdtsc();
 		rslt = true;
 	}
@@ -2534,15 +2535,15 @@ bool cSystemdService::verifyUnit(const char *unit) {
 	const char *verify_cmds[] = {
 		"systemctl show -p LoadState %s 2>/dev/null",
 		"systemctl show %s 2>/dev/null",
-		"systemctl cat %s >/dev/null 2>&1",
+		"systemctl cat %s",
 		"systemctl is-active --quiet %s",
 		NULL
 	};
 	const char *verify_types[] = {
 		"popen",
 		"popen",
-		"system",
-		"system",
+		"exit_code",
+		"exit_code",
 		NULL
 	};
 	for(int i = 0; verify_cmds[i]; i++) {
@@ -2565,7 +2566,10 @@ bool cSystemdService::verifyUnit(const char *unit) {
 				}
 			}
 		} else {
-			if(system(cmd) == 0) {
+			SimpleBuffer out, err;
+			int exit_code = -1;
+			vm_pexec(cmd, &out, &err, &exit_code);
+			if(exit_code == 0) {
 				return(true);
 			}
 		}
@@ -4125,19 +4129,19 @@ bool check_ip(vmIP ip, vmIP net, unsigned mask_length) {
 }
 
 
-void ListIP::addComb(string &ip, ListIP *negList) {
-	addComb(ip.c_str(), negList);
+void ListIP::addComb(string &ip, ListIP *negList, bool autoMask) {
+	addComb(ip.c_str(), negList, autoMask);
 }
 
-void ListIP::addComb(const char *ip, ListIP *negList) {
+void ListIP::addComb(const char *ip, ListIP *negList, bool autoMask) {
 	vector<string>ip_elems = split(ip, split(" |,|;|\t|\r|\n", "|"), true);
 	for(size_t i = 0; i < ip_elems.size(); i++) {
 		if(ip_elems[i][0] == '!') {
 			if(negList) {
-				negList->add(ip_elems[i].substr(1).c_str());
+				negList->add(ip_elems[i].substr(1).c_str(), autoMask);
 			}
 		} else {
-			add(ip_elems[i].c_str());
+			add(ip_elems[i].c_str(), autoMask);
 		}
 	}
 }
@@ -4178,6 +4182,7 @@ GroupIP::GroupIP(unsigned id, const char *descr, const char *ip) {
 }
 
 GroupsIP::GroupsIP() {
+	min_mask_length = -1;
 }
 
 GroupsIP::~GroupsIP() {
@@ -4193,6 +4198,7 @@ void GroupsIP::load(SqlDb *sqlDb) {
 	groups.clear();
 	listIP.clear();
 	listNet.clear();
+	min_mask_length = -1;
 	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
@@ -4223,6 +4229,9 @@ void GroupsIP::load(SqlDb *sqlDb) {
 		while(it_src_Net != src_Net->end()) {
 			IP net = *it_src_Net;
 			listNet[net] = it->first;
+			if(min_mask_length < 0 || net.mask_length < min_mask_length) {
+				min_mask_length = net.mask_length;
+			}
 			++it_src_Net;
 		}
 	}
@@ -4240,10 +4249,14 @@ GroupIP *GroupsIP::getGroup(vmIP ip) {
 	}
 	if(listNet.size()) {
 		std::map<IP, unsigned>::iterator it_net = listNet.lower_bound(IP(ip));
+		if(it_net != listNet.end() && ((IP*)&it_net->first)->checkIP(ip)) {
+			return(groups[it_net->second]);
+		}
+		vmIP min_net = min_mask_length > 0 ? ip.network(min_mask_length) : vmIP();
 		while(it_net != listNet.begin()) {
 			--it_net;
 			IP *_net = (IP*)&it_net->first;
-			if(!_net->ip.mask(ip).isSet()) {
+			if(_net->ip.bits() == ip.bits() && _net->ip < min_net) {
 				break;
 			}
 			if(_net->checkIP(ip)) {
@@ -4254,11 +4267,11 @@ GroupIP *GroupsIP::getGroup(vmIP ip) {
 	return(NULL);
 }
 
-void ListPhoneNumber::addComb(string &number, ListPhoneNumber *negList, PhoneNumber::eTypeNumber type) {
-	addComb(number.c_str(), negList, type);
+void ListPhoneNumber::addComb(string &number, ListPhoneNumber *negList, PhoneNumber::eTypeNumber type, bool enableNull, bool filterInterval) {
+	addComb(number.c_str(), negList, type, enableNull, filterInterval);
 }
 
-void ListPhoneNumber::addComb(const char *number, ListPhoneNumber *negList, PhoneNumber::eTypeNumber type) {
+void ListPhoneNumber::addComb(const char *number, ListPhoneNumber *negList, PhoneNumber::eTypeNumber type, bool enableNull, bool filterInterval) {
 	vector<string> delimiters = split(" |,|;|\t|\r|\n", "|");
 	vector<sNoSplitBorders> no_split_borders;
 	no_split_borders.push_back(sNoSplitBorders("R(", ")"));
@@ -4267,10 +4280,12 @@ void ListPhoneNumber::addComb(const char *number, ListPhoneNumber *negList, Phon
 	for(size_t i = 0; i < number_elems.size(); i++) {
 		if(number_elems[i][0] == '!') {
 			if(negList) {
-				negList->add(number_elems[i].substr(1).c_str(), type);
+				negList->add(number_elems[i].substr(1).c_str(), type, filterInterval ? PhoneNumber::_ti_none : PhoneNumber::_ti_std);
 			}
+		} else if(enableNull && number_elems[i] == "NULL") {
+			null = true;
 		} else {
-			add(number_elems[i].c_str(), type);
+			add(number_elems[i].c_str(), type, filterInterval ? PhoneNumber::_ti_filter : PhoneNumber::_ti_std);
 		}
 	}
 }
@@ -4302,27 +4317,34 @@ void ListUA::addComb(const char *ua, ListUA *negList,
 }
 
 void ListCheckString::addComb(string &checkString, ListCheckString *negList,
-			      bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator) {
+			      bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator,
+			      bool enableNoSplitBorders, bool enableNull, bool enableInterval) {
 	addComb(checkString.c_str(), negList,
-		enableSpaceSeparator, separators, separatorsSeparator);
+		enableSpaceSeparator, separators, separatorsSeparator,
+		enableNoSplitBorders, enableNull, enableInterval);
 }
 
 void ListCheckString::addComb(const char *checkString, ListCheckString *negList,
-			      bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator) {
+			      bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator,
+			      bool enableNoSplitBorders, bool enableNull, bool enableInterval) {
 	if(!separators) {
 		separators = enableSpaceSeparator ? " |,|;|\t|\r|\n" : ",|;|\t|\r|\n";
 	}
 	if(!separatorsSeparator) {
 		separatorsSeparator = "|";
 	}
-	vector<string>checkString_elems = split(checkString, split(separators, separatorsSeparator), true);
+	vector<string>checkString_elems = enableNoSplitBorders ?
+					  split_filter(checkString, separators, separatorsSeparator) :
+					  split(checkString, split(separators, separatorsSeparator), true);
 	for(size_t i = 0; i < checkString_elems.size(); i++) {
 		if(checkString_elems[i][0] == '!') {
 			if(negList) {
-				negList->add(checkString_elems[i].substr(1).c_str());
+				negList->add(checkString_elems[i].substr(1).c_str(), enableInterval);
 			}
+		} else if(enableNull && checkString_elems[i] == "NULL") {
+			null = true;
 		} else {
-			add(checkString_elems[i].c_str());
+			add(checkString_elems[i].c_str(), enableInterval);
 		}
 	}
 }
@@ -4332,20 +4354,20 @@ ListIP_wb::ListIP_wb(bool autoLock)
    black(autoLock) {
 }
 
-void ListIP_wb::addWhite(string &ip) {
-	white.addComb(ip, &black);
+void ListIP_wb::addWhite(string &ip, bool autoMask) {
+	white.addComb(ip, &black, autoMask);
 }
 
-void ListIP_wb::addWhite(const char *ip) {
-	white.addComb(ip, &black);
+void ListIP_wb::addWhite(const char *ip, bool autoMask) {
+	white.addComb(ip, &black, autoMask);
 }
 
-void ListIP_wb::addBlack(string &ip) {
-	black.addComb(ip, &white);
+void ListIP_wb::addBlack(string &ip, bool autoMask) {
+	black.addComb(ip, &white, autoMask);
 }
 
-void ListIP_wb::addBlack(const char *ip) {
-	black.addComb(ip, &white);
+void ListIP_wb::addBlack(const char *ip, bool autoMask) {
+	black.addComb(ip, &white, autoMask);
 }
 
 ListPhoneNumber_wb::ListPhoneNumber_wb(bool autoLock)
@@ -4353,20 +4375,20 @@ ListPhoneNumber_wb::ListPhoneNumber_wb(bool autoLock)
    black(autoLock) {
 }
 
-void ListPhoneNumber_wb::addWhite(string &number, PhoneNumber::eTypeNumber type) {
-	white.addComb(number, &black, type);
+void ListPhoneNumber_wb::addWhite(string &number, PhoneNumber::eTypeNumber type, bool enableNull, bool filterInterval) {
+	white.addComb(number, &black, type, enableNull, filterInterval);
 }
 
-void ListPhoneNumber_wb::addWhite(const char *number, PhoneNumber::eTypeNumber type) {
-	white.addComb(number, &black, type);
+void ListPhoneNumber_wb::addWhite(const char *number, PhoneNumber::eTypeNumber type, bool enableNull, bool filterInterval) {
+	white.addComb(number, &black, type, enableNull, filterInterval);
 }
 
-void ListPhoneNumber_wb::addBlack(string &number, PhoneNumber::eTypeNumber type) {
-	black.addComb(number, &white, type);
+void ListPhoneNumber_wb::addBlack(string &number, PhoneNumber::eTypeNumber type, bool enableNull, bool filterInterval) {
+	black.addComb(number, &white, type, enableNull, filterInterval);
 }
 
-void ListPhoneNumber_wb::addBlack(const char *number, PhoneNumber::eTypeNumber type) {
-	black.addComb(number, &white, type);
+void ListPhoneNumber_wb::addBlack(const char *number, PhoneNumber::eTypeNumber type, bool enableNull, bool filterInterval) {
+	black.addComb(number, &white, type, enableNull, filterInterval);
 }
 
 ListUA_wb::ListUA_wb(bool autoLock)
@@ -4404,27 +4426,35 @@ ListCheckString_wb::ListCheckString_wb(bool autoLock)
 }
 
 void ListCheckString_wb::addWhite(string &checkString,
-				  bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator) {
+				  bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator,
+				  bool enableNoSplitBorders, bool enableNull, bool enableInterval) {
 	white.addComb(checkString, &black,
-		      enableSpaceSeparator, separators, separatorsSeparator);
+		      enableSpaceSeparator, separators, separatorsSeparator,
+		      enableNoSplitBorders, enableNull, enableInterval);
 }
 
 void ListCheckString_wb::addWhite(const char *checkString,
-				  bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator) {
+				  bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator,
+				  bool enableNoSplitBorders, bool enableNull, bool enableInterval) {
 	white.addComb(checkString, &black,
-		      enableSpaceSeparator, separators, separatorsSeparator);
+		      enableSpaceSeparator, separators, separatorsSeparator,
+		      enableNoSplitBorders, enableNull, enableInterval);
 }
 
 void ListCheckString_wb::addBlack(string &checkString,
-				  bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator) {
+				  bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator,
+				  bool enableNoSplitBorders, bool enableNull, bool enableInterval) {
 	black.addComb(checkString, &white,
-		      enableSpaceSeparator, separators, separatorsSeparator);
+		      enableSpaceSeparator, separators, separatorsSeparator,
+		      enableNoSplitBorders, enableNull, enableInterval);
 }
 
 void ListCheckString_wb::addBlack(const char *checkString,
-				  bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator) {
+				  bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator,
+				  bool enableNoSplitBorders, bool enableNull, bool enableInterval) {
 	black.addComb(checkString, &white,
-		      enableSpaceSeparator, separators, separatorsSeparator);
+		      enableSpaceSeparator, separators, separatorsSeparator,
+		      enableNoSplitBorders, enableNull, enableInterval);
 }
 
 
@@ -7776,38 +7806,66 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err, int *ex
 		*exitCode = -1;
 	}
 	std::vector<std::string> parseCmdLine = parse_cmd_line(cmdLine);
-	char *exec_args[100];
-	unsigned i = 0;
-	for(i = 0; i < min(sizeof(exec_args) / sizeof(exec_args[0]) - 2, parseCmdLine.size()); i++) {
-		parseCmdLine[i] = trim(parseCmdLine[i], " '\"");
+	if(parseCmdLine.empty()) {
+		syslog(LOG_ERR, "vm_pexec: empty command line");
+		return(false);
+	}
+	std::vector<char*> exec_args(parseCmdLine.size() + 1);
+	for(unsigned i = 0; i < parseCmdLine.size(); i++) {
 		exec_args[i] = (char*)parseCmdLine[i].c_str();
 	}
-	exec_args[i] = NULL;
+	exec_args[parseCmdLine.size()] = NULL;
 	int pipe_stdin[2];
 	int pipe_stdout[2];
 	int pipe_stderr[2];
-	if(needStdin) {
-		pipe(pipe_stdin);
+	int *pipes[] = { needStdin ? pipe_stdin : NULL, pipe_stdout, pipe_stderr };
+	for(unsigned j = 0; j < sizeof(pipes) / sizeof(pipes[0]); j++) {
+		if(pipes[j] && pipe2(pipes[j], O_CLOEXEC)) {
+			syslog(LOG_ERR, "vm_pexec: failed create pipe: %s", strerror(errno));
+			while(j > 0) {
+				--j;
+				if(pipes[j]) {
+					close(pipes[j][0]);
+					close(pipes[j][1]);
+				}
+			}
+			return(false);
+		}
 	}
-	pipe(pipe_stdout);
-	pipe(pipe_stderr);
+	extern unsigned getChildPidExitSeq();
+	unsigned child_pid_exit_seq = getChildPidExitSeq();
 	int fork_rslt = closeAllFdAfterFork ? fork() : vfork();
 	if(fork_rslt == 0) {
+		int child_fd[3] = { needStdin ? pipe_stdin[0] : -1, pipe_stdout[1], pipe_stderr[1] };
 		if(needStdin) {
 			close(pipe_stdin[1]);
-			dup2(pipe_stdin[0], 0);
-			close(pipe_stdin[0]);
 		}
 		close(pipe_stdout[0]);
-		dup2(pipe_stdout[1], 1);
-		close(pipe_stdout[1]);
 		close(pipe_stderr[0]);
-		dup2(pipe_stderr[1], 2);
-		close(pipe_stderr[1]);
+		for(unsigned j = 0; j < sizeof(child_fd) / sizeof(child_fd[0]); j++) {
+			if(child_fd[j] >= 0 && child_fd[j] < 3 && child_fd[j] != (int)j) {
+				int fd_above_std = fcntl(child_fd[j], F_DUPFD, 3);
+				if(fd_above_std >= 0) {
+					close(child_fd[j]);
+					child_fd[j] = fd_above_std;
+				}
+			}
+		}
+		for(unsigned j = 0; j < sizeof(child_fd) / sizeof(child_fd[0]); j++) {
+			if(child_fd[j] < 0) {
+				continue;
+			}
+			if(child_fd[j] != (int)j) {
+				dup2(child_fd[j], j);
+				close(child_fd[j]);
+			} else {
+				fcntl(j, F_SETFD, fcntl(j, F_GETFD) & ~FD_CLOEXEC);
+			}
+		}
 		if(closeAllFdAfterFork) {
 			close_all_fd();
 		}
-		if(execvp(exec_args[0], exec_args) == -1) {
+		if(execvp(exec_args[0], &exec_args[0]) == -1) {
 			char errmessage[1000];
 			snprintf(errmessage, sizeof(errmessage), "exec failed: %s: command not found", exec_args[0]);
 			write(2, errmessage, strlen(errmessage));
@@ -7824,98 +7882,61 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err, int *ex
 		close(pipe_stderr[1]);
 		bool breakAfterNextRead = false;
 		while(true) {
-			#if 0 //suppress select & FD_SET
-				fd_set readfds;
-				FD_ZERO(&readfds);
-				FD_SET(pipe_stdout[0], &readfds);
-				FD_SET(pipe_stderr[0], &readfds);
-				timeval *timeout = NULL;
-				timeval _timeout;
-				if(timout_select_sec) {
-					_timeout.tv_sec = timout_select_sec;
-					_timeout.tv_usec = 0;
-					timeout = &_timeout;
-				}
-				if(select(max(pipe_stdout[0], pipe_stderr[0]) + 1, &readfds, NULL, NULL, timeout) == -1) {
-					break;
-				}
-				char buffer[1024];
-				unsigned readStdoutLength = 0;
-				unsigned readStderrLength = 0;
-				if(FD_ISSET(pipe_stdout[0], &readfds)) {
+			pollfd fds[3];
+			memset(fds, 0 , sizeof(fds));
+			fds[0].fd = pipe_stdout[0];
+			fds[0].events = POLLIN;
+			fds[1].fd = pipe_stderr[0];
+			fds[1].events = POLLIN;
+			int rsltPool = poll(fds, 2, timout_select_msec);
+			if(rsltPool < 0 && errno != EINTR) {
+				break;
+			}
+			char buffer[1024];
+			unsigned readStdoutLength = 0;
+			unsigned readStderrLength = 0;
+			if(rsltPool > 0) {
+				if(fds[0].revents) {
 					if((readStdoutLength = read(pipe_stdout[0], buffer, sizeof(buffer))) > 0) {
 						bufferStdout.add(buffer, readStdoutLength);
+						if(readStdoutLength) {
+							//cout << readStdoutLength << " " << string(buffer, readStdoutLength) << endl;
+							if(exec_callback) {
+								exec_callback(&bufferStdout, string(buffer, readStdoutLength), pipe_stdin[1], exec_callback_data);
+							}
+						}
 					}
 				}
-				if(FD_ISSET(pipe_stderr[0], &readfds)) {
+				if(fds[1].revents) {
 					if((readStderrLength = read(pipe_stderr[0], buffer, sizeof(buffer))) > 0) {
 						bufferStderr.add(buffer, readStderrLength);
 					}
 				}
-			#else
-				pollfd fds[3];
-				memset(fds, 0 , sizeof(fds));
-				fds[0].fd = pipe_stdout[0];
-				fds[0].events = POLLIN;
-				fds[1].fd = pipe_stderr[0];
-				fds[1].events = POLLIN;
-				int rsltPool = poll(fds, 2, timout_select_msec);
-				if(rsltPool < 0) {
-					break;
-				}
-				char buffer[1024];
-				unsigned readStdoutLength = 0;
-				unsigned readStderrLength = 0;
-				if(rsltPool > 0) {
-					if(fds[0].revents) {
-						if((readStdoutLength = read(pipe_stdout[0], buffer, sizeof(buffer))) > 0) {
-							bufferStdout.add(buffer, readStdoutLength);
-							if(readStdoutLength) {
-								//cout << readStdoutLength << " " << string(buffer, readStdoutLength) << endl;
-								if(exec_callback) {
-									exec_callback(&bufferStdout, string(buffer, readStdoutLength), pipe_stdin[1], exec_callback_data);
-								}
-							}
-						}
-					}
-					if(fds[1].revents) {
-						if((readStderrLength = read(pipe_stderr[0], buffer, sizeof(buffer))) > 0) {
-							bufferStderr.add(buffer, readStderrLength);
-						}
-					}
-				}
-				if(breakAfterNextRead) {
-					break;
-				}
-			#endif
+			}
+			if(breakAfterNextRead) {
+				break;
+			}
 			if(readStderrLength) {
 				if(bufferStderr.size() && reg_match((char*)bufferStderr, "^exec failed", __FILE__, __LINE__)) {
 					break;
 				}
 			} else if(!readStdoutLength) {
-				/*
-				bool defunct = false;
-				if(existsPid(fork_rslt, &defunct)) {
-					if(defunct) {
-						int status;
-						waitpid(fork_rslt, &status, WNOHANG);
-						if(exitCode) {
-							*exitCode = WEXITSTATUS(status);
-						}
-						cout << "exit " << *exitCode << endl;
-					} else {
-						USLEEP(10000);
+				bool isChildPidExit(unsigned pid, unsigned seq);
+				int getChildPidExitCode(unsigned pid, unsigned seq);
+				int child_status;
+				bool child_exit = true;
+				if(waitpid(fork_rslt, &child_status, WNOHANG) == fork_rslt) {
+					if(exitCode) {
+						*exitCode = WIFEXITED(child_status) ? WEXITSTATUS(child_status) : -1;
+					}
+				} else if(isChildPidExit(fork_rslt, child_pid_exit_seq)) {
+					if(exitCode) {
+						*exitCode = getChildPidExitCode(fork_rslt, child_pid_exit_seq);
 					}
 				} else {
-					break;
+					child_exit = false;
 				}
-				*/
-				bool isChildPidExit(unsigned pid);
-				int getChildPidExitCode(unsigned pid);
-				if(isChildPidExit(fork_rslt)) {
-					if(exitCode) {
-						*exitCode = getChildPidExitCode(fork_rslt);
-					}
+				if(child_exit) {
 					if(exec_callback) {
 						breakAfterNextRead = true;
 					} else {
@@ -7927,6 +7948,7 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err, int *ex
 			}
 			if(timeout_sec && (getTimeMS() - start_time) > timeout_sec * 1000) {
 				kill(fork_rslt, 9);
+				waitpid(fork_rslt, NULL, 0);
 				break;
 			}
 		}
@@ -7935,6 +7957,11 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err, int *ex
 		}
 		close(pipe_stdout[0]);
 		close(pipe_stderr[0]);
+		int child_status_end;
+		if(waitpid(fork_rslt, &child_status_end, WNOHANG) == fork_rslt &&
+		   exitCode && *exitCode == -1) {
+			*exitCode = WIFEXITED(child_status_end) ? WEXITSTATUS(child_status_end) : -1;
+		}
 		if(out) {
 			if(reg_match((char*)bufferStdout, "PID([0-9]+)\n", __FILE__, __LINE__)) {
 				char *pointerToPidSeparator = strchr((char*)bufferStdout, '\n');
@@ -7957,23 +7984,31 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err, int *ex
 std::vector<std::string> parse_cmd_line(const char *cmdLine) {
 	const char *cmdLinePointer = cmdLine;
 	string param;
+	bool param_set = false;
 	char paramBracket = 0;
 	std::vector<std::string> parse;
 	while(*cmdLinePointer) {
 		if(paramBracket && *cmdLinePointer == paramBracket) {
-			paramBracket = 0;
-			++cmdLinePointer;
+			if(paramBracket == '\'' && !strncmp(cmdLinePointer, "'\\''", 4)) {
+				param += '\'';
+				cmdLinePointer += 4;
+			} else {
+				paramBracket = 0;
+				++cmdLinePointer;
+			}
 		} else if(*cmdLinePointer == ' ' && !paramBracket) {
-			if(param.length()) {
+			if(param_set) {
 				parse.push_back(param);
 			}
 			param = "";
+			param_set = false;
 			paramBracket = 0;
 			++cmdLinePointer;
 			while(*cmdLinePointer == ' ') {
 				++cmdLinePointer;
 			}
 		} else {
+			param_set = true;
 			if(!paramBracket && (*cmdLinePointer == '\'' || *cmdLinePointer == '"')) {
 				paramBracket = *cmdLinePointer;
 			} else {
@@ -7985,13 +8020,8 @@ std::vector<std::string> parse_cmd_line(const char *cmdLine) {
 			++cmdLinePointer;
 		}
 	}
-	if(param.length()) {
+	if(param_set) {
 		parse.push_back(param);
-	}
-	for(unsigned i = 0; i < parse.size(); i++) {
-		if(parse[i][0] == '"' && parse[i][parse[i].length() - 1] == '"') {
-			parse[i] = parse[i].substr(1, parse[i].length() - 2);
-		}
 	}
 	return(parse);
 }
@@ -11984,76 +12014,6 @@ bool file_put_contents(const char *filename, SimpleBuffer *content, string *erro
 	fclose(file);
 	return(true);
 }
-
-/* obsolete
-string getInterfaceOption(const char *param, const char *searchstr, const char *iface, const char *sep = " \t") {
-	char cmd[512];
-	snprintf(cmd, sizeof(cmd), "ethtool %s %s", param, iface);
-	#if PREFER_VM_PEXEC
-	SimpleBuffer out;
-	if(vm_pexec(cmd, &out) && out.size()) {
-		vector<string> out_v = split((char*)out, '\n');
-		for(unsigned i = 0; i < out_v.size(); i++) {
-			if(out_v[i].find(searchstr) != string::npos) {
-				size_t pos_par = 0;
-				while(pos_par < out_v[i].length() && !strchr(sep, (out_v[i][pos_par]))) {
-					++pos_par;
-				}
-				while(pos_par < out_v[i].length() && strchr(sep, (out_v[i][pos_par]))) {
-					++pos_par;
-				}
-				if(pos_par < out_v[i].length()) {
-					return(out_v[i].substr(pos_par));
-				}
-				break;
-			}
-		}
-	}
-	#else
-	FILE *cmd_pipe = popen((string(cmd) + " 2>&1").c_str(), "r");
-	char buff[512];
-	while(fgets(buff, 512, cmd_pipe)) {
-		if(strstr(buff, searchstr)) {
-			char *p = buff;
-			while(*p && !strchr(sep, *p)) {
-				++p;
-			}
-			while(*p && strchr(sep, *p)) {
-				++p;
-			}
-			if(*p) {
-				pclose(cmd_pipe);
-				return(p);
-			}
-			break;
-		}
-	}
-	pclose(cmd_pipe);
-	#endif
-	printf("Can't get value from 'ethtool %s %s'. This is not a fatal error. Some NICs don't support it.\n", param, iface);
-	syslog(LOG_NOTICE, "Can't get value from 'ethtool %s %s'. This is not a fatal error. Some NICs don't support it.", param, iface);
-	return("");
-}
-
-void setInterfaceOption(const char *param, const char *option, const char *iface, int value) {
-	char cmd[512];
-	snprintf(cmd, sizeof(cmd), "ethtool %s %s %s %i", param, iface, option, value);
-	int retval = -1;
-	#if PREFER_VM_PEXEC
-	SimpleBuffer out;
-	vm_pexec(cmd, &out, NULL, &retval);
-	#else
-	pexec((char*)(string(cmd) + " 2>&1").c_str(), &retval);
-	#endif
-	if (retval == 0 || (retval / 0xff) == 80) {
-		printf("'ethtool %s %s %s %i' successful.\n", param, iface, option, value);
-		syslog(LOG_NOTICE, "'ethtool %s %s %s %i' successful.", param, iface, option, value);
-	} else {
-		printf("Can't set interface 'ethtool %s %s %s %i': %i. This is not a fatal error. Some NICs don't support it.\n", param, iface, option, value, retval);
-		syslog(LOG_NOTICE, "Can't set interface 'ethtool %s %s %s %i': %i. This is not a fatal error. Some NICs don't support it.", param, iface, option, value, retval);
-	}
-}
-*/
 
 int count_cores_on_node(int node, string *error) {
 	if(error) *error = "";

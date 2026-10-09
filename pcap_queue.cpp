@@ -281,9 +281,10 @@ volatile int _sync_pcap_handles;
 u_int16_t register_pcap_handle(pcap_t *handle) {
 	u_int16_t rslt_index;
 	__SYNC_LOCK(_sync_pcap_handles);
-	if(!pcap_handles_count) ++pcap_handles_count;
+	if(!pcap_handles_count) __SYNC_INC(pcap_handles_count);
 	rslt_index = pcap_handles_count;
-	pcap_handles[pcap_handles_count++] = handle;
+	pcap_handles[pcap_handles_count] = handle;
+	__SYNC_INC(pcap_handles_count);
 	__SYNC_UNLOCK(_sync_pcap_handles);
 	return(rslt_index);
 }
@@ -10779,7 +10780,7 @@ void PcapQueue_outputThread::createNextThread() {
 			__ASM_PAUSE;
 		}
 	}
-	++this->next_threads_count;
+	__SYNC_INC(this->next_threads_count);
 }
 
 void PcapQueue_outputThread::termNextThread() {
@@ -10792,7 +10793,7 @@ void PcapQueue_outputThread::termNextThread() {
 	      (typeOutputThread == defrag && (opt_pre_process_packets_next_thread_defrag <= 0 || this->next_threads_count > opt_pre_process_packets_next_thread_defrag))))) {
 		return;
 	}
-	--this->next_threads_count;
+	__SYNC_DEC(this->next_threads_count);
 	this->next_threads[this->next_threads_count].terminate = true;
 	if(this->next_threads[this->next_threads_count].sem_sync_inited) {
 		sem_post(&this->next_threads[this->next_threads_count].sem_sync);

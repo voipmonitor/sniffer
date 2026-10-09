@@ -300,21 +300,29 @@ friend class cChartInterval;
 
 class cChartSeriesId {
 public:
-	cChartSeriesId(int id, const char *config_id) {
+	cChartSeriesId(int id, const char *config_id, const char *config_id_src) {
 		this->id = id;
 		this->config_id = config_id;
+		this->config_id_src = config_id_src;
 	};
 	friend inline const bool operator == (const cChartSeriesId &id1, const cChartSeriesId &id2) {
 		return(id1.id == id2.id &&
-		       id1.config_id == id2.config_id);
+		       id1.config_id == id2.config_id &&
+		       id1.config_id_src == id2.config_id_src);
 	}
 	friend inline const bool operator < (const cChartSeriesId &id1, const cChartSeriesId &id2) {
 		return(id1.id < id2.id ? 1 : id1.id > id2.id ? 0 :
-		       id1.config_id < id2.config_id);
+		       id1.config_id < id2.config_id ? 1 : id1.config_id > id2.config_id ? 0 :
+		       id1.config_id_src < id2.config_id_src);
+	}
+	string getDescr() {
+		return("id " + intToString(id) + " / config_id " + config_id + " / config_id_src " + config_id_src);
 	}
 private:
 	int id;
 	string config_id;
+	string config_id_src;
+friend class cChartSeries;
 friend class cChartInterval;
 friend class cChartIntervalSeriesData;
 };
@@ -428,9 +436,9 @@ public:
 			store_counter = 0;
 			counter_add = 0;
 		}
-		unsigned count;
-		unsigned count_connected;
-		unsigned count_lsr_3_6[4];
+		volatile unsigned count;
+		volatile unsigned count_connected;
+		volatile unsigned count_lsr_3_6[4];
 		map<u_int16_t, cChartIntervalSeriesData*> data;
 		u_int32_t store_counter;
 		volatile u_int32_t counter_add;
@@ -443,30 +451,30 @@ public:
 		void store(int sensor_id, const vmIP *ip, const string *number, eProblemType pt, int src_dst, int by_type,
 			   u_int32_t timeFrom, u_int32_t created_at_real, SqlDb *sqlDb);
 		void store(SqlDb_row *row);
-		unsigned count_all;
-		unsigned count_connected;
-		unsigned count_mos_lt_31;
-		unsigned count_mos_lt_36;
-		unsigned count_mos_lt_40;
-		unsigned count_interrupted_calls;
-		unsigned count_one_way;
-		unsigned count_missing_rtp;
-		unsigned count_missing_srtp_key;
-		unsigned count_fas;
-		unsigned count_zerossrc;
-		unsigned count_sipalg;
-		unsigned count_bye_code_2;
-		unsigned count_bye_code_102;
-		unsigned count_bye_code_103;
-		unsigned count_bye_code_104;
-		unsigned count_bye_code_105;
-		unsigned count_bye_code_101;
-		unsigned count_bye_code_106;
-		unsigned count_bye_code_107;
-		unsigned count_bye_code_108;
-		unsigned count_bye_code_109;
-		unsigned count_bye_code_100;
-		unsigned count_bye_code_110;
+		volatile unsigned count_all;
+		volatile unsigned count_connected;
+		volatile unsigned count_mos_lt_31;
+		volatile unsigned count_mos_lt_36;
+		volatile unsigned count_mos_lt_40;
+		volatile unsigned count_interrupted_calls;
+		volatile unsigned count_one_way;
+		volatile unsigned count_missing_rtp;
+		volatile unsigned count_missing_srtp_key;
+		volatile unsigned count_fas;
+		volatile unsigned count_zerossrc;
+		volatile unsigned count_sipalg;
+		volatile unsigned count_bye_code_2;
+		volatile unsigned count_bye_code_102;
+		volatile unsigned count_bye_code_103;
+		volatile unsigned count_bye_code_104;
+		volatile unsigned count_bye_code_105;
+		volatile unsigned count_bye_code_101;
+		volatile unsigned count_bye_code_106;
+		volatile unsigned count_bye_code_107;
+		volatile unsigned count_bye_code_108;
+		volatile unsigned count_bye_code_109;
+		volatile unsigned count_bye_code_100;
+		volatile unsigned count_bye_code_110;
 		u_int32_t store_counter;
 		volatile u_int32_t counter_add;
 	};
@@ -478,9 +486,9 @@ public:
 			store_counter = 0;
 			counter_add = 0;
 		}
-		unsigned count;
-		unsigned count_connected;
-		unsigned count_exists_rtp;
+		volatile unsigned count;
+		volatile unsigned count_connected;
+		volatile unsigned count_exists_rtp;
 		map<u_int16_t, cChartIntervalSeriesData*> data;
 		u_int32_t store_counter;
 		volatile u_int32_t counter_add;
@@ -562,13 +570,45 @@ friend class cCdrSummary;
 
 class cChartFilter {
 public:
-	cChartFilter(const char *filter, const char *filter_only_sip_ip, const char *filter_without_sip_ip);
+	cChartFilter(const char *filter, const char *filter_only_sip_ip, const char *filter_without_sip_ip, const char *filter_src);
 	~cChartFilter();
 	bool check(sChartsCallData *call, void *callData, bool ip_comb_v6, void *ip_comb, class cFiltersCache *filtersCache, int threadIndex);
+	bool existsNativeFilter() {
+		return(filter_call != NULL);
+	}
+	bool existsSqlFilter() {
+		return(!filter.empty());
+	}
+	string getUnsupportedKeys() {
+		return(filter_call_unsupported_keys);
+	}
+	void addSeriesRef(cChartSeriesId series_id) {
+		series_refs[series_id] = series_id.getDescr();
+	}
+	void removeSeriesRef(cChartSeriesId series_id) {
+		series_refs.erase(series_id);
+	}
+	string getSeriesRefs() {
+		string rslt;
+		for(map<cChartSeriesId, string>::iterator iter = series_refs.begin(); iter != series_refs.end(); iter++) {
+			rslt += (rslt.empty() ? "" : ", ") + iter->second;
+		}
+		return(rslt);
+	}
+	static string filterKey(const char *filter, const char *filter_src);
+private:
+	bool check_sql(sChartsCallData *call, void *callData, bool ip_comb_v6, void *ip_comb, class cFiltersCache *filtersCache, int threadIndex);
+	bool check_native(sChartsCallData *call);
+	void createNativeFilter();
+	void evalLog(const char *type, sChartsCallData *call, bool rslt);
 private:
 	string filter;
 	string filter_only_sip_ip;
 	string filter_without_sip_ip;
+	string filter_src;
+	class cCallFilter *filter_call;
+	string filter_call_unsupported_keys;
+	map<cChartSeriesId, string> series_refs;
 	cEvalFormula::sSplitOperands **filter_s;
 	cEvalFormula::sSplitOperands **filter_only_sip_ip_s;
 	cEvalFormula::sSplitOperands **filter_without_sip_ip_s;
@@ -620,7 +660,7 @@ private:
 
 class cChartSeries {
 public:
-	cChartSeries(unsigned int id, const char *config_id, const char *config, class cCharts *charts);
+	cChartSeries(unsigned int id, const char *config_id, const char *config_id_src, const char *config, class cCharts *charts);
 	cChartSeries(eChartTypeUse typeUse, unsigned int id, const char *chart_type, const char *source_data_name, bool id_is_chart_type);
 	~cChartSeries();
 	void setCountValues(bool countValues);
@@ -646,6 +686,7 @@ private:
 	cChartLsrFilter *seer_lsr_filter[2];
 	sChartTypeDef def;
 	bool countValues;
+	bool load_failed;
 	volatile int used_counter;
 	volatile int terminating;
 friend class cChartDataItem;
@@ -665,9 +706,11 @@ public:
 	void reload();
 	void initIntervals();
 	void clear();
-	cChartFilter* getFilter(const char *filter, bool enableAdd, 
-				const char *filter_only_sip_ip, const char *filter_without_sip_ip);
-	cChartFilter* addFilter(const char *filter, const char *filter_only_sip_ip, const char *filter_without_sip_ip);
+	cChartFilter* getFilter(const char *filter, bool enableAdd,
+				const char *filter_only_sip_ip, const char *filter_without_sip_ip,
+				const char *filter_src);
+	cChartFilter* addFilter(const char *filter, const char *filter_only_sip_ip, const char *filter_without_sip_ip,
+				const char *filter_src);
 	void add(sChartsCallData *call, void *callData, class cFiltersCache *filtersCache, int threadIndex);
 	void checkFilters(sChartsCallData *call, void *callData, map<cChartFilter*, bool> *filters, class cFiltersCache *filtersCache, int threadIndex);
 	void store(bool forceAll = false);
@@ -1189,6 +1232,7 @@ class cFiltersCache {
 public:
 	cFiltersCache(unsigned limit, unsigned limit2);
 	~cFiltersCache();
+	void clear();
 	int get(cChartFilter *filter, sFilterCache_call_ipv4_comb *ip_comb);
 	void add(cChartFilter *filter, sFilterCache_call_ipv4_comb *ip_comb, bool set);
 	#if VM_IPV6
@@ -1213,6 +1257,9 @@ void chartsCacheStore(bool forceAll = false);
 void chartsCacheCleanup(bool forceAll = false);
 void chartsCacheReload();
 void chartsCacheInitIntervals();
+bool chartsCacheRequestAll(bool store, bool cleanup, unsigned timeout_s = 10);
+void chartsCacheProcessRequestAll();
+bool chartsCacheGetAndResetFiltersRemoved();
 
 void cdrStatInit(SqlDb *sqlDb);
 void cdrStatTerm();

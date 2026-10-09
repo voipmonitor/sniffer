@@ -56,7 +56,7 @@ inline void set_terminating() {
 }
 inline void inc_terminating() {
 	extern volatile int terminating;
-	++terminating;
+	__SYNC_INC(terminating);
 }
 inline void clear_terminating() {
 	extern volatile int terminating;

@@ -57,7 +57,7 @@ static u_int16_t _get_unix_tid() {
 		return(tid);
 	}
 	__SYNC_LOCK(sync);
-	tid = ++tid_counter;
+	tid = __SYNC_INC(tid_counter);
 	__SYNC_UNLOCK(sync);
 	return(tid);
 }

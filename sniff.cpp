@@ -3349,7 +3349,7 @@ bool add_rtp_read_thread() {
 						      &(rtp_threads[num_threads_active].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[num_threads_active], __FILE__, __LINE__);
 			rslt = true;
 		}
-		++num_threads_active;
+		__SYNC_INC(num_threads_active);
 		last_rtp_read_thread_operation_at = getTimeS_rdtsc();
 	}
 	unlock_add_remove_rtp_threads();
@@ -3372,7 +3372,7 @@ bool set_remove_rtp_read_thread() {
 	     !rtp_threads[num_threads_active].threadId)) &&
 	   last_rtp_read_thread_operation_at + 60 < getTimeS_rdtsc()) {
 		rtp_threads[num_threads_active - 1].remove_flag = true;
-		--num_threads_active;
+		__SYNC_DEC(num_threads_active);
 		last_rtp_read_thread_operation_at = getTimeS_rdtsc();
 		rslt = true;
 	}
@@ -4635,7 +4635,7 @@ void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, in
 					u_int64_t _forcemark_time = packetS->getTimeUS();
 					call->forcemark_lock();
 					call->forcemark_time.push_back(_forcemark_time);
-					++call->forcemark_time_size;
+					__SYNC_INC(call->forcemark_time_size);
 					if(sverb.forcemark) {
 						cout << "add forcemark (inactive): " << _forcemark_time 
 						     << " forcemarks size: " << call->forcemark_time.size() 
@@ -5748,7 +5748,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 		}
 		
 	} else if(packetS->sip_method == BYE) {
-		++count_sip_bye;
+		__SYNC_INC(count_sip_bye);
 		if(call->is_enable_set_destroy_call_at_for_call(c_branch, NULL, merged)) {
 			//do not set destroy for BYE which belongs to first leg in case of merged legs through sip header
 			if(!opt_call_branches ||
@@ -5805,7 +5805,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 			__SYNC_UNLOCK(call->conference_legs_sync);
 		}
 	} else if(packetS->sip_method == CANCEL) {
-		++count_sip_cancel;
+		__SYNC_INC(count_sip_cancel);
 		call->setSeenCancel(c_branch, true, packet_time_us, packetS->get_callid());
 
 		if((opt_call_branches && !c_branch->seeninviteok) || call->is_multiple_to_branch(c_branch)) {
@@ -5973,7 +5973,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 				}
 				if(packetS->cseq.method == BYE &&
 				   call->existsByeCseq(c_branch, &packetS->cseq)) {
-					++count_sip_bye_confirmed;
+					__SYNC_INC(count_sip_bye_confirmed);
 					// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
 					bool okByeRes2xx = true;
 					if(call->is_multiple_to_branch(c_branch)) {
@@ -6170,7 +6170,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 					c_branch->invite_list_unlock();
 				} else if(packetS->cseq.method == CANCEL &&
 					  c_branch->cancelcseq.is_set() && packetS->cseq == c_branch->cancelcseq) {
-					++count_sip_cancel_confirmed;
+					__SYNC_INC(count_sip_cancel_confirmed);
 					call->setSeenCancelAndOk(c_branch, true, packet_time_us, packetS->get_callid());
 					process_packet__parse_custom_headers(call, c_branch, packetS);
 					#if EXPERIMENTAL_SEPARATE_PROCESSSING
@@ -12204,7 +12204,7 @@ void PreProcessPacket::createNextThread() {
 			__ASM_PAUSE;
 		}
 	}
-	++this->next_threads_count;
+	__SYNC_INC(this->next_threads_count);
 }
 
 void PreProcessPacket::termNextThread() {
@@ -12212,7 +12212,7 @@ void PreProcessPacket::termNextThread() {
 	     (get_opt_pre_process_packets_next_thread() <= 0 || this->next_threads_count > get_opt_pre_process_packets_next_thread()))) {
 		return;
 	}
-	--this->next_threads_count;
+	__SYNC_DEC(this->next_threads_count);
 	this->next_threads[this->next_threads_count].terminate = true;
 	if(this->next_threads[this->next_threads_count].sem_sync_inited) {
 		sem_post(&this->next_threads[this->next_threads_count].sem_sync);
@@ -13119,7 +13119,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, pack
 		
 	} while(true);
 	if(isSip) {
-		++counter_sip_packets[0];
+		__SYNC_INC(counter_sip_packets[0]);
 		if(multipleSip) {
 			if(packetS->next_action == _ppna_set) {
 				packetS->next_action = _ppna_destroy;
@@ -13313,7 +13313,7 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 		return;
 	}
 	this->process_getLastSipResponse(&packetS);
-	++counter_sip_packets[1];
+	__SYNC_INC(counter_sip_packets[1]);
 	if(packetS) {
 		if(packetS->next_action == _ppna_set) {
 			packetS->next_action = _ppna_push_to_extend;
@@ -13326,7 +13326,7 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 void PreProcessPacket::process_skinny(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
 	packetS->type_content = _pptc_skinny;
-	++counter_sip_packets[1];
+	__SYNC_INC(counter_sip_packets[1]);
 	if(packetS->next_action == _ppna_set) {
 		packetS->next_action = _ppna_push_to_extend;
 	} else {
@@ -13337,7 +13337,7 @@ void PreProcessPacket::process_skinny(packet_s_process **packetS_ref) {
 void PreProcessPacket::process_mgcp(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
 	packetS->type_content = _pptc_mgcp;
-	++counter_sip_packets[1];
+	__SYNC_INC(counter_sip_packets[1]);
 	if(packetS->next_action == _ppna_set) {
 		packetS->next_action = _ppna_push_to_extend;
 	} else {
@@ -13421,7 +13421,7 @@ void PreProcessPacket::process_diameterExt(packet_s_process **packetS_ref, packe
 void PreProcessPacket::process_diameter(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
 	packetS->type_content = _pptc_diameter;
-	++counter_sip_packets[1];
+	__SYNC_INC(counter_sip_packets[1]);
 	if(packetS->next_action == _ppna_set) {
 		packetS->next_action = _ppna_push_to_extend;
 	} else {
@@ -14386,7 +14386,7 @@ void ProcessRtpPacket::createNextHashThread() {
 			__ASM_PAUSE;
 		}
 	}
-	++this->process_rtp_packets_hash_next_threads;
+	__SYNC_INC(this->process_rtp_packets_hash_next_threads);
 }
 
 void ProcessRtpPacket::termNextHashThread() {
@@ -14394,7 +14394,7 @@ void ProcessRtpPacket::termNextHashThread() {
 	     (opt_process_rtp_packets_hash_next_thread <= 0 || this->process_rtp_packets_hash_next_threads > opt_process_rtp_packets_hash_next_thread))) {
 		return;
 	}
-	--this->process_rtp_packets_hash_next_threads;
+	__SYNC_DEC(this->process_rtp_packets_hash_next_threads);
 	this->hash_next_threads[this->process_rtp_packets_hash_next_threads].terminate = true;
 	if(this->hash_next_threads[this->process_rtp_packets_hash_next_threads].sem_sync_inited) {
 		sem_post(&this->hash_next_threads[this->process_rtp_packets_hash_next_threads].sem_sync);
@@ -14507,7 +14507,7 @@ void ProcessRtpPacket::addRtpRdThread() {
 		lockAddRtpRdThread();
 		ProcessRtpPacket *_processRtpPacketDistribute = new FILE_LINE(26035) ProcessRtpPacket(ProcessRtpPacket::distribute, process_rtp_packets_distribute_threads_use);
 		processRtpPacketDistribute[process_rtp_packets_distribute_threads_use] = _processRtpPacketDistribute;
-		++process_rtp_packets_distribute_threads_use;
+		__SYNC_INC(process_rtp_packets_distribute_threads_use);
 		unlockAddRtpRdThread();
 		last_rtp_rd_thread_operation_at = getTimeS_rdtsc();
 	}

@@ -1081,6 +1081,10 @@ enum eCallField {
 	cf_lastpackettime,
 	cf_duration,
 	cf_connect_duration,
+	cf_progress_time,
+	cf_ringing_time,
+	cf_post_bye_delay,
+	cf_response_time_100,
 	cf_caller,
 	cf_called,
 	cf_caller_country,
@@ -1088,12 +1092,15 @@ enum eCallField {
 	cf_caller_international,
 	cf_called_international,
 	cf_callername,
+	cf_digest_username,
 	cf_callerdomain,
 	cf_calleddomain,
 	cf_calleragent,
 	cf_calledagent,
 	cf_callerip,
 	cf_calledip,
+	cf_callerport,
+	cf_calledport,
 	cf_callerip_country,
 	cf_calledip_country,
 	cf_callerip_encaps,
@@ -1102,6 +1109,7 @@ enum eCallField {
 	cf_calledip_encaps_prot,
 	cf_sipproxies,
 	cf_lastSIPresponseNum,
+	cf_lastSIPresponse,
 	cf_rtp_src,
 	cf_rtp_dst,
 	cf_rtp_src_country,
@@ -1142,6 +1150,14 @@ enum eCallField {
 	cf_dst_loss_last10sec,
 	cf_id_sensor,
 	cf_vlan,
+	cf_ttl_min,
+	cf_ttl_max,
+	cf_ttl_avg,
+	cf_dscp_caller_sip,
+	cf_dscp_called_sip,
+	cf_dscp_caller_rtp,
+	cf_dscp_called_rtp,
+	cf_max_retransmission_invite,
 	cf_custom_header,
 	cf__max
 };
@@ -1956,7 +1972,7 @@ public:
 	time_t destroy_call_at_bye;
 	time_t destroy_call_at_bye_confirmed;
 	
-	std::queue <s_dtmf> dtmf_history;
+	std::deque <s_dtmf> dtmf_history;
 	volatile int dtmf_sync;
 	
 	u_int64_t first_invite_time_us;
@@ -3283,6 +3299,27 @@ public:
 	bool isEmptyCdrRow() {
 		return(cdr.isEmpty());
 	}
+	bool getCdrFieldValue(const char *fieldName, double *value) {
+		SqlDb_row::SqlDb_rowField *field = cdr.getField(fieldName);
+		if(!field || field->null) {
+			return(false);
+		}
+		switch(field->ifv.type & SqlDb_row::_ift_base) {
+		case SqlDb_row::_ift_int:
+			*value = field->ifv.v._int;
+			break;
+		case SqlDb_row::_ift_int_u:
+			*value = field->ifv.v._int_u;
+			break;
+		case SqlDb_row::_ift_double:
+			*value = field->ifv.v._double;
+			break;
+		default:
+			*value = atof(field->content.c_str());
+			break;
+		}
+		return(true);
+	}
 	
 	void addRegTcpSeq(u_int32_t seq) {
 		if(seq) {
@@ -3315,6 +3352,23 @@ public:
 		++ssrc_n;
 	}
 	#endif
+	inline unsigned rtp_rows_size() {
+		return(rtp_rows_count);
+	}
+	inline RTP *rtp_rows_stream_by_index(unsigned index) {
+		if(index >= rtp_rows_count) {
+			return(NULL);
+		}
+		#if CALL_RTP_DYNAMIC_ARRAY
+		map<unsigned, unsigned>::iterator iter = rtp_rows_indexes.find(index);
+		if(iter == rtp_rows_indexes.end()) {
+			return(NULL);
+		}
+		return(rtp_stream_by_index(iter->second));
+		#else
+		return(rtp_stream_by_index(rtp_rows_indexes[index]));
+		#endif
+	}
 	inline RTP *rtp_stream_by_index(unsigned index) {
 		#if not EXPERIMENTAL_LITE_RTP_MOD
 		#if CALL_RTP_DYNAMIC_ARRAY
@@ -3486,6 +3540,69 @@ public:
 	bool save_rtp_graph : 1;
 	unsigned rslt_save_cdr_bye;
 	u_int64_t rslt_save_cdr_flags;
+	struct sSavedData {
+		struct sRtpStream {
+			vmIPport src;
+			vmIPport dst;
+			int received;
+			u_int16_t rtp_ptime;
+			u_int16_t sdp_ptime;
+			bool is_caller;
+			bool in_multiple_calls;
+			bool flags_null;
+		};
+		sSavedData() {
+			max_retransmission_invite = 0;
+			dscp_rtp[0] = 0;
+			dscp_rtp[1] = 0;
+			saddr_exists[0] = false;
+			saddr_exists[1] = false;
+			countries_set = false;
+			response_time_100 = 0;
+			response_time_100_null = true;
+			payload_ab[0] = -1;
+			payload_ab[1] = -1;
+			mos_f2_ab[0] = -1;
+			mos_f2_ab[1] = -1;
+			payload = -1;
+			payload_null = true;
+		}
+		unsigned max_retransmission_invite;
+		u_int8_t dscp_rtp[2];
+		bool saddr_exists[2];
+		vmIP saddr[2];
+		set<vmIP> proxies;
+		string a_ua;
+		string b_ua;
+		string caller;
+		string called;
+		string called_domain;
+		string callername;
+		bool countries_set;
+		string caller_country;
+		string called_country;
+		string callerip_country;
+		string calledip_country;
+		double response_time_100;
+		bool response_time_100_null;
+		int payload_ab[2];
+		int mos_f2_ab[2];
+		int payload;
+		bool payload_null;
+		set<int> rtp_rows_payloads;
+		vector<sRtpStream> rtp_streams;
+		vector<s_sdp_store_data> sdp_streams;
+	};
+	sSavedData *saved_data;
+	unsigned rtp_streams_size();
+	bool getRtpStreamData(unsigned index, sSavedData::sRtpStream *stream);
+	unsigned sdp_rows_size();
+	s_sdp_store_data *sdp_row_by_index(unsigned index) {
+		if(index >= sdp_rows_list.size()) {
+			return(NULL);
+		}
+		return(&sdp_rows_list[index]);
+	}
 private:
 	SqlDb_row cdr;
 	SqlDb_row cdr_next;
@@ -4611,6 +4728,7 @@ public:
 	static void *_processCallsInChartsCache_thread(void *_threadIndex);
 	void processCallsInChartsCache_thread_add();
 	void processCallsInChartsCache_thread_remove();
+	bool chartsCacheThreadIsRunning();
 	string processCallsInChartsCache_cpuUsagePerc(double *avg, int pstatDataIndex);
 
 	void destroyCallsIfPcapsClosed();
@@ -4818,6 +4936,8 @@ public:
 	int tableNameToIndex(const char *tableName);
 	void createColumnsForFixedHeaders(SqlDb *sqlDb = NULL);
 	bool getPosForDbId(unsigned db_id, d_u_int32_t *pos);
+	string getHeaderKeyForDbId(unsigned db_id);
+	string getHeaderKeyForSpecialType(eSpecialType specialType);
 	static sCH_Content *getCustomHeadersCallContent(CallBranch *c_branch, int type);
 	void getHeaders(list<string> *rslt);
 	void getValues(Call *call, int type, list<string> *rslt);

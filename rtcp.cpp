@@ -826,7 +826,6 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int all_block_size, CallBran
 		  vmIP ip_src, vmPort port_src, vmIP ip_dst, vmPort port_dst)
 {
 	char *pkt = data;
-	int reports_seen;
 
 	rtcp_xr_header_t *header = (rtcp_xr_header_t*)pkt;
 
@@ -839,7 +838,6 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int all_block_size, CallBran
 	all_block_size -= sizeof(rtcp_xr_header_t);
 	
 	/* Loop over report blocks */
-	reports_seen = 0;
 	while(all_block_size > (int)sizeof(rtcp_xr_gen_t)) {
 
 		if(pkt + sizeof(rtcp_xr_gen_t) > (data + datalen)) {
@@ -912,7 +910,6 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int all_block_size, CallBran
 		}
 
 		pkt += ntohs(block->length) * 4;
-		reports_seen++;
 	}
 	return;
 }

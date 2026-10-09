@@ -1810,34 +1810,94 @@ std::string pexec(char*, int *exitCode = NULL);
 class IP {
 public:
 	IP(vmIP ip, int mask_length = -1) {
+		valid = true;
+		mask_all = false;
+		mask_range = false;
 		this->ip = ip;
 		this->mask_length = mask_length == -1 ? 0 : mask_length;
 		if(mask_length > 0 && mask_length < ip.bits()) {
 			this->ip = this->ip.network(mask_length);
 		}
 	}
-	IP(const char *ip) {
+	IP(const char *ip, bool autoMask = true) {
+		valid = true;
+		mask_all = false;
+		mask_range = false;
+		mask_length = 0;
 		char *maskSeparator =(char*)strchr(ip, '/');
 		if(maskSeparator) {
-			mask_length = atoi(maskSeparator + 1);
+			const char *mask_str = maskSeparator + 1;
+			vmIP mask_ip;
+			int mask_length_num = -1;
+			if(strchr(mask_str, '.') || strchr(mask_str, ':')) {
+				if(mask_ip.setFromString(mask_str)) {
+					for(int i = 0; i <= mask_ip.bits(); i++) {
+						if(mask_ip == mask_ip.network_mask(i, true)) {
+							mask_length = i;
+							mask_all = i == 0;
+							break;
+						}
+					}
+					mask_range = true;
+				} else {
+					valid = false;
+				}
+			} else if(*mask_str && strlen(mask_str) <= 3 && strspn(mask_str, "0123456789") == strlen(mask_str)) {
+				mask_length_num = atoi(mask_str);
+			} else {
+				valid = false;
+			}
 			*maskSeparator = 0;
-			this->ip.setFromString(ip);
-			if(mask_length > 0 && mask_length < this->ip.bits()) {
-				 this->ip = this->ip.network(mask_length);
+			if(!this->ip.setFromString(ip)) {
+				valid = false;
 			}
 			*maskSeparator = '/';
+			if(valid) {
+				if(mask_range) {
+					if(mask_ip.bits() != this->ip.bits()) {
+						valid = false;
+					} else {
+						ip_to = this->ip._or(mask_ip._not());
+						this->ip = this->ip._and(mask_ip);
+					}
+				} else if(mask_length_num > this->ip.bits()) {
+					valid = false;
+				} else {
+					mask_length = mask_length_num;
+					if(mask_length > 0 && mask_length < this->ip.bits()) {
+						this->ip = this->ip.network(mask_length);
+					}
+				}
+			}
+			if(!valid) {
+				mask_all = false;
+				mask_range = false;
+				mask_length = 0;
+			}
 		} else {
-			this->ip.setFromString(ip);
-			mask_length = 0;
-			for(int i = 8; i <= this->ip.bits() - 8; i += 8) {
-				if(this->ip == this->ip.network(i)) {
-					mask_length = i;
-					break;
+			if(!this->ip.setFromString(ip)) {
+				valid = false;
+			}
+			if(valid && autoMask) {
+				for(int i = 8; i <= this->ip.bits() - 8; i += 8) {
+					if(this->ip == this->ip.network(i)) {
+						mask_length = i;
+						break;
+					}
 				}
 			}
 		}
 	}
 	bool checkIP(vmIP check_ip) {
+		if(!valid) {
+			return(false);
+		}
+		if(mask_all) {
+			return(true);
+		}
+		if(mask_range) {
+			return(check_ip >= ip && check_ip <= ip_to);
+		}
 		if(!mask_length || mask_length == this->ip.bits()) {
 			return(check_ip == ip);
 		} else {
@@ -1849,14 +1909,18 @@ public:
 		return(checkIP(str_2_vmIP(check_ip)));
 	}
 	bool isNet() {
-		return(this->ip.is_net_mask(mask_length));
+		return(mask_all || mask_range || this->ip.is_net_mask(mask_length));
 	}
 	bool operator < (const IP &ip) const {
 		return(this->ip < ip.ip);
 	}
 public:
 	vmIP ip;
+	vmIP ip_to;
 	u_int16_t mask_length;
+	bool mask_all;
+	bool mask_range;
+	bool valid;
 };
 
 class PhoneNumber {
@@ -1866,17 +1930,36 @@ public:
 		_tn_prefix,
 		_tn_suffix,
 		_tn_part,
-		_tn_regexp
+		_tn_regexp,
+		_tn_prefix_auto
+	};
+	enum eTypeInterval {
+		_ti_std,
+		_ti_none,
+		_ti_filter
 	};
 public:
-	PhoneNumber(const char *number, eTypeNumber type) {
+	PhoneNumber(const char *number, eTypeNumber type, eTypeInterval typeInterval = _ti_std) {
+		if(type == _tn_prefix_auto) {
+			type = strchr(number, '%') ? _tn_norm : _tn_prefix;
+		}
 		this->number = number;
 		interval = false;
 		interval_num_length = -1;
 		interval_from = -1;
 		interval_to = -1;
+		interval_filter = false;
+		interval_filter_suffix = false;
+		interval_filter_from_set = false;
+		interval_filter_to_set = false;
+		interval_filter_from = 0;
+		interval_filter_to = 0;
+		if(typeInterval == _ti_filter && type == _tn_norm && setIntervalFilter()) {
+			return;
+		}
 		size_t intervalSeparator;
-		if((intervalSeparator = this->number.find('-')) != string::npos &&
+		if(typeInterval == _ti_std &&
+		   (intervalSeparator = this->number.find('-')) != string::npos &&
 		   intervalSeparator > 0 && intervalSeparator < this->number.length() - 2) {
 			string from = this->number.substr(0, intervalSeparator);
 			string to = this->number.substr(intervalSeparator + 1);
@@ -1949,13 +2032,22 @@ public:
 			boundRight = type == _tn_norm || type == _tn_suffix;
 			wildcard = 0;
 		} else {
-			if(this->number.size() && this->number[0] != '%' && this->number[this->number.size() - 1] != '%') {
+			if(this->number.size()) {
 				if(type == _tn_prefix) {
-					this->number += '%';
+					if(this->number[this->number.size() - 1] != '%') {
+						this->number += '%';
+					}
 				} else if(type == _tn_suffix) {
-					this->number = '%' + this->number;
+					if(this->number[0] != '%') {
+						this->number = '%' + this->number;
+					}
 				} else if(type == _tn_part) {
-					this->number = '%' + this->number + '%';
+					if(this->number[0] != '%') {
+						this->number = '%' + this->number;
+					}
+					if(this->number[this->number.size() - 1] != '%') {
+						this->number += '%';
+					}
 				}
 			}
 			string _number = this->number;
@@ -1979,6 +2071,9 @@ public:
 		}
 	}
 	bool checkNumber(const char *check_number) {
+		if(interval_filter) {
+			return(checkIntervalFilter(check_number));
+		}
 		if(interval) {
 			unsigned check_length = strlen(check_number);
 			if(check_length <= interval_eq.length()) {
@@ -2039,7 +2134,129 @@ public:
 		}
 	}
 	bool operator < (const PhoneNumber &phoneNumber) const {
-		return(this->number < phoneNumber.number);
+		return(strcasecmp(this->number.c_str(), phoneNumber.number.c_str()) < 0);
+	}
+private:
+	bool setIntervalFilter() {
+		size_t separator = 0;
+		size_t pos = 0;
+		for(int i = 0; i < 2; i++) {
+			while(pos < number.length() && number[pos] != '-' && !isdigit(number[pos])) {
+				++pos;
+			}
+			size_t digits_start = pos;
+			while(pos < number.length() && isdigit(number[pos])) {
+				++pos;
+			}
+			if(pos == digits_start) {
+				return(false);
+			}
+			if(i == 0) {
+				if(pos >= number.length() || number[pos] != '-') {
+					return(false);
+				}
+				separator = pos;
+				++pos;
+			} else if(pos != number.length()) {
+				return(false);
+			}
+		}
+		string from = number.substr(0, separator);
+		string to = number.substr(separator + 1);
+		from = trim(from);
+		to = trim(to);
+		unsigned eqLength = 0;
+		while(eqLength < from.length() && eqLength < to.length() &&
+		      from[eqLength] == to[eqLength]) {
+			++eqLength;
+		}
+		for(unsigned i = eqLength; i < from.length(); i++) {
+			if(!isdigit(from[i])) {
+				return(false);
+			}
+		}
+		for(unsigned i = eqLength; i < to.length(); i++) {
+			if(!isdigit(to[i])) {
+				return(false);
+			}
+		}
+		number_length = number.length();
+		boundLeft = true;
+		boundRight = true;
+		wildcard = 0;
+		interval = true;
+		interval_filter = true;
+		interval_eq = from.substr(0, eqLength);
+		interval_num_length = max(from.length(), to.length()) - eqLength;
+		interval_filter_suffix = from[0] == '%';
+		interval_filter_from_set = interval_filter_suffix || from.length() > eqLength;
+		interval_filter_to_set = interval_filter_suffix || to.length() > eqLength;
+		interval_filter_from = atof(from.c_str() + eqLength);
+		interval_filter_to = atof(to.c_str() + eqLength);
+		interval_filter_like = interval_filter_suffix || !eqLength ? interval_eq : interval_eq + "%";
+		return(true);
+	}
+	bool checkIntervalFilter(const char *check_number) {
+		unsigned check_length = strlen(check_number);
+		string check_part;
+		if(interval_filter_suffix) {
+			unsigned left_length = check_length > (unsigned)interval_num_length ? check_length - interval_num_length : 0;
+			if(strcasecmp_wildcard(string(check_number, left_length).c_str(), interval_filter_like.c_str(), "_", "%")) {
+				return(false);
+			}
+			if(interval_num_length > 0 && check_length >= (unsigned)interval_num_length) {
+				check_part = check_number + check_length - interval_num_length;
+			}
+		} else {
+			if(interval_filter_like.length() &&
+			   strcasecmp_wildcard(check_number, interval_filter_like.c_str(), "_", "%")) {
+				return(false);
+			}
+			if(check_length > interval_eq.length()) {
+				check_part = string(check_number + interval_eq.length()).substr(0, interval_num_length);
+			}
+		}
+		double check_value = sqlNumber(check_part.c_str());
+		return((!interval_filter_from_set || check_value >= interval_filter_from) &&
+		       (!interval_filter_to_set || check_value <= interval_filter_to));
+	}
+	double sqlNumber(const char *str) {
+		const char *start = str;
+		while(isspace(*start)) {
+			++start;
+		}
+		const char *end = start;
+		if(*end == '+' || *end == '-') {
+			++end;
+		}
+		bool digits = false;
+		while(isdigit(*end)) {
+			++end;
+			digits = true;
+		}
+		if(*end == '.') {
+			++end;
+			while(isdigit(*end)) {
+				++end;
+				digits = true;
+			}
+		}
+		if(!digits) {
+			return(0);
+		}
+		if(*end == 'e' || *end == 'E') {
+			const char *exponent = end + 1;
+			if(*exponent == '+' || *exponent == '-') {
+				++exponent;
+			}
+			if(isdigit(*exponent)) {
+				while(isdigit(*exponent)) {
+					++exponent;
+				}
+				end = exponent;
+			}
+		}
+		return(atof(string(start, end - start).c_str()));
 	}
 public:
 	std::string number;
@@ -2052,6 +2269,13 @@ public:
 	int interval_num_length;
 	int interval_from;
 	int interval_to;
+	bool interval_filter;
+	bool interval_filter_suffix;
+	bool interval_filter_from_set;
+	bool interval_filter_to_set;
+	double interval_filter_from;
+	double interval_filter_to;
+	std::string interval_filter_like;
 };
 
 class UA {
@@ -2100,7 +2324,7 @@ public:
 
 class CheckString {
 public:
-	CheckString(const char *checkString) {
+	CheckString(const char *checkString, bool enableInterval = true) {
 		this->checkString = checkString;
 		checkString_length = this->checkString.length();
 		boundLeft = false;
@@ -2111,7 +2335,8 @@ public:
 		interval_from = -1;
 		interval_to = -1;
 		size_t intervalSeparator;
-		if((intervalSeparator = this->checkString.find('-')) != string::npos &&
+		if(enableInterval &&
+		   (intervalSeparator = this->checkString.find('-')) != string::npos &&
 		   intervalSeparator > 0 && intervalSeparator < this->checkString.length() - 2) {
 			string from = this->checkString.substr(0, intervalSeparator);
 			string to = this->checkString.substr(intervalSeparator + 1);
@@ -2175,7 +2400,7 @@ public:
 	}
 	bool check(const char *checkString) {
 		if(!checkString_length) {
-			return(false);
+			return(boundLeft && boundRight ? !checkString[0] : true);
 		}
 		if(interval) {
 			unsigned checkStringLength = strlen(checkString);
@@ -2257,6 +2482,13 @@ public:
 		_sync = 0;
 		_listIP_sorted = 0;
 		_listNet_sorted = 0;
+		all = false;
+		min_mask_length = -1;
+		skip_invalid = false;
+		invalid_net = false;
+	}
+	void setSkipInvalid() {
+		skip_invalid = true;
 	}
 	void add(vmIP ip, int mask_length = -1) {
 		if(autoLock) lock();
@@ -2265,28 +2497,59 @@ public:
 			listIP.push_back(_ip);
 		} else {
 			listNet.push_back(_ip);
+			if(min_mask_length < 0 || _ip.mask_length < min_mask_length) {
+				min_mask_length = _ip.mask_length;
+			}
 		}
 		if(autoLock) unlock();
 	}
 	void add(vmIPmask ip) {
 		add(ip.ip, ip.mask);
 	}
-	void add(const char *ip) {
+	void add(const char *ip, bool autoMask = true) {
+		IP _ip(ip, autoMask);
+		struct in_addr ip_numeric;
+		if(!_ip.valid && skip_invalid && !strpbrk(ip, "/:%") && !inet_aton(ip, &ip_numeric)) {
+			extern cResolver resolver;
+			vector<vmIP> resolved_ips;
+			resolver.resolve(ip, &resolved_ips, 0, cResolver::_typeResolve_default, 60);
+			if(resolved_ips.size()) {
+				for(unsigned i = 0; i < resolved_ips.size(); i++) {
+					add(resolved_ips[i]);
+				}
+				return;
+			}
+		}
 		if(autoLock) lock();
-		IP _ip(ip);
-		if(!_ip.isNet()) {
-			listIP.push_back(_ip);
+		if(_ip.valid || !skip_invalid) {
+			if(_ip.mask_all) {
+				all = true;
+			}
+			if(!_ip.isNet()) {
+				listIP.push_back(_ip);
+			} else {
+				listNet.push_back(_ip);
+				if(min_mask_length < 0 || _ip.mask_length < min_mask_length) {
+					min_mask_length = _ip.mask_length;
+				}
+			}
 		} else {
-			listNet.push_back(_ip);
+			const char *maskSeparator = strchr(ip, '/');
+			if(maskSeparator && maskSeparator > ip) {
+				invalid_net = true;
+			}
 		}
 		if(autoLock) unlock();
 	}
-	void addComb(string &ip, ListIP *negList = NULL);
-	void addComb(const char *ip, ListIP *negList = NULL);
+	void addComb(string &ip, ListIP *negList = NULL, bool autoMask = true);
+	void addComb(const char *ip, ListIP *negList = NULL, bool autoMask = true);
 	void add(vector<vmIP> *ip);
 	void add(vector<vmIPmask> *net, int limit_host_bits_for_convert_to_ips = 0);
 	void add_hosts(vmIPmask *net);
 	bool checkIP(vmIP check_ip) {
+		if(all) {
+			return(true);
+		}
 		bool rslt =  false;
 		if(autoLock) lock();
 		if(listIP.size()) {
@@ -2308,10 +2571,10 @@ public:
 			if(it_net != listNet.end() && it_net->checkIP(check_ip)) {
 				rslt = true;
 			} else {
+				vmIP min_net = min_mask_length > 0 ? check_ip.network(min_mask_length) : vmIP();
 				while(it_net != listNet.begin()) {
 					--it_net;
-					if(!(!it_net->ip.isSet() && it_net->mask_length) &&
-					   !it_net->ip.mask(check_ip).isSet()) {
+					if(it_net->ip.bits() == check_ip.bits() && it_net->ip < min_net) {
 						break;
 					}
 					if(it_net->checkIP(check_ip)) {
@@ -2331,10 +2594,29 @@ public:
 		if(autoLock) lock();
 		listIP.clear();
 		listNet.clear();
+		all = false;
+		min_mask_length = -1;
+		invalid_net = false;
 		if(autoLock) unlock();
 	}
 	bool is_empty() {
-		return(!listIP.size() && !listNet.size());
+		return(!listIP.size() && !listNet.size() && !invalid_net);
+	}
+	bool has_invalid_net() {
+		return(invalid_net);
+	}
+	void setNoLock() {
+		lock();
+		if(listIP.size() && !_listIP_sorted) {
+			std::sort(listIP.begin(), listIP.end());
+			_listIP_sorted = true;
+		}
+		if(listNet.size() && !_listNet_sorted) {
+			std::sort(listNet.begin(), listNet.end());
+			_listNet_sorted = true;
+		}
+		autoLock = false;
+		unlock();
 	}
 	void lock() {
 		__SYNC_LOCK(this->_sync);
@@ -2348,6 +2630,10 @@ public:
 private:
 	std::vector<IP> listIP;
 	std::vector<IP> listNet;
+	bool all;
+	int min_mask_length;
+	bool skip_invalid;
+	bool invalid_net;
 	bool autoLock;
 	volatile int _sync;
 	volatile int _listIP_sorted;
@@ -2400,6 +2686,7 @@ private:
 	map<unsigned, GroupIP*> groups;
 	std::map<IP, unsigned> listIP;
 	std::map<IP, unsigned> listNet;
+	int min_mask_length;
 };
 
 class ListPhoneNumber {
@@ -2409,26 +2696,26 @@ public:
 		_sync = 0;
 		_listPhoneNumber_sorted = 0;
 		_listPrefixes_sorted = 0;
+		null = false;
 	}
 	~ListPhoneNumber() {
 		for(std::list<cRegExp*>::iterator iter = listRegExp.begin(); iter != listRegExp.end(); iter++) {
 			delete *iter;
 		}
 	}
-	void add(const char *number, PhoneNumber::eTypeNumber type) {
+	void add(const char *number, PhoneNumber::eTypeNumber type, PhoneNumber::eTypeInterval typeInterval = PhoneNumber::_ti_std) {
 		if(autoLock) lock();
-		if(number[0] == 'R' && number[1] == '(' && number[strlen(number) - 1] == ')') {
-			if(check_regexp(number)) {
-				cRegExp *regexp = new cRegExp(string(number).substr(2, strlen(number) - 3).c_str());
-				listRegExp.push_back(regexp);
-			}
-		} else if(type == PhoneNumber::_tn_regexp) {
-			if(check_regexp((string("R(") + number + ")").c_str())) {
-				cRegExp *regexp = new cRegExp(number);
-				listRegExp.push_back(regexp);
-			}
+		bool regexp_format = number[0] == 'R' && number[1] == '(' && number[strlen(number) - 1] == ')';
+		cRegExp *regexp = regexp_format ?
+				   create_regexp(string(number).substr(2, strlen(number) - 3).c_str()) :
+				   (type == PhoneNumber::_tn_regexp ? create_regexp(number) : NULL);
+		if(regexp) {
+			listRegExp.push_back(regexp);
 		} else {
-			PhoneNumber pn(number, type);
+			if(regexp_format) {
+				syslog(LOG_NOTICE, "invalid regexp %s - used as number", number);
+			}
+			PhoneNumber pn(number, type, typeInterval);
 			if(!pn.wildcard && !pn.interval && pn.boundLeft) {
 				if(pn.boundRight) {
 					listPhoneNumber.push_back(pn);
@@ -2441,8 +2728,8 @@ public:
 		}
 		if(autoLock) unlock();
 	}
-	void addComb(string &number, ListPhoneNumber *negList, PhoneNumber::eTypeNumber type);
-	void addComb(const char *number, ListPhoneNumber *negList, PhoneNumber::eTypeNumber type);
+	void addComb(string &number, ListPhoneNumber *negList, PhoneNumber::eTypeNumber type, bool enableNull = false, bool filterInterval = false);
+	void addComb(const char *number, ListPhoneNumber *negList, PhoneNumber::eTypeNumber type, bool enableNull = false, bool filterInterval = false);
 	bool checkNumber(const char *check_number) {
 		bool rslt =  false;
 		if(autoLock) lock();
@@ -2461,13 +2748,25 @@ public:
 				std::sort (listPrefixes.begin(), listPrefixes.end());
 				_listPrefixes_sorted = true;
 			}
-			std::vector<PhoneNumber>::iterator it_prefix = std::lower_bound(listPrefixes.begin(), listPrefixes.end(), PhoneNumber(check_number, PhoneNumber::_tn_norm));
-			if(it_prefix != listPrefixes.end() && it_prefix->checkNumber(check_number)) {
+			if(listPrefixes[0].number.empty()) {
 				rslt = true;
-			} else if(it_prefix != listPrefixes.begin()) {
+			}
+			string check_prefix = check_number;
+			while(!rslt && check_prefix.length()) {
+				std::vector<PhoneNumber>::iterator it_prefix = std::upper_bound(listPrefixes.begin(), listPrefixes.end(), PhoneNumber(check_prefix.c_str(), PhoneNumber::_tn_norm));
+				if(it_prefix == listPrefixes.begin()) {
+					break;
+				}
 				--it_prefix;
 				if(it_prefix->checkNumber(check_number)) {
 					rslt = true;
+				} else {
+					unsigned eq_length = 0;
+					while(eq_length < check_prefix.length() && eq_length < it_prefix->number.length() &&
+					      tolower(check_prefix[eq_length]) == tolower(it_prefix->number[eq_length])) {
+						++eq_length;
+					}
+					check_prefix.resize(eq_length);
 				}
 			}
 		}
@@ -2481,11 +2780,14 @@ public:
 		}
 		if(!rslt && listRegExp.size()) {
 			for(std::list<cRegExp*>::iterator iter = listRegExp.begin(); iter != listRegExp.end(); iter++) {
-				if((*iter)->match(check_number)) {
+				if((*iter)->match(check_number) > 0) {
 					rslt = true;
 					break;
 				}
 			}
+		}
+		if(!rslt && null && !check_number[strspn(check_number, " ")]) {
+			rslt = true;
 		}
 		if(autoLock) unlock();
 		return(rslt);
@@ -2499,10 +2801,24 @@ public:
 			delete *iter;
 		}
 		listRegExp.clear();
+		null = false;
 		if(autoLock) unlock();
 	}
 	bool is_empty() {
-		return(!listPhoneNumber.size() && !listPrefixes.size() && !listWildcards.size() && !listRegExp.size());
+		return(!listPhoneNumber.size() && !listPrefixes.size() && !listWildcards.size() && !listRegExp.size() && !null);
+	}
+	void setNoLock() {
+		lock();
+		if(listPhoneNumber.size() && !_listPhoneNumber_sorted) {
+			std::sort(listPhoneNumber.begin(), listPhoneNumber.end());
+			_listPhoneNumber_sorted = true;
+		}
+		if(listPrefixes.size() && !_listPrefixes_sorted) {
+			std::sort(listPrefixes.begin(), listPrefixes.end());
+			_listPrefixes_sorted = true;
+		}
+		autoLock = false;
+		unlock();
 	}
 	void lock() {
 		__SYNC_LOCK(this->_sync);
@@ -2515,6 +2831,7 @@ private:
 	std::vector<PhoneNumber> listPrefixes;
 	std::vector<PhoneNumber> listWildcards;
 	std::list<cRegExp*> listRegExp;
+	bool null;
 	bool autoLock;
 	volatile int _sync;
 	volatile int _listPhoneNumber_sorted;
@@ -2576,16 +2893,49 @@ public:
 	ListCheckString(bool autoLock = true) {
 		this->autoLock = autoLock;
 		_sync = 0;
+		null = false;
 	}
-	void add(const char *checkString) {
+	ListCheckString(const ListCheckString &other) {
+		autoLock = other.autoLock;
+		_sync = 0;
+		listCheckString = other.listCheckString;
+		null = other.null;
+		regExpCopy(other);
+	}
+	~ListCheckString() {
+		regExpClear();
+	}
+	ListCheckString &operator=(const ListCheckString &other) {
+		if(this != &other) {
+			listCheckString = other.listCheckString;
+			null = other.null;
+			regExpClear();
+			regExpCopy(other);
+		}
+		return(*this);
+	}
+	void add(const char *checkString, bool enableInterval = true) {
 		if(autoLock) lock();
-		listCheckString.push_back(CheckString(checkString));
+		unsigned length = strlen(checkString);
+		if(length > 3 && checkString[0] == 'R' && checkString[1] == '(' && checkString[length - 1] == ')') {
+			cRegExp *regexp = create_regexp(string(checkString).substr(2, length - 3).c_str());
+			if(regexp) {
+				listRegExp.push_back(regexp);
+			} else {
+				syslog(LOG_NOTICE, "invalid regexp %s - used as string", checkString);
+				listCheckString.push_back(CheckString(checkString, enableInterval));
+			}
+		} else {
+			listCheckString.push_back(CheckString(checkString, enableInterval));
+		}
 		if(autoLock) unlock();
 	}
 	void addComb(string &checkString, ListCheckString *negList = NULL, 
-		     bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL);
+		     bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL,
+		     bool enableNoSplitBorders = false, bool enableNull = false, bool enableInterval = true);
 	void addComb(const char *checkString, ListCheckString *negList = NULL, 
-		     bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL);
+		     bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL,
+		     bool enableNoSplitBorders = false, bool enableNull = false, bool enableInterval = true);
 	bool check(const char *checkString) {
 		bool rslt =  false;
 		if(autoLock) lock();
@@ -2595,19 +2945,37 @@ public:
 				break;
 			}
 		}
+		if(!rslt && listRegExp.size()) {
+			for(std::list<cRegExp*>::iterator iter = listRegExp.begin(); iter != listRegExp.end(); iter++) {
+				if((*iter)->match(checkString) > 0) {
+					rslt = true;
+					break;
+				}
+			}
+		}
+		if(!rslt && null && !checkString[strspn(checkString, " ")]) {
+			rslt = true;
+		}
 		if(autoLock) unlock();
 		return(rslt);
 	}
 	void clear() {
 		if(autoLock) lock();
 		listCheckString.clear();
+		regExpClear();
+		null = false;
 		if(autoLock) unlock();
 	}
 	size_t size() {
-		return(listCheckString.size());
+		return(listCheckString.size() + listRegExp.size() + (null ? 1 : 0));
 	}
 	bool is_empty() {
-		return(!listCheckString.size());
+		return(!listCheckString.size() && !listRegExp.size() && !null);
+	}
+	void setNoLock() {
+		lock();
+		autoLock = false;
+		unlock();
 	}
 	void lock() {
 		__SYNC_LOCK(this->_sync);
@@ -2616,7 +2984,21 @@ public:
 		__SYNC_UNLOCK(this->_sync);
 	}
 private:
+	void regExpClear() {
+		for(std::list<cRegExp*>::iterator iter = listRegExp.begin(); iter != listRegExp.end(); iter++) {
+			delete *iter;
+		}
+		listRegExp.clear();
+	}
+	void regExpCopy(const ListCheckString &other) {
+		for(std::list<cRegExp*>::const_iterator iter = other.listRegExp.begin(); iter != other.listRegExp.end(); iter++) {
+			listRegExp.push_back(new FILE_LINE(0) cRegExp((*iter)->getPattern()));
+		}
+	}
+private:
 	std::vector<CheckString> listCheckString;
+	std::list<cRegExp*> listRegExp;
+	bool null;
 	bool autoLock;
 	volatile int _sync;
 };
@@ -2624,10 +3006,14 @@ private:
 class ListIP_wb {
 public:
 	ListIP_wb(bool autoLock = true);
-	void addWhite(string &ip);
-	void addWhite(const char *ip);
-	void addBlack(string &ip);
-	void addBlack(const char *ip);
+	void addWhite(string &ip, bool autoMask = true);
+	void addWhite(const char *ip, bool autoMask = true);
+	void addBlack(string &ip, bool autoMask = true);
+	void addBlack(const char *ip, bool autoMask = true);
+	void setSkipInvalid() {
+		white.setSkipInvalid();
+		black.setSkipInvalid();
+	}
 	bool checkIP(vmIP check_ip, bool *findInBlackList = NULL) {
 		if(findInBlackList) {
 			*findInBlackList = false;
@@ -2635,7 +3021,7 @@ public:
 		if(!white.is_empty() && !white.checkIP(check_ip)) {
 			return(false);
 		}
-		if(!black.is_empty() && black.checkIP(check_ip)) {
+		if(checkBlack(check_ip)) {
 			if(findInBlackList) {
 				*findInBlackList = true;
 			}
@@ -2646,8 +3032,31 @@ public:
 	bool checkIP(const char *check_ip) {
 		return(checkIP(str_2_vmIP(check_ip)));
 	}
+	bool checkWhite(vmIP check_ip) {
+		return(!white.is_empty() && white.checkIP(check_ip));
+	}
+	bool checkBlack(vmIP check_ip) {
+		return(!black.is_empty() &&
+		       (black.checkIP(check_ip) || (black.has_invalid_net() && check_ip.isSet())));
+	}
+	int checkIP_sql(vmIP check_ip) {
+		if(black.checkIP(check_ip)) {
+			return(0);
+		}
+		if(!white.is_empty() && !white.checkIP(check_ip)) {
+			return(white.has_invalid_net() ? -1 : 0);
+		}
+		return(black.has_invalid_net() && check_ip.isSet() ? -1 : 1);
+	}
+	bool whiteIsEmpty() {
+		return(white.is_empty());
+	}
 	bool is_empty() {
 		return(white.is_empty() && black.is_empty());
+	}
+	void setNoLock() {
+		white.setNoLock();
+		black.setNoLock();
 	}
 private:
 	ListIP white;
@@ -2657,10 +3066,10 @@ private:
 class ListPhoneNumber_wb {
 public:
 	ListPhoneNumber_wb(bool autoLock = true);
-	void addWhite(string &number, PhoneNumber::eTypeNumber type);
-	void addWhite(const char *number, PhoneNumber::eTypeNumber type);
-	void addBlack(string &number, PhoneNumber::eTypeNumber type);
-	void addBlack(const char *number, PhoneNumber::eTypeNumber type);
+	void addWhite(string &number, PhoneNumber::eTypeNumber type, bool enableNull = false, bool filterInterval = false);
+	void addWhite(const char *number, PhoneNumber::eTypeNumber type, bool enableNull = false, bool filterInterval = false);
+	void addBlack(string &number, PhoneNumber::eTypeNumber type, bool enableNull = false, bool filterInterval = false);
+	void addBlack(const char *number, PhoneNumber::eTypeNumber type, bool enableNull = false, bool filterInterval = false);
 	bool checkNumber(const char *check_number, bool *findInBlackList = NULL) {
 		if(findInBlackList) {
 			*findInBlackList = false;
@@ -2676,8 +3085,21 @@ public:
 		}
 		return(true);
 	}
+	bool checkWhite(const char *check_number) {
+		return(!white.is_empty() && white.checkNumber(check_number));
+	}
+	bool checkBlack(const char *check_number) {
+		return(!black.is_empty() && black.checkNumber(check_number));
+	}
+	bool whiteIsEmpty() {
+		return(white.is_empty());
+	}
 	bool is_empty() {
 		return(white.is_empty() && black.is_empty());
+	}
+	void setNoLock() {
+		white.setNoLock();
+		black.setNoLock();
 	}
 private:
 	ListPhoneNumber white;
@@ -2719,13 +3141,17 @@ class ListCheckString_wb {
 public:
 	ListCheckString_wb(bool autoLock = true);
 	void addWhite(string &checkString, 
-		      bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL);
+		      bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL,
+		      bool enableNoSplitBorders = false, bool enableNull = false, bool enableInterval = true);
 	void addWhite(const char *checkString, 
-		      bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL);
+		      bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL,
+		      bool enableNoSplitBorders = false, bool enableNull = false, bool enableInterval = true);
 	void addBlack(string &checkString, 
-		      bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL);
+		      bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL,
+		      bool enableNoSplitBorders = false, bool enableNull = false, bool enableInterval = true);
 	void addBlack(const char *checkString, 
-		      bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL);
+		      bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL,
+		      bool enableNoSplitBorders = false, bool enableNull = false, bool enableInterval = true);
 	bool check(const char *checkString, bool *findInBlackList = NULL) {
 		if(findInBlackList) {
 			*findInBlackList = false;
@@ -2740,6 +3166,19 @@ public:
 			return(false);
 		}
 		return(true);
+	}
+	bool checkWhite(const char *checkString) {
+		return(white.size() && white.check(checkString));
+	}
+	bool checkBlack(const char *checkString) {
+		return(black.size() && black.check(checkString));
+	}
+	bool whiteIsEmpty() {
+		return(!white.size());
+	}
+	void setNoLock() {
+		white.setNoLock();
+		black.setNoLock();
 	}
 private:
 	ListCheckString white;
@@ -4553,7 +4992,7 @@ public:
 		static void buffer_push_account_all(sThread *thread_data) {
 			extern sVerbose sverb;
 			if(sverb.sniffer_threads_ext && thread_data) {
-				++thread_data->buffer_push_cnt_all;
+				__SYNC_INC(thread_data->buffer_push_cnt_all);
 			}
 		}
 		static u_int64_t buffer_push_account_sem_full_begin(sThread *thread_data) {

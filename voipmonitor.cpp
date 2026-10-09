@@ -434,6 +434,8 @@ int opt_cdr_summary_interval = 5;
 bool opt_cdr_summary_only_first_interval = true;
 bool opt_charts_cache = false;
 int opt_charts_cache_max_threads = 3;
+bool opt_charts_cache_filters_native = false;
+bool opt_charts_cache_filters_compare = false;
 bool opt_charts_cache_store = false;
 bool opt_charts_cache_ip_boost = false;
 int opt_charts_cache_queue_limit = 100000;
@@ -1964,38 +1966,51 @@ void sigterm_handler(int /*param*/)
 	vm_terminate();
 }
 
-#define childPidsExit_max 10
+#define childPidsExit_max 1024
 struct sPidInfo { 
-	sPidInfo(pid_t pid = 0, int exitCode = 0) { this->pid = pid, this->exitCode = exitCode; }
-	volatile pid_t pid; volatile int exitCode; 
+	sPidInfo(pid_t pid = 0, int exitCode = 0) { this->pid = pid, this->exitCode = exitCode, this->seq = 0; }
+	volatile pid_t pid; volatile int exitCode; volatile unsigned seq; 
 };
 volatile unsigned childPidsExit_count;
 sPidInfo childPidsExit[childPidsExit_max];
 void sigchld_handler(int /*param*/)
 {
+	int errno_save = errno;
 	pid_t childpid;
 	int status;
 	while((childpid = waitpid(-1, &status, WNOHANG)) > 0) {
-		for(unsigned i = 0; i < childPidsExit_max - 1; i++) {
-			childPidsExit[i].exitCode = childPidsExit[i + 1].exitCode;
-			childPidsExit[i].pid = childPidsExit[i + 1].pid;
-		}
-		childPidsExit[childPidsExit_max - 1].exitCode = WEXITSTATUS(status);
-		childPidsExit[childPidsExit_max - 1].pid = childpid;
+		unsigned seq = __SYNC_INC(childPidsExit_count);
+		unsigned index = seq % childPidsExit_max;
+		childPidsExit[index].pid = 0;
+		MEMORY_BARRIER_ARM;
+		childPidsExit[index].exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+		childPidsExit[index].seq = seq;
+		MEMORY_BARRIER_ARM;
+		childPidsExit[index].pid = childpid;
 	}
+	errno = errno_save;
 }
-bool isChildPidExit(unsigned pid) {
+unsigned getChildPidExitSeq() {
+	return(childPidsExit_count);
+}
+bool isChildPidExit(unsigned pid, unsigned seq) {
 	for(unsigned i = 0; i < childPidsExit_max; i++) {
 		if((unsigned)childPidsExit[i].pid == pid) {
-			return(true);
+			MEMORY_BARRIER_ARM;
+			if((int)(childPidsExit[i].seq - seq) > 0) {
+				return(true);
+			}
 		}
 	}
 	return(false);
 }
-int getChildPidExitCode(unsigned pid) {
+int getChildPidExitCode(unsigned pid, unsigned seq) {
 	for(unsigned i = 0; i < childPidsExit_max; i++) {
 		if((unsigned)childPidsExit[i].pid == pid) {
-			return(childPidsExit[i].exitCode);
+			MEMORY_BARRIER_ARM;
+			if((int)(childPidsExit[i].seq - seq) > 0) {
+				return(childPidsExit[i].exitCode);
+			}
 		}
 	}
 	return(-1);
@@ -2583,7 +2598,7 @@ void *storing_cdr( void */*dummy*/ ) {
 				while(storing_cdr_next_threads_count_mod > 0) {
 					USLEEP(100000);
 				}
-				++storing_cdr_next_threads_count;
+				__SYNC_INC(storing_cdr_next_threads_count);
 				USLEEP(250000);
 			}
 			calltable->lock_calls_queue();
@@ -2736,7 +2751,7 @@ void *storing_cdr( void */*dummy*/ ) {
 					}
 				}
 				if(storing_cdr_next_threads_count_mod < 0) {
-					--storing_cdr_next_threads_count;
+					__SYNC_DEC(storing_cdr_next_threads_count);
 					storing_cdr_next_threads_count_mod = 0;
 				}
 				storingCdrLastWriteAt = getActDateTimeF();
@@ -5195,7 +5210,7 @@ int main_init_read() {
 	
 	if(!is_sender() && !is_client_packetbuffer_sender()) {
 		CountryDetectInit(sqlDbInit);
-		
+
 		if(enable_register_engine) {
 			initRegisters();
 		}
@@ -5949,7 +5964,10 @@ void main_term_read() {
 		cdrSummaryStore(true);
 	}
 	if(useChartsCacheProcessThreads()) {
-		chartsCacheStore(true);
+		if(!chartsCacheRequestAll(true, false) &&
+		   !chartsCacheRequestAll(true, false, 30)) {
+			syslog(LOG_ERR, "charts cache: store all via charts cache thread failed - last interval is not stored");
+		}
 	}
 	
 	set_terminating();
@@ -8028,6 +8046,10 @@ void cConfig::addConfigItems() {
 			normal();
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache", &opt_charts_cache));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("charts_cache_max_threads", &opt_charts_cache_max_threads));
+				expert();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_filters_native", &opt_charts_cache_filters_native));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_filters_compare", &opt_charts_cache_filters_compare));
+			normal();
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_store", &opt_charts_cache_store));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_ip_boost", &opt_charts_cache_ip_boost));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("charts_cache_queue_limit", &opt_charts_cache_queue_limit));
@@ -8827,8 +8849,8 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "charts_cache_only")		sverb.charts_cache_only = 1;
 	else if(verbParam == "charts_cache_filters_eval")	sverb.charts_cache_filters_eval = 1;
 	else if(verbParam == "charts_cache_filters_eval_rslt")	sverb.charts_cache_filters_eval_rslt = 1;
-	else if(verbParam == "charts_cache_filters_eval_rslt_true")	
-								sverb.charts_cache_filters_eval_rslt = 1;
+	else if(verbParam == "charts_cache_filters_eval_rslt_true")
+								sverb.charts_cache_filters_eval_rslt_true = 1;
 	else if(verbParam.substr(0, 19) == "sipcallerip_filter=")
 								strcpy_null_term(sverb.sipcallerip_filter, verbParam.c_str() + 19);
 	else if(verbParam.substr(0, 19) == "sipcalledip_filter=")

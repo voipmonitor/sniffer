@@ -1468,7 +1468,7 @@ public:
 			rtpp_pq->stream_in_multiple_calls = stream_in_multiple_calls;
 			rtpp_pq->sdp_flags = sdp_flags;
 			rtpp_pq->save_packet = enable_save_packet;
-			++qring_push_index_count;
+			__SYNC_INC(qring_push_index_count);
 			packet->blockstore_addflag(63 /*pb lock flag*/);
 			if(qring_push_index_count == qring_active_push_item->max_count) {
 				packet->blockstore_addflag(64 /*pb lock flag*/);

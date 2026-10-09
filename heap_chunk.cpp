@@ -287,7 +287,7 @@ void *cHeap::MAlloc(u_int32_t sizeOfObject, u_int16_t *heapItemIndex) {
 	if(countHeapItems < maxHeapItems) {
 		u_int16_t _heapItemIndex = countHeapItems;
 		heapItems[countHeapItems] = createHeapItem();
-		++countHeapItems;
+		__SYNC_INC(countHeapItems);
 		void *p = heapItems[_heapItemIndex]->MAlloc(sizeOfObject);
 		incAllocSize(p);
 		unlock();
@@ -379,6 +379,6 @@ void cHeap::destroyLastHeapItem() {
 	if(countHeapItems > 0 && heapItems[countHeapItems - 1]->isEmpty()) {
 		free(heapItems[countHeapItems - 1]);
 		heapItems[countHeapItems - 1] = NULL;
-		--countHeapItems;
+		__SYNC_DEC(countHeapItems);
 	}
 }

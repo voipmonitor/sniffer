@@ -731,6 +731,9 @@ struct sNoSplitBorders {
 	bool remove_borders;
 };
 std::vector<string> split_ext(const char *str, std::vector<string> &delimiters, std::vector<sNoSplitBorders> *no_split_borders, bool enableTrim = false, bool useEmptyItems = false);
+std::vector<string> split_filter(const char *str, const char *delimiters, const char *delimitersSeparator);
+double atof_mysql(const char *str);
+double atof_numval(const char *str);
 
 bool check_regexp(const char *pattern);
 int reg_match(const char *string, const char *pattern, const char *file = NULL, int line = 0);
@@ -765,12 +768,20 @@ public:
 		return(pattern.c_str());
 	}
 private:
+	string convertPerlEscapes(const string &pattern);
+	static size_t bracketEnd(const string &pattern, size_t start);
+	static string convertBracket(const string &bracket, eFlags flags);
+	static size_t bracketClassEnd(const string &pattern, size_t start);
+	static size_t utf8CharLength(const string &str, size_t pos, size_t end, int *code);
+private:
 	string pattern;
 	eFlags flags;
 	regex_t regex;
 	bool regex_init;
 	bool regex_error;
 };
+
+cRegExp *create_regexp(const char *pattern);
 
 
 class SimpleBuffer {
@@ -1160,12 +1171,13 @@ private:
 		vector<vmIP> ips;
 		time_t at;
 		unsigned timeout;
+		bool all_ips;
 	};
 public:
 	cResolver();
-	vmIP resolve(const char *host, vector<vmIP> *ips = NULL, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
-	vmIP resolve(string &host, vector<vmIP> *ips = NULL, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default) {
-		return(resolve(host.c_str(), ips, timeout, typeResolve));
+	vmIP resolve(const char *host, vector<vmIP> *ips = NULL, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default, unsigned negativeTimeout = 0);
+	vmIP resolve(string &host, vector<vmIP> *ips = NULL, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default, unsigned negativeTimeout = 0) {
+		return(resolve(host.c_str(), ips, timeout, typeResolve, negativeTimeout));
 	}
 	static vmIP resolve_n(const char *host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
 	static vmIP resolve_n(string &host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default) {
@@ -1191,6 +1203,7 @@ private:
 	bool use_lock;
 	bool res_timeout;
 	map<string, sIP_time> res_table;
+	map<string, time_t> res_table_negative;
 	volatile int _sync_lock;
 };
 
@@ -1202,7 +1215,7 @@ public:
 	bool check(const char *str);
 	bool check2(const char *str);
 	string reverse(const char *str);
-	bool is_ascii(const char *str);
+	static bool is_ascii(const char *str);
 	string remove_no_ascii(const char *str, const char subst = '_');
 	void _remove_no_ascii(const char *str, const char subst = '_');
 	int get_max_mb(const char *str);

@@ -3022,7 +3022,7 @@ SqlDb_row SqlDb_mysql::fetchRow() {
 			this->hMysqlRes = mysql_use_result(this->hMysqlConn);
 			if(this->hMysqlRes) {
 				MYSQL_FIELD *field;
-				for(int i = 0; (field = mysql_fetch_field(this->hMysqlRes)); i++) {
+				while((field = mysql_fetch_field(this->hMysqlRes))) {
 					this->fields.push_back(field->name);
 					this->fields_type.push_back(field->type);
 					this->fields_flags.push_back(field->flags);
@@ -3067,7 +3067,7 @@ bool SqlDb_mysql::fetchQueryResult(vector<string> *fields, vector<int> *fields_t
 	MYSQL_RES *hMysqlRes = mysql_use_result(this->hMysqlConn);
 	if(hMysqlRes) {
 		MYSQL_FIELD *field;
-		for(int i = 0; (field = mysql_fetch_field(hMysqlRes)); i++) {
+		while((field = mysql_fetch_field(hMysqlRes))) {
 			fields->push_back(field->name);
 			fields_types->push_back(field->type);
 		}
@@ -4342,7 +4342,7 @@ void MySqlStore_process::store() {
 			while((partitionsServiceIsInProgress || sCreatePartitions::in_progress) && !is_terminating()) {
 				usleep(100000);
 			}
-			++this->threadRunningCounter;
+			__SYNC_INC(this->threadRunningCounter);
 			if(id_main == STORE_PROC_ID_CHARTS_CACHE_REMOTE ||
 			   snifferClientOptions.isEnableRemoteStore()) {
 				extern int opt_charts_cache_remote_concat_limit;

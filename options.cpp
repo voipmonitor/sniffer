@@ -357,7 +357,7 @@ string cSipMsgRelation::sHistoryData::getJson(cStringCache *responseStringCache,
 cSipMsgRelation::cSipMsgRelation(cSipMsgItem *item) {
 	_sync = 0;
 	lock_id();
-	id = ++_id;
+	id = __SYNC_INC(_id);
 	unlock_id();
 	id_sensor = 0;
 	flags = 0;

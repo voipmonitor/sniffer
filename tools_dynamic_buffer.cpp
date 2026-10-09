@@ -1376,7 +1376,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 		chunk.len = datalen;
 		chunk.decompress_len = decompress_len;
 		this->chunkBuffer.push_back(chunk);
-		++this->chunkBuffer_countItems;
+		__SYNC_INC(this->chunkBuffer_countItems);
 		this->len += datalen;
 		__SYNC_ADD(this->chunk_buffer_size, datalen);
 		__SYNC_ADD(ChunkBuffer::chunk_buffers_sumsize, datalen);
@@ -1411,7 +1411,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 					chunk.len = 0;
 					chunk.decompress_len = (u_int32_t)-1;
 					this->chunkBuffer.push_back(chunk);
-					++this->chunkBuffer_countItems;
+					__SYNC_INC(this->chunkBuffer_countItems);
 					this->lastChunk = &(*(--this->chunkBuffer.end()));
 				}
 				u_int32_t copied = min(_len - pos, this->chunk_fix_len - this->lastChunk->len);
@@ -1438,7 +1438,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 				chunk.chunk_capacity = this->chunk_fix_len;
 				__SYNC_ADD(ChunkBuffer::chunk_buffers_sumcapacity, this->chunk_fix_len);
 				this->chunkBuffer.push_back(chunk);
-				++this->chunkBuffer_countItems;
+				__SYNC_INC(this->chunkBuffer_countItems);
 				this->lastChunk = &(*(--this->chunkBuffer.end()));
 			}
 			int whattocopy = MIN(this->chunk_fix_len - this->lastChunk->len, datalen - copied);
@@ -1785,7 +1785,7 @@ void ChunkBuffer::forceCreateNewEmptyChunk() {
 		chunk.chunk_capacity = this->chunk_fix_len;
 		__SYNC_ADD(ChunkBuffer::chunk_buffers_sumcapacity, this->chunk_fix_len);
 		this->chunkBuffer.push_back(chunk);
-		++this->chunkBuffer_countItems;
+		__SYNC_INC(this->chunkBuffer_countItems);
 		this->lastChunk = &(*(--this->chunkBuffer.end()));
 	}
 	this->unlock_chunkBuffer();

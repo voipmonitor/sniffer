@@ -41,6 +41,7 @@ public:
 	unsigned getIdContinent(const char *code);
 	string getName(const char *code);
 	string getContinent(const char *code);
+	vector<string> getCountriesByContinent(const char *continent);
 	bool isLocationIn(const char *location, vector<string> *in, bool continent = false);
 private:
 	map<string, d_item2<string, unsigned> > continents;
@@ -111,6 +112,18 @@ public:
 		       internationalMinLength &&
 		       (int)numberNormalized->length() >= internationalMinLength);
 	}
+	bool getCountryCodeForLocalNumbers(int id_sensor, string *countryCode) {
+		if(countryCodeForLocalNumbers_sensors.empty() && countryCodeForLocalNumbers_global.empty()) {
+			return(false);
+		}
+		map<int, string>::iterator iter = id_sensor > -1 ?
+						   countryCodeForLocalNumbers_sensors.find(id_sensor) :
+						   countryCodeForLocalNumbers_sensors.end();
+		*countryCode = iter != countryCodeForLocalNumbers_sensors.end() ?
+				iter->second :
+				countryCodeForLocalNumbers_global;
+		return(true);
+	}
 	const char *getLocalCountry() {
 		extern char opt_local_country_code[10];
 		return(!countryCodeForLocalNumbers.empty() ? 
@@ -148,6 +161,8 @@ private:
 	int internationalMinLength;
 	bool internationalMinLengthPrefixesStrict;
 	string countryCodeForLocalNumbers;
+	string countryCodeForLocalNumbers_global;
+	map<int, string> countryCodeForLocalNumbers_sensors;
 	bool enableCheckNapaWithoutPrefix;
 	int minLengthNapaWithoutPrefix;
 	vector<string> skipPrefixes_string;
@@ -322,9 +337,12 @@ public:
 	bool isLocalByPhoneNumber(const char *phoneNumber, vmIP ip);
 	string getCountryByIP(vmIP ip);
 	unsigned getCountryIdByIP(vmIP ip);
+	unsigned getCountryIdByCode(const char *code);
 	bool isLocalByIP(vmIP ip);
 	string getContinentByCountry(const char *country);
+	vector<string> getCountriesByContinent(const char *continent);
 	bool countryCodeIsLocal(const char *countryCode);
+	bool getCountryCodeForLocalNumbers(int id_sensor, string *countryCode);
 	void prepareReload();
 	void applyReload();
 	void lock() {
@@ -361,7 +379,9 @@ unsigned getCountryIdByPhoneNumber(const char *phoneNumber, vmIP ip);
 bool isLocalByPhoneNumber(const char *phoneNumber, vmIP ip);
 string getCountryByIP(vmIP ip, bool suppressStringLocal = false);
 unsigned getCountryIdByIP(vmIP ip);
+unsigned getCountryIdByCode(const char *code);
 string getContinentByCountry(const char *country);
+vector<string> getCountriesByContinent(const char *continent);
 void CountryDetectPrepareReload();
 void CountryDetectApplyReload();
 

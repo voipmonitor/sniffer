@@ -1485,14 +1485,12 @@ int base64decode(unsigned char *dst, const char *src, int max)
         int cnt = 0;
         unsigned int byte = 0;
         unsigned int bits = 0;
-        int incnt = 0;
         while(*src && *src != '=' && (cnt < max)) {
                 /* Shift in 6 bits of input */
                 byte <<= 6;
                 byte |= (b2a[(int)(*src)]) & 0x3f;
                 bits += 6;
                 src++;
-                incnt++;
                 /* If we have at least 8 bits left over, take that character 
                    off the top */
                 if (bits >= 8)  {
@@ -1608,7 +1606,7 @@ std::string &trim(std::string &s, const char *trimChars) {
 		 return(s);
 	}
 	if(!trimChars) {
-		trimChars = "\r\n\t ";
+		trimChars = "\r\n\t \x0B";
 	}
 	size_t length = s.length();
 	size_t trimCharsLeft = 0;
@@ -1788,12 +1786,7 @@ vector<string> split_ext(const char *str, vector<string> &delimiters, vector<sNo
 						}
 					} while(pos_right && !pos_right_ok);
 					if(pos_right_ok) {
-						string item_b;
-						if(iter_b->remove_borders) {
-							item_b = string(_p + iter_b->left.length(), pos_right - _p - iter_b->left.length());
-						} else {
-							item_b = string(_p, pos_right - _p + iter_b->right.length());
-						}
+						string item_b = string(_p, pos_right - _p + iter_b->right.length());
 						if(neg) {
 							item_b = "!" + item_b;
 						}
@@ -1814,9 +1807,126 @@ vector<string> split_ext(const char *str, vector<string> &delimiters, vector<sNo
 		}
 	}
 	if(*p_start_item && !pushed_no_split_borders) {
-		rslt.push_back(string(p_start_item));
+		string item = string(p_start_item);
+		if(enableTrim) item = trim(item);
+		if(useEmptyItems || !item.empty()) {
+			rslt.push_back(item);
+		}
+	}
+	if(no_split_borders) {
+		vector<string> rslt_borders_removed;
+		for(vector<string>::iterator iter = rslt.begin(); iter != rslt.end(); iter++) {
+			string item = *iter;
+			size_t pos_left = !item.empty() && item[0] == '!' ? 1 : 0;
+			bool borders_removed = false;
+			for(vector<sNoSplitBorders>::iterator iter_b = no_split_borders->begin(); iter_b != no_split_borders->end(); iter_b++) {
+				if(iter_b->remove_borders &&
+				   item.length() >= pos_left + iter_b->left.length() + iter_b->right.length() &&
+				   !item.compare(pos_left, iter_b->left.length(), iter_b->left) &&
+				   !item.compare(item.length() - iter_b->right.length(), iter_b->right.length(), iter_b->right)) {
+					item = item.substr(0, pos_left) + item.substr(pos_left + iter_b->left.length(), item.length() - pos_left - iter_b->left.length() - iter_b->right.length());
+					borders_removed = true;
+					break;
+				}
+			}
+			if(useEmptyItems || !item.empty() || borders_removed) {
+				rslt_borders_removed.push_back(item);
+			}
+		}
+		rslt = rslt_borders_removed;
 	}
 	return(rslt);
+}
+
+vector<string> split_filter(const char *str, const char *delimiters, const char *delimitersSeparator) {
+	vector<string> delimiters_list = split(delimiters, delimitersSeparator);
+	vector<sNoSplitBorders> no_split_borders;
+	no_split_borders.push_back(sNoSplitBorders("R(", ")"));
+	no_split_borders.push_back(sNoSplitBorders("[", "]", true));
+	return(split_ext(str, delimiters_list, &no_split_borders, true));
+}
+
+static bool is_numeric_php(const char *str) {
+	const char *p = str;
+	while(*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r' || *p == '\v' || *p == '\f') {
+		++p;
+	}
+	if(*p == '+' || *p == '-') {
+		++p;
+	}
+	bool digits = false;
+	while(isdigit(*p)) {
+		++p;
+		digits = true;
+	}
+	if(*p == '.') {
+		++p;
+		while(isdigit(*p)) {
+			++p;
+			digits = true;
+		}
+	}
+	if(!digits) {
+		return(false);
+	}
+	if(*p == 'e' || *p == 'E') {
+		++p;
+		if(*p == '+' || *p == '-') {
+			++p;
+		}
+		if(!isdigit(*p)) {
+			return(false);
+		}
+		while(isdigit(*p)) {
+			++p;
+		}
+	}
+	while(*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r' || *p == '\v' || *p == '\f') {
+		++p;
+	}
+	return(*p == 0);
+}
+
+double atof_numval(const char *str) {
+	if(is_numeric_php(str)) {
+		return(atof(str));
+	}
+	if(!strcasecmp(str, "true")) {
+		return(1);
+	}
+	if(!strcasecmp(str, "false")) {
+		return(0);
+	}
+	string s = str;
+	trim(s);
+	unsigned num_chars = 0;
+	while(num_chars < s.length() && (isdigit(s[num_chars]) || s[num_chars] == '-' || s[num_chars] == '.')) {
+		++num_chars;
+	}
+	if(num_chars) {
+		string prefix = s.substr(0, num_chars);
+		if(is_numeric_php(prefix.c_str())) {
+			return(atof(prefix.c_str()));
+		}
+	}
+	return(0);
+}
+
+double atof_mysql(const char *str) {
+	const char *p = str;
+	while(*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r' || *p == '\v' || *p == '\f') {
+		++p;
+	}
+	if(*p == '+' || *p == '-') {
+		++p;
+	}
+	if(!isdigit(*p) && *p != '.') {
+		return(0);
+	}
+	if(*p == '0' && (p[1] == 'x' || p[1] == 'X')) {
+		return(0);
+	}
+	return(atof(str));
 }
 
 
@@ -1827,6 +1937,15 @@ bool check_regexp(const char *pattern) {
 	}
 	regfree(&re);
 	return(true);
+}
+
+cRegExp *create_regexp(const char *pattern) {
+	cRegExp *regexp = new FILE_LINE(0) cRegExp(pattern);
+	if(!regexp->isOK()) {
+		delete regexp;
+		return(NULL);
+	}
+	return(regexp);
 }
 
 int reg_match(const char *string, const char *pattern, const char *file, int line) {
@@ -2009,7 +2128,8 @@ cRegExp::~cRegExp() {
 }
 
 bool cRegExp::regex_create() {
-	if(regcomp(&regex, pattern.c_str(), REG_EXTENDED | ((flags & _regexp_icase) ? REG_ICASE : 0) | ((flags & _regexp_sub) ? 0 : REG_NOSUB)) == 0) {
+	string _pattern = convertPerlEscapes(pattern);
+	if(regcomp(&regex, _pattern.c_str(), REG_EXTENDED | ((flags & _regexp_icase) ? REG_ICASE : 0) | ((flags & _regexp_sub) ? 0 : REG_NOSUB)) == 0) {
 		regex_init = true;
 		regex_error = false;
 	} else {
@@ -2025,6 +2145,350 @@ void cRegExp::regex_delete() {
 		regex_init = false;
 	}
 	regex_error = false;
+}
+
+string cRegExp::convertPerlEscapes(const string &pattern) {
+	if(pattern.find('\\') == string::npos && cUtfConverter::is_ascii(pattern.c_str())) {
+		return(pattern);
+	}
+	unsigned max_backref = 0;
+	for(size_t j = 0; j + 1 < pattern.length(); j++) {
+		if(pattern[j] == '\\') {
+			if(pattern[j + 1] >= '1' && pattern[j + 1] <= '9' && (unsigned)(pattern[j + 1] - '0') > max_backref) {
+				max_backref = pattern[j + 1] - '0';
+			}
+			++j;
+		}
+	}
+	unsigned groups = 0;
+	string rslt;
+	for(unsigned i = 0; i < pattern.length(); i++) {
+		if(pattern[i] == '\\' && i < pattern.length() - 1) {
+			char escape = pattern[i + 1];
+			if(escape == 'd') {
+				rslt += "[0-9]";
+			} else if(escape == 'D') {
+				rslt += "[^0-9]";
+			} else {
+				rslt += pattern[i];
+				rslt += escape;
+			}
+			++i;
+		} else if(pattern[i] == '[') {
+			size_t bracket_end = bracketEnd(pattern, i);
+			if(bracket_end == string::npos) {
+				rslt += pattern.substr(i);
+				break;
+			} else {
+				rslt += convertBracket(pattern.substr(i, bracket_end - i + 1), groups >= max_backref ? flags : (eFlags)(flags | _regexp_sub));
+				i = bracket_end;
+			}
+		} else {
+			if(pattern[i] == '(') {
+				++groups;
+			}
+			rslt += pattern[i];
+		}
+	}
+	return(rslt);
+}
+
+size_t cRegExp::bracketEnd(const string &pattern, size_t start) {
+	size_t i = start + 1;
+	if(i < pattern.length() && pattern[i] == '^') {
+		++i;
+	}
+	if(i < pattern.length() && pattern[i] == ']') {
+		++i;
+	}
+	while(i < pattern.length()) {
+		size_t class_end;
+		if(pattern[i] == '\\' && i + 1 < pattern.length()) {
+			i += 2;
+		} else if(pattern[i] == '[' && (class_end = bracketClassEnd(pattern, i)) != string::npos) {
+			i = class_end + 2;
+		} else if(pattern[i] == ']') {
+			return(i);
+		} else {
+			++i;
+		}
+	}
+	return(string::npos);
+}
+
+string cRegExp::convertBracket(const string &bracket, eFlags flags) {
+	bool icase = flags & _regexp_icase;
+	size_t content_end = bracket.length() - 1;
+	size_t i = 1;
+	bool neg = false;
+	if(i < content_end && bracket[i] == '^') {
+		neg = true;
+		++i;
+	}
+	if(bracket.find('\\', i) == string::npos && bracket.find('[', i) == string::npos && cUtfConverter::is_ascii(bracket.c_str())) {
+		return(bracket);
+	}
+	string literals;
+	string ranges;
+	string classes;
+	bool literal_rbracket = false;
+	bool literal_lbracket = false;
+	bool literal_caret = false;
+	bool literal_minus = false;
+	bool covered[256];
+	memset(covered, 0, sizeof(covered));
+	bool exists_D = false;
+	bool exists_class_digits = false;
+	bool exists_class_unknown = false;
+	int ligature = -1;
+	bool first = true;
+	while(i < content_end) {
+		int from = -1;
+		string from_text;
+		size_t class_end;
+		if(first && bracket[i] == ']') {
+			from = ']';
+			from_text = "]";
+			++i;
+		} else if(bracket[i] == '\\' && i + 1 < content_end) {
+			unsigned char escape = bracket[i + 1];
+			if(escape == 'd') {
+				ranges += "0-9";
+				for(unsigned d = '0'; d <= '9'; d++) {
+					covered[d] = true;
+				}
+				i += 2;
+			} else if(escape == 'D') {
+				exists_D = true;
+				i += 2;
+			} else if(isalnum(escape)) {
+				literals += bracket.substr(i, 2);
+				covered[(unsigned char)'\\'] = true;
+				covered[escape] = true;
+				if(escape == 'w' || escape == 'S') {
+					exists_class_digits = true;
+				}
+				i += 2;
+			} else {
+				size_t length = utf8CharLength(bracket, i + 1, content_end, &from);
+				from_text = bracket.substr(i + 1, length);
+				i += 1 + length;
+			}
+		} else if(bracket[i] == '[' &&
+			  (class_end = bracketClassEnd(bracket, i)) != string::npos && class_end + 1 < content_end) {
+			string class_name = bracket.substr(i + 2, class_end - i - 2);
+			if(bracket[i + 1] == ':') {
+				if(class_name == "digit" || class_name == "alnum" || class_name == "xdigit" ||
+				   class_name == "print" || class_name == "graph") {
+					exists_class_digits = true;
+				} else if(class_name != "alpha" && class_name != "upper" && class_name != "lower" &&
+					  class_name != "space" && class_name != "blank" && class_name != "punct" &&
+					  class_name != "cntrl") {
+					exists_class_unknown = true;
+				}
+			} else if(class_name.length() == 1) {
+				covered[(unsigned char)class_name[0]] = true;
+			} else {
+				exists_class_unknown = true;
+			}
+			classes += bracket.substr(i, class_end - i + 2);
+			i = class_end + 2;
+		} else {
+			size_t length = utf8CharLength(bracket, i, content_end, &from);
+			from_text = bracket.substr(i, length);
+			i += length;
+		}
+		first = false;
+		if(from < 0) {
+			continue;
+		}
+		int to = from;
+		string to_text = from_text;
+		if(i + 1 < content_end && bracket[i] == '-') {
+			if(bracket[i + 1] == '\\') {
+				if(i + 2 < content_end) {
+					unsigned char escape = bracket[i + 2];
+					if(escape == 'd' || escape == 'D' || escape == 'w' || escape == 'W' || escape == 's' || escape == 'S') {
+						return("[[:invalid:]]");
+					}
+					if(!isalnum(escape)) {
+						size_t length = utf8CharLength(bracket, i + 2, content_end, &to);
+						to_text = bracket.substr(i + 2, length);
+						i += 2 + length;
+					}
+				}
+			} else if(!(bracket[i + 1] == '[' && bracketClassEnd(bracket, i + 1) != string::npos)) {
+				size_t length = utf8CharLength(bracket, i + 1, content_end, &to);
+				to_text = bracket.substr(i + 1, length);
+				i += 1 + length;
+			}
+		}
+		if(from > to) {
+			return("[[:invalid:]]");
+		}
+		for(int c = from; c <= to && c < 256; c++) {
+			covered[c] = true;
+		}
+		if(icase && from <= 0x17F && to >= 0x17F) {
+			literals += 's';
+		}
+		if(icase && from <= 0x212A && to >= 0x212A) {
+			literals += 'k';
+		}
+		if(from >= 128) {
+			if(from_text == to_text) {
+				if(literals.empty() && from >= 0xFB00 && from <= 0xFB04) {
+					ligature = from;
+				}
+				if(from != ligature || literals != from_text) {
+					literals += from_text;
+				}
+			} else if((unsigned char)from_text[from_text.length() - 1] <= (unsigned char)to_text[0]) {
+				ranges += from_text + "-" + to_text;
+			} else {
+				literals += from_text + to_text;
+			}
+			continue;
+		}
+		if(to >= 128) {
+			ranges += "\xC2\x80-" + to_text;
+			to = 127;
+		}
+		if(from < to &&
+		   ((isdigit(from) && isdigit(to)) || (islower(from) && islower(to)) || (isupper(from) && isupper(to)))) {
+			ranges += (char)from;
+			ranges += '-';
+			ranges += (char)to;
+		} else {
+			for(int c = from; c <= to; c++) {
+				switch(c) {
+				case ']':
+					literal_rbracket = true;
+					break;
+				case '[':
+					literal_lbracket = true;
+					break;
+				case '^':
+					literal_caret = true;
+					break;
+				case '-':
+					literal_minus = true;
+					break;
+				default:
+					literals += (char)c;
+					break;
+				}
+			}
+		}
+	}
+	if(!exists_D) {
+		if(ligature >= 0 && literals.length() == 3 && icase && !(flags & _regexp_sub) && !neg &&
+		   ranges.empty() && classes.empty() &&
+		   !literal_rbracket && !literal_lbracket && !literal_caret && !literal_minus) {
+			static const char *ligature_folds[] = {
+				"ff",
+				"fi",
+				"fl",
+				"ffi|f\xEF\xAC\x81|\xEF\xAC\x80i",
+				"ffl|f\xEF\xAC\x82|\xEF\xAC\x80l"
+			};
+			return(string("(") + ligature_folds[ligature - 0xFB00] + "|" + literals + ")");
+		}
+		string items;
+		if(literal_rbracket) {
+			items += ']';
+		}
+		items += literals + ranges + classes;
+		if(literal_lbracket) {
+			items += '[';
+		}
+		if(literal_caret) {
+			items += '^';
+		}
+		if(literal_minus) {
+			items += '-';
+		}
+		if(!neg && items.length() && items[0] == '^') {
+			if(items.length() == 1) {
+				return("\\^");
+			}
+			items = items.substr(1) + "^";
+		}
+		return(string("[") + (neg ? "^" : "") + items + "]");
+	}
+	if(exists_class_unknown) {
+		return(bracket);
+	}
+	string digits;
+	if(!exists_class_digits) {
+		for(unsigned d = '0'; d <= '9'; d++) {
+			if(!covered[d]) {
+				digits += (char)d;
+			}
+		}
+	}
+	if(digits.empty()) {
+		return(neg ? string("[^\x01-\xff]") : string("."));
+	}
+	return(string("[") + (neg ? "" : "^") + digits + "]");
+}
+
+size_t cRegExp::bracketClassEnd(const string &pattern, size_t start) {
+	if(start + 1 >= pattern.length() ||
+	   (pattern[start + 1] != ':' && pattern[start + 1] != '=' && pattern[start + 1] != '.')) {
+		return(string::npos);
+	}
+	char terminator[3] = { pattern[start + 1], ']', 0 };
+	size_t class_end = pattern.find(terminator, start + 2);
+	if(class_end == string::npos || class_end == start + 2 ||
+	   pattern.find(']', start + 2) < class_end) {
+		return(string::npos);
+	}
+	if(pattern[start + 1] == ':') {
+		for(size_t j = start + 2; j < class_end; j++) {
+			if(!isalpha((unsigned char)pattern[j])) {
+				return(string::npos);
+			}
+		}
+	}
+	return(class_end);
+}
+
+size_t cRegExp::utf8CharLength(const string &str, size_t pos, size_t end, int *code) {
+	unsigned char c = str[pos];
+	size_t length = 1;
+	unsigned char second_min = 0x80;
+	unsigned char second_max = 0xBF;
+	if(c >= 0xC2 && c <= 0xDF) {
+		length = 2;
+	} else if(c >= 0xE0 && c <= 0xEF) {
+		length = 3;
+		if(c == 0xE0) {
+			second_min = 0xA0;
+		} else if(c == 0xED) {
+			second_max = 0x9F;
+		}
+	} else if(c >= 0xF0 && c <= 0xF4) {
+		length = 4;
+		if(c == 0xF0) {
+			second_min = 0x90;
+		} else if(c == 0xF4) {
+			second_max = 0x8F;
+		}
+	}
+	*code = c < 0x80 ? c : 0xFFFD;
+	int value = c & (0xFF >> (length + 1));
+	for(size_t j = 1; j < length; j++) {
+		unsigned char next = pos + j < end ? (unsigned char)str[pos + j] : 0;
+		if(next < (j == 1 ? second_min : 0x80) || next > (j == 1 ? second_max : 0xBF)) {
+			return(j);
+		}
+		value = (value << 6) | (next & 0x3F);
+	}
+	if(length > 1) {
+		*code = value;
+	}
+	return(length);
 }
 
 int cRegExp::match(const char *subject, vector<string> *matches) {
@@ -2549,7 +3013,7 @@ static void resolve_callback(void *arg, int status, int timeouts, struct hostent
         }
     }
     // Indicate that the query is done
-    ares_flag = 1;
+    ++ares_flag;
 }
 #endif
 
@@ -2582,10 +3046,15 @@ vmIP cResolver::resolve_std(const char *host, vector<vmIP> *ips) {
 
     // Start the DNS query
     auto data = std::make_tuple(ips, &ip, host);
-    ares_gethostbyname(channel, host, AF_UNSPEC, resolve_callback, &data);
+    ares_gethostbyname(channel, host, ips ? AF_INET : AF_UNSPEC, resolve_callback, &data);
+    int queries = 1;
+    if (ips && VM_IPV6_B) {
+        ares_gethostbyname(channel, host, AF_INET6, resolve_callback, &data);
+        ++queries;
+    }
 
     // Wait for the query to complete
-    while (!ares_flag) {
+    while (ares_flag < queries) {
         struct timeval *tvp, tv;
         fd_set read_fds, write_fds;
         int nfds;
@@ -2619,9 +3088,8 @@ vmIP cResolver::resolve_std(const char *host, vector<vmIP> *ips) {
 #endif
 
 
-vmIP cResolver::resolve(const char *host, vector<vmIP> *ips, unsigned timeout, eTypeResolve typeResolve) {
+vmIP cResolver::resolve(const char *host, vector<vmIP> *ips, unsigned timeout, eTypeResolve typeResolve, unsigned negativeTimeout) {
 	vmIP ip;
-	time_t now = time(NULL);
 	if(ip_is_valid(host)) {
 		ip.setFromString(host);
 		if(ips) {
@@ -2647,10 +3115,12 @@ vmIP cResolver::resolve(const char *host, vector<vmIP> *ips, unsigned timeout, e
 	if(use_lock) {
 		lock();
 	}
+	time_t now = time(NULL);
 	map<string, sIP_time>::iterator iter_find = res_table.find(host);
 	if(iter_find != res_table.end() &&
 	   (iter_find->second.timeout == UINT_MAX ||
-	    iter_find->second.at + iter_find->second.timeout > now) &&
+	    iter_find->second.at + (time_t)iter_find->second.timeout > now) &&
+	   (!ips || iter_find->second.all_ips) &&
 	   iter_find->second.ips.size()) {
 		ip = iter_find->second.ips[0];
 		if(ips) {
@@ -2660,6 +3130,16 @@ vmIP cResolver::resolve(const char *host, vector<vmIP> *ips, unsigned timeout, e
 			unlock();
 		}
 		return(ip);
+	}
+	if(negativeTimeout) {
+		map<string, time_t>::iterator iter_negative = res_table_negative.find(host);
+		if(iter_negative != res_table_negative.end() &&
+		   iter_negative->second > now && iter_negative->second <= now + (time_t)negativeTimeout) {
+			if(use_lock) {
+				unlock();
+			}
+			return(ip);
+		}
 	}
 	if(typeResolve == _typeResolve_default) {
 		#if defined(__arm__)
@@ -2673,6 +3153,7 @@ vmIP cResolver::resolve(const char *host, vector<vmIP> *ips, unsigned timeout, e
 	} else if(typeResolve == _typeResolve_system_host) {
 		ip = resolve_by_system_host(host, ips);
 	}
+	now = time(NULL);
 	if(ip.isSet()) {
 		res_table[host].ips.clear();
 		if(ips && ips->size()) {
@@ -2682,6 +3163,17 @@ vmIP cResolver::resolve(const char *host, vector<vmIP> *ips, unsigned timeout, e
 		}
 		res_table[host].at = now;
 		res_table[host].timeout = timeout ? timeout : 120;
+		res_table[host].all_ips = ips != NULL;
+		res_table_negative.erase(host);
+	} else if(negativeTimeout) {
+		for(map<string, time_t>::iterator iter = res_table_negative.begin(); iter != res_table_negative.end();) {
+			if(iter->second <= now || iter->second > now + (time_t)negativeTimeout) {
+				res_table_negative.erase(iter++);
+			} else {
+				++iter;
+			}
+		}
+		res_table_negative[host] = now + negativeTimeout;
 	}
 	if(use_lock) {
 		unlock();
@@ -2759,38 +3251,17 @@ vmIP cResolver::resolve_std(const char *host, vector<vmIP> *ips) {
 
 vmIP cResolver::resolve_by_system_host(const char *host, vector<vmIP> *ips) {
 	vmIP ip;
-	#if PREFER_VM_PEXEC
-	SimpleBuffer out;
-	if(vm_pexec((string("host ") + (ips ? "-t A " : "") + escapeShellArgument(host)).c_str(), &out) && out.size()) {
-		vector<string> try_ip = split((char*)out, split(",|;|\t| |\n", '|'), true);
-		bool okIP = false;
-		for(unsigned i = 0; !okIP && i < try_ip.size(); i++) {
-			vmIP _ip;
-			if (_ip.setFromString(try_ip[i].c_str())) {
-				syslog(LOG_NOTICE, "cmd host resolve host %s to %s", host, _ip.getString().c_str());
-				if (!ip.isSet()) {
-					ip = _ip;
-				}
-				if (ips) {
-					ips->push_back(_ip);
-				} else {
-					okIP = true;
-				}
-			}
-		}
-	}
-	#else
-	FILE *cmd_pipe;
-	if (ips) {
-		cmd_pipe = popen((string("host ") + escapeShellArgument(host) + " 2>/dev/null").c_str(), "r");
-	} else {
-		cmd_pipe = popen((string("host -t A ") + escapeShellArgument(host) + " 2>/dev/null").c_str(), "r");
-	}
-	if(cmd_pipe) {
-		char bufRslt[512];
-		bool okIP = false;
-		while(!okIP && fgets(bufRslt, sizeof(bufRslt), cmd_pipe)) {
-			vector<string> try_ip = split(bufRslt, split(",|;|\t| |\n", '|'), true);
+	const char *types[] = { "A", "AAAA" };
+	for(unsigned type_index = 0; type_index < (VM_IPV6_B ? 2u : 1u) && (ips || !ip.isSet()); type_index++) {
+		string cmd = string("host -t ") + types[type_index] + " " + escapeShellArgument(host);
+		int exit_code = -1;
+		bool nxdomain = false;
+		#if PREFER_VM_PEXEC
+		SimpleBuffer out;
+		if(vm_pexec(cmd.c_str(), &out, NULL, &exit_code) && out.size()) {
+			nxdomain = strstr((char*)out, "(NXDOMAIN)") != NULL;
+			vector<string> try_ip = split((char*)out, split(",|;|\t| |\n", '|'), true);
+			bool okIP = false;
 			for(unsigned i = 0; !okIP && i < try_ip.size(); i++) {
 				vmIP _ip;
 				if (_ip.setFromString(try_ip[i].c_str())) {
@@ -2806,9 +3277,41 @@ vmIP cResolver::resolve_by_system_host(const char *host, vector<vmIP> *ips) {
 				}
 			}
 		}
-		pclose(cmd_pipe);
+		#else
+		FILE *cmd_pipe = popen((cmd + " 2>/dev/null").c_str(), "r");
+		if(cmd_pipe) {
+			char bufRslt[512];
+			bool okIP = false;
+			while(!okIP && fgets(bufRslt, sizeof(bufRslt), cmd_pipe)) {
+				if(strstr(bufRslt, "(NXDOMAIN)")) {
+					nxdomain = true;
+				}
+				vector<string> try_ip = split(bufRslt, split(",|;|\t| |\n", '|'), true);
+				for(unsigned i = 0; !okIP && i < try_ip.size(); i++) {
+					vmIP _ip;
+					if (_ip.setFromString(try_ip[i].c_str())) {
+						syslog(LOG_NOTICE, "cmd host resolve host %s to %s", host, _ip.getString().c_str());
+						if (!ip.isSet()) {
+							ip = _ip;
+						}
+						if (ips) {
+							ips->push_back(_ip);
+						} else {
+							okIP = true;
+						}
+					}
+				}
+			}
+			int status = pclose(cmd_pipe);
+			if(status != -1 && WIFEXITED(status)) {
+				exit_code = WEXITSTATUS(status);
+			}
+		}
+		#endif
+		if(exit_code > 0 && nxdomain) {
+			break;
+		}
 	}
-	#endif
 	if (ips && ips->size() > 1) {
 		sort_ips_by_type(ips);
 		ip = (*ips)[0];

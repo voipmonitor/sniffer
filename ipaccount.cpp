@@ -237,7 +237,7 @@ inline void Ipacc::push(time_t timestamp, vmIP saddr, vmIP daddr, vmPort port, i
 	if((this->writeit + 1) == this->qringmax) {
 		this->writeit = 0;
 	} else {
-		this->writeit++;
+		__SYNC_INC(this->writeit);
 	}
 	if(opt_ipacc_qring_sem_sync) {
 		sem_post(&this->sem_qring_filled_count);
@@ -682,7 +682,7 @@ void *Ipacc::outThreadFunction() {
 			if((this->readit + 1) == this->qringmax) {
 				this->readit = 0;
 			} else {
-				this->readit++;
+				__SYNC_INC(this->readit);
 			}
 			if(opt_ipacc_qring_sem_sync) {
 				sem_post(&this->sem_qring_free_count);

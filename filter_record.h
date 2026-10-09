@@ -22,11 +22,20 @@ public:
 	virtual ~cRecordFilterItem_base() {
 	}
 	virtual bool check(void *rec, bool *findInBlackList = NULL) = 0;
+	virtual void checkWhiteBlack(void *rec, bool *white, bool *black) {
+		*black = false;
+		*white = check(rec, black);
+	}
+	virtual bool whiteIsEmpty() {
+		return(false);
+	}
+	virtual void setNoLock() {
+	}
 	void setCodebook(const char *table, const char *column);
 	string getCodebookValue(u_int32_t id);
 	virtual int64_t getField_int(void *rec);
 	virtual vmIP getField_ip(void *rec);
-	virtual double getField_float(void *rec);
+	virtual double getField_float(void *rec, bool *null = NULL);
 	virtual string getField_string(void *rec);
 	virtual bool getField_bool(void *rec);
 	virtual vmPort getField_port(void *rec);
@@ -79,9 +88,13 @@ class cRecordFilterItem_IP : public cRecordFilterItem_base {
 public:
 	cRecordFilterItem_IP(cRecordFilter *parent, unsigned recordFieldIndex)
 	 : cRecordFilterItem_base(parent, recordFieldIndex) {
+		ipData.setSkipInvalid();
 	}
 	void addWhite(const char *ip) {
-		ipData.addWhite(ip);
+		ipData.addWhite(ip, false);
+	}
+	void addBlack(const char *ip) {
+		ipData.addBlack(ip, false);
 	}
 	void addWhite(const char *table, const char *column, const char * idstr) {
 		vector<string> ids = split(idstr, ',');
@@ -91,7 +104,7 @@ public:
 	}
 	void addWhite(const char *table, const char *column, u_int32_t id) {
 		setCodebook(table, column);
-		ipData.addWhite(getCodebookValue(id).c_str());
+		ipData.addWhite(getCodebookValue(id).c_str(), false);
 	}
 	bool check(void *rec, bool *findInBlackList = NULL) {
 		if(!ipData.checkIP(getField_ip(rec), findInBlackList)) {
@@ -102,6 +115,19 @@ public:
 	bool check_ip(vmIP ip, bool *findInBlackList = NULL) {
 		return(ipData.checkIP(ip, findInBlackList));
 	}
+	void checkWhiteBlack(void *rec, bool *white, bool *black) {
+		checkWhiteBlack_ip(getField_ip(rec), white, black);
+	}
+	void checkWhiteBlack_ip(vmIP ip, bool *white, bool *black) {
+		*white = ipData.checkWhite(ip);
+		*black = ipData.checkBlack(ip);
+	}
+	bool whiteIsEmpty() {
+		return(ipData.whiteIsEmpty());
+	}
+	void setNoLock() {
+		ipData.setNoLock();
+	}
 private:
 	ListIP_wb ipData;
 };
@@ -110,9 +136,13 @@ class cRecordFilterItem_PhoneNumber : public cRecordFilterItem_base {
 public:
 	cRecordFilterItem_PhoneNumber(cRecordFilter *parent, unsigned recordFieldIndex)
 	 : cRecordFilterItem_base(parent, recordFieldIndex) {
+		enableNull = false;
+	}
+	void setEnableNull() {
+		enableNull = true;
 	}
 	void addWhite(const char *number, PhoneNumber::eTypeNumber type) {
-		phoneNumberData.addWhite(number, type);
+		phoneNumberData.addWhite(number, type, enableNull, true);
 	}
 	void addWhite(const char *table, const char *column, const char * idstr, PhoneNumber::eTypeNumber type) {
 		vector<string> ids = split(idstr, ',');
@@ -122,7 +152,7 @@ public:
 	}
 	void addWhite(const char *table, const char *column, u_int32_t id, PhoneNumber::eTypeNumber type) {
 		setCodebook(table, column);
-		phoneNumberData.addWhite(getCodebookValue(id).c_str(), type);
+		phoneNumberData.addWhite(getCodebookValue(id).c_str(), type, enableNull, true);
 	}
 	bool check(void *rec, bool *findInBlackList = NULL) {
 		if(!phoneNumberData.checkNumber(getField_string(rec).c_str(), findInBlackList)) {
@@ -130,8 +160,20 @@ public:
 		}
 		return(true);
 	}
+	void checkWhiteBlack(void *rec, bool *white, bool *black) {
+		string number = getField_string(rec);
+		*white = phoneNumberData.checkWhite(number.c_str());
+		*black = phoneNumberData.checkBlack(number.c_str());
+	}
+	bool whiteIsEmpty() {
+		return(phoneNumberData.whiteIsEmpty());
+	}
+	void setNoLock() {
+		phoneNumberData.setNoLock();
+	}
 protected:
 	ListPhoneNumber_wb phoneNumberData;
+	bool enableNull;
 };
 
 class cRecordFilterItem_CheckString : public cRecordFilterItem_base {
@@ -139,29 +181,76 @@ public:
 	cRecordFilterItem_CheckString(cRecordFilter *parent, unsigned recordFieldIndex, bool enableSpaceSeparator = true)
 	 : cRecordFilterItem_base(parent, recordFieldIndex) {
 		this->enableSpaceSeparator = enableSpaceSeparator;
+		separators = NULL;
+		separatorsSeparator = NULL;
+		enableNoSplitBorders = true;
+		enableNull = false;
+		enableInterval = true;
+		emptyAsNull = false;
+	}
+	void setSeparators(const char *separators, const char *separatorsSeparator) {
+		this->separators = separators;
+		this->separatorsSeparator = separatorsSeparator;
+	}
+	void setEnableNull() {
+		enableNull = true;
+	}
+	void setDisableInterval() {
+		enableInterval = false;
+	}
+	void setEmptyAsNull() {
+		emptyAsNull = true;
 	}
 	void addWhite(const char *checkString) {
-		checkStringData.addWhite(checkString, enableSpaceSeparator);
+		checkStringData.addWhite(checkString, enableSpaceSeparator, separators, separatorsSeparator, enableNoSplitBorders, enableNull, enableInterval);
 	}
 	void addBlack(const char *checkString) {
-		checkStringData.addBlack(checkString, enableSpaceSeparator);
+		checkStringData.addBlack(checkString, enableSpaceSeparator, separators, separatorsSeparator, enableNoSplitBorders, enableNull, enableInterval);
 	}
-	void addWhite(const char *table, const char *column, const char * id) {
-		addWhite(table, column, atol(id));
+	void addWhite(const char *table, const char *column, const char * idstr) {
+		vector<string> ids = split(idstr, ',');
+		for(unsigned i = 0; i < ids.size(); i++) {
+			addWhite(table, column, atol(ids[i].c_str()));
+		}
 	}
 	void addWhite(const char *table, const char *column, u_int32_t id) {
 		setCodebook(table, column);
-		checkStringData.addWhite(getCodebookValue(id).c_str(), enableSpaceSeparator);
+		checkStringData.addWhite(getCodebookValue(id).c_str(), enableSpaceSeparator, separators, separatorsSeparator, enableNoSplitBorders, enableNull, enableInterval);
 	}
 	bool check(void *rec, bool *findInBlackList = NULL) {
-		if(!checkStringData.check(getField_string(rec).c_str(), findInBlackList)) {
+		string checkString = getField_string(rec);
+		if(emptyAsNull && checkString.empty()) {
+			if(findInBlackList) {
+				*findInBlackList = false;
+			}
+			return(checkStringData.whiteIsEmpty());
+		}
+		if(!checkStringData.check(checkString.c_str(), findInBlackList)) {
 			return(false);
 		}
 		return(true);
 	}
+	void checkWhiteBlack(void *rec, bool *white, bool *black) {
+		string checkString = getField_string(rec);
+		bool null = emptyAsNull && checkString.empty();
+		*white = !null && checkStringData.checkWhite(checkString.c_str());
+		*black = !null && checkStringData.checkBlack(checkString.c_str());
+	}
+	bool whiteIsEmpty() {
+		return(checkStringData.whiteIsEmpty());
+	}
+	void setNoLock() {
+		checkStringData.setNoLock();
+	}
 protected:
 	ListCheckString_wb checkStringData;
 	bool enableSpaceSeparator;
+	const char *separators;
+	const char *separatorsSeparator;
+	bool enableNoSplitBorders;
+	bool enableNull;
+	bool enableInterval;
+	bool emptyAsNull;
 };
 
 class cRecordFilterItem_Port : public cRecordFilterItem_base {
@@ -203,27 +292,20 @@ public:
 		this->cond = cond;
 	}
 	bool check(void *rec, bool */*findInBlackList*/ = NULL) {
+		bool null;
+		double value = getField_float(rec, &null);
+		if(null) {
+			return(false);
+		}
 		switch(cond) {
 		case _ge:
-			if(getField_float(rec) >= num) {
-				return(true);
-			}
-			break;
+			return(value >= num);
 		case _gt:
-			if(getField_float(rec) > num) {
-				return(true);
-			}
-			break;
+			return(value > num);
 		case _le:
-			if(getField_float(rec) <= num) {
-				return(true);
-			}
-			break;
+			return(value <= num);
 		case _lt:
-			if(getField_float(rec) < num) {
-				return(true);
-			}
-			break;
+			return(value < num);
 		}
 		return(false);
 	}
@@ -245,18 +327,18 @@ public:
 		}
 	}
 	void addNumComb(const char *numStr) {
-		vector<string> elems = split(numStr, split(" |,|;|\t|\r|\n", "|"), true);
+		vector<string> elems = split_filter(numStr, " |,|;|\t|\r|\n", "|");
 		for(size_t i = 0; i < elems.size(); i++) {
-			if(elems[i][0] == '!') {
-				nums_not.push_back(atol(elems[i].substr(1).c_str()));
+			if(!elems[i].empty() && elems[i][0] == '!') {
+				nums_not.push_back(atof_mysql(elems[i].substr(1).c_str()));
 			} else {
-				nums.push_back(atol(elems[i].c_str()));
+				nums.push_back(atof_mysql(elems[i].c_str()));
 			}
 		}
 	}
 	bool check(void *rec, bool *findInBlackList = NULL) {
 		if(nums_not.size()) {
-			for(list<int64_t>::iterator iter = nums_not.begin(); iter != nums_not.end(); iter++) {
+			for(list<double>::iterator iter = nums_not.begin(); iter != nums_not.end(); iter++) {
 				if(*iter == getField_int(rec)) {
 					if(findInBlackList) {
 						*findInBlackList = true;
@@ -266,7 +348,7 @@ public:
 			}
 		}
 		if(nums.size()) {
-			for(list<int64_t>::iterator iter = nums.begin(); iter != nums.end(); iter++) {
+			for(list<double>::iterator iter = nums.begin(); iter != nums.end(); iter++) {
 				if(*iter == getField_int(rec)) {
 					return(true);
 				}
@@ -276,8 +358,8 @@ public:
 		return(true);
 	}
 private:
-	list<int64_t> nums;
-	list<int64_t> nums_not;
+	list<double> nums;
+	list<double> nums_not;
 };
 
 class cRecordFilterItem_rec : public cRecordFilterItem_base {
@@ -286,6 +368,18 @@ public:
 	 : cRecordFilterItem_base(parent, 0) {
 	}
 	bool check(void */*rec*/, bool */*findInBlackList*/ = NULL) {
+		return(true);
+	}
+protected:
+	bool isNumber(const char *str) {
+		if(!str[0] || (str[0] == '0' && str[1])) {
+			return(false);
+		}
+		for(unsigned i = 0; str[i]; i++) {
+			if(!isdigit(str[i])) {
+				return(false);
+			}
+		}
 		return(true);
 	}
 };
@@ -348,6 +442,14 @@ public:
 	bool isSet() {
 		return(fItems.size() > 0 || gItems.size() > 0);
 	}
+	void setNoLock() {
+		for(list<cRecordFilterItem_base*>::iterator iter = fItems.begin(); iter != fItems.end(); iter++) {
+			(*iter)->setNoLock();
+		}
+		for(list<cRecordFilterItems>::iterator iter = gItems.begin(); iter != gItems.end(); iter++) {
+			iter->setNoLock();
+		}
+	}
 public:
 	eCond cond;
 	list<cRecordFilterItem_base*> fItems;
@@ -386,6 +488,11 @@ public:
 		}
 		return(cond == _or ? false : true);
 	}
+	void setNoLock() {
+		for(list<cRecordFilterItems>::iterator iter = gItems.begin(); iter != gItems.end(); iter++) {
+			iter->setNoLock();
+		}
+	}
 	virtual int64_t getField_int(void *rec, unsigned recordFieldIndex) {
 		return(useRecordArray ?
 			((RecordArray*)rec)->fields[recordFieldIndex].get_int() :
@@ -396,7 +503,10 @@ public:
 			((RecordArray*)rec)->fields[recordFieldIndex].get_ip() :
 			0);
 	}
-	virtual int64_t getField_float(void *rec, unsigned recordFieldIndex) {
+	virtual double getField_float(void *rec, unsigned recordFieldIndex, bool *null = NULL) {
+		if(null) {
+			*null = false;
+		}
 		return(useRecordArray ?
 			((RecordArray*)rec)->fields[recordFieldIndex].get_float() :
 			getField_int(rec, recordFieldIndex));
@@ -428,8 +538,8 @@ int64_t cRecordFilterItem_base::getField_int(void *rec) {
 vmIP cRecordFilterItem_base::getField_ip(void *rec) {
 	return(parent->getField_ip(rec, recordFieldIndex));
 }
-double cRecordFilterItem_base::getField_float(void *rec) {
-	return(parent->getField_float(rec, recordFieldIndex));
+double cRecordFilterItem_base::getField_float(void *rec, bool *null) {
+	return(parent->getField_float(rec, recordFieldIndex, null));
 }
 vmPort cRecordFilterItem_base::getField_port(void *rec) {
 	return(parent->getField_port(rec, recordFieldIndex));

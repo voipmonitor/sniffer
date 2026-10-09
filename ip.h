@@ -261,6 +261,21 @@ struct vmIP {
 		}
 		#endif
 	}
+	inline vmIP _not() {
+		vmIP ip = *this;
+		#if VM_IPV6
+		if(!v6) {
+		#endif
+			ip.ip.v4.n = ~ip.ip.v4.n;
+		#if VM_IPV6
+		} else {
+			for(unsigned i = 0; i < 4; i++) {
+				ip.ip.v6.__in6_u.__u6_addr32[i] = ~ip.ip.v6.__in6_u.__u6_addr32[i];
+			}
+		}
+		#endif
+		return(ip);
+	}
 	inline vmIP _and(vmIP mask) {
 		vmIP ip = *this;
 		#if VM_IPV6

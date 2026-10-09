@@ -757,7 +757,7 @@ Tar::writeZip(const void *buf, size_t len) {
 	if(!this->initZip()) {
 		return(false);
 	}      
-	++writeCounter;
+	__SYNC_INC(writeCounter);
 	this->zipStream->avail_in = len;
 	this->zipStream->next_in = (unsigned char*)buf;
 	do {
@@ -836,7 +836,7 @@ Tar::writeLzma(const void *buf, size_t len) {
 	if(!this->initLzma()) {
 		return(false);
 	}
-	++writeCounter;
+	__SYNC_INC(writeCounter);
 	this->lzmaStream->next_in = (const uint8_t*)buf;
 	this->lzmaStream->avail_in = len;
 	do {
@@ -937,7 +937,7 @@ Tar::writeZstd(const void *buf, size_t len) {
 	if(!this->initZstd()) {
 		return(false);
 	}
-	++writeCounter;
+	__SYNC_INC(writeCounter);
 	ZSTD_inBuffer inBuffer = { buf, len, 0 };
         do {
 		ZSTD_outBuffer outBuffer = { this->compressBuffer, (size_t)this->compressBufferLength, 0 };

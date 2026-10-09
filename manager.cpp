@@ -5705,10 +5705,12 @@ int Mgmt_charts_cache(Mgmt_params *params) {
 		params->registerCommand(ch);
 		return(0);
 	}
-	if(strstr(params->buf, "store_all") != NULL) {
-		chartsCacheStore(true);
-	} else if(strstr(params->buf, "cleanup_all") != NULL) {
-		chartsCacheCleanup(true);
+	bool store = strstr(params->buf, "store_all") != NULL;
+	bool cleanup = strstr(params->buf, "cleanup_all") != NULL;
+	if(store || cleanup) {
+		return(params->sendString(chartsCacheRequestAll(store, cleanup) ?
+					   "ok" :
+					   "timeout - charts cache thread is busy"));
 	}
 	return(0);
 }

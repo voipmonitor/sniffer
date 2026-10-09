@@ -60,10 +60,8 @@ bool vmIP::setFromString(const char *ip_str, const char **end_ptr) {
 	if(end_ptr) {
 		*end_ptr = NULL;
 	}
-	unsigned ip_str_offset = 0;
 	while(ip_str[0] == ' ' || ip_str[0] == '\t') {
 		++ip_str;
-		++ip_str_offset;
 	}
 	#if VM_IPV6
 		const char* ipv6_sep_pos = strchr(ip_str, ':');
@@ -71,7 +69,6 @@ bool vmIP::setFromString(const char *ip_str, const char **end_ptr) {
 			v6 = true;
 			if(ip_str[0] == '[') {
 				++ip_str;
-				++ip_str_offset;
 			}
 			unsigned ip_str_length = 0;
 			while(ip_str[ip_str_length] && strchr("0123456789abcdefABCDEF:", ip_str[ip_str_length])) {

@@ -161,9 +161,9 @@ struct sSnifferServerGuiTask {
 	}
 	void setTimeId() {
 		static volatile u_int64_t _id_counter;
-		u_int64_t _id = ++_id_counter;
+		u_int64_t _id = __SYNC_INC(_id_counter);
 		if(!_id) {
-			_id = ++_id_counter;
+			_id = __SYNC_INC(_id_counter);
 		}
 		time_us = getTimeUS();
 		id = intToString(time_us) + ":" + intToString(_id);

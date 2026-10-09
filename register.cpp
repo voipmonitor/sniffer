@@ -511,7 +511,7 @@ bool RegisterStates::eqLast(Call *call, Register *reg, bool *exp_state) {
 
 Register::Register(Call *call) {
 	lock_id();
-	id = ++_id;
+	id = __SYNC_INC(_id);
 	unlock_id();
 	CallBranch *c_branch = call->branch_main();
 	sipcallerip = c_branch->sipcallerip[0];
@@ -1539,7 +1539,8 @@ u_int64_t Registers::getNewRegisterId(int sensorId, bool failed, SqlDb *sqlDb) {
 				delete sqlDb;
 			}
 		}
-		id = register_failed_id = ((register_failed_id / 100000 + 1) * 100000) + (sensorId >= 0 ? sensorId : 99999);
+		register_failed_id = ((register_failed_id / 100000 + 1) * 100000) + (sensorId >= 0 ? sensorId : 99999);
+		id = register_failed_id;
 		unlock_register_failed_id();
 	} else {
 		lock_register_state_id();
@@ -1558,7 +1559,8 @@ u_int64_t Registers::getNewRegisterId(int sensorId, bool failed, SqlDb *sqlDb) {
 				delete sqlDb;
 			}
 		}
-		id = register_state_id = ((register_state_id / 100000 + 1) * 100000) + (sensorId >= 0 ? sensorId : 99999);
+		register_state_id = ((register_state_id / 100000 + 1) * 100000) + (sensorId >= 0 ? sensorId : 99999);
+		id = register_state_id;
 		unlock_register_state_id();
 	}
 	return(id);

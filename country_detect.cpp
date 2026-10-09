@@ -144,6 +144,15 @@ string CountryCodes::getContinent(const char *code) {
 	return(iter != countryContinent.end() ? iter->second : "");
 }
 
+vector<string> CountryCodes::getCountriesByContinent(const char *continent) {
+	for(map<string, vector<string> >::iterator iter = continentCountry.begin(); iter != continentCountry.end(); iter++) {
+		if(!strcasecmp(iter->first.c_str(), continent)) {
+			return(iter->second);
+		}
+	}
+	return(vector<string>());
+}
+
 bool CountryCodes::isLocationIn(const char *location, vector<string> *in, bool continent) {
 	string location_s = continent ? string("c_") + location : location;
 	vector<string>::iterator iter = in->begin();
@@ -255,6 +264,25 @@ bool CheckInternational::load(SqlDb *sqlDb) {
 			this->_load(&row);
 		}
 	}
+	countryCodeForLocalNumbers_global.clear();
+	countryCodeForLocalNumbers_sensors.clear();
+	if(sqlDb->existsTable("international_rules")) {
+		sqlDb->query("select country_code_for_local_numbers from international_rules limit 1");
+		SqlDb_row row;
+		if((row = sqlDb->fetchRow())) {
+			countryCodeForLocalNumbers_global = row["country_code_for_local_numbers"];
+		}
+	}
+	if(sqlDb->existsColumn("sensors", "override_international_rules") &&
+	   sqlDb->existsColumn("sensors", "country_code_for_local_numbers")) {
+		sqlDb->query("select id_sensor, country_code_for_local_numbers from sensors \
+			      where override_international_rules = 1 and \
+				    country_code_for_local_numbers is not null and trim(country_code_for_local_numbers) <> ''");
+		SqlDb_row row;
+		while((row = sqlDb->fetchRow())) {
+			countryCodeForLocalNumbers_sensors[atoi(row["id_sensor"].c_str())] = row["country_code_for_local_numbers"];
+		}
+	}
 	loadCustomerPrefixAdv(sqlDb);
 	if(_createSqlObject) {
 		delete sqlDb;
@@ -325,7 +353,10 @@ bool CheckInternational::loadCustomerPrefixAdv(SqlDb *sqlDb) {
 			while((row = rows.fetchRow())) {
 				CountryPrefix_recAdv *recAdv = new FILE_LINE(0) CountryPrefix_recAdv;
 				if(row["number_regexp_cond"].length()) {
-					recAdv->number_regexp_cond = new FILE_LINE(0) cRegExp(row["number_regexp_cond"].c_str());
+					recAdv->number_regexp_cond = create_regexp(row["number_regexp_cond"].c_str());
+					if(!recAdv->number_regexp_cond) {
+						syslog(LOG_NOTICE, "invalid regexp %s in customer_data_advanced - condition is never true", row["number_regexp_cond"].c_str());
+					}
 				}
 				if(row["number_length_from"].length()) {
 					recAdv->number_length_from = atoi(row["number_length_from"].c_str());
@@ -401,7 +432,7 @@ bool CheckInternational::processCustomerDataAdvanced(const char *number, vmIP ip
 		bool tmpFlag = false;
 		int number_length = strlen(number);
 		if(recAdv->number_regexp_cond &&
-		   recAdv->number_regexp_cond->match(number) &&
+		   recAdv->number_regexp_cond->match(number) > 0 &&
 		   (recAdv->number_length_from == -1 || number_length >= recAdv->number_length_from) &&
 		   (recAdv->number_length_to == -1 || number_length <= recAdv->number_length_to) &&
 		   (!ip.isSet() || recAdv->ipFilter.is_empty() || (!recAdv->ipFilter.is_empty() && recAdv->ipFilter.checkIP(ip)))) {
@@ -475,7 +506,7 @@ bool CheckInternational::skipPrefixes(const char *number, vector<string> *prefix
 					if(prefixes[prefixes_i].is_regexp) {
 						cRegExp *prefix_regexp = (cRegExp*)prefixes[prefixes_i].prefix;
 						vector<string> matches;
-						if(prefix_regexp->match(number + *skipPrefixLength, &matches) &&
+						if(prefix_regexp->match(number + *skipPrefixLength, &matches) > 0 &&
 						   matches.size() &&
 						   (number_length - *skipPrefixLength) > matches[0].length() &&
 						   (!isInternationalPrefixes ||
@@ -995,6 +1026,14 @@ unsigned CountryDetect::getCountryIdByIP(vmIP ip) {
 	return(rslt);
 }
 
+unsigned CountryDetect::getCountryIdByCode(const char *code) {
+	unsigned rslt = 0;
+	lock();
+	rslt = countryCodes->getIdCountry(code);
+	unlock();
+	return(rslt);
+}
+
 bool CountryDetect::isLocalByIP(vmIP ip) {
 	bool rslt = false;
 	lock();
@@ -1010,6 +1049,26 @@ string CountryDetect::getContinentByCountry(const char *country) {
 	lock();
 	if(countryCodes->loadOK) {
 		rslt = countryCodes->getContinent(country);
+	}
+	unlock();
+	return(rslt);
+}
+
+vector<string> CountryDetect::getCountriesByContinent(const char *continent) {
+	vector<string> rslt;
+	lock();
+	if(countryCodes->loadOK) {
+		rslt = countryCodes->getCountriesByContinent(continent);
+	}
+	unlock();
+	return(rslt);
+}
+
+bool CountryDetect::getCountryCodeForLocalNumbers(int id_sensor, string *countryCode) {
+	bool rslt = false;
+	lock();
+	if(checkInternational) {
+		rslt = checkInternational->getCountryCodeForLocalNumbers(id_sensor, countryCode);
 	}
 	unlock();
 	return(rslt);
@@ -1138,11 +1197,25 @@ unsigned int getCountryIdByIP(vmIP ip)
 	return(0);
 }
 
+unsigned getCountryIdByCode(const char *code) {
+	if(countryDetect) {
+		return(countryDetect->getCountryIdByCode(code));
+	}
+	return(0);
+}
+
 string getContinentByCountry(const char *country) {
 	if(countryDetect) {
 		return(countryDetect->getContinentByCountry(country));
 	}
 	return("");
+}
+
+vector<string> getCountriesByContinent(const char *continent) {
+	if(countryDetect) {
+		return(countryDetect->getCountriesByContinent(continent));
+	}
+	return(vector<string>());
 }
 
 void CountryDetectPrepareReload() {
