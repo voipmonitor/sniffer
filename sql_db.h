@@ -1463,6 +1463,13 @@ struct sExistsColumns {
 	bool cdr_rtp_flags;
 	bool cdr_rtp_duration;
 	bool cdr_rtp_ttl;
+	bool cdr_rtp_leg;
+	bool cdr_rtp_leg_view;
+	bool cdr_rtp_ext_jitter;
+	bool cdr_rtp_ext_last_rtp_from_end_ms;
+	bool cdr_rtp_ext_sl_d;
+	bool cdr_rtp_ext_mos;
+	bool cdr_rtp_ext_rtcp;
 	bool cdr_rtcp_fraclost_pktcount;
 	bool cdr_rtcp_rtd;
 	bool cdr_dtmf_calldate;
@@ -1473,6 +1480,7 @@ struct sExistsColumns {
 	bool cdr_country_code_calldate;
 	bool cdr_sdp_calldate;
 	bool cdr_sdp_ptime;
+	bool cdr_sdp_leg_index;
 	bool cdr_text_data_calldate;
 	bool cdr_txt_calldate;
 	bool cdr_ab_rtcp_loss_is_smallint_type[2];

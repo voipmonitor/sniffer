@@ -173,6 +173,7 @@ unsigned int setCallFlags(unsigned long int flags, sNatAliases **nat_aliases,
 			  const char *caller, const char *called,
 			  const char *caller_domain, const char *called_domain,
 			  ParsePacket::ppContentsX *parseContents,
+			  int sensor_id,
 			  bool reconfigure = false);
 
 extern bool opt_audiocodes;
@@ -958,10 +959,27 @@ struct packet_s_process : public packet_s_process_0 {
 	}
 	inline packet_s_process& operator = (const packet_s_process& other) {
 		memcpy((void*)this, &other, sizeof(*this));
-		this->callid_long = NULL;
+		if(other.callid_long) {
+			this->callid_long = new FILE_LINE(0) char[strlen(other.callid_long) + 1];
+			strcpy(this->callid_long, other.callid_long);
+		}
 		this->callid_alternative = NULL;
 		this->child_packets = NULL;
 		this->child_packets_type = _tchp_none;
+		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES or not EXPERIMENTAL_SUPPRESS_KAMAILIO
+		if(if_unlikely(sip_data_subst)) {
+			#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+			if(if_unlikely(opt_audiocodes && this->audiocodes)) {
+				this->audiocodes = new FILE_LINE(0) sAudiocodes(*this->audiocodes);
+			}
+			#endif
+			#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
+			if(if_unlikely((opt_kamailio_subst || opt_ribbonsbc_subst) && this->kamailio_subst)) {
+				this->kamailio_subst = new FILE_LINE(0) packet_s_kamailio_subst(*this->kamailio_subst);
+			}
+			#endif
+		}
+		#endif
 		return(*this);
 	}
 	inline void init() {
@@ -1017,6 +1035,10 @@ struct packet_s_process : public packet_s_process_0 {
 	void set_callid(char *callid_input, unsigned callid_length = 0) {
 		if(!callid_length) {
 			callid_length = strlen(callid_input);
+		}
+		if(callid_long) {
+			delete [] callid_long;
+			callid_long = NULL;
 		}
 		if(callid_length > sizeof(callid) - 1) {
 			callid_long = new FILE_LINE(0) char[callid_length + 1];
@@ -1124,6 +1146,16 @@ struct packet_s_process : public packet_s_process_0 {
 	}
 	packet_s_process *clone();
 	packet_s_process *clone(u_char *newData, unsigned newDataLength);
+	inline void rebase_parse_contents(packet_s_process *orig) {
+		if(orig->parseContents.parseDataPtr == orig->data_() + orig->sipDataOffset) {
+			parseContents.parseDataPtr = data_() + sipDataOffset;
+			if(orig->parseContents.doubleEndLine) {
+				parseContents.doubleEndLine = data_() + sipDataOffset + (orig->parseContents.doubleEndLine - orig->parseContents.parseDataPtr);
+			}
+		} else {
+			parseContents.clean();
+		}
+	}
 };
 
 

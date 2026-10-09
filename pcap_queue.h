@@ -901,6 +901,17 @@ struct sPcapStatData {
 		void get_values(vector<sValue> &out) const;
 		void get_help(sHelp &out) const;
 	} charts;
+	struct sChartsStore {
+		double cpu_perc;
+		bool valid;
+		sChartsStore() { memset((void*)this, 0, sizeof(*this)); }
+		void load(int pstatDataIndex);
+		string title() const { return("chartsStoreCPU"); }
+		string render(bool with_title = true) const;
+		void get_sections(vector<sValue> &out) const { if(valid) { out.push_back(sValue(title(), render(false))); } }
+		void get_values(vector<sValue> &out) const;
+		void get_help(sHelp &out) const;
+	} charts_store;
 	struct sIpacc {
 		string_simple cpu_perc;
 		bool valid;
@@ -1301,6 +1312,7 @@ protected:
 	inline bool check_protocol(pcap_pkthdr* header, u_char* packet, sCheckProtocolData *checkProtocolData);
 	inline bool check_filter_ip(pcap_pkthdr* header, u_char* packet, sCheckProtocolData *checkProtocolData);
 	void restoreOneshotBuffer();
+	void pcapBreakloopIface();
 	inline int pcap_dispatch(pcap_t *pcapHandle);
 	inline int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			       pcap_block_store *block_store, int block_store_index,

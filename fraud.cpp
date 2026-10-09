@@ -3799,14 +3799,19 @@ bool isExistsFraudAlerts(bool *storePcaps, SqlDb *sqlDb) {
 	return(rslt);
 }
 
-bool selectSensorsContainSensorId(string select_sensors) {
+bool selectSensorsContainSensorId(const string &select_sensors, int sensor_id) {
 	if(select_sensors.empty() || select_sensors == "-1") {
 		return(true);
 	}
-	vector<string> sensors = split(select_sensors, ',');
+	if(sensor_id <= 0) {
+		// no explicit sensor - check for the local sensor
+		sensor_id = opt_id_sensor;
+	}
+	extern SensorsMap sensorsMap;
+	int sensorTableId = sensorsMap.getSensorTableId(sensor_id > 0 ? sensor_id : -2);
+	vector<int> sensors = split2int(select_sensors, ',');
 	for(unsigned i = 0; i < sensors.size(); i++) {
-		extern SensorsMap sensorsMap;
-		if(atoi(sensors[i].c_str()) == sensorsMap.getSensorTableId(opt_id_sensor > 0 ? opt_id_sensor : -2)) {
+		if(sensors[i] == sensorTableId) {
 			return(true);
 		}
 	}

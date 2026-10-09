@@ -8088,8 +8088,7 @@ void SensorsMap::fillSensors(SqlDb *sqlDb) {
 		SqlDb_rows rows;
 		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
-		lock();
-		sensors.clear();
+		map<int, sSensorData> sensors_new;
 		while((row = rows.fetchRow())) {
 			int idSensor = atoi(row["id_sensor"].c_str());
 			sSensorData data;
@@ -8097,8 +8096,24 @@ void SensorsMap::fillSensors(SqlDb *sqlDb) {
 			data.name = row["name"];
 			data.name_file = row["name"];
 			prepare_string_to_filename((char*)data.name_file.c_str(), data.name_file.length());
-			sensors[idSensor] = data;
+			data.name_announced = false;
+			sensors_new[idSensor] = data;
 		}
+		lock();
+		for(map<int, sSensorData>::iterator iter = sensors.begin(); iter != sensors.end(); iter++) {
+			map<int, sSensorData>::iterator iter_new = sensors_new.find(iter->first);
+			if(iter_new == sensors_new.end()) {
+				// keep sensors announced only by the connection handshake (missing in the sensors table)
+				sensors_new[iter->first] = iter->second;
+				sensors_new[iter->first].table_id = 0;
+			} else if(iter->second.name_announced) {
+				// the name announced by the sensor connection has precedence over the sensors table
+				iter_new->second.name = iter->second.name;
+				iter_new->second.name_file = iter->second.name_file;
+				iter_new->second.name_announced = true;
+			}
+		}
+		sensors.swap(sensors_new);
 		unlock();
 	}
 	if(_createSqlObject) {
@@ -8108,12 +8123,12 @@ void SensorsMap::fillSensors(SqlDb *sqlDb) {
 
 void SensorsMap::setSensorName(int sensorId, const char *sensorName) {
 	lock();
-	sSensorData data;
-	data.table_id = 0;
+	// update in place - preserve table_id filled by fillSensors
+	sSensorData &data = sensors[sensorId];
 	data.name = sensorName;
 	data.name_file = sensorName;
 	prepare_string_to_filename((char*)data.name_file.c_str(), data.name_file.length());
-	sensors[sensorId] = data;
+	data.name_announced = true;
 	unlock();
 }
 
@@ -8128,6 +8143,17 @@ int SensorsMap::getSensorTableId(int sensorId) {
 	}
 	unlock();
 	return(sensorTableId);
+}
+
+void SensorsMap::getSensorsIdByTableId(const set<int> &tableIds, set<int> *sensorsId) {
+	// reverse of getSensorTableId for a set of sensors.id - unknown ids are skipped
+	lock();
+	for(map<int, sSensorData>::iterator iter = sensors.begin(); iter != sensors.end(); iter++) {
+		if(iter->first > 0 && iter->second.table_id > 0 && tableIds.find(iter->second.table_id) != tableIds.end()) {
+			sensorsId->insert(iter->first);
+		}
+	}
+	unlock();
 }
 
 string SensorsMap::getSensorName(int sensorId, bool file) {

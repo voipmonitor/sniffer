@@ -79,6 +79,9 @@ typedef int (*SSL_write_type)(SSL *ssl, const void *buf, int num);
 typedef SSL_SESSION *(*SSL_get_session_type)(const SSL *ssl);
 typedef size_t (*SSL_get_client_random_type)(const SSL *ssl, unsigned char *out, size_t outlen);
 typedef size_t (*SSL_SESSION_get_master_key_type)(const SSL_SESSION *session, unsigned char *out, size_t outlen);
+#ifdef HAVE_WOLFSSL
+typedef void (*SSL_KeepArrays_type)(SSL *ssl);
+#endif
 }
 
 u_int64_t rdtsc_by_250ms = 0;
@@ -121,18 +124,26 @@ static sKeyQueueItem *key_queue_first;
 static sKeyQueueItem *key_queue_last;
 volatile int key_queue_sync;
 
-extern "C" {
-static SSL_new_type SSL_new_orig;
-static SSL_CTX_set_keylog_callback_type SSL_CTX_set_keylog_callback_orig;
-static SSL_connect_type SSL_connect_orig;
-static SSL_do_handshake_type SSL_do_handshake_orig;
-static SSL_accept_type SSL_accept_orig;
-static SSL_read_type SSL_read_orig;
-static SSL_write_type SSL_write_orig;
-static SSL_get_session_type SSL_get_session_orig;
-static SSL_get_client_random_type SSL_get_client_random_orig;
-static SSL_SESSION_get_master_key_type SSL_SESSION_get_master_key_orig;
-}
+struct sPerCallerOrig {
+	void resolve(void *lib_handle);
+	void *caller_addr;
+	sPerCallerOrig *next;
+	SSL_new_type ssl_new;
+	SSL_CTX_set_keylog_callback_type set_keylog_cb;
+	SSL_connect_type ssl_connect;
+	SSL_do_handshake_type ssl_do_handshake;
+	SSL_accept_type ssl_accept;
+	SSL_read_type ssl_read;
+	SSL_write_type ssl_write;
+	SSL_get_session_type ssl_get_session;
+	SSL_get_client_random_type ssl_get_client_random;
+	SSL_SESSION_get_master_key_type ssl_session_get_master_key;
+	#ifdef HAVE_WOLFSSL
+	SSL_KeepArrays_type ssl_keep_arrays;
+	#endif
+};
+static sPerCallerOrig default_orig;
+static sPerCallerOrig * volatile per_caller_orig;
 
 
 static void debug_printf(const char* fmt, ...) {
@@ -180,12 +191,12 @@ void exit_failure() {
 
 
 struct sMasterKey {
-	sMasterKey(SSL *ssl) {
+	sMasterKey(SSL *ssl, sPerCallerOrig *orig) {
 		memset(this, 0, sizeof(*this));
-		const SSL_SESSION *session = SSL_get_session_orig(ssl);
+		const SSL_SESSION *session = orig->ssl_get_session ? orig->ssl_get_session(ssl) : NULL;
 		if(session) {
-			if(SSL_SESSION_get_master_key_orig) {
-				master_key_length = SSL_SESSION_get_master_key_orig(session, master_key, SSL_MAX_MASTER_KEY_LENGTH);
+			if(orig->ssl_session_get_master_key) {
+				master_key_length = orig->ssl_session_get_master_key(session, master_key, SSL_MAX_MASTER_KEY_LENGTH);
 				//debug_printf("\n %lx - %i - %i", session, master_key_length, master_key[10]);
 			} else {
 				#ifndef HAVE_WOLFSSL
@@ -199,18 +210,23 @@ struct sMasterKey {
 			}
 		}
 	}
-	char *completeKey(SSL *ssl, char *complete_key) {
+	char *completeKey(SSL *ssl, char *complete_key, sPerCallerOrig *orig) {
 		unsigned char client_random[SSL3_RANDOM_SIZE];
-		if(SSL_get_client_random_orig) {
-			SSL_get_client_random_orig(ssl, client_random, SSL3_RANDOM_SIZE);
+		bool client_random_ok = false;
+		if(orig->ssl_get_client_random) {
+			client_random_ok = orig->ssl_get_client_random(ssl, client_random, SSL3_RANDOM_SIZE) > 0;
 		} else {
 			#ifndef HAVE_WOLFSSL
 			#if OPENSSL_VERSION_NUMBER < 0x10100000L
 			if(ssl->s3) {
 				memcpy(client_random, ssl->s3->client_random, SSL3_RANDOM_SIZE);
+				client_random_ok = true;
 			}
 			#endif
 			#endif
+		}
+		if(!client_random_ok) {
+			return(NULL);
 		}
 		strcpy(complete_key, "CLIENT_RANDOM ");
 		ucharToHex(client_random, SSL3_RANDOM_SIZE, complete_key + strlen(complete_key));
@@ -553,21 +569,72 @@ static void write_keylog_to_dest(const char *key) {
 	}
 }
 
-static void *lookup_symbol(const char *sym, const char *lib_soname) {
+static void *lookup_symbol(const char *sym, void *lib_handle) {
 	char sym_mod[256] = "";
 	#ifdef HAVE_WOLFSSL
 	strcpy(sym_mod, "wolf");
 	#endif
 	strcat(sym_mod, sym);
-	void *func = dlsym(RTLD_NEXT, sym_mod);
-	if(!func) {
-		void *handle = dlopen(lib_soname, RTLD_LAZY);
-		if(handle) {
-			func = dlsym(handle, sym_mod);
-			dlclose(handle);
-		}
+	return(dlsym(lib_handle, sym_mod));
+}
+
+static void *dlopen_ssl_lib(void *scope_handle, Dl_info *lib_info) {
+	void *ssl_new = lookup_symbol("SSL_new", scope_handle);
+	if(!ssl_new || !dladdr(ssl_new, lib_info) || !lib_info->dli_fname || !lib_info->dli_fname[0]) {
+		return(NULL);
 	}
-	return(func);
+	return(dlopen(lib_info->dli_fname, RTLD_NOW | RTLD_NOLOAD));
+}
+
+void sPerCallerOrig::resolve(void *lib_handle) {
+	ssl_new = (SSL_new_type)lookup_symbol("SSL_new", lib_handle);
+	set_keylog_cb = (SSL_CTX_set_keylog_callback_type)lookup_symbol("SSL_CTX_set_keylog_callback", lib_handle);
+	#if not ONLY_KEYLOG_CALLBACK or BOTH_METHODS
+	ssl_connect = (SSL_connect_type)lookup_symbol("SSL_connect", lib_handle);
+	ssl_do_handshake = (SSL_do_handshake_type)lookup_symbol("SSL_do_handshake", lib_handle);
+	ssl_accept = (SSL_accept_type)lookup_symbol("SSL_accept", lib_handle);
+	ssl_read = (SSL_read_type)lookup_symbol("SSL_read", lib_handle);
+	ssl_write = (SSL_write_type)lookup_symbol("SSL_write", lib_handle);
+	ssl_get_session = (SSL_get_session_type)lookup_symbol("SSL_get_session", lib_handle);
+	ssl_get_client_random = (SSL_get_client_random_type)lookup_symbol("SSL_get_client_random", lib_handle);
+	ssl_session_get_master_key = (SSL_SESSION_get_master_key_type)lookup_symbol("SSL_SESSION_get_master_key", lib_handle);
+	#ifdef HAVE_WOLFSSL
+	ssl_keep_arrays = (SSL_KeepArrays_type)lookup_symbol("SSL_KeepArrays", lib_handle);
+	#endif
+	#endif
+}
+
+static sPerCallerOrig *resolve_orig_for_caller(void *caller_addr) {
+	sPerCallerOrig *orig = per_caller_orig;
+	while(orig && orig->caller_addr != caller_addr) {
+		orig = orig->next;
+	}
+	if(!orig) {
+		Dl_info caller_info;
+		if(!caller_addr || !dladdr(caller_addr, &caller_info) || !caller_info.dli_fname || !caller_info.dli_fname[0]) {
+			return(&default_orig);
+		}
+		orig = new sPerCallerOrig();
+		orig->caller_addr = caller_addr;
+		void *caller_handle = dlopen(caller_info.dli_fname, RTLD_NOW | RTLD_NOLOAD);
+		if(caller_handle) {
+			Dl_info lib_info;
+			void *lib_handle = dlopen_ssl_lib(caller_handle, &lib_info);
+			if(lib_handle) {
+				orig->resolve(lib_handle);
+				debug_printf("Per-caller resolve OK for '%s' (0x%lx) : %s / SSL_new 0x%lx", caller_info.dli_fname, (unsigned long)caller_addr, lib_info.dli_fname, (unsigned long)orig->ssl_new);
+				dlclose(lib_handle);
+			}
+			dlclose(caller_handle);
+		}
+		if(!orig->ssl_new) {
+			debug_printf("Per-caller resolve FAILED for '%s' (0x%lx) - will use default binding", caller_info.dli_fname, (unsigned long)caller_addr);
+		}
+		do {
+			orig->next = per_caller_orig;
+		} while(!__sync_bool_compare_and_swap(&per_caller_orig, orig->next, orig));
+	}
+	return(orig->ssl_new ? orig : &default_orig);
 }
 
 SSL *
@@ -577,10 +644,17 @@ SSL_new
 wolfSSL_new
 #endif
 (SSL_CTX *ctx) {
-	if(SSL_CTX_set_keylog_callback_orig) {
-		SSL_CTX_set_keylog_callback_orig(ctx, write_keylog);
+	sPerCallerOrig *orig = resolve_orig_for_caller(__builtin_return_address(0));
+	if(orig->set_keylog_cb) {
+		orig->set_keylog_cb(ctx, write_keylog);
 	}
-	return SSL_new_orig(ctx);
+	SSL *ssl = orig->ssl_new(ctx);
+	#ifdef HAVE_WOLFSSL
+	if(ssl && orig->ssl_keep_arrays && (BOTH_METHODS || !orig->set_keylog_cb)) {
+		orig->ssl_keep_arrays(ssl);
+	}
+	#endif
+	return(ssl);
 }
 
 #if not ONLY_KEYLOG_CALLBACK
@@ -591,19 +665,20 @@ SSL_connect
 wolfSSL_connect
 #endif
 (SSL *ssl) {
+	sPerCallerOrig *orig = resolve_orig_for_caller(__builtin_return_address(0));
 	#if not BOTH_METHODS
-	if(SSL_CTX_set_keylog_callback_orig) {
-		return(SSL_connect_orig(ssl));
+	if(orig->set_keylog_cb) {
+		return(orig->ssl_connect(ssl));
 	}
 	#endif
 	//debug_printf("SSL_connect 1");
-	sMasterKey mk1(ssl);
-	int rslt = SSL_connect_orig(ssl);
-	sMasterKey mk2(ssl);
+	sMasterKey mk1(ssl, orig);
+	int rslt = orig->ssl_connect(ssl);
+	sMasterKey mk2(ssl, orig);
 	if(mk1 != mk2) {
 		//debug_printf("SSL_connect changekey");
 		char complete_key[1000];
-		write_keylog(ssl, mk2.completeKey(ssl, complete_key));
+		write_keylog(ssl, mk2.completeKey(ssl, complete_key, orig));
 	}
 	//debug_printf("SSL_connect 2");
 	return(rslt);
@@ -616,19 +691,20 @@ SSL_do_handshake
 wolfSSL_do_handshake
 #endif
 (SSL *ssl) {
+	sPerCallerOrig *orig = resolve_orig_for_caller(__builtin_return_address(0));
 	#if not BOTH_METHODS
-	if(SSL_CTX_set_keylog_callback_orig) {
-		return(SSL_do_handshake_orig(ssl));
+	if(orig->set_keylog_cb) {
+		return(orig->ssl_do_handshake(ssl));
 	}
 	#endif
 	//debug_printf("SSL_do_handshake_orig 1");
-	sMasterKey mk1(ssl);
-	int rslt = SSL_do_handshake_orig(ssl);
-	sMasterKey mk2(ssl);
+	sMasterKey mk1(ssl, orig);
+	int rslt = orig->ssl_do_handshake(ssl);
+	sMasterKey mk2(ssl, orig);
 	if(mk1 != mk2) {
 		//debug_printf("SSL_do_handshake changekey");
 		char complete_key[1000];
-		write_keylog(ssl, mk2.completeKey(ssl, complete_key));
+		write_keylog(ssl, mk2.completeKey(ssl, complete_key, orig));
 	}
 	//debug_printf("SSL_do_handshake_orig 2");
 	return(rslt);
@@ -641,19 +717,20 @@ SSL_accept
 wolfSSL_accept
 #endif
 (SSL *ssl) {
+	sPerCallerOrig *orig = resolve_orig_for_caller(__builtin_return_address(0));
 	#if not BOTH_METHODS
-	if(SSL_CTX_set_keylog_callback_orig) {
-		return(SSL_accept_orig(ssl));
+	if(orig->set_keylog_cb) {
+		return(orig->ssl_accept(ssl));
 	}
 	#endif
 	//debug_printf("SSL_accept 1");
-	sMasterKey mk1(ssl);
-	int rslt = SSL_accept_orig(ssl);
-	sMasterKey mk2(ssl);
+	sMasterKey mk1(ssl, orig);
+	int rslt = orig->ssl_accept(ssl);
+	sMasterKey mk2(ssl, orig);
 	if(mk1 != mk2) {
 		//debug_printf("SSL_accept changekey");
 		char complete_key[1000];
-		write_keylog(ssl, mk2.completeKey(ssl, complete_key));
+		write_keylog(ssl, mk2.completeKey(ssl, complete_key, orig));
 	}
 	//debug_printf("SSL_accept 2");
 	return(rslt);
@@ -666,19 +743,20 @@ SSL_read
 wolfSSL_read
 #endif
 (SSL *ssl, void *buf, int num) {
+	sPerCallerOrig *orig = resolve_orig_for_caller(__builtin_return_address(0));
 	#if not BOTH_METHODS
-	if(SSL_CTX_set_keylog_callback_orig) {
-		return(SSL_read_orig(ssl, buf, num));
+	if(orig->set_keylog_cb) {
+		return(orig->ssl_read(ssl, buf, num));
 	}
 	#endif
 	//debug_printf("SSL_read 1");
-	sMasterKey mk1(ssl);
-	int rslt = SSL_read_orig(ssl, buf, num);
-	sMasterKey mk2(ssl);
+	sMasterKey mk1(ssl, orig);
+	int rslt = orig->ssl_read(ssl, buf, num);
+	sMasterKey mk2(ssl, orig);
 	if(mk1 != mk2) {
 		//debug_printf("SSL_read changekey");
 		char complete_key[1000];
-		write_keylog(ssl, mk2.completeKey(ssl, complete_key));
+		write_keylog(ssl, mk2.completeKey(ssl, complete_key, orig));
 	}
 	//debug_printf("SSL_read 2");
 	return(rslt);
@@ -691,19 +769,20 @@ SSL_write
 wolfSSL_write
 #endif
 (SSL *ssl, const void *buf, int num) {
+	sPerCallerOrig *orig = resolve_orig_for_caller(__builtin_return_address(0));
 	#if not BOTH_METHODS
-	if(SSL_CTX_set_keylog_callback_orig) {
-		return(SSL_write_orig(ssl, buf, num));
+	if(orig->set_keylog_cb) {
+		return(orig->ssl_write(ssl, buf, num));
 	}
 	#endif
 	//debug_printf("SSL_write 1");
-	sMasterKey mk1(ssl);
-	int rslt = SSL_write_orig(ssl, buf, num);
-	sMasterKey mk2(ssl);
+	sMasterKey mk1(ssl, orig);
+	int rslt = orig->ssl_write(ssl, buf, num);
+	sMasterKey mk2(ssl, orig);
 	if(mk1 != mk2) {
 		//debug_printf("SSL_write changekey");
 		char complete_key[1000];
-		write_keylog(ssl, mk2.completeKey(ssl, complete_key));
+		write_keylog(ssl, mk2.completeKey(ssl, complete_key, orig));
 	}
 	//debug_printf("SSL_write 2");
 	return(rslt);
@@ -711,69 +790,68 @@ wolfSSL_write
 #endif
 
 __attribute__((constructor)) static void setup(void) {
-	SSL_new_orig = (SSL_new_type)lookup_symbol("SSL_new", LIBSSL_SONAME);
-	if(SSL_new_orig) {
-		debug_printf("OK detect pointer to function SSL_new : 0x%lx", SSL_new_orig);
-	} else {
-		debug_printf("FAILED detect pointer to function SSL_new - exit!");
-		exit_failure();
-		return;
+	Dl_info lib_info;
+	void *lib_handle = dlopen_ssl_lib(RTLD_NEXT, &lib_info);
+	if(!lib_handle) {
+		lib_handle = dlopen(LIBSSL_SONAME, RTLD_LAZY);
 	}
-	SSL_CTX_set_keylog_callback_orig = (SSL_CTX_set_keylog_callback_type)lookup_symbol("SSL_CTX_set_keylog_callback", LIBSSL_SONAME);
-	if(SSL_CTX_set_keylog_callback_orig) {
-		debug_printf("OK detect pointer to function SSL_CTX_set_keylog_callback : 0x%lx", SSL_CTX_set_keylog_callback_orig);
+	if(lib_handle) {
+		default_orig.resolve(lib_handle);
+		dlclose(lib_handle);
+		if(!dladdr((void*)default_orig.ssl_new, &lib_info)) {
+			memset(&default_orig, 0, sizeof(default_orig));
+		}
 	}
-	#if ONLY_KEYLOG_CALLBACK
-	if(!SSL_CTX_set_keylog_callback_orig) {
-		debug_printf("FAILED detect pointer to function SSL_CTX_set_keylog_callback - exit!");
-		exit_failure();
-		return;
-	}
-	#endif
-	#if not ONLY_KEYLOG_CALLBACK or BOTH_METHODS
-	SSL_connect_orig = (SSL_connect_type)lookup_symbol("SSL_connect", LIBSSL_SONAME);
-	if(SSL_connect_orig) {
-		debug_printf("OK detect pointer to function SSL_connect : 0x%lx", SSL_connect_orig);
-	}
-	SSL_do_handshake_orig = (SSL_do_handshake_type)lookup_symbol("SSL_do_handshake", LIBSSL_SONAME);
-	if(SSL_do_handshake_orig) {
-		debug_printf("OK detect pointer to function SSL_do_handshake : 0x%lx", SSL_do_handshake_orig);
-	}
-	SSL_accept_orig = (SSL_accept_type)lookup_symbol("SSL_accept", LIBSSL_SONAME);
-	if(SSL_accept_orig) {
-		debug_printf("OK detect pointer to function SSL_accept : 0x%lx", SSL_accept_orig);
-	}
-	SSL_read_orig = (SSL_read_type)lookup_symbol("SSL_read", LIBSSL_SONAME);
-	if(SSL_read_orig) {
-		debug_printf("OK detect pointer to function SSL_read : 0x%lx", SSL_read_orig);
-	}
-	SSL_write_orig = (SSL_write_type)lookup_symbol("SSL_write", LIBSSL_SONAME);
-	if(SSL_write_orig) {
-		debug_printf("OK detect pointer to function SSL_write : 0x%lx", SSL_write_orig);
-	}
-	SSL_get_session_orig = (SSL_get_session_type)lookup_symbol("SSL_get_session", LIBSSL_SONAME);
-	if(SSL_get_session_orig) {
-		debug_printf("OK detect pointer to function SSL_get_session : 0x%lx", SSL_get_session_orig);
-	}
-	SSL_get_client_random_orig = (SSL_get_client_random_type)lookup_symbol("SSL_get_client_random", LIBSSL_SONAME);
-	if(SSL_get_client_random_orig) {
-		debug_printf("OK detect pointer to function SSL_get_client_random : 0x%lx", SSL_get_client_random_orig);
-	}
-	SSL_SESSION_get_master_key_orig = (SSL_SESSION_get_master_key_type)lookup_symbol("SSL_SESSION_get_master_key", LIBSSL_SONAME);
-	if(SSL_SESSION_get_master_key_orig) {
-		debug_printf("OK detect pointer to function SSL_SESSION_get_master_key : 0x%lx", SSL_SESSION_get_master_key_orig);
-	}
-	if(!SSL_CTX_set_keylog_callback_orig && !SSL_connect_orig) {
-		debug_printf("FAILED detect pointer to function SSL_CTX_set_keylog_callback and SSL_connect - exit!");
-		exit_failure();
-		return;
-	}
-	#endif
 	if(!init_keylog()) {
 		debug_printf("FAILED init_keylog - exit!");
 		exit_failure();
 		return;
 	}
+	if(default_orig.ssl_new) {
+		debug_printf("OK detect pointer to function SSL_new : 0x%lx", default_orig.ssl_new);
+	} else {
+		debug_printf("FAILED detect pointer to function SSL_new - keys will be logged only with per-caller binding");
+		return;
+	}
+	if(default_orig.set_keylog_cb) {
+		debug_printf("OK detect pointer to function SSL_CTX_set_keylog_callback : 0x%lx", default_orig.set_keylog_cb);
+	}
+	#if ONLY_KEYLOG_CALLBACK
+	if(!default_orig.set_keylog_cb) {
+		debug_printf("FAILED detect pointer to function SSL_CTX_set_keylog_callback - keys will be logged only with per-caller binding");
+		return;
+	}
+	#endif
+	#if not ONLY_KEYLOG_CALLBACK or BOTH_METHODS
+	if(default_orig.ssl_connect) {
+		debug_printf("OK detect pointer to function SSL_connect : 0x%lx", default_orig.ssl_connect);
+	}
+	if(default_orig.ssl_do_handshake) {
+		debug_printf("OK detect pointer to function SSL_do_handshake : 0x%lx", default_orig.ssl_do_handshake);
+	}
+	if(default_orig.ssl_accept) {
+		debug_printf("OK detect pointer to function SSL_accept : 0x%lx", default_orig.ssl_accept);
+	}
+	if(default_orig.ssl_read) {
+		debug_printf("OK detect pointer to function SSL_read : 0x%lx", default_orig.ssl_read);
+	}
+	if(default_orig.ssl_write) {
+		debug_printf("OK detect pointer to function SSL_write : 0x%lx", default_orig.ssl_write);
+	}
+	if(default_orig.ssl_get_session) {
+		debug_printf("OK detect pointer to function SSL_get_session : 0x%lx", default_orig.ssl_get_session);
+	}
+	if(default_orig.ssl_get_client_random) {
+		debug_printf("OK detect pointer to function SSL_get_client_random : 0x%lx", default_orig.ssl_get_client_random);
+	}
+	if(default_orig.ssl_session_get_master_key) {
+		debug_printf("OK detect pointer to function SSL_SESSION_get_master_key : 0x%lx", default_orig.ssl_session_get_master_key);
+	}
+	if(!default_orig.set_keylog_cb && !default_orig.ssl_connect) {
+		debug_printf("FAILED detect pointer to function SSL_CTX_set_keylog_callback and SSL_connect - keys will be logged only with per-caller binding");
+		return;
+	}
+	#endif
 }
 
 

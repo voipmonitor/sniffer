@@ -4179,12 +4179,14 @@ public:
 		int table_id;
 		string name;
 		string name_file;
+		bool name_announced;
 	};
 public:
 	SensorsMap();
 	void fillSensors(class SqlDb *sqlDb = NULL);
 	void setSensorName(int sensorId, const char *sensorName);
 	int getSensorTableId(int sensorId);
+	void getSensorsIdByTableId(const set<int> &tableIds, set<int> *sensorsId);
 	string getSensorName(int sensorId, bool file = false);
 	string getSensorNameFile(int sensorId) {
 		return(getSensorName(sensorId, true));

@@ -587,6 +587,7 @@ string CallStructs::sSipPacketInfo::getJson() {
 CallBranch::CallBranch(Call *call, unsigned branch_id) {
 	this->call = call;
 	this->branch_id = branch_id;
+	has_merged_leg = false;
 	connect_time_us = 0;
 	_custom_headers_content_sync = 0;
 	invite_sdaddr_last_ts = 0;
@@ -599,6 +600,7 @@ CallBranch::CallBranch(Call *call, unsigned branch_id) {
 	dport.clear();
 	
 	invitecseq.null();
+	premature_response_cseq.null();
 	for(unsigned i = 0; i < (sizeof(byecseq) / sizeof(byecseq[0])); i++) {
 		byecseq[i].null();
 	}
@@ -899,6 +901,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	_rtp_remove_sync = 0;
 	rtpab[0] = NULL;
 	rtpab[1] = NULL;
+	media_legs_classified = false;
 	dtls = NULL;
 	dtls_exists = false;
 	dtls_queue_move = 0;
@@ -933,6 +936,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	push_register_to_registers_engine = 0;
 	push_register_to_registers_queue = 0;
 	push_call_to_storing_cdr_queue = 0;
+	pcaps_graphs_closed = false;
 	message = NULL;
 	message_info = NULL;
 	contenttype = NULL;
@@ -1039,6 +1043,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	_hash_add_lock = 0;
 	
 	prematureResponses = NULL;
+	prematureResponsesByFromTag = NULL;
 	
 	counter = ++counter_s;
 	
@@ -1604,7 +1609,8 @@ int Call::add_ip_port(CallBranch *c_branch,
 		      char *sessid, char *sdp_label, 
 		      list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
 		      char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch, 
-		      int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags, u_int16_t ptime) {
+		      int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags, u_int16_t ptime,
+		      bool skip_close_check_due_to_reverse_direction) {
 	/*
 	cout << "** add_ip_port "
 	     << addr.getString() << ":" << port.getString() << " -> "
@@ -1682,6 +1688,8 @@ int Call::add_ip_port(CallBranch *c_branch,
 	if(branch) {
 		c_branch->ip_port[c_branch->ipport_n].branch = branch;
 	}
+	c_branch->ip_port[c_branch->ipport_n].canceled = false;
+	c_branch->ip_port[c_branch->ipport_n].skip_close_check_due_to_reverse_direction = skip_close_check_due_to_reverse_direction;
 	nullIpPortInfoRtpStream(c_branch, c_branch->ipport_n);
 	
 	if(!opt_rtpmap_by_callerd || iscaller_is_set(iscaller)) {
@@ -1774,7 +1782,8 @@ void Call::add_ip_port_hash(CallBranch *c_branch,
 			    char *sessid, char *sdp_label, bool multipleSdpMedia, 
 			    list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
 			    char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch,
-			    int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags, u_int16_t ptime) {
+			    int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags, u_int16_t ptime,
+			    bool skip_close_check_due_to_reverse_direction) {
 	if(c_branch->end_call_rtp) {
 		return;
 	}
@@ -1813,7 +1822,8 @@ void Call::add_ip_port_hash(CallBranch *c_branch,
 			     sessid, sdp_label, 
 			     srtp_crypto_config_list, srtp_fingerprint,
 			     to, to_uri, domain_to, domain_to_uri, branch,
-			     iscaller, rtpmap, sdp_flags, ptime) != -1) {
+			     iscaller, rtpmap, sdp_flags, ptime,
+			     skip_close_check_due_to_reverse_direction) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, getTimeUS(ts), c_branch, iscaller, 0, sdp_flags, type_addr);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
 			((Calltable*)calltable)->hashAdd(addr, port.inc(), getTimeUS(ts), c_branch, iscaller, 1, sdp_flags, type_addr);
@@ -1894,10 +1904,12 @@ int Call::get_index_by_iscaller(CallBranch *c_branch, int iscaller) {
 
 bool Call::is_multiple_to_branch(CallBranch *c_branch) {
 	for(int i = 0; i < c_branch->ipport_n; i++) {
-		if(c_branch->sipcallerip[0] == c_branch->ip_port[i].sip_src_addr) {
+		if(c_branch->sipcallerip[0] == c_branch->ip_port[i].sip_src_addr &&
+		   !c_branch->ip_port[i].skip_close_check_due_to_reverse_direction) {
 			for(int j = 0; j < c_branch->ipport_n; j++) {
 				if(j != i &&
 				   c_branch->sipcallerip[0] == c_branch->ip_port[j].sip_src_addr &&
+				   !c_branch->ip_port[j].skip_close_check_due_to_reverse_direction &&
 				   c_branch->ip_port[i].to.length() && c_branch->ip_port[j].to.length() &&
 				   c_branch->ip_port[i].to != c_branch->ip_port[j].to &&
 				   c_branch->ip_port[i].branch.length() && c_branch->ip_port[j].branch.length() &&
@@ -1955,7 +1967,8 @@ bool Call::to_is_canceled(CallBranch *c_branch, const char *to) {
 bool Call::all_branches_is_canceled(CallBranch *c_branch, bool check_ip) {
 	map<cBranchInfo, bool> branches;
 	for(int i = 0; i < c_branch->ipport_n; i++) {
-		if(!c_branch->ip_port[i].to.empty() && !c_branch->ip_port[i].branch.empty()) {
+		if(!c_branch->ip_port[i].to.empty() && !c_branch->ip_port[i].branch.empty() &&
+		   !c_branch->ip_port[i].skip_close_check_due_to_reverse_direction) {
 			cBranchInfo bi;
 			if(check_ip) {
 				bi.sip_src_addr = c_branch->ip_port[i].sip_src_addr;
@@ -1984,7 +1997,8 @@ const char* Call::get_to_not_canceled(CallBranch *c_branch, bool uri) {
 	for(int i = 0; i < c_branch->ipport_n; i++) {
 		if(c_branch->sipcallerip[0] == c_branch->ip_port[i].sip_src_addr &&
 		   c_branch->ip_port[i].to.length() &&
-		   !c_branch->ip_port[i].canceled) {
+		   !c_branch->ip_port[i].canceled &&
+		   !c_branch->ip_port[i].skip_close_check_due_to_reverse_direction) {
 			return(uri && c_branch->ip_port[i].to_uri.length() ?
 				c_branch->ip_port[i].to_uri.c_str() :
 				c_branch->ip_port[i].to.c_str());
@@ -1997,7 +2011,8 @@ const char* Call::get_domain_to_not_canceled(CallBranch *c_branch, bool uri) {
 	for(int i = 0; i < c_branch->ipport_n; i++) {
 		if(c_branch->sipcallerip[0] == c_branch->ip_port[i].sip_src_addr &&
 		   c_branch->ip_port[i].domain_to.length() &&
-		   !c_branch->ip_port[i].canceled) {
+		   !c_branch->ip_port[i].canceled &&
+		   !c_branch->ip_port[i].skip_close_check_due_to_reverse_direction) {
 			return(uri && c_branch->ip_port[i].domain_to_uri.length() ?
 				c_branch->ip_port[i].domain_to_uri.c_str() :
 				c_branch->ip_port[i].domain_to.c_str());
@@ -6836,7 +6851,7 @@ void Call::selectRtpAB() {
 	if(!rtp_size()) {
 		return;
 	}
-	
+	classifyMediaLegs();
 	if(sverb.rtp_streams) {
 		cout << "call " << call_id << endl;
 		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
@@ -6930,6 +6945,9 @@ void Call::selectRtpAB() {
 		}
 	}
 	
+	if(!rtpab_ok && opt_rtpip_find_endpoints) {
+		selectRtpAB_by_legs(&rtpab_ok);
+	}
 	if(!rtpab_ok) {
 		if(opt_rtpip_find_endpoints) {
 			for(int i = 0; i < 2; i++) {
@@ -7096,8 +7114,414 @@ void Call::selectRtpAB() {
 	}
 }
 
+void Call::selectRtpAB_by_legs(bool *rtpab_ok) {
+	CallBranch *c_branch = branch_main();
+	classifyMediaLegs();
+	unsigned legs_count = media_legs.size();
+	if(!legs_count) {
+		return;
+	}
+	vector<RTP*> best_caller(legs_count, (RTP*)NULL);
+	vector<RTP*> best_called(legs_count, (RTP*)NULL);
+	for(int i = 0; i < rtp_size(); i++) {
+		RTP *rtp_i = rtp_stream_by_index(i);
+		if(!rtp_i->allowed_for_ab()) {
+			continue;
+		}
+		int leg = rtp_i->leg_index;
+		if(leg < 0 || leg >= (int)legs_count) {
+			continue;
+		}
+		RTP **best = rtp_i->iscaller ? &best_caller[leg] : &best_called[leg];
+		if(!*best || selectRtpAB_better_candidate(rtp_i, *best)) {
+			*best = rtp_i;
+		}
+	}
+	if(opt_rtpip_find_endpoints == 2) {
+		int sel = -1;
+		bool sel_has_sipcaller = false;
+		u_int64_t sel_received = 0;
+		for(unsigned l = 0; l < legs_count; l++) {
+			if(!best_caller[l] || !best_called[l]) {
+				continue;
+			}
+			bool has_sipcaller = media_legs[l].sip_addr_a == c_branch->saddr ||
+					     media_legs[l].sip_addr_b == c_branch->saddr;
+			u_int64_t received = (u_int64_t)best_caller[l]->received_() + best_called[l]->received_();
+			if(sel < 0 ||
+			   (has_sipcaller && !sel_has_sipcaller) ||
+			   (has_sipcaller == sel_has_sipcaller && received > sel_received)) {
+				sel = l;
+				sel_has_sipcaller = has_sipcaller;
+				sel_received = received;
+			}
+		}
+		if(sel >= 0) {
+			rtpab[0] = best_caller[sel];
+			rtpab[1] = best_called[sel];
+			*rtpab_ok = true;
+		}
+	} else {
+		RTP *a_cand = NULL;
+		RTP *b_cand = NULL;
+		for(unsigned l = 0; l < legs_count; l++) {
+			if(best_caller[l] &&
+			   (media_legs[l].sip_addr_a == c_branch->saddr ||
+			    media_legs[l].sip_addr_b == c_branch->saddr)) {
+				a_cand = best_caller[l];
+				break;
+			}
+		}
+		if(!a_cand) {
+			for(unsigned l = 0; l < legs_count; l++) {
+				if(best_caller[l]) {
+					a_cand = best_caller[l];
+					break;
+				}
+			}
+		}
+		for(unsigned l = 0; l < legs_count; l++) {
+			if(!best_called[l]) {
+				continue;
+			}
+			bool has_saddr = media_legs[l].sip_addr_a == c_branch->saddr ||
+					 media_legs[l].sip_addr_b == c_branch->saddr;
+			bool has_daddr = media_legs[l].sip_addr_a == c_branch->daddr ||
+					 media_legs[l].sip_addr_b == c_branch->daddr;
+			if(has_daddr && !has_saddr) {
+				b_cand = best_called[l];
+			}
+		}
+		if(!b_cand) {
+			for(unsigned l = 0; l < legs_count; l++) {
+				if(best_called[l] &&
+				   media_legs[l].sip_addr_a != c_branch->saddr &&
+				   media_legs[l].sip_addr_b != c_branch->saddr) {
+					b_cand = best_called[l];
+				}
+			}
+		}
+		if(!b_cand) {
+			for(unsigned l = 0; l < legs_count; l++) {
+				if(best_called[l]) {
+					b_cand = best_called[l];
+				}
+			}
+		}
+		if(a_cand && b_cand) {
+			rtpab[0] = a_cand;
+			rtpab[1] = b_cand;
+			*rtpab_ok = true;
+		}
+	}
+	if(*rtpab_ok && (sverb.process_rtp || sverb.read_rtp || sverb.rtp_streams)) {
+		cout << "RTP - select by legs (" << (opt_rtpip_find_endpoints == 2 ? "leg" : "endpoints") << " mode)" << endl;
+	}
+}
+
+bool Call::selectRtpAB_better_candidate(RTP *cand, RTP *best) {
+	if(cand->ok_other_ip_side_by_sip_() != best->ok_other_ip_side_by_sip_()) {
+		return(cand->ok_other_ip_side_by_sip_());
+	}
+	if((cand->first_codec_() >= 0) != (best->first_codec_() >= 0)) {
+		return(cand->first_codec_() >= 0);
+	}
+	return(cand->received_() > best->received_());
+}
+
+void Call::classifyMediaLegs() {
+	if(media_legs_classified) {
+		return;
+	}
+	media_legs_classified = true;
+	media_legs.clear();
+	vector<sMediaLegGroup> groups;
+	for(int i = 0; i < rtp_size(); i++) {
+		RTP *rtp_i = rtp_stream_by_index(i);
+		rtp_i->leg_index = -1;
+		u_int16_t p_lo = MIN(rtp_i->sport.getPort(), rtp_i->dport.getPort());
+		u_int16_t p_hi = MAX(rtp_i->sport.getPort(), rtp_i->dport.getPort());
+		int g = -1;
+		for(unsigned k = 0; k < groups.size(); k++) {
+			u_int16_t g_lo = MIN(groups[k].port_a.getPort(), groups[k].port_b.getPort());
+			u_int16_t g_hi = MAX(groups[k].port_a.getPort(), groups[k].port_b.getPort());
+			if(g_lo == p_lo && g_hi == p_hi) {
+				g = k;
+				break;
+			}
+		}
+		if(g < 0) {
+			sMediaLegGroup new_group;
+			new_group.port_a = rtp_i->sport;
+			new_group.port_b = rtp_i->dport;
+			groups.push_back(new_group);
+			g = groups.size() - 1;
+		}
+		sMediaLegGroup *gr = &groups[g];
+		if(gr->port_a.getPort() != gr->port_b.getPort()) {
+			if(rtp_i->sport == gr->port_a) {
+				gr->addAddr(true, rtp_i->saddr);
+				gr->addAddr(false, rtp_i->daddr);
+			} else {
+				gr->addAddr(false, rtp_i->saddr);
+				gr->addAddr(true, rtp_i->daddr);
+			}
+		} else {
+			if(gr->addrContains(false, rtp_i->saddr)) {
+				gr->addAddr(false, rtp_i->saddr);
+				gr->addAddr(true, rtp_i->daddr);
+			} else {
+				gr->addAddr(true, rtp_i->saddr);
+				gr->addAddr(false, rtp_i->daddr);
+			}
+		}
+		gr->streams.push_back(i);
+	}
+	int legs_count = 0;
+	for(unsigned k = 0; k < groups.size(); k++) {
+		if(groups[k].final_leg >= 0) {
+			continue;
+		}
+		groups[k].final_leg = legs_count;
+		for(unsigned m = k + 1; m < groups.size(); m++) {
+			if(groups[m].final_leg >= 0) {
+				continue;
+			}
+			if((groups[k].addrsOverlap(true, &groups[m], true) &&
+			    groups[k].addrsOverlap(false, &groups[m], false)) ||
+			   (groups[k].addrsOverlap(true, &groups[m], false) &&
+			    groups[k].addrsOverlap(false, &groups[m], true))) {
+				groups[m].final_leg = legs_count;
+			}
+		}
+		++legs_count;
+	}
+	media_legs.resize(legs_count);
+	for(unsigned k = 0; k < groups.size(); k++) {
+		sMediaLeg *ml = &media_legs[groups[k].final_leg];
+		if(!ml->addr_a.size() && !ml->addr_b.size()) {
+			ml->port_a = groups[k].port_a;
+			ml->port_b = groups[k].port_b;
+		}
+		for(unsigned i = 0; i < groups[k].addr_a.size(); i++) {
+			ml->addAddr(true, groups[k].addr_a[i]);
+		}
+		for(unsigned i = 0; i < groups[k].addr_b.size(); i++) {
+			ml->addAddr(false, groups[k].addr_b[i]);
+		}
+		for(unsigned i = 0; i < groups[k].streams.size(); i++) {
+			rtp_stream_by_index(groups[k].streams[i])->leg_index = groups[k].final_leg;
+		}
+	}
+	vector<vector<sMediaLegViewKey> > leg_views;
+	leg_views.resize(media_legs.size());
+	for(int i = 0; i < rtp_size(); i++) {
+		RTP *rtp_i = rtp_stream_by_index(i);
+		rtp_i->leg_view_index = -1;
+		if(rtp_i->leg_index < 0) {
+			continue;
+		}
+		sMediaLegViewKey view;
+		if(rtp_i->saddr < rtp_i->daddr ||
+		   (rtp_i->saddr == rtp_i->daddr && rtp_i->sport.getPort() < rtp_i->dport.getPort())) {
+			view.addr_1 = rtp_i->saddr;
+			view.port_1 = rtp_i->sport;
+			view.addr_2 = rtp_i->daddr;
+			view.port_2 = rtp_i->dport;
+		} else {
+			view.addr_1 = rtp_i->daddr;
+			view.port_1 = rtp_i->dport;
+			view.addr_2 = rtp_i->saddr;
+			view.port_2 = rtp_i->sport;
+		}
+		vector<sMediaLegViewKey> *views = &leg_views[rtp_i->leg_index];
+		int v = -1;
+		for(unsigned k = 0; k < views->size(); k++) {
+			if((*views)[k].addr_1 == view.addr_1 && (*views)[k].port_1 == view.port_1 &&
+			   (*views)[k].addr_2 == view.addr_2 && (*views)[k].port_2 == view.port_2) {
+				v = k;
+				break;
+			}
+		}
+		if(v < 0) {
+			v = views->size();
+			views->push_back(view);
+		}
+		rtp_i->leg_view_index = v;
+	}
+	CallBranch *c_branch = branch_main();
+	for(int i = 0; i < c_branch->ipport_n; i++) {
+		c_branch->ip_port[i].leg_index = -1;
+		for(int pass = 0; pass < 2 && c_branch->ip_port[i].leg_index < 0; pass++) {
+			int leg = -1;
+			bool side_a = false;
+			int count = 0;
+			vector<int> seen_legs;
+			for(unsigned k = 0; k < groups.size(); k++) {
+				bool match_a = groups[k].port_a == c_branch->ip_port[i].port &&
+					       (pass == 1 || groups[k].addrContains(true, c_branch->ip_port[i].addr));
+				bool match_b = groups[k].port_b == c_branch->ip_port[i].port &&
+					       (pass == 1 || groups[k].addrContains(false, c_branch->ip_port[i].addr));
+				if(match_a || match_b) {
+					bool seen = false;
+					for(unsigned s = 0; s < seen_legs.size(); s++) {
+						if(seen_legs[s] == groups[k].final_leg) {
+							seen = true;
+							break;
+						}
+					}
+					if(!seen) {
+						seen_legs.push_back(groups[k].final_leg);
+						leg = groups[k].final_leg;
+						side_a = match_a;
+						++count;
+					}
+				}
+			}
+			if(count == 1) {
+				c_branch->ip_port[i].leg_index = LIMIT_TINYINT_SIGNED(leg);
+				if(side_a) {
+					if(!media_legs[leg].sip_addr_a.isSet()) {
+						media_legs[leg].sip_addr_a = c_branch->ip_port[i].sip_src_addr;
+					}
+				} else {
+					if(!media_legs[leg].sip_addr_b.isSet()) {
+						media_legs[leg].sip_addr_b = c_branch->ip_port[i].sip_src_addr;
+					}
+				}
+			}
+		}
+	}
+	if(sverb.rtp_streams) {
+		for(unsigned l = 0; l < media_legs.size(); l++) {
+			cout << "media leg " << l << " : port " << media_legs[l].port_a.getString() << " <-> " << media_legs[l].port_b.getString() << " addr";
+			for(unsigned i = 0; i < media_legs[l].addr_a.size(); i++) {
+				cout << (i ? "," : " ") << media_legs[l].addr_a[i].getString();
+			}
+			cout << " <->";
+			for(unsigned i = 0; i < media_legs[l].addr_b.size(); i++) {
+				cout << (i ? "," : " ") << media_legs[l].addr_b[i].getString();
+			}
+			cout << " sip " << media_legs[l].sip_addr_a.getString() << " <-> " << media_legs[l].sip_addr_b.getString() << endl;
+		}
+	}
+}
+
 volatile u_int64_t counter_calls_save_1;
 volatile u_int64_t counter_calls_save_2;
+
+int Call::rtp_stream_leg_index(RTP *rtp_i) {
+	classifyMediaLegs();
+	return(rtp_i->leg_index);
+}
+
+#if not EXPERIMENTAL_LITE_RTP_MOD
+void Call::prepareDbRow_cdr_rtp_ext_stats(SqlDb_row &rtps, RTP *rtp_i) {
+	if(existsColumns.cdr_rtp_leg) {
+		int leg = rtp_stream_leg_index(rtp_i);
+		rtps.add(leg >= 0 ? LIMIT_TINYINT_UNSIGNED(leg) : 0, "leg", leg < 0);
+	}
+	if(existsColumns.cdr_rtp_leg_view) {
+		rtp_stream_leg_index(rtp_i);
+		rtps.add(rtp_i->leg_view_index >= 0 ? LIMIT_TINYINT_UNSIGNED(rtp_i->leg_view_index) : 0, "leg_view", rtp_i->leg_view_index < 0);
+	}
+	if(existsColumns.cdr_rtp_ext_jitter) {
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED((int)ceil(rtp_i->stats.avgjitter * 10)), "avgjitter_mult10");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->stats.reordered), "reordered");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED((int)round((double)rtp_i->lost_() /
+							(rtp_i->received_() + 2 + rtp_i->lost_()) * 100 * 1000)), "packet_loss_perc_mult1000");
+		unsigned delay_sum = rtp_i->stats.d50 * 60 +
+				     rtp_i->stats.d70 * 80 +
+				     rtp_i->stats.d90 * 105 +
+				     rtp_i->stats.d120 * 135 +
+				     rtp_i->stats.d150 * 175 +
+				     rtp_i->stats.d200 * 250 +
+				     rtp_i->stats.d300 * 300;
+		unsigned delay_cnt = rtp_i->stats.d50 +
+				     rtp_i->stats.d70 +
+				     rtp_i->stats.d90 +
+				     rtp_i->stats.d120 +
+				     rtp_i->stats.d150 +
+				     rtp_i->stats.d200 +
+				     rtp_i->stats.d300;
+		unsigned delay_avg_mult100 = delay_cnt != 0 ? (unsigned)round((double)delay_sum / delay_cnt * 100) : 0;
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(delay_sum), "delay_sum");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(delay_avg_mult100), "delay_avg_mult100");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(delay_cnt), "delay_cnt");
+		if(rtp_i->last_packet_time_us) {
+			rtps.add_duration((int64_t)((typeIs(MGCP) ? last_mgcp_connect_packet_time_us : last_signal_packet_time_us) - rtp_i->last_packet_time_us),
+					  "last_rtp_from_end", existsColumns.cdr_rtp_ext_last_rtp_from_end_ms,
+					  false, existsColumns.cdr_rtp_ext_last_rtp_from_end_ms ? 999999 : 32767);
+		} else {
+			rtps.add(0, "last_rtp_from_end", true);
+		}
+	}
+	if(existsColumns.cdr_rtp_ext_sl_d) {
+		for(int j = 1; j < 11; j++) {
+			char str_j[3];
+			snprintf(str_j, sizeof(str_j), "%d", j);
+			rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->stats.slost[j]), string("sl") + str_j);
+		}
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->stats.d50), "d50");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->stats.d70), "d70");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->stats.d90), "d90");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->stats.d120), "d120");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->stats.d150), "d150");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->stats.d200), "d200");
+		rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->stats.d300), "d300");
+	}
+	if(existsColumns.cdr_rtp_ext_mos) {
+		bool mos_f1_ok = rtp_i->mosf1_avg > 0;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_f1_ok ? (int)rtp_i->mosf1_avg : 0), "mos_f1_mult10", !mos_f1_ok);
+		bool mos_f1_min_ok = rtp_i->mosf1_min > 0 && rtp_i->mosf1_min != (uint8_t)-1;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_f1_min_ok ? rtp_i->mosf1_min : 0), "mos_f1_min_mult10", !mos_f1_min_ok);
+		bool mos_f2_ok = rtp_i->mosf2_avg > 0;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_f2_ok ? (int)round(rtp_i->mosf2_avg) : 0), "mos_f2_mult10", !mos_f2_ok);
+		bool mos_f2_min_ok = rtp_i->mosf2_min > 0 && rtp_i->mosf2_min != (uint8_t)-1;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_f2_min_ok ? rtp_i->mosf2_min : 0), "mos_f2_min_mult10", !mos_f2_min_ok);
+		bool mos_adapt_ok = rtp_i->mosAD_avg > 0;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_adapt_ok ? (int)round(rtp_i->mosAD_avg) : 0), "mos_adapt_mult10", !mos_adapt_ok);
+		bool mos_adapt_min_ok = rtp_i->mosAD_min > 0 && rtp_i->mosAD_min != (uint8_t)-1;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_adapt_min_ok ? rtp_i->mosAD_min : 0), "mos_adapt_min_mult10", !mos_adapt_min_ok);
+		bool mos_silence_valid = rtp_i->mosSilence_min != (uint8_t)-1;
+		int mos_silence_mult10 = mos_silence_valid ? (int)round(rtp_i->mosSilence_avg) : 0;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_silence_mult10 > 0 ? mos_silence_mult10 : 0), "mos_silence_mult10", !(mos_silence_valid && mos_silence_mult10 > 0));
+		bool mos_silence_min_ok = mos_silence_valid && rtp_i->mosSilence_min > 0;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_silence_min_ok ? rtp_i->mosSilence_min : 0), "mos_silence_min_mult10", !mos_silence_min_ok);
+		bool mos_xr_valid = rtp_i->rtcp_xr.counter_mos > 0;
+		int mos_xr_mult10 = mos_xr_valid ? (int)round(rtp_i->rtcp_xr.avgmos) : 0;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_xr_mult10 > 0 ? mos_xr_mult10 : 0), "mos_xr_mult10", !(mos_xr_valid && mos_xr_mult10 > 0));
+		bool mos_xr_min_ok = mos_xr_valid && rtp_i->rtcp_xr.minmos > 0;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_xr_min_ok ? rtp_i->rtcp_xr.minmos : 0), "mos_xr_min_mult10", !mos_xr_min_ok);
+	}
+	if(existsColumns.cdr_rtp_ext_rtcp) {
+		bool rtcp_ok = rtp_i->rtcp.counter != 0;
+		rtps.add(rtcp_ok ? LIMIT_MEDIUMINT_SIGNED(rtp_i->rtcp.loss) : 0, "rtcp_loss", !rtcp_ok);
+		rtps.add(rtcp_ok ? LIMIT_SMALLINT_UNSIGNED(rtp_i->rtcp.maxfr) : 0, "rtcp_maxfr", !rtcp_ok);
+		rtps.add(rtcp_ok ? LIMIT_SMALLINT_UNSIGNED((int)round(rtp_i->rtcp.avgfr * 10)) : 0, "rtcp_avgfr_mult10", !rtcp_ok);
+		int rtcp_maxjitter = 0;
+		int rtcp_avgjitter_mult10 = 0;
+		if(rtcp_ok) {
+			rtcp_maxjitter = (int)round((double)rtp_i->rtcp.maxjitter / get_ticks_bycodec(rtp_i->first_codec));
+			rtcp_avgjitter_mult10 = (int)round(rtp_i->rtcp.avgjitter / get_ticks_bycodec(rtp_i->first_codec) * 10);
+			if(rtcp_maxjitter * 10 < rtcp_avgjitter_mult10) {
+				++rtcp_maxjitter;
+			}
+		}
+		rtps.add(LIMIT_SMALLINT_UNSIGNED(rtcp_maxjitter), "rtcp_maxjitter", !rtcp_ok);
+		rtps.add(LIMIT_SMALLINT_UNSIGNED(rtcp_avgjitter_mult10), "rtcp_avgjitter_mult10", !rtcp_ok);
+		bool rtd_rfc_ok = rtcp_ok && rtp_i->rtcp.rtd_rfc_count > 0;
+		bool rtd_ws_ok = rtcp_ok && !rtd_rfc_ok && rtp_i->rtcp.rtd_ws_count > 0;
+		rtps.add(rtd_rfc_ok ? LIMIT_SMALLINT_UNSIGNED(rtp_i->rtcp.rtd_rfc_max * 10) :
+			 rtd_ws_ok ? LIMIT_SMALLINT_UNSIGNED(rtp_i->rtcp.rtd_ws_max * 10) : 0,
+			 "rtcp_maxrtd_mult10", !rtd_rfc_ok && !rtd_ws_ok);
+		rtps.add(rtd_rfc_ok ? LIMIT_SMALLINT_UNSIGNED(rtp_i->rtcp.rtd_rfc_sum * 10 / rtp_i->rtcp.rtd_rfc_count) :
+			 rtd_ws_ok ? LIMIT_SMALLINT_UNSIGNED(rtp_i->rtcp.rtd_ws_sum * 10 / rtp_i->rtcp.rtd_ws_count) : 0,
+			 "rtcp_avgrtd_mult10", !rtd_rfc_ok && !rtd_ws_ok);
+		rtps.add(rtcp_ok ? rtp_i->rtcp.fraclost_pkt_counter : 0, "rtcp_fraclost_pktcount", !rtcp_ok);
+	}
+}
+#endif
 
 /* TODO: implement failover -> write INSERT into file */
 int
@@ -7458,6 +7882,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	if(opt_save_sdp_ipport) {
+		classifyMediaLegs();
 		bool save_iscaller = false;
 		bool save_iscalled = false;
 		for(int i = c_branch->ipport_n - 1; i >= 0; i--) {
@@ -7469,6 +7894,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				sdp_s_data.ip_port = vmIPport(c_branch->ip_port[i].addr, c_branch->ip_port[i].port);
 				sdp_s_data.is_caller = c_branch->ip_port[i].iscaller;
 				sdp_s_data.ptime = c_branch->ip_port[i].ptime;
+				sdp_s_data.leg_index = c_branch->ip_port[i].leg_index;
 				if(std::find(sdp_rows_list.begin(), sdp_rows_list.end(), sdp_s_data) == sdp_rows_list.end()) {
 					sdp_rows_list.push_back(sdp_s_data);
 					if(opt_save_sdp_ipport == 1) {
@@ -8911,6 +9337,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					rtps.add(rtp_i->ttl_count > 0 ? rtp_i->ttl_max : 0, "ttl_max", rtp_i->ttl_count == 0);
 					rtps.add(rtp_i->ttl_count > 0 ? (int)round((double)rtp_i->ttl_sum / rtp_i->ttl_count * 10) : 0, "ttl_avg_mult10", rtp_i->ttl_count == 0);
 				}
+				prepareDbRow_cdr_rtp_ext_stats(rtps, rtp_i);
 				#endif
 				if(existsColumns.cdr_rtp_calldate) {
 					rtps.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_rtp_calldate_ms);
@@ -9067,6 +9494,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					sdp.add(iter->is_caller, "is_caller");
 					if(existsColumns.cdr_sdp_ptime) {
 						sdp.add(LIMIT_TINYINT_UNSIGNED(iter->ptime), "ptime", !iter->ptime);
+					}
+					if(existsColumns.cdr_sdp_leg_index) {
+						sdp.add(iter->leg_index, "leg_index", iter->leg_index < 0);
 					}
 					if(existsColumns.cdr_sdp_calldate) {
 						sdp.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_sdp_calldate_ms);
@@ -9647,6 +10077,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp_i->ttl_count > 0 ? rtp_i->ttl_max : 0, "ttl_max", rtp_i->ttl_count == 0);
 				rtps.add(rtp_i->ttl_count > 0 ? (int)round((double)rtp_i->ttl_sum / rtp_i->ttl_count * 10) : 0, "ttl_avg_mult10", rtp_i->ttl_count == 0);
 			}
+			prepareDbRow_cdr_rtp_ext_stats(rtps, rtp_i);
 			#endif
 			if(existsColumns.cdr_rtp_calldate) {
 				rtps.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_rtp_calldate_ms);
@@ -9701,6 +10132,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					sdp.add(iter->is_caller, "is_caller");
 					if(existsColumns.cdr_sdp_ptime) {
 						sdp.add(LIMIT_TINYINT_UNSIGNED(iter->ptime), "ptime", !iter->ptime);
+					}
+					if(existsColumns.cdr_sdp_leg_index) {
+						sdp.add(iter->leg_index, "leg_index", iter->leg_index < 0);
 					}
 					if(existsColumns.cdr_sdp_calldate) {
 						sdp.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_sdp_calldate_ms);
@@ -11317,12 +11751,19 @@ void Call::prepareRtcpXrData(sRtcpXrStreams *streams, bool checkOK) {
 }
 
 string Call::get_a_ua(CallBranch *c_branch) {
+	// REGISTER does not fill ua_map - UA is stored directly into a_ua/b_ua (init_call_branch, process_packet_sip_register)
+	if(typeIs(REGISTER)) {
+		return(c_branch->a_ua);
+	}
 	vmPort port;
 	vmIP ip = getSipcallerip_corrected(c_branch, &port);
 	return(c_branch->get_ua(ip, port, false));
 }
 
 string Call::get_b_ua(CallBranch *c_branch) {
+	if(typeIs(REGISTER)) {
+		return(c_branch->b_ua);
+	}
 	vmPort port;
 	vmIP ip = getSipcalledip_corrected(c_branch, &port);
 	return(c_branch->get_ua(ip, port, true));
@@ -12128,7 +12569,6 @@ Calltable::Calltable(SqlDb *sqlDb) {
 			chc_threads[i].thread = 0;
 			memset(chc_threads[i].pstat, 0, sizeof(chc_threads[i].pstat));
 			chc_threads[i].init = false;
-			chc_threads[i].calls = NULL;
 			chc_threads[i].cache = NULL;
 		}
 		chc_threads_count = 0;
@@ -12136,6 +12576,10 @@ Calltable::Calltable(SqlDb *sqlDb) {
 		chc_threads_count_mod_request = 0;
 		chc_threads_count_sync = 0;
 		chc_threads_count_last_change = 0;
+		chc_batch_pos = 0;
+		chc_store_thread = 0;
+		chc_store_thread_tid = 0;
+		memset(chc_store_thread_pstat, 0, sizeof(chc_store_thread_pstat));
 	}
 	
 	active_calls_cache = NULL;
@@ -12836,6 +13280,8 @@ void Calltable::processCallsInChartsCache_start() {
 	chc_threads_count = 1;
 	vm_pthread_create("charts cache - main thread",
 			  &chc_threads[0].thread, NULL, _processCallsInChartsCache_thread, (void*)(long)0, __FILE__, __LINE__);
+	vm_pthread_create("charts cache - store thread",
+			  &chc_store_thread, NULL, _processCallsInChartsCache_store_thread, NULL, __FILE__, __LINE__);
 }
 
 bool Calltable::chartsCacheThreadIsRunning() {
@@ -12857,6 +13303,10 @@ void Calltable::processCallsInChartsCache_stop() {
 		}
 	}
 	__SYNC_UNLOCK(chc_threads_count_sync);
+	if(chc_store_thread) {
+		pthread_join(chc_store_thread, NULL);
+		chc_store_thread = 0;
+	}
 }
 
 u_int32_t counter_charts_cache;
@@ -12868,7 +13318,6 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 		chc_threads[threadIndex].cache = new FILE_LINE(0) cFiltersCache(2000, 10000);
 	}
 	if(threadIndex == 0) {
-		chc_threads[0].calls = new FILE_LINE(0) list<sChartsCallData>;
 		while(1) {
 			__SYNC_LOCK(chc_threads_count_sync);
 			chc_threads_count_mod = chc_threads_count_mod_request;
@@ -12880,7 +13329,6 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 			if(chc_threads_count_mod > 0) {
 				syslog(LOG_NOTICE, "charts cache - creating next thread %i", chc_threads_count);
 				if(!chc_threads[chc_threads_count].init) {
-					chc_threads[chc_threads_count].calls = new FILE_LINE(0) list<sChartsCallData>;
 					for(int i = 0; i < 2; i++) {
 						sem_init(&chc_threads[chc_threads_count].sem[i], 0, 0);
 					}
@@ -12898,13 +13346,9 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 			calltable->lock_calls_charts_cache_queue();
 			size_t chc_count = 0;
 			size_t chc_size = calltable->calls_charts_cache_queue.size();
+			chc_batch.clear();
 			while(chc_size > 0) {
-				sChartsCallData callData = calltable->calls_charts_cache_queue.front();
-				if(chc_threads_count > 1) {
-					chc_threads[chc_count % chc_threads_count].calls->push_back(callData);
-				} else {
-					chc_threads[0].calls->push_back(callData);
-				}
+				chc_batch.push_back(calltable->calls_charts_cache_queue.front());
 				++chc_count;
 				calltable->calls_charts_cache_queue.pop_front();
 				--chc_size;
@@ -12915,64 +13359,20 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 			calltable->unlock_calls_charts_cache_queue();
 			if(chc_count) {
 				u_int64_t _start = getTimeUS();
+				chc_batch_pos = 0;
 				if(chc_threads_count > 1) {
 					for(int i = 1; i < chc_threads_count; i++) {
 						sem_post(&chc_threads[i].sem[0]);
 					}
 				}
-				list<Call*> calls_for_delete;
-				for(list<sChartsCallData>::iterator iter_call_data = chc_threads[threadIndex].calls->begin(); iter_call_data != chc_threads[threadIndex].calls->end(); iter_call_data++) {
-					switch(iter_call_data->type) {
-					case sChartsCallData::_call:
-						{
-						Call *call = (Call*)iter_call_data->data;
-						if(!call->isEmptyCdrRow()) {
-							sChartsCacheCallData chartsCacheCallData;
-							chartsCacheAndCdrStatAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
-						}
-						calls_for_delete.push_back(call);
-						}
-						break;
-					case sChartsCallData::_tables_content:
-						{
-						cDbTablesContent *tablesContent = (cDbTablesContent*)iter_call_data->data;
-						sChartsCacheCallData chartsCacheCallData;
-						chartsCacheAndCdrStatAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
-						delete tablesContent;
-						}
-						break;
-					case sChartsCallData::_csv:
-						{
-						string *csv = (string*)iter_call_data->data;
-						cDbTablesContent *tablesContent = new FILE_LINE(0) cDbTablesContent;
-						vector<string> query_vect = split(csv->c_str(), "\n", false, false);
-						for(unsigned i = 0; i < query_vect.size(); i++) {
-							tablesContent->addCsvRow(query_vect[i].c_str());
-						}
-						sChartsCallData call_data(sChartsCallData::_tables_content, tablesContent);
-						sChartsCacheCallData chartsCacheCallData;
-						chartsCacheAndCdrStatAddCall(&call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
-						delete tablesContent;
-						delete csv;
-						}
-						break;
-					}
-				}
-				if(calls_for_delete.size()) {
-					calltable->lock_calls_deletequeue();
-					for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
-						calltable->calls_deletequeue.push_back(*iter_call);
-					}
-					calltable->unlock_calls_deletequeue();
-				}
-				chc_threads[threadIndex].calls->clear();
+				processCallsInChartsCache_batch(threadIndex);
 				if(chc_threads_count > 1) {
 					for(int i = 1; i < chc_threads_count; i++) {
 						sem_wait(&chc_threads[i].sem[1]);
 					}
 				}
 				u_int64_t _end = getTimeUS();
-				counter_charts_cache += chc_count;
+				counter_charts_cache += chc_count * max(sverb.charts_cache_multiply, 1);
 				counter_charts_cache_delay_us += _end - _start;
 				if(chc_threads_count_mod < 0) {
 					__SYNC_DEC(chc_threads_count);
@@ -12980,9 +13380,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 				}
 			}
 			__SYNC_UNLOCK(chc_threads_count_sync);
-			chartsCacheAndCdrStatStore();
-			chartsCacheAndCdrStatCleanup();
-			chartsCacheProcessRequestAll();
+			chartsCacheReload();
 			if(chartsCacheGetAndResetFiltersRemoved()) {
 				for(int i = 0; i < opt_charts_cache_max_threads; i++) {
 					if(chc_threads[i].cache) {
@@ -12990,8 +13388,6 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 					}
 				}
 			}
-			chartsCacheReload();
-			chartsCacheInitIntervals();
 			if(!chc_size) {
 				USLEEP(100000);
 			}
@@ -13010,52 +13406,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 			if(terminating_charts_cache == 2) {
 				break;
 			}
-			list<Call*> calls_for_delete;
-			for(list<sChartsCallData>::iterator iter_call_data = chc_threads[threadIndex].calls->begin(); iter_call_data != chc_threads[threadIndex].calls->end(); iter_call_data++) {
-				switch(iter_call_data->type) {
-				case sChartsCallData::_call:
-					{
-					Call *call = (Call*)iter_call_data->data;
-					if(!call->isEmptyCdrRow()) {
-						sChartsCacheCallData chartsCacheCallData;
-						chartsCacheAndCdrStatAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
-					}
-					calls_for_delete.push_back(call);
-					}
-					break;
-				case sChartsCallData::_tables_content:
-					{
-					cDbTablesContent *tablesContent = (cDbTablesContent*)iter_call_data->data;
-					sChartsCacheCallData chartsCacheCallData;
-					chartsCacheAndCdrStatAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
-					delete tablesContent;
-					}
-					break;
-				case sChartsCallData::_csv:
-					{
-					string *csv = (string*)iter_call_data->data;
-					cDbTablesContent *tablesContent = new FILE_LINE(0) cDbTablesContent;
-					vector<string> query_vect = split(csv->c_str(), "\n", false, false);
-					for(unsigned i = 0; i < query_vect.size(); i++) {
-						tablesContent->addCsvRow(query_vect[i].c_str());
-					}
-					sChartsCallData call_data(sChartsCallData::_tables_content, tablesContent);
-					sChartsCacheCallData chartsCacheCallData;
-					chartsCacheAndCdrStatAddCall(&call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
-					delete tablesContent;
-					delete csv;
-					}
-					break;
-				}
-			}
-			if(calls_for_delete.size()) {
-				calltable->lock_calls_deletequeue();
-				for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
-					calltable->calls_deletequeue.push_back(*iter_call);
-				}
-				calltable->unlock_calls_deletequeue();
-			}
-			chc_threads[threadIndex].calls->clear();
+			processCallsInChartsCache_batch(threadIndex);
 			bool stop = false;
 			if(chc_threads_count_mod < 0 &&
 			   (threadIndex + 1) == chc_threads_count) {
@@ -13070,11 +13421,83 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 	}
 	chc_threads[threadIndex].tid = 0;
 	chc_threads[threadIndex].thread = 0;
-	delete chc_threads[threadIndex].calls;
+}
+
+void Calltable::processCallsInChartsCache_batch(int threadIndex) {
+	list<Call*> calls_for_delete;
+	u_int32_t batch_index;
+	while((batch_index = __sync_fetch_and_add(&chc_batch_pos, 1)) < chc_batch.size()) {
+		sChartsCallData *batch_item = &chc_batch[batch_index];
+		switch(batch_item->type) {
+		case sChartsCallData::_call:
+			{
+			Call *call = (Call*)batch_item->data;
+			if(!call->isEmptyCdrRow()) {
+				processCallsInChartsCache_add(batch_item, threadIndex);
+			}
+			calls_for_delete.push_back(call);
+			}
+			break;
+		case sChartsCallData::_tables_content:
+			{
+			cDbTablesContent *tablesContent = (cDbTablesContent*)batch_item->data;
+			processCallsInChartsCache_add(batch_item, threadIndex);
+			delete tablesContent;
+			}
+			break;
+		case sChartsCallData::_csv:
+			{
+			string *csv = (string*)batch_item->data;
+			cDbTablesContent *tablesContent = new FILE_LINE(0) cDbTablesContent;
+			vector<string> query_vect = split(csv->c_str(), "\n", false, false);
+			for(unsigned i = 0; i < query_vect.size(); i++) {
+				tablesContent->addCsvRow(query_vect[i].c_str());
+			}
+			sChartsCallData call_data(sChartsCallData::_tables_content, tablesContent);
+			processCallsInChartsCache_add(&call_data, threadIndex);
+			delete tablesContent;
+			delete csv;
+			}
+			break;
+		}
+	}
+	if(calls_for_delete.size()) {
+		calltable->lock_calls_deletequeue();
+		for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
+			calltable->calls_deletequeue.push_back(*iter_call);
+		}
+		calltable->unlock_calls_deletequeue();
+	}
+}
+
+void Calltable::processCallsInChartsCache_add(sChartsCallData *call_data, int threadIndex) {
+	int multiply = max(sverb.charts_cache_multiply, 1);
+	for(int i = 0; i < multiply; i++) {
+		sChartsCacheCallData chartsCacheCallData;
+		chartsCacheAndCdrStatAddCall(call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
+	}
 }
 
 void *Calltable::_processCallsInChartsCache_thread(void *_threadIndex) {
 	calltable->processCallsInChartsCache_thread((int)(long)_threadIndex);
+	return(NULL);
+}
+
+void Calltable::processCallsInChartsCache_store_thread() {
+	chc_store_thread_tid = get_unix_tid();
+	while(terminating_charts_cache < 2) {
+		chartsCacheAndCdrStatStore();
+		chartsCacheAndCdrStatCleanup();
+		chartsCacheProcessRequestAll();
+		chartsCacheReloadPrepare();
+		chartsCacheInitIntervals();
+		USLEEP(100000);
+	}
+	chc_store_thread_tid = 0;
+}
+
+void *Calltable::_processCallsInChartsCache_store_thread(void *) {
+	calltable->processCallsInChartsCache_store_thread();
 	return(NULL);
 }
 
@@ -13129,6 +13552,13 @@ string Calltable::processCallsInChartsCache_cpuUsagePerc(double *avg, int pstatD
 		*avg = cpu_count ? cpu_sum / cpu_count : 0;
 	}
 	return(cpuStr.str());
+}
+
+double Calltable::processCallsInChartsCache_store_thread_cpuUsagePerc(int pstatDataIndex) {
+	if(!useChartsCacheOrCdrStatProcessThreads()) {
+		return(-1);
+	}
+	return(get_cpu_usage_perc(chc_store_thread_tid, chc_store_thread_pstat[pstatDataIndex]));
 }
 
 void
@@ -15399,6 +15829,44 @@ void Call::processPrematureRegisterResponses(sCseq cseq) {
 		}
 	}
 }
+
+bool Call::addPrematureResponseByFromTag(packet_s_process *packetS, const char *from_tag) {
+	if(!prematureResponsesByFromTag) {
+		prematureResponsesByFromTag = new FILE_LINE(0) list<sPrematureResponseByFromTag>;
+	} else if(prematureResponsesByFromTag->size() >= 10) {
+		return(false);
+	}
+	sPrematureResponseByFromTag item;
+	item.from_tag = from_tag;
+	item.packet = packetS->clone();
+	item.packet->call = this;
+	prematureResponsesByFromTag->push_back(item);
+	return(true);
+}
+
+void Call::processPrematureResponsesByFromTag(bool batch_process, const char *from_tag) {
+	if(prematureResponsesByFromTag) {
+		extern void process_packet_sip_call(packet_s_process *packetS, bool batch_process);
+		list<sPrematureResponseByFromTag> items;
+		for(list<sPrematureResponseByFromTag>::iterator iter = prematureResponsesByFromTag->begin(); iter != prematureResponsesByFromTag->end(); ) {
+			if(iter->from_tag == from_tag) {
+				items.push_back(*iter);
+				iter = prematureResponsesByFromTag->erase(iter);
+			} else {
+				++iter;
+			}
+		}
+		if(prematureResponsesByFromTag->empty()) {
+			delete prematureResponsesByFromTag;
+			prematureResponsesByFromTag = NULL;
+		}
+		for(list<sPrematureResponseByFromTag>::iterator iter = items.begin(); iter != items.end(); iter++) {
+			process_packet_sip_call(iter->packet, batch_process);
+			PACKET_S_PROCESS_DESTROY(&iter->packet);
+		}
+	}
+}
+
 void Call::clearPrematureResponses() {
 	if(prematureResponses) {
 		for(list<sPrematureResponse>::iterator iter = prematureResponses->begin(); iter != prematureResponses->end(); iter++) {
@@ -15406,6 +15874,13 @@ void Call::clearPrematureResponses() {
 		}
 		delete prematureResponses;
 		prematureResponses = NULL;
+	}
+	if(prematureResponsesByFromTag) {
+		for(list<sPrematureResponseByFromTag>::iterator iter = prematureResponsesByFromTag->begin(); iter != prematureResponsesByFromTag->end(); iter++) {
+			PACKET_S_PROCESS_DESTROY(&iter->packet);
+		}
+		delete prematureResponsesByFromTag;
+		prematureResponsesByFromTag = NULL;
 	}
 }
 

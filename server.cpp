@@ -201,6 +201,9 @@ string sSnifferServerServices::listJsonServices() {
 }
 
 bool sSnifferServerServices::add_rchs_query(const char *query, bool checkMaxSize) {
+	if(checkMaxSize && rchs_query_queue.size() >= rchs_query_queue_max_size) {
+		return(false);
+	}
 	bool rslt;
 	string *query_string = new FILE_LINE(0) string(query);
 	lock_rchs();
@@ -233,14 +236,14 @@ bool sSnifferServerServices::add_rchs_query(string *query, bool checkMaxSize) {
 string *sSnifferServerServices::get_rchs_query() {
 	string *query_string = NULL;
 	if(rchs_query_queue.size()) {
-		lock();
+		lock_rchs();
 		if(rchs_query_queue.size()) {
 			query_string = rchs_query_queue.front();
 			if(query_string) {
 				rchs_query_queue.pop();
 			}
 		}
-		unlock();
+		unlock_rchs();
 	}
 	return(query_string);
 }
@@ -358,6 +361,7 @@ cSnifferServerConnection::cSnifferServerConnection(cSocket *socket, cSnifferServ
 	terminate = false;
 	orphan = false;
 	typeConnection = _tc_na;
+	pb_id_sensor = 0;
 	this->server = server;
 }
 
@@ -506,6 +510,7 @@ void cSnifferServerConnection::cp_gui_command(int32_t sensor_id, string command,
 			<< "command: " << command;
 		syslog(LOG_INFO, "%s", verbstr.str().c_str());
 	}
+	bool need_aes = !aes_key && !cManagerAes::notNeedAesForCommand((char*)command.c_str()) && cManagerAes::checkExistsAesKey();
 	cSnifferServerConnection *service_connection = snifferServerServices->getServiceConnection(sensor_id, NULL);
 	if(!service_connection) {
 		socket->write("missing sniffer service - connect sensor?");
@@ -520,7 +525,7 @@ void cSnifferServerConnection::cp_gui_command(int32_t sensor_id, string command,
 	}
 	sSnifferServerGuiTask task;
 	task.sensor_id = sensor_id;
-	if(!aes_key && !cManagerAes::notNeedAesForCommand((char*)command.c_str()) && cManagerAes::checkExistsAesKey()) {
+	if(need_aes) {
 		syslog(LOG_INFO, "Need AES for command %s", command.c_str());
 		task.command = "need_aes";
 	} else {
@@ -1519,6 +1524,7 @@ bool cSnifferServerConnection::rsaAesInit(bool writeRsltOK) {
 	}
 	if(typeConnection == _tc_packetbuffer_block) {
 		int sensorId = atoi(jsonTokenAesKeys.getValue("sensor_id").c_str());
+		pb_id_sensor = sensorId;
 		string sensorName = jsonTokenAesKeys.getValue("sensor_name");
 		if(sensorId > 0 && sensorName.length()) {
 			extern SensorsMap sensorsMap;

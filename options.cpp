@@ -854,7 +854,8 @@ void cSipMsgRelations::addSipMsg(cSipMsgItem *item, packet_s_process *packetS) {
 					       item->ip_src, item->ip_dst,
 					       const_cast<char*>(item->number_src.c_str()), const_cast<char*>(item->number_dst.c_str()),
 					       const_cast<char*>(item->domain_src.c_str()), const_cast<char*>(item->domain_dst.c_str()),
-					       &packetS->parseContents);
+					       &packetS->parseContents,
+					       packetS->sensor_id_());
 
 	}
 	relation->addSipMsg(item, packetS, this);

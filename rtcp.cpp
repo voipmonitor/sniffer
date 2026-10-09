@@ -1043,7 +1043,7 @@ void parseRtcpParams(string &rtcp_params_string) {
 	parseRtcpParams(rtcp_params_string, prepare_rtcp_data_params);
 }
 
-bool createRtcpPayloadFromJson(const char *json, SimpleBuffer *buffer) {
+bool createRtcpPayloadFromJson(const char *json, SimpleBuffer *buffer, bool calc_mos) {
 	if(!isJsonObject(json)) {
 		return(false);
 	}
@@ -1057,22 +1057,27 @@ bool createRtcpPayloadFromJson(const char *json, SimpleBuffer *buffer) {
 	header.packet_type = atoi(jsonData.getValue("type").c_str());
 	header.length = 0;
 	
-	JsonItem *jsonData_sender_info;
-	jsonData_sender_info = jsonData.getItem("sender_information");
-	if(!jsonData_sender_info) {
-		return(false);
+	// RR has no sender information, only the sender ssrc before the report blocks
+	JsonItem *jsonData_sender_info = NULL;
+	if(header.packet_type != RTCP_PACKETTYPE_RR) {
+		jsonData_sender_info = jsonData.getItem("sender_information");
+		if(!jsonData_sender_info) {
+			return(false);
+		}
 	}
 	
 	rtcp_sr_senderinfo sender_info;
 	sender_info.sender_ssrc = htonl(atoll(jsonData.getValue("ssrc").c_str()));
-	u_int32_t ntp_sec = atoll(jsonData_sender_info->getValue("ntp_timestamp_sec").c_str());
-	u_int32_t ntp_usec = atoll(jsonData_sender_info->getValue("ntp_timestamp_usec").c_str());
-	u_int32_t ntp_fract = (u_int32_t)((double)ntp_usec / 1e6 * ((1ul<<32)-1));
-	sender_info.timestamp_MSW = htonl(ntp_sec - NTP_TIMEDIFF1970TO2036SEC);
-	sender_info.timestamp_LSW = htonl(ntp_fract);
-	sender_info.timestamp_RTP = htonl(atoll(jsonData_sender_info->getValue("rtp_timestamp").c_str()));
-	sender_info.sender_pkt_cnt = htonl(atoll(jsonData_sender_info->getValue("packets").c_str()));
-	sender_info.sender_octet_cnt = htonl(atoll(jsonData_sender_info->getValue("octets").c_str()));
+	if(jsonData_sender_info) {
+		u_int32_t ntp_sec = atoll(jsonData_sender_info->getValue("ntp_timestamp_sec").c_str());
+		u_int32_t ntp_usec = atoll(jsonData_sender_info->getValue("ntp_timestamp_usec").c_str());
+		u_int32_t ntp_fract = (u_int32_t)((double)ntp_usec / 1e6 * ((1ul<<32)-1));
+		sender_info.timestamp_MSW = htonl(ntp_sec - NTP_TIMEDIFF1970TO2036SEC);
+		sender_info.timestamp_LSW = htonl(ntp_fract);
+		sender_info.timestamp_RTP = htonl(atoll(jsonData_sender_info->getValue("rtp_timestamp").c_str()));
+		sender_info.sender_pkt_cnt = htonl(atoll(jsonData_sender_info->getValue("packets").c_str()));
+		sender_info.sender_octet_cnt = htonl(atoll(jsonData_sender_info->getValue("octets").c_str()));
+	}
 	
 	JsonItem *jsonData_report_blocks;
 	jsonData_report_blocks = jsonData.getItem("report_blocks");
@@ -1084,11 +1089,13 @@ bool createRtcpPayloadFromJson(const char *json, SimpleBuffer *buffer) {
 		return(false);
 	}
 	
-	header.length = htons((sizeof(sender_info) + report_blocks_count * sizeof(rtcp_sr_reportblock)) / 4);
+	unsigned sender_info_size = jsonData_sender_info ? sizeof(sender_info) : sizeof(sender_info.sender_ssrc);
+	header.length = htons((sender_info_size + report_blocks_count * sizeof(rtcp_sr_reportblock)) / 4);
 	buffer->add(&header, sizeof(header));
-	buffer->add(&sender_info, sizeof(sender_info));
+	buffer->add(&sender_info, sender_info_size);
 	
 	u_int32_t xr_source_ssrc = 0;
+	u_int8_t xr_source_frac_lost = 0;
 	for(unsigned int i = 0; i < report_blocks_count; i++) {
 		JsonItem *jsonData_report_block = jsonData_report_blocks->getLocalItem(i);
 		rtcp_sr_reportblock report_block;
@@ -1106,10 +1113,15 @@ bool createRtcpPayloadFromJson(const char *json, SimpleBuffer *buffer) {
 		buffer->add(&report_block, sizeof(report_block));
 		if(!i) {
 			xr_source_ssrc = source_ssrc;
+			xr_source_frac_lost = report_block.frac_lost;
 		}
 	}
 
 	unsigned mos_lq = atoi(jsonData.getValue("mos_lq").c_str());
+	if(calc_mos && (!mos_lq || mos_lq >= 0x7F) && report_blocks_count) {
+		// estimate from the loss in the first report block, codec is not known here
+		mos_lq = (unsigned)round(calculate_mos_g711(xr_source_frac_lost / 256.0, 1, 2) * 10);
+	}
 	if(mos_lq > 0 && mos_lq < 0x7F) {
 		if(!xr_source_ssrc) {
 			xr_source_ssrc = atoll(jsonData.getValue("ssrc").c_str());

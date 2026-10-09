@@ -295,7 +295,9 @@ extern bool opt_ignore_rtp_after_cancel_confirmed;
 extern bool opt_ignore_rtp_after_auth_failed;
 extern bool opt_ignore_rtp_after_response;
 extern vector<int> opt_ignore_rtp_after_response_list;
+extern bool opt_ignore_rtp_before_connect;
 extern bool opt_detect_alone_bye;
+extern bool opt_enable_premature_response;
 extern bool opt_get_reason_from_bye_cancel;
 extern int hash_modify_queue_length_ms;
 extern bool opt_sipalg_detect;
@@ -3894,11 +3896,12 @@ inline unsigned int setCallFlags(unsigned long int flags, sNatAliases **nat_alia
 				 const char *caller, const char *called,
 				 const char *caller_domain, const char *called_domain,
 				 ParsePacket::ppContentsX *parseContents,
+				 int sensor_id,
 				 bool reconfigure) {
 	unsigned long int flags_old = flags;
 	string nat_aliases_str_old = "";
 	cFilters::applyReload();
-	IPfilter::add_call_flags(&flags, nat_aliases, ip_src, ip_dst, reconfigure);
+	IPfilter::add_call_flags(&flags, nat_aliases, ip_src, ip_dst, sensor_id, reconfigure);
 	if(sverb.dump_call_flags) {
 		if(flags != flags_old) {
 			cout << "set flags for ip " << ip_src.getString() << " -> " << ip_dst.getString() << " : " << printCallFlags(flags) << endl;
@@ -3913,7 +3916,7 @@ inline unsigned int setCallFlags(unsigned long int flags, sNatAliases **nat_alia
 			}
 		}
 	}
-	TELNUMfilter::add_call_flags(&flags, nat_aliases, caller, called, reconfigure);
+	TELNUMfilter::add_call_flags(&flags, nat_aliases, caller, called, sensor_id, reconfigure);
 	if(sverb.dump_call_flags) {
 		if(flags != flags_old) {
 			cout << "set flags for number " << caller << " -> " << called << " : " << printCallFlags(flags) << endl;
@@ -3928,7 +3931,7 @@ inline unsigned int setCallFlags(unsigned long int flags, sNatAliases **nat_alia
 			}
 		}
 	}
-	DOMAINfilter::add_call_flags(&flags, nat_aliases, caller_domain, called_domain, reconfigure);
+	DOMAINfilter::add_call_flags(&flags, nat_aliases, caller_domain, called_domain, sensor_id, reconfigure);
 	if(sverb.dump_call_flags) {
 		if(flags != flags_old) {
 			cout << "set flags for domain " << caller_domain << " -> " << called_domain << " : " << printCallFlags(flags) << endl;
@@ -3943,7 +3946,7 @@ inline unsigned int setCallFlags(unsigned long int flags, sNatAliases **nat_alia
 			}
 		}
 	}
-	SIP_HEADERfilter::add_call_flags(parseContents, &flags, nat_aliases, reconfigure);
+	SIP_HEADERfilter::add_call_flags(parseContents, &flags, nat_aliases, sensor_id, reconfigure);
 	if(sverb.dump_call_flags) {
 		if(flags != flags_old) {
 			cout << "set flags for headers : " << printCallFlags(flags) << endl;
@@ -4349,7 +4352,8 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 			     packetS->saddr_(), packetS->daddr_(),
 			     data_callerd.caller.c_str(), data_callerd.called().c_str(),
 			     data_callerd.caller_domain.c_str(), data_callerd.called_domain().c_str(),
-			     &packetS->parseContents);
+			     &packetS->parseContents,
+			     packetS->sensor_id_());
 	
 	if(flags & FLAG_SKIPCDR) {
 		if(nat_aliases) {
@@ -4480,7 +4484,8 @@ inline Call *new_premature_response_call_register(packet_s_process *packetS, int
 			     packetS->saddr_(), packetS->daddr_(),
 			     data_callerd.caller.c_str(), data_callerd.called().c_str(),
 			     data_callerd.caller_domain.c_str(), data_callerd.called_domain().c_str(),
-			     &packetS->parseContents);
+			     &packetS->parseContents,
+			     packetS->sensor_id_());
 	if(nat_aliases) {
 		delete nat_aliases;
 	}
@@ -4503,6 +4508,7 @@ inline Call *new_premature_response_call_register(packet_s_process *packetS, int
 
 void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, int iscaller, char *from_data, unsigned sdplen, 
 		 char *callidstr, char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch,
+		 bool skip_close_check_due_to_reverse_direction,
 		 bool batch_process) {
  
 	extern bool opt_disable_process_sdp;
@@ -4593,7 +4599,7 @@ void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, in
 								       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, 
 								       sdp_media_data_item->srtp_crypto_config_list, sdp_media_data_item->srtp_fingerprint,
 								       to, to_uri, domain_to, domain_to_uri, branch,
-								       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags, sdp_media_data_item->ptime);
+								       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags, sdp_media_data_item->ptime, skip_close_check_due_to_reverse_direction);
 						// check if the IP address is listed in nat_aliases
 						vmIP alias;
 						if(call->nat_aliases) {
@@ -4607,14 +4613,14 @@ void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, in
 									       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, 
 									       sdp_media_data_item->srtp_crypto_config_list, sdp_media_data_item->srtp_fingerprint,
 									       to, to_uri, domain_to, domain_to_uri, branch,
-									       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags, sdp_media_data_item->ptime);
+									       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags, sdp_media_data_item->ptime, skip_close_check_due_to_reverse_direction);
 						}
 						if(opt_sdp_reverse_ipport) {
 							call->add_ip_port_hash(c_branch, packetS->saddr_(), packetS->saddr_(), ip_port_call_info::_ta_sdp_reverse_ipport, sdp_media_data_item->port, packetS->getTimeval_pt(),
 									       sessid, sdp_media_data_item->label, sdp_media_data_count > 1,
 									       sdp_media_data_item->srtp_crypto_config_list, sdp_media_data_item->srtp_fingerprint,
 									       to, to_uri, domain_to, domain_to_uri, branch,
-									       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags, sdp_media_data_item->ptime);
+									       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags, sdp_media_data_item->ptime, skip_close_check_due_to_reverse_direction);
 						}
 						for(unsigned srflx_i = 0; srflx_i < sdp_media_data_item->sdp_srflx_addr_count; srflx_i++) {
 							for(int port_i = 0; port_i < c_branch->ipport_n; port_i++) {
@@ -4624,7 +4630,7 @@ void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, in
 											       sessid, sdp_media_data_item->label, sdp_media_data_count > 1,
 											       sdp_media_data_item->srtp_crypto_config_list, sdp_media_data_item->srtp_fingerprint,
 											       to, to_uri, domain_to, domain_to_uri, branch,
-											       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags, sdp_media_data_item->ptime);
+											       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags, sdp_media_data_item->ptime, skip_close_check_due_to_reverse_direction);
 								}
 							}
 						}
@@ -4749,6 +4755,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 	bool reverseInviteSdaddr_ignore_port = false;
 	bool reverseInviteSdaddr_by_tag = false;
 	bool reverseInviteConfirmSdaddr = false;
+	bool skip_invite_reactivation_due_to_premature_response = false;
 	int mainInviteForReverse_index = -1;
 	int reverseInvite_index = -1;
 	int inviteSdaddrIndex = -1;
@@ -5029,6 +5036,27 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 		}
 		call->branches_unlock();
 		
+		if(!c_branch && opt_enable_premature_response &&
+		   packetS->sip_response && packetS->cseq.method == INVITE && !from_tag.empty()) {
+			detect_branch(packetS, branch, sizeof(branch), &branch_detected);
+			if(branch[0]) {
+				bool skip_premature_response_due_to_seen_invite = false;
+				call->branches_lock();
+				for(int i = (int)call->next_branches.size() - 1; i >= -1; i--) {
+					CallBranch *o_branch = i >= 0 ? call->next_branches[i] : &call->first_branch;
+					if(o_branch->called_invite_branch_map.find(branch) != o_branch->called_invite_branch_map.end()) {
+						skip_premature_response_due_to_seen_invite = true;
+						break;
+					}
+				}
+				call->branches_unlock();
+				if(!skip_premature_response_due_to_seen_invite &&
+				   call->addPrematureResponseByFromTag(packetS, from_tag.c_str())) {
+					save_live_packet(packetS);
+					goto endsip;
+				}
+			}
+		}
 		if(!c_branch) {
 			c_branch = call->branch_main();
 			if(sverb.call_branches) {
@@ -5037,6 +5065,9 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 				     << " branch_id: " << c_branch->branch_id
 				     << endl;
 			}
+		}
+		if(merged && !c_branch->has_merged_leg) {
+			c_branch->has_merged_leg = true;
 		}
 	
 	}
@@ -5051,7 +5082,8 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 				     packetS->saddr_(), packetS->daddr_(),
 				     data_callerd.caller.c_str(), data_callerd.called().c_str(),
 				     data_callerd.caller_domain.c_str(), data_callerd.called_domain().c_str(),
-				     &packetS->parseContents);
+				     &packetS->parseContents,
+				     packetS->sensor_id_());
 		if(flags & FLAG_SKIPCDR) {
 			if(nat_aliases) {
 				delete nat_aliases;
@@ -5142,7 +5174,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 	
 	if(!packetS->_createCall) {
 		unsigned long int flags = call->flags;
-		if(SIP_HEADERfilter::add_call_flags(&packetS->parseContents, &flags, NULL)) {
+		if(SIP_HEADERfilter::add_call_flags(&packetS->parseContents, &flags, NULL, packetS->sensor_id_())) {
 			if(sverb.dump_call_flags) {
 				if(flags != call->flags) {
 					cout << "set flags for headers (re-evaluation) " << call->call_id << " : " << printCallFlags(flags) << endl;
@@ -5449,6 +5481,15 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 		   packetS->cseq.is_set() &&
 		   c_branch->invitecseq_next.size() && find(c_branch->invitecseq_next.begin(), c_branch->invitecseq_next.end(), packetS->cseq) != c_branch->invitecseq_next.end()) {
 			c_branch->new_invite_after_lsr3xx = false;
+		} else if(lastSIPresponseNum / 100 == 3 && c_branch->new_invite_after_lsr3xx &&
+			  !c_branch->new_invite_after_lsr3xx_via_branch.empty()) {
+			detect_branch(packetS, branch, sizeof(branch), &branch_detected);
+			if(c_branch->new_invite_after_lsr3xx_via_branch == branch) {
+				c_branch->new_invite_after_lsr3xx = false;
+			}
+		} else if(lastSIPresponseNum >= 400 && packetS->cseq.method == INVITE &&
+			  c_branch->new_invite_after_lsr3xx && c_branch->is_closed()) {
+			c_branch->new_invite_after_lsr3xx = false;
 		}
 	}
 	if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0') {
@@ -5570,21 +5611,29 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 
 	// check if it is BYE or OK(RES2XX)
 	if(packetS->sip_method == INVITE) {
-		// festr - 14.03.2015 - this prevents some type of call to process call in case of call merging
-		// if(!call->seenbye) {
-		call->setSeenBye(c_branch, false, 0, packetS->get_callid());
-		call->setSeenOkBye(c_branch, false, 0, packetS->get_callid());
-		call->setSeenByeAndOk(c_branch, false, 0, packetS->get_callid());
-		call->setSeenCancelAndOk(c_branch, false, 0, packetS->get_callid());
-		call->setSeenAuthFailed(c_branch, false, 0, packetS->get_callid());
-		call->destroy_call_at = 0;
-		call->destroy_call_at_bye = 0;
-		call->destroy_call_at_bye_confirmed = 0;
-		if(c_branch->lastSIPresponseNum == 487) {
-			c_branch->new_invite_after_lsr487 = true;
+		if(!c_branch->premature_response_via_branch.empty() && packetS->cseq == c_branch->premature_response_cseq) {
+			detect_branch(packetS, branch, sizeof(branch), &branch_detected);
+			skip_invite_reactivation_due_to_premature_response = c_branch->premature_response_via_branch == branch;
 		}
-		if(c_branch->lastSIPresponseNum / 100 == 3) {
-			c_branch->new_invite_after_lsr3xx = true;
+		if(!skip_invite_reactivation_due_to_premature_response) {
+			// festr - 14.03.2015 - this prevents some type of call to process call in case of call merging
+			// if(!call->seenbye) {
+			call->setSeenBye(c_branch, false, 0, packetS->get_callid());
+			call->setSeenOkBye(c_branch, false, 0, packetS->get_callid());
+			call->setSeenByeAndOk(c_branch, false, 0, packetS->get_callid());
+			call->setSeenCancelAndOk(c_branch, false, 0, packetS->get_callid());
+			call->setSeenAuthFailed(c_branch, false, 0, packetS->get_callid());
+			call->destroy_call_at = 0;
+			call->destroy_call_at_bye = 0;
+			call->destroy_call_at_bye_confirmed = 0;
+			if(c_branch->lastSIPresponseNum == 487) {
+				c_branch->new_invite_after_lsr487 = true;
+			}
+			if(c_branch->lastSIPresponseNum / 100 == 3) {
+				c_branch->new_invite_after_lsr3xx = true;
+				detect_branch(packetS, branch, sizeof(branch), &branch_detected);
+				c_branch->new_invite_after_lsr3xx_via_branch = branch;
+			}
 		}
 		//update called number for each invite due to overlap-dialling
 		if(((opt_sipoverlap && packetS->saddr_() == call->getSipcallerip(c_branch)) || opt_last_dest_number) && !reverseInviteSdaddr) {
@@ -5815,7 +5864,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 		}
 		
 		// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. Lets wait max 10 seconds and destroy call
-		if(call->is_enable_set_destroy_call_at_for_call(c_branch, NULL, merged)) {
+		if(call->is_enable_set_destroy_call_at_for_failed_call(c_branch, NULL, merged)) {
 			//do not set destroy for CANCEL which belongs to first leg in case of merged legs through sip header 
 			if((!opt_call_branches ||
 			    !call->is_multibranch() || call->is_closed_other_branches(c_branch)) &&
@@ -5948,6 +5997,10 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 			// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
 			if(packetS->cseq.method == BYE) {
 				call->setSeenOkBye(c_branch, true, packet_time_us, packetS->get_callid());
+				if(!call->existsByeCseq(c_branch, &packetS->cseq)) {
+					call->setByeCseq(c_branch, &packetS->cseq);
+					call->setSeenBye(c_branch, true, packet_time_us, packetS->get_callid());
+				}
 			}
 			if(packetS->cseq.method != BYE ||
 			   !call->existsByeCseq(c_branch, &packetS->cseq)) {
@@ -6223,6 +6276,13 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 			   (opt_sip_message && packetS->cseq.method == MESSAGE) || 
 			   (packetS->cseq.method == PRACK && packetS->lastSIPresponseNum == 481)) &&
 			  (IS_SIP_RES3XX(packetS->sip_method) || IS_SIP_RES4XX(packetS->sip_method) || packetS->sip_method == RES5XX || packetS->sip_method == RES6XX)) {
+			if(opt_enable_premature_response && packetS->cseq.method == INVITE) {
+				detect_branch(packetS, branch, sizeof(branch), &branch_detected);
+				if(branch[0] && c_branch->called_invite_branch_map.find(branch) == c_branch->called_invite_branch_map.end()) {
+					c_branch->premature_response_via_branch = branch;
+					c_branch->premature_response_cseq = packetS->cseq;
+				}
+			}
 			if((IS_SIP_RES4XX(packetS->sip_method) &&
 			    packetS->lastSIPresponseNum != 401 && packetS->lastSIPresponseNum != 407 && packetS->lastSIPresponseNum != 491 &&
 			    ((opt_call_branches && !c_branch->seeninviteok) || call->is_multiple_to_branch(c_branch))) ||
@@ -6258,7 +6318,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 				// 481 CallLeg/Transaction doesnt exist - set timeout to 180 seconds
 				if(!opt_call_branches ||
 				   !call->is_multibranch() || call->is_closed_other_branches(c_branch)) {
-					if(call->is_enable_set_destroy_call_at_for_call(c_branch, &packetS->cseq, merged)) {
+					if(call->is_enable_set_destroy_call_at_for_failed_call(c_branch, &packetS->cseq, merged)) {
 						call->set_destroy_call_at(packetS->getTime_s(), 180);
 					} else if(c_branch->seenbye_and_ok_permanent) {
 						call->set_destroy_call_at(packetS->getTime_s(), 60);
@@ -6268,7 +6328,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 				// do not set timeout for 491
 			} else if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501) {
 				// save packet 
-				if(call->is_enable_set_destroy_call_at_for_call(c_branch, &packetS->cseq, merged)) {
+				if(call->is_enable_set_destroy_call_at_for_failed_call(c_branch, &packetS->cseq, merged)) {
 					if((!opt_call_branches ||
 					    !call->is_multibranch() || call->is_closed_other_branches(c_branch)) &&
 					   (!call->is_multiple_to_branch(c_branch) || call->all_branches_is_canceled(c_branch, false))) {
@@ -6323,7 +6383,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 				process_packet__parse_custom_headers(call, c_branch, packetS);
 				goto endsip_save_packet;
 			} else if(!call->destroy_call_at) {
-				if(call->is_enable_set_destroy_call_at_for_call(c_branch, &packetS->cseq, merged) &&
+				if(call->is_enable_set_destroy_call_at_for_failed_call(c_branch, &packetS->cseq, merged) &&
 				   (!opt_call_branches ||
 				    !call->is_multibranch() || call->is_closed_other_branches(c_branch))) {
 					call->set_destroy_call_at(packetS->getTime_s(), 60);
@@ -6360,6 +6420,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 						   c_branch->caller.c_str(), call->get_called(c_branch),
 						   c_branch->caller_domain.c_str(), call->get_called_domain(c_branch),
 						   &packetS->parseContents,
+						   packetS->sensor_id_(),
 						   true);
 		}
 		if(!(reverseInviteSdaddr || (in_dialog_invite && reverseInviteSdaddr_ignore_port) || reverseInviteSdaddr_by_tag)) {
@@ -6522,7 +6583,8 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 
 	// SDP examination
 	if(contenttypelen &&
-	   call->typeIs(INVITE) && packetS->sip_method != MESSAGE) {
+	   call->typeIs(INVITE) && packetS->sip_method != MESSAGE &&
+	   !skip_invite_reactivation_due_to_premature_response) {
 	 
 		char endchar = packetS->data_()[packetS->datalen_() - 1];
 		packetS->data_()[packetS->datalen_() - 1] = 0;
@@ -6583,6 +6645,14 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 					}
 				}
 			}
+			bool skip_close_check_due_to_reverse_direction = false;
+			if(!c_branch->caller_tag.empty()) {
+				if(!tag_content_to_detected) {
+					get_sip_peertag(packetS, "\nTo:", "\nt:", tag_content_to, sizeof(tag_content_to), ppntt_to, ppndt_called_tag);
+					tag_content_to_detected = true;
+				}
+				skip_close_check_due_to_reverse_direction = tag_content_to[0] && c_branch->caller_tag == tag_content_to;
+			}
 			if(is_application_sdp) {
 				detect_to(packetS, to, sizeof(to), &to_detected);
 				detect_to_uri(packetS, to_uri, sizeof(to_uri), &to_uri_detected);
@@ -6591,6 +6661,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 				detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 				process_sdp(call, c_branch, packetS, _iscaller_process_sdp, contenttype_data_ptr, 0,
 					    packetS->get_callid(), to, to_uri, domain_to, domain_to_uri, branch,
+					    skip_close_check_due_to_reverse_direction,
 					    batch_process);
 			} else if(is_multipart_mixed) {
 				char *content_data = contenttype_data_ptr + contenttypetaglen;
@@ -6666,6 +6737,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 									detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 									process_sdp(call, c_branch, packetS, _iscaller_process_sdp, content_data_begin, content_data_length,
 										    packetS->get_callid(), to, to_uri, domain_to, domain_to_uri, branch,
+										    skip_close_check_due_to_reverse_direction,
 										    batch_process);
 								} else if(strcasestr(content_type, "application/rs-metadata+xml")) {
 									call->add_txt(packet_time_us, Call::txt_type_sdp_xml, content_data_begin, content_data_length);
@@ -6689,6 +6761,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 								detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 								process_sdp(call, c_branch, packetS, _iscaller_process_sdp, s2, 0,
 									    packetS->get_callid(), to, to_uri, domain_to, domain_to_uri, branch,
+									    skip_close_check_due_to_reverse_direction,
 									    batch_process);
 								break;	// stop searching
 							} else {
@@ -6797,6 +6870,13 @@ endsip:
 	
 	if(prematureResponsesProcess && call) {
 		call->processPrematureResponses(batch_process, packetS->cseq);
+	}
+	if(call && call->existsPrematureResponsesByFromTag() && packetS->sip_method == INVITE) {
+		string from_tag;
+		get_sip_peertag(packetS, "\nFrom:", "\nf:", &from_tag, ppntt_from, ppndt_caller_tag);
+		if(!from_tag.empty()) {
+			call->processPrematureResponsesByFromTag(batch_process, from_tag.c_str());
+		}
 	}
 }
 
@@ -6997,7 +7077,8 @@ void process_packet_sip_register(packet_s_process *packetS) {
 					     packetS->saddr_(), packetS->daddr_(),
 					     data_callerd.caller.c_str(), data_callerd.called().c_str(),
 					     data_callerd.caller_domain.c_str(), data_callerd.called_domain().c_str(),
-					     &packetS->parseContents);
+					     &packetS->parseContents,
+					     packetS->sensor_id_());
 			if(flags & FLAG_SKIPCDR) {
 				if(nat_aliases) {
 					delete nat_aliases;
@@ -7608,7 +7689,7 @@ Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort de
 	unsigned long int flags = 0;
 	sNatAliases *nat_aliases = NULL;
 	set_global_flags(flags);
-	IPfilter::add_call_flags(&flags, &nat_aliases, saddr, daddr);
+	IPfilter::add_call_flags(&flags, &nat_aliases, saddr, daddr, sensor_id);
 	if(flags & FLAG_SKIPCDR) {
 		if(nat_aliases) {
 			delete nat_aliases;
@@ -7726,6 +7807,7 @@ inline bool call_confirmation_for_rtp_processing(Call *call, call_rtp *call_rtp,
 		   (opt_ignore_rtp_after_response &&
 		    c_branch->ignore_rtp_after_response_time_usec &&
 		    packetS->getTimeUS() > c_branch->ignore_rtp_after_response_time_usec) ||
+		   (opt_ignore_rtp_before_connect && !call->connect_time_us) ||
 		   (hash_modify_queue_length_ms && c_branch->end_call_rtp) ||
 		   (call->flags & FLAG_SKIPCDR)) {
 			return(false);
@@ -10250,6 +10332,7 @@ packet_s_process *packet_s_process::clone() {
 	newPacketS->header_pt = new_header;
 	newPacketS->packet = new_packet;
 	newPacketS->_packet_alloc_type = _t_packet_alloc_header_std;
+	newPacketS->rebase_parse_contents(this);
 	return(newPacketS);
 }
 
@@ -10272,12 +10355,13 @@ packet_s_process *packet_s_process::clone(u_char *newData, unsigned newDataLengt
 	iphdr2 *newHeaderIpInNewPacket = (iphdr2*)(new_packet + newPacketS->header_ip_offset);
 	newHeaderIpInNewPacket->set_tot_len(newLen - newPacketS->header_ip_offset);
 	//newPacketS->data = (char*)newDataInNewPacket;
-	newPacketS->_datalen = newDataLength;
+	newPacketS->_datalen = newLen - newPacketS->_dataoffset;
 	newPacketS->_datalen_set = 0;
 	newPacketS->header_pt = new_header;
 	newPacketS->packet = new_packet;
 	//newPacketS->header_ip = newHeaderIpInNewPacket;
 	newPacketS->_packet_alloc_type = _t_packet_alloc_header_std;
+	newPacketS->parseContents.clean();
 	return(newPacketS);
 }
 
@@ -13064,6 +13148,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, pack
 				partPacketS->blockstore_relock(18 /*pb lock flag*/);
 				if(partPacketS->_packet_alloc_type > _t_packet_alloc_na) {
 					partPacketS->new_alloc_packet_header();
+					partPacketS->rebase_parse_contents(packetS);
 				}
 				if(packetS_orig && packetS_orig->next_action) {
 					packetS_orig->register_child_packet(partPacketS);
@@ -14340,13 +14425,11 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, unsigned *counters
 				#if not EXPERIMENTAL_SUPPRESS_CALL_CONFIRMATION_FOR_RTP_PROCESSING
 				}
 				#endif
-			} else {
-				if(!call->bad_flags_warning[1]) {
-					syslog(LOG_WARNING, "WARNING: bad flags in call: %s: alloc_flag: %i, stop_processing: %i (find_hash)", 
-					       call->call_id.c_str(),
-					       call->alloc_flag, call->stopProcessing);
-					call->bad_flags_warning[1] = true;
-				}
+			} else if(!call->isAllocFlagOK() && !call->bad_flags_warning[1]) {
+				syslog(LOG_WARNING, "WARNING: bad flags in call: %s: alloc_flag: %i, stop_processing: %i (find_hash)", 
+				       call->call_id.c_str(),
+				       call->alloc_flag, call->stopProcessing);
+				call->bad_flags_warning[1] = true;
 			}
 		}
 		if(counter_rtp_only_packets > 1

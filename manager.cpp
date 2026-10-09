@@ -3117,9 +3117,19 @@ int Mgmt_d_lc_all(Mgmt_params *params) {
 	}
 	if(vectCall.size()) {
 		std::sort(vectCall.begin(), vectCall.end(), cmpCallBy_first_packet_time);
+		vector<CallBranch*> branches;
 		for(size_t i = 0; i < vectCall.size(); i++) {
 			call = vectCall[i];
 			CallBranch *c_branch = call->branch_main();
+			branches.clear();
+			branches.push_back(&call->first_branch);
+			if(call->is_multibranch()) {
+				call->branches_lock();
+				for(size_t j = 0; j < call->next_branches.size(); j++) {
+					branches.push_back(call->next_branches[j]);
+				}
+				call->branches_unlock();
+			}
 			outStr << setw(20) << left << c_branch->caller << " -> "
 			       << setw(20) << left << call->get_called(c_branch) << "  "
 			       << sqlDateTimeString(call->calltime_s()) << "  "
@@ -3129,8 +3139,32 @@ int Mgmt_d_lc_all(Mgmt_params *params) {
 			       << call->fbasename << "  "
 			       << "hash_queue_counter: " << call->hash_queue_counter << ", "
 			       << "rtppacketsinqueue: " << (int64_t)(call->rtppacketsinqueue_in - call->rtppacketsinqueue_out) << ", "
-			       << "useInListCalls: " << call->useInListCalls
-			       << endl;
+			       << "useInListCalls: " << call->useInListCalls << ", "
+			       << "last_sip: " << (call->last_signal_packet_time_us >= call->first_packet_time_us ?
+						    intToString(TIME_US_TO_S(call->last_signal_packet_time_us - call->first_packet_time_us)) + "s" :
+						    "-") << ", "
+			       << "last_rtp: " << (call->first_rtp_time_us && call->last_rtp_packet_time_us >= call->first_packet_time_us ?
+						    intToString(TIME_US_TO_S(call->last_rtp_packet_time_us - call->first_packet_time_us)) + "s" :
+						    "-") << ", "
+			       << "connect: " << (call->connect_time_us ? 1 : 0) << ", "
+			       << "branches: " << branches.size();
+			for(size_t j = 0; j < branches.size(); j++) {
+				CallBranch *branch = branches[j];
+				bool multiple_to_branch = call->is_multiple_to_branch(branch);
+				outStr << " [" << branch->branch_id << (branch->branch_id == call->branch_main_id ? "*" : "") << ": "
+				       << branch->lastSIPresponseNum << " "
+				       << (branch->is_closed() ? "closed" : "open")
+				       << (branch->seeninviteok ? " inviteok" : "")
+				       << (branch->seenbye ? " bye" : "")
+				       << (branch->seenokbye ? " okbye" : "")
+				       << (branch->seencancel ? " cancel" : "")
+				       << (branch->new_invite_after_lsr3xx ? " retry3xx" : "")
+				       << (branch->has_merged_leg ? " merged" : "")
+				       << (multiple_to_branch ? " multi_to" : "")
+				       << (multiple_to_branch && call->all_branches_is_canceled(branch, false) ? " all_canceled" : "")
+				       << "]";
+			}
+			outStr << endl;
 		}
 		outStr << "-----------" << endl;
 	} else {

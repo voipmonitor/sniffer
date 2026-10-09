@@ -677,6 +677,7 @@ bool opt_ignore_rtp_after_cancel_confirmed = false;
 bool opt_ignore_rtp_after_auth_failed = true;
 bool opt_ignore_rtp_after_response = false;
 vector<int> opt_ignore_rtp_after_response_list;
+bool opt_ignore_rtp_before_connect = false;
 int opt_saveaudio_reversestereo = 0;
 bool opt_saveaudio_adaptive_jitterbuffer = false;
 bool opt_saveaudio_resync_jitterbuffer = false;
@@ -977,6 +978,7 @@ bool opt_cdr_force_primary_index_in_all_tables = 0;
 bool opt_cdr_sipport = 0;
 bool opt_cdr_rtpport = 0;
 bool opt_cdr_rtpsrcport = 0;
+int opt_cdr_rtp_extended_stats = 2;
 int opt_cdr_check_exists_callid = 0;
 string opt_cdr_check_unique_callid_in_sensors;
 set<int> opt_cdr_check_unique_callid_in_sensors_list;
@@ -1626,6 +1628,7 @@ bool opt_hep_kamailio_protocol_id_fix = true;
 bool opt_hep_via_pb = true;
 bool opt_hep_use_system_time = false;
 bool opt_hep_rtcp_mos_from_hep = false;
+bool opt_hep_rtcp_mos_calc = false;
 
 bool opt_ribbonsbc_listen;
 string opt_ribbonsbc_bind_ip;
@@ -2552,6 +2555,8 @@ void *check_activity_or_crash(void *) {
 void *storing_cdr( void */*dummy*/ ) {
 	bool firstIter = true;
 	storing_cdr_tid = get_unix_tid();
+	vector<Call*> calls_queue_snapshot;
+	vector<char> calls_queue_remove;
 	while(1) {
 		extern volatile int partitionsServiceIsInProgress;
 		if(!opt_nocdr && !opt_disable_partition_operations && 
@@ -2575,6 +2580,7 @@ void *storing_cdr( void */*dummy*/ ) {
 			size_t calls_queue_position = 0;
 			list<Call*> calls_for_store;
 			int _calls_for_store_counter = 0;
+			bool maximum_cdr_per_iteration_reached = false;
 			__SYNC_LOCK(storing_cdr_next_threads_count_sync);
 			storing_cdr_next_threads_count_mod = storing_cdr_next_threads_count_mod_request;
 			storing_cdr_next_threads_count_mod_request = 0;
@@ -2602,13 +2608,19 @@ void *storing_cdr( void */*dummy*/ ) {
 				USLEEP(250000);
 			}
 			calltable->lock_calls_queue();
-			while(calls_queue_position < calls_queue_size) {
-				Call *call = calltable->calls_queue[calls_queue_position];
-				calltable->unlock_calls_queue();
-				if(call->closePcaps() || call->closeGraphs() ||
-				   !call->isEmptyChunkBuffersCount()) {
-					++calls_queue_position;
-					calltable->lock_calls_queue();
+			calls_queue_snapshot.assign(calltable->calls_queue.begin(), calltable->calls_queue.begin() + calls_queue_size);
+			calltable->unlock_calls_queue();
+			calls_queue_remove.assign(calls_queue_size, 0);
+			size_t calls_queue_remove_count = 0;
+			for(; calls_queue_position < calls_queue_size; calls_queue_position++) {
+				Call *call = calls_queue_snapshot[calls_queue_position];
+				if(!call->pcaps_graphs_closed) {
+					if(call->closePcaps() || call->closeGraphs()) {
+						continue;
+					}
+					call->pcaps_graphs_closed = true;
+				}
+				if(maximum_cdr_per_iteration_reached || !call->isEmptyChunkBuffersCount()) {
 					continue;
 				}
 				if(call->isReadyForWriteCdr()) {
@@ -2628,20 +2640,32 @@ void *storing_cdr( void */*dummy*/ ) {
 						}
 					}
 					++_calls_for_store_counter;
-					calltable->lock_calls_queue();
-					calltable->calls_queue.erase(calltable->calls_queue.begin() + calls_queue_position);
-					--calls_queue_size;
-					--calls_queue_position;
+					calls_queue_remove[calls_queue_position] = 1;
+					++calls_queue_remove_count;
 					if(opt_storing_cdr_maximum_cdr_per_iteration &&
 					   _calls_for_store_counter >= opt_storing_cdr_maximum_cdr_per_iteration) {
-						break;
+						maximum_cdr_per_iteration_reached = true;
 					}
 				} else {
-					calltable->lock_calls_queue();
+					call->pcaps_graphs_closed = false;
 				}
-				++calls_queue_position;
 			}
-			calltable->unlock_calls_queue();
+			if(calls_queue_remove_count) {
+				calltable->lock_calls_queue();
+				size_t calls_queue_write_position = 0;
+				for(size_t i = 0; i < calls_queue_size; i++) {
+					if(!calls_queue_remove[i]) {
+						if(calls_queue_write_position != i) {
+							calltable->calls_queue[calls_queue_write_position] = calls_queue_snapshot[i];
+						}
+						++calls_queue_write_position;
+					}
+				}
+				calltable->calls_queue.erase(calltable->calls_queue.begin() + calls_queue_write_position,
+							     calltable->calls_queue.begin() + calls_queue_size);
+				calltable->unlock_calls_queue();
+				calls_queue_size = calls_queue_write_position;
+			}
 			calls_for_store_counter = _calls_for_store_counter;
 			if(_calls_for_store_counter || storing_cdr_next_threads_count_mod < 0) {
 				if(storing_cdr_next_threads_count) {
@@ -2760,7 +2784,9 @@ void *storing_cdr( void */*dummy*/ ) {
 			if(terminating_storing_cdr && (!calls_queue_size || terminating > 1)) {
 				break;
 			}
-			USLEEP(100000);
+			if(!maximum_cdr_per_iteration_reached) {
+				USLEEP(100000);
+			}
 		}
 		
 		calltable->lock_calls_queue();
@@ -3324,7 +3350,6 @@ void reload_config(const char *jsonConfig) {
 	set_default_values();
 	set_context_config();
 	create_spool_dirs();
-	reload_capture_rules();
 }
 
 void hot_restart() {
@@ -7188,7 +7213,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42210) cConfigItem_yesno("savertcp", &opt_saveRTCP));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignorertcpjitter", &opt_ignoreRTCPjitter));
 			addConfigItem(new FILE_LINE(42211) cConfigItem_yesno("saveudptl", &opt_saveudptl));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("rtpip_find_endpoints", &opt_rtpip_find_endpoints));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("rtpip_find_endpoints", &opt_rtpip_find_endpoints))
+				->addValues("leg:2"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-energylevels", &opt_save_energylevels));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-energylevels-check-seq", &opt_save_energylevels_check_seq));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-energylevels-via-jb", &opt_save_energylevels_via_jb));
@@ -7472,6 +7498,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_cancel_confirmed", &opt_ignore_rtp_after_cancel_confirmed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_auth_failed", &opt_ignore_rtp_after_auth_failed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignore_rtp_after_response", &opt_ignore_rtp_after_response_list));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_before_connect", &opt_ignore_rtp_before_connect));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("get_reason_from_bye_cancel", &opt_get_reason_from_bye_cancel));
 			addConfigItem(new FILE_LINE(42261) cConfigItem_yesno("nocdr", &opt_nocdr));
 			addConfigItem((new FILE_LINE(42262) cConfigItem_string("cdr_ignore_response", opt_nocdr_for_last_responses, sizeof(opt_nocdr_for_last_responses)))
@@ -7670,6 +7697,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42304) cConfigItem_integer("rtptimeout", &rtptimeout));
 			addConfigItem(new FILE_LINE(42305) cConfigItem_yesno("cdr_rtpport", &opt_cdr_rtpport));
 			addConfigItem(new FILE_LINE(42306) cConfigItem_yesno("cdr_rtpsrcport", &opt_cdr_rtpsrcport));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("cdr_rtp_extended_stats", &opt_cdr_rtp_extended_stats))
+				->addValues("ext:2"));
 			addConfigItem(new FILE_LINE(42307) cConfigItem_integer("sipwithoutrtptimeout", &sipwithoutrtptimeout));
 			addConfigItem(new FILE_LINE(42308) cConfigItem_yesno("allow-zerossrc", &opt_allow_zerossrc));
 			addConfigItem(new FILE_LINE(42309) cConfigItem_yesno("rtp-check-timestamp", &opt_rtp_check_timestamp));
@@ -8100,6 +8129,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_via_pb",  &opt_hep_via_pb));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_use_system_time",  &opt_hep_use_system_time));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_rtcp_mos_from_hep",  &opt_hep_rtcp_mos_from_hep));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_rtcp_mos_calc",  &opt_hep_rtcp_mos_calc));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ribbonsbc_listen",  &opt_ribbonsbc_listen));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("ribbonsbc_bind_ip",  &opt_ribbonsbc_bind_ip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("ribbonsbc_bind_port",  &opt_ribbonsbc_bind_port));
@@ -8847,6 +8877,8 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "cleanup_calls_log")		sverb.cleanup_calls_log = 1;
 	else if(verbParam == "cleanup_calls_stat")		sverb.cleanup_calls_stat = 1;
 	else if(verbParam == "charts_cache_only")		sverb.charts_cache_only = 1;
+	else if(verbParam.substr(0, 22) == "charts_cache_multiply=")
+								sverb.charts_cache_multiply = atoi(verbParam.c_str() + 22);
 	else if(verbParam == "charts_cache_filters_eval")	sverb.charts_cache_filters_eval = 1;
 	else if(verbParam == "charts_cache_filters_eval_rslt")	sverb.charts_cache_filters_eval_rslt = 1;
 	else if(verbParam == "charts_cache_filters_eval_rslt_true")
