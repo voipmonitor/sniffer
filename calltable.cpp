@@ -1508,7 +1508,7 @@ Call::~Call(){
 	//printf("caller s[%u] n[%u] ls[%u]  called s[%u] n[%u] ls[%u]\n", caller_silence, caller_noise, caller_lastsilence, called_silence, called_noise, called_lastsilence);
 	//printf("caller_clipping_8k [%u] [%u]\n", caller_clipping_8k, called_clipping_8k);
 	
-	if(typeIs(INVITE) && is_enable_rtp_threads() && num_threads_active > 0 && rtp_threads) {
+	if((typeIs(INVITE) || typeIs(INVITE_RESPONSE_PREMATURE)) && is_enable_rtp_threads() && num_threads_active > 0 && rtp_threads) {
 		extern void lock_add_remove_rtp_threads();
 		extern void unlock_add_remove_rtp_threads();
 		lock_add_remove_rtp_threads();
@@ -5398,7 +5398,7 @@ string Call::getJsonData() {
 }
 
 void Call::setRtpThreadNum() {
-	if(typeIs(INVITE) && is_enable_rtp_threads() && num_threads_active > 0) {
+	if((typeIs(INVITE) || typeIs(INVITE_RESPONSE_PREMATURE)) && is_enable_rtp_threads() && num_threads_active > 0) {
 		thread_num = get_index_rtp_read_thread_min_calls();
 		if(thread_num < 0) {
 			extern void lock_add_remove_rtp_threads();
