@@ -4982,10 +4982,7 @@ int main_init_read() {
 	if(useCdrSummaryProcessThreads()) {
 		cdrSummaryInit(sqlDbInit);
 	}
-	if(useChartsCacheProcessThreads()) {
-		chartsCacheInit(sqlDbInit);
-	}
-	
+
 	if(opt_pii_enable) {
 		cPiiMasking::eMaskingMode mode = opt_pii_masking_mode == cPiiMasking::_mmode_redact ? cPiiMasking::_mode_redact :
 						 (opt_pii_masking_secret.empty() ? cPiiMasking::_mode_hash : cPiiMasking::_mode_encrypt);
@@ -5158,6 +5155,9 @@ int main_init_read() {
 		custom_headers_sip_msg->createTablesIfNotExists(sqlDbInit);
 		custom_headers_sip_msg->checkTablesColumns(sqlDbInit, !opt_disable_dbupgradecheck);
 		no_hash_message_rules = new FILE_LINE(42016) NoHashMessageRules(sqlDbInit);
+	}
+	if(useChartsCacheProcessThreads()) {
+		chartsCacheInit(sqlDbInit);
 	}
 
 	cFilters::loadActive(sqlDbInit);
@@ -8883,6 +8883,16 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "charts_cache_filters_eval_rslt")	sverb.charts_cache_filters_eval_rslt = 1;
 	else if(verbParam == "charts_cache_filters_eval_rslt_true")
 								sverb.charts_cache_filters_eval_rslt_true = 1;
+	else if(verbParam == "charts_cache_filters_load")	sverb.charts_cache_filters_load = 1;
+	else if(verbParam == "charts_cache_filters_time")	sverb.charts_cache_filters_time = 1;
+	else if(verbParam.substr(0, 29) == "charts_cache_filters_loop_id=")
+								sverb.charts_cache_filters_loop_id = atoi(verbParam.c_str() + 29);
+	else if(verbParam == "charts_cache_filters_loop_clear")
+								sverb.charts_cache_filters_loop_clear = 1;
+	else if(verbParam == "charts_cache_filters_loop_sql")
+								sverb.charts_cache_filters_loop_sql = 1;
+	else if(verbParam == "charts_cache_filters_cache_disable")
+								sverb.charts_cache_filters_cache_disable = 1;
 	else if(verbParam.substr(0, 19) == "sipcallerip_filter=")
 								strcpy_null_term(sverb.sipcallerip_filter, verbParam.c_str() + 19);
 	else if(verbParam.substr(0, 19) == "sipcalledip_filter=")

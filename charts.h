@@ -20,6 +20,7 @@
 #include "sql_db.h"
 #include "calltable.h"
 #include "tools_global.h"
+#include "filter_record.h"
 
 
 using namespace std;
@@ -592,7 +593,46 @@ friend class cCdrSummary;
 
 class cChartFilter {
 public:
-	cChartFilter(const char *filter, const char *filter_only_sip_ip, const char *filter_without_sip_ip, const char *filter_src);
+	struct sFilterTimeBranch {
+		u_int64_t ticks;
+		u_int64_t count;
+		u_int64_t first_ticks;
+		u_int64_t first_count;
+		void add(sFilterTimeBranch *other) {
+			ticks += other->ticks;
+			count += other->count;
+			first_ticks += other->first_ticks;
+			first_count += other->first_count;
+		}
+		u_int64_t steady_count() {
+			return(count > first_count ? count - first_count : count);
+		}
+		u_int64_t steady_ticks() {
+			return(count > first_count ? ticks - first_ticks : ticks);
+		}
+		double avg_us(u_int64_t overhead_ticks) {
+			u_int64_t _count = steady_count();
+			if(!_count) {
+				return(0);
+			}
+			u_int64_t _ticks = steady_ticks();
+			u_int64_t _overhead = overhead_ticks * _count;
+			return(rdtsc_to_us(_ticks > _overhead ? _ticks - _overhead : 0) / _count);
+		}
+	};
+	struct sFilterTime {
+		sFilterTimeBranch native;
+		sFilterTimeBranch sql;
+		void add(sFilterTime *other) {
+			native.add(&other->native);
+			sql.add(&other->sql);
+		}
+		double ratio(u_int64_t overhead_ticks) {
+			return(native.avg_us(overhead_ticks) > 0 ? sql.avg_us(overhead_ticks) / native.avg_us(overhead_ticks) : 0);
+		}
+	};
+	cChartFilter(const char *filter, const char *filter_only_sip_ip, const char *filter_without_sip_ip, const char *filter_src,
+		     cCodebookCache *codebookCache);
 	~cChartFilter();
 	bool check(sChartsCallData *call, void *callData, bool ip_comb_v6, void *ip_comb, class cFiltersCache *filtersCache, int threadIndex);
 	bool existsNativeFilter() {
@@ -618,9 +658,14 @@ public:
 		return(rslt);
 	}
 	static string filterKey(const char *filter, const char *filter_src);
+	void sumFilterTime(sFilterTime *sum);
+	void resetFilterTime();
 private:
 	bool check_sql(sChartsCallData *call, void *callData, bool ip_comb_v6, void *ip_comb, class cFiltersCache *filtersCache, int threadIndex);
 	bool check_native(sChartsCallData *call);
+	bool check_timed(bool native, sChartsCallData *call, void *callData, bool ip_comb_v6, void *ip_comb, class cFiltersCache *filtersCache, int threadIndex);
+	bool isLoopFilter();
+	void loopTest(sChartsCallData *call, void *callData, bool ip_comb_v6, void *ip_comb, class cFiltersCache *filtersCache, int threadIndex);
 	void createNativeFilter();
 	void evalLog(const char *type, sChartsCallData *call, bool rslt);
 private:
@@ -629,11 +674,16 @@ private:
 	string filter_without_sip_ip;
 	string filter_src;
 	class cCallFilter *filter_call;
+	cCodebookCache *codebookCache;
 	string filter_call_unsupported_keys;
 	map<cChartSeriesId, string> series_refs;
 	cEvalFormula::sSplitOperands **filter_s;
 	cEvalFormula::sSplitOperands **filter_only_sip_ip_s;
 	cEvalFormula::sSplitOperands **filter_without_sip_ip_s;
+	sFilterTime *filter_time;
+	volatile bool diff_logged;
+	volatile int loop_filter;
+	volatile int loop_done;
 	bool ip_filter_contain_sipcallerip;
 	bool ip_filter_contain_sipcalledip;
 	volatile int used_counter;
@@ -727,6 +777,9 @@ public:
 	void load(SqlDb *sqlDb);
 	bool fetchSeriesRows(SqlDb *sqlDb, SqlDb_rows *rows);
 	void applySeriesRows(SqlDb_rows *rows);
+	cCodebookCache *getCodebookCache() {
+		return(&codebookCache);
+	}
 	void reloadPrepare();
 	void reload();
 	void initIntervals();
@@ -741,6 +794,7 @@ public:
 	void store(bool forceAll = false);
 	void cleanup(bool forceAll = false);
 	bool seriesIsUsed(cChartSeriesId series_id);
+	string filtersTimeReport();
 	void lock_intervals() { __SYNC_LOCK(sync_intervals); }
 	void unlock_intervals() { __SYNC_UNLOCK(sync_intervals); }
 	void lock_store() { __SYNC_LOCK_USLEEP(sync_store, 100); }
@@ -764,6 +818,7 @@ private:
 	u_int32_t last_reload_at;
 	u_int32_t last_reload_at_real;
 	SqlDb_rows *reload_rows;
+	cCodebookCache codebookCache;
 	volatile int sync_intervals;
 	volatile int sync_store;
 friend class cChartDataItem;
@@ -1299,6 +1354,7 @@ void chartsCacheInitIntervals();
 bool chartsCacheRequestAll(bool store, bool cleanup, unsigned timeout_s = 10);
 void chartsCacheProcessRequestAll();
 bool chartsCacheGetAndResetFiltersRemoved();
+string chartsCacheFiltersTimeReport();
 
 void cdrStatInit(SqlDb *sqlDb);
 void cdrStatTerm();

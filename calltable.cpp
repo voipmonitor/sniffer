@@ -5769,7 +5769,6 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		case _chartType_rtcp_maxjitter:
 		case _chartType_rtcp_avgfr:
 		case _chartType_rtcp_maxfr:
-		case _chartType_rtcp_avgrtd:
 		case _chartType_rtcp_maxrtd:
 			setNull = true;
 			for(unsigned i = 0; i < 2; i++) {
@@ -5788,13 +5787,14 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 					case _chartType_rtcp_maxfr:
 						_v = rtpab[i]->fr_rtcp_max(&_null);
 						break;
-					case _chartType_rtcp_avgrtd:
-						_v = rtpab[i]->rtcp.rtd_rfc_count ? (rtpab[i]->rtcp.rtd_rfc_sum / rtpab[i]->rtcp.rtd_rfc_count) :
-						     rtpab[i]->rtcp.rtd_ws_count > 0 ? (rtpab[i]->rtcp.rtd_ws_sum / rtpab[i]->rtcp.rtd_ws_count) : 0;
-						break;
 					case _chartType_rtcp_maxrtd:
-						_v = rtpab[i]->rtcp.rtd_rfc_count > 0 ? rtpab[i]->rtcp.rtd_rfc_max :
-						     rtpab[i]->rtcp.rtd_ws_count > 0 ? rtpab[i]->rtcp.rtd_ws_max : 0;
+						if(rtpab[i]->rtcp.rtd_rfc_count > 0) {
+							_v = rtpab[i]->rtcp.rtd_rfc_max;
+						} else if(rtpab[i]->rtcp.rtd_ws_count > 0) {
+							_v = rtpab[i]->rtcp.rtd_ws_max;
+						} else {
+							_null = true;
+						}
 						break;
 					}
 					if(!_null) {
@@ -5804,6 +5804,25 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 						}
 					}
 				}
+			}
+			break;
+		case _chartType_rtcp_avgrtd:
+			if(!rtpab[0] || !rtpab[1]) {
+				setNull = true;
+				break;
+			}
+			for(unsigned i = 0; i < 2; i++) {
+				if(rtpab[i]->rtcp.rtd_rfc_count > 0) {
+					v += (double)rtpab[i]->rtcp.rtd_rfc_sum / rtpab[i]->rtcp.rtd_rfc_count;
+				} else if(rtpab[i]->rtcp.rtd_ws_count > 0) {
+					v += (double)rtpab[i]->rtcp.rtd_ws_sum / rtpab[i]->rtcp.rtd_ws_count;
+				} else {
+					setNull = true;
+					break;
+				}
+			}
+			if(!setNull) {
+				v /= 2;
 			}
 			break;
 		#endif
@@ -6242,15 +6261,15 @@ void Call::getChartCacheValue(cDbTablesContent *tablesContent,
 		break;
 	case _chartType_rtcp_maxrtd:
 		{
-		const char *c[] = { "a_rtcp_maxrtd_mult10", "b_rtcp_maxrtd_multi10", NULL };
+		const char *c[] = { "a_rtcp_maxrtd_mult10", "b_rtcp_maxrtd_mult10", NULL };
 		v = tablesContent->getMinMaxValue(_t_cdr, c, false, false, &setNull);
 		if(!setNull && v) v /= 10;
 		}
 		break;
 	case _chartType_rtcp_avgrtd:
 		{
-		const char *c[] = { "a_rtcp_avgrtd_mult10", "b_rtcp_maxavg_mult10", NULL };
-		v = tablesContent->getMinMaxValue(_t_cdr, c, true, true, &setNull);
+		const char *c[] = { "a_rtcp_avgrtd_mult10", "b_rtcp_avgrtd_mult10", NULL };
+		v = tablesContent->getAvgValue(_t_cdr, c, true, false, &setNull);
 		if(!setNull && v) v /= 10;
 		}
 		break;
@@ -7576,7 +7595,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	__SYNC_INC(counter_calls_save_2);
-	
+
+	if(useChartsCacheInProcessCall()) {
+		cdr.enableFieldsMap();
+	}
+
 	/* only needed to tune storage speed
 	cdr.clear();
 	cdr_next.clear();
@@ -7852,7 +7875,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr_flags |= CDR_SAVE_AUDIOGRAPH;
 	}
 	
-	sSavedData *_saved_data = !saved_data && useChartsCacheProcessThreads() ? new FILE_LINE(0) sSavedData : NULL;
+	sSavedData *_saved_data = !saved_data && useChartsCacheOrCdrStatInProcessCall() ? new FILE_LINE(0) sSavedData : NULL;
 	set<vmIP> proxies_undup;
 	prepareSipIpForSave(c_branch, &proxies_undup);
 	adjustUA(c_branch);
@@ -13318,6 +13341,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 		chc_threads[threadIndex].cache = new FILE_LINE(0) cFiltersCache(2000, 10000);
 	}
 	if(threadIndex == 0) {
+		bool filters_time_report = false;
 		while(1) {
 			__SYNC_LOCK(chc_threads_count_sync);
 			chc_threads_count_mod = chc_threads_count_mod_request;
@@ -13374,6 +13398,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 				u_int64_t _end = getTimeUS();
 				counter_charts_cache += chc_count * max(sverb.charts_cache_multiply, 1);
 				counter_charts_cache_delay_us += _end - _start;
+				filters_time_report = sverb.charts_cache_filters_time;
 				if(chc_threads_count_mod < 0) {
 					__SYNC_DEC(chc_threads_count);
 					chc_threads_count_mod = 0;
@@ -13389,6 +13414,13 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 				}
 			}
 			if(!chc_size) {
+				if(filters_time_report) {
+					string report = chartsCacheFiltersTimeReport();
+					if(!report.empty()) {
+						cout << report << endl;
+					}
+					filters_time_report = false;
+				}
 				USLEEP(100000);
 			}
 			if(terminating_charts_cache && (!chc_count || terminating > 1)) {
@@ -13423,6 +13455,17 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 	chc_threads[threadIndex].thread = 0;
 }
 
+string sChartsCallData::call_id() {
+	switch(type) {
+	case _call:
+		return(call()->call_id);
+	case _tables_content:
+		return(tables_content()->getValue_string(_t_cdr_next, "fbasename"));
+	default:
+		return("");
+	}
+}
+
 void Calltable::processCallsInChartsCache_batch(int threadIndex) {
 	list<Call*> calls_for_delete;
 	u_int32_t batch_index;
@@ -13441,6 +13484,15 @@ void Calltable::processCallsInChartsCache_batch(int threadIndex) {
 		case sChartsCallData::_tables_content:
 			{
 			cDbTablesContent *tablesContent = (cDbTablesContent*)batch_item->data;
+			if(sverb.charts_cache_filters_time) {
+				cout << "charts cache filters time : call " << batch_item->call_id()
+				     << " : rows cdr " << tablesContent->getCountRows(_t_cdr)
+				     << " / cdr_next " << tablesContent->getCountRows(_t_cdr_next)
+				     << " / cdr_rtp " << tablesContent->getCountRows(_t_cdr_rtp)
+				     << " / cdr_sdp " << tablesContent->getCountRows(_t_cdr_sdp)
+				     << " / cdr_dtmf " << tablesContent->getCountRows(_t_cdr_dtmf)
+				     << endl;
+			}
 			processCallsInChartsCache_add(batch_item, threadIndex);
 			delete tablesContent;
 			}
@@ -13473,8 +13525,17 @@ void Calltable::processCallsInChartsCache_batch(int threadIndex) {
 void Calltable::processCallsInChartsCache_add(sChartsCallData *call_data, int threadIndex) {
 	int multiply = max(sverb.charts_cache_multiply, 1);
 	for(int i = 0; i < multiply; i++) {
+		if(i) {
+			if(call_data->type == sChartsCallData::_tables_content) {
+				((cDbTablesContent*)call_data->data)->clearColumnValues();
+			} else if(call_data->type == sChartsCallData::_call) {
+				((Call*)call_data->data)->clearCdrFieldValues();
+			}
+		}
 		sChartsCacheCallData chartsCacheCallData;
-		chartsCacheAndCdrStatAddCall(call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
+		chartsCacheAndCdrStatAddCall(call_data, &chartsCacheCallData,
+					     sverb.charts_cache_filters_cache_disable ? NULL : chc_threads[threadIndex].cache,
+					     threadIndex);
 	}
 }
 
@@ -13535,8 +13596,11 @@ string Calltable::processCallsInChartsCache_cpuUsagePerc(double *avg, int pstatD
 	cpuStr << fixed;
 	double cpu_sum = 0;
 	unsigned cpu_count = 0;
-	__SYNC_LOCK(chc_threads_count_sync);
-	for(int i = 0; i < chc_threads_count; i++) {
+	int threads_count = chc_threads_count;
+	for(int i = 0; i < threads_count; i++) {
+		if(!chc_threads[i].tid) {
+			continue;
+		}
 		double cpu = get_cpu_usage_perc(chc_threads[i].tid, chc_threads[i].pstat[pstatDataIndex]);
 		if(cpu > 0) {
 			if(cpu_count) {
@@ -13547,7 +13611,6 @@ string Calltable::processCallsInChartsCache_cpuUsagePerc(double *avg, int pstatD
 			++cpu_count;
 		}
 	}
-	__SYNC_UNLOCK(chc_threads_count_sync);
 	if(avg) {
 		*avg = cpu_count ? cpu_sum / cpu_count : 0;
 	}
@@ -13905,8 +13968,9 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 		Call *call = active_calls[i];
 		bool okCallFilters = true;
 		if(callFilters.size()) {
+			sChartsCallData call_data(sChartsCallData::_call, call);
 			for(unsigned i = 0; i < callFilters.size(); i++) {
-				if(!callFilters[i]->check(call)) {
+				if(!callFilters[i]->check(&call_data)) {
 					okCallFilters = false;
 					break;
 				}
@@ -16900,6 +16964,44 @@ string CustomHeaders::getValue(Call *call, int type, const char *header) {
 
 string CustomHeaders::getCH_Content_value(sCH_Content *ch_content, int i1, int i2) {
 	return(ch_content->getContent(i1, i2).content);
+}
+
+string CustomHeaders::getTablesContent_value(cDbTablesContent *tablesContent, int i1, int i2, string header) {
+	if(!i1) {
+		return(tablesContent->getValue_string(_t_cdr_next, ("custom_header__" + header).c_str()));
+	}
+	if(i1 > CDR_NEXT_MAX) {
+		return("");
+	}
+	return(tablesContent->getValue_string(_t_cdr_next + i1, ("custom_header_" + intToString(i2)).c_str()));
+}
+
+void CustomHeaders::getHeaderValues(cDbTablesContent *tablesContent, int /*type*/, map<string, string> *rslt) {
+	lock_custom_headers();
+	for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
+		string value = getTablesContent_value(tablesContent, iter->first.i1, iter->first.i2, iter->second.first_header());
+		if(!iter->first.i1) {
+			(*rslt)["custom_header__" + iter->second.first_header()] = value;
+		} else {
+			(*rslt)["custom_header_" + intToString(iter->first.i1) + "_" + intToString(iter->first.i2)] = value;
+		}
+	}
+	unlock_custom_headers();
+}
+
+string CustomHeaders::getValue(cDbTablesContent *tablesContent, int /*type*/, const char *header) {
+	string rslt;
+	lock_custom_headers();
+	for(map<sCH_index, sCustomHeaderData>::iterator iter = custom_headers.begin(); iter != custom_headers.end() && rslt.empty(); iter++) {
+		string cmpHeaderName = !iter->first.i1 ?
+					"custom_header__" + iter->second.first_header() :
+					"custom_header_" + intToString(iter->first.i1) + "_" + intToString(iter->first.i2);
+		if(header == cmpHeaderName) {
+			rslt = getTablesContent_value(tablesContent, iter->first.i1, iter->first.i2, iter->second.first_header());
+		}
+	}
+	unlock_custom_headers();
+	return(rslt);
 }
 
 unsigned CustomHeaders::getSize() {

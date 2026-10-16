@@ -103,5 +103,21 @@ inline u_int32_t getTimeS_rdtsc() {
 	return(getTimeMS_rdtsc() / 1000);
 }
 
+inline double rdtsc_to_us(u_int64_t ticks) {
+	return(rdtsc_by_250ms ? (double)ticks * 250000 / rdtsc_by_250ms : 0);
+}
+
+inline u_int64_t rdtsc_overhead() {
+	u_int64_t min_ticks = 0;
+	for(unsigned i = 0; i < 1000; i++) {
+		u_int64_t begin = rdtsc();
+		u_int64_t ticks = rdtsc() - begin;
+		if(!i || ticks < min_ticks) {
+			min_ticks = ticks;
+		}
+	}
+	return(min_ticks);
+}
+
 
 #endif

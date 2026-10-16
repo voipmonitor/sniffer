@@ -9,6 +9,109 @@
 #include "country_detect.h"
 
 
+inline Call *recCall(void *rec) {
+	return(((sChartsCallData*)rec)->call());
+}
+
+inline cDbTablesContent *recTablesContent(void *rec) {
+	return(((sChartsCallData*)rec)->tables_content());
+}
+
+inline bool recIsCall(void *rec) {
+	return(((sChartsCallData*)rec)->type == sChartsCallData::_call);
+}
+
+struct sTableColumns {
+	sTableColumns(unsigned table_enum, const char **names, unsigned names_count,
+		      cDbTableContent::sColumnValues **col, bool *col_resolved) {
+		this->table_enum = table_enum;
+		this->names = names;
+		this->names_count = names_count;
+		this->col = col;
+		this->col_resolved = col_resolved;
+		tc = NULL;
+		rows = 0;
+	}
+	sTableColumns(const sTableColumns&) = delete;
+	sTableColumns& operator = (const sTableColumns&) = delete;
+	void init(cDbTablesContent *tc) {
+		this->tc = tc;
+		int countRows = tc->getCountRows(table_enum);
+		rows = countRows > 0 ? countRows : 0;
+		memset(col, 0, sizeof(col[0]) * names_count);
+		memset(col_resolved, 0, sizeof(col_resolved[0]) * names_count);
+	}
+	cDbTableContent::sColumnValues *column(unsigned index, cDbTableContent::eColumnValues type) {
+		if(!col_resolved[index]) {
+			col[index] = tc->getColumnValues(table_enum, names[index], type);
+			col_resolved[index] = true;
+		}
+		return(col[index]);
+	}
+	long long value_int(unsigned index, unsigned row, bool *null = NULL) {
+		cDbTableContent::sColumnValues *values = column(index, cDbTableContent::_cv_int);
+		if(null) {
+			*null = !values || values->isNull(row);
+		}
+		return(values ? values->value_int(row) : 0);
+	}
+	vmIP value_ip(unsigned index, unsigned row) {
+		cDbTableContent::sColumnValues *values = column(index, cDbTableContent::_cv_ip);
+		return(values ? values->value_ip(row) : 0);
+	}
+	unsigned table_enum;
+	const char **names;
+	unsigned names_count;
+	cDbTablesContent *tc;
+	unsigned rows;
+	cDbTableContent::sColumnValues **col;
+	bool *col_resolved;
+};
+
+struct sRtpStreamColumns : public sTableColumns {
+	enum eColumn {
+		_c_saddr,
+		_c_sport,
+		_c_daddr,
+		_c_dport,
+		_c_received,
+		_c_rtp_ptime,
+		_c_sdp_ptime,
+		_c_flags,
+		_c_last
+	};
+	sRtpStreamColumns()
+	 : sTableColumns(_t_cdr_rtp, columnNames(), _c_last, col_buffer, col_resolved_buffer) {
+	}
+	static const char **columnNames() {
+		static const char *names[_c_last] = { "saddr", "sport", "daddr", "dport", "received", "rtp_ptime", "sdp_ptime", "flags" };
+		return(names);
+	}
+	cDbTableContent::sColumnValues *col_buffer[_c_last];
+	bool col_resolved_buffer[_c_last];
+};
+
+struct sSdpRowColumns : public sTableColumns {
+	enum eColumn {
+		_c_ip,
+		_c_port,
+		_c_is_caller,
+		_c_ptime,
+		_c_leg_index,
+		_c_last
+	};
+	sSdpRowColumns()
+	 : sTableColumns(_t_cdr_sdp, columnNames(), _c_last, col_buffer, col_resolved_buffer) {
+	}
+	static const char **columnNames() {
+		static const char *names[_c_last] = { "ip", "port", "is_caller", "ptime", "leg_index" };
+		return(names);
+	}
+	cDbTableContent::sColumnValues *col_buffer[_c_last];
+	bool col_resolved_buffer[_c_last];
+};
+
+
 class cRecordFilterItem_CallProxy : public cRecordFilterItem_IP {
 public:
 	cRecordFilterItem_CallProxy(cRecordFilter *parent)
@@ -18,9 +121,8 @@ public:
 		if(findInBlackList) {
 			*findInBlackList = false;
 		}
-		Call *call = (Call*)rec;
 		set<vmIP> proxies;
-		getProxies(call, &proxies);
+		getProxies(rec, &proxies);
 		for(set<vmIP>::iterator iter = proxies.begin(); iter != proxies.end(); iter++) {
 			if(check_ip(*iter)) {
 				return(true);
@@ -31,9 +133,8 @@ public:
 	void checkWhiteBlack(void *rec, bool *white, bool *black) {
 		*white = false;
 		*black = false;
-		Call *call = (Call*)rec;
 		set<vmIP> proxies;
-		getProxies(call, &proxies);
+		getProxies(rec, &proxies);
 		for(set<vmIP>::iterator iter = proxies.begin(); iter != proxies.end(); iter++) {
 			bool proxy_white;
 			bool proxy_black;
@@ -47,7 +148,16 @@ public:
 		}
 	}
 private:
-	void getProxies(Call *call, set<vmIP> *proxies) {
+	void getProxies(void *rec, set<vmIP> *proxies) {
+		if(!recIsCall(rec)) {
+			cDbTablesContent *tc = recTablesContent(rec);
+			int count = tc->getCountRows(_t_cdr_proxy);
+			for(int i = 0; i < count; i++) {
+				proxies->insert(tc->getValue_ip(_t_cdr_proxy, "dst", NULL, i));
+			}
+			return;
+		}
+		Call *call = recCall(rec);
 		if(call->saved_data) {
 			*proxies = call->saved_data->proxies;
 		} else {
@@ -189,6 +299,13 @@ public:
 		int num;
 		ListCheckString pattern;
 	};
+	struct sResponse {
+		sResponse() {
+			num = 0;
+		}
+		int num;
+		string response;
+	};
 public:
 	cRecordFilterItem_SipResponseAll(cRecordFilter *parent, const char *filter);
 	bool check(void *rec, bool *findInBlackList = NULL);
@@ -201,7 +318,8 @@ public:
 		}
 	}
 private:
-	static bool checkItem(CallBranch *c_branch, sItem *item);
+	static void getResponses(void *rec, vector<sResponse> *responses);
+	static bool checkItem(vector<sResponse> *responses, sItem *item);
 private:
 	vector<sItem> items;
 	vector<sItem> items_not;
@@ -278,6 +396,7 @@ public:
 	bool check(void *rec, bool *findInBlackList = NULL);
 private:
 	vector<string> columns;
+	vector<unsigned> slots;
 	double divisor;
 	eCond cond;
 	double value;
@@ -289,18 +408,14 @@ public:
 	struct sColumn {
 		string column;
 		double multiplier;
+		unsigned slot;
 	};
 public:
 	cRecordFilterItem_CdrFieldsSum(cRecordFilter *parent, double value)
 	 : cRecordFilterItem_rec(parent) {
 		this->value = value;
 	}
-	void addColumn(string column, double multiplier) {
-		sColumn c;
-		c.column = column;
-		c.multiplier = multiplier;
-		columns.push_back(c);
-	}
+	void addColumn(string column, double multiplier);
 	bool check(void *rec, bool *findInBlackList = NULL);
 private:
 	vector<sColumn> columns;
@@ -368,10 +483,10 @@ public:
 		return(ge_set || lt_set || le_set);
 	}
 	bool check(void *rec, bool *findInBlackList = NULL);
-	static unsigned rtpStreamsSize(Call *call);
-	static bool rtpStream(Call *call, unsigned index, Call::sSavedData::sRtpStream *stream);
-	static unsigned sdpRowsSize(Call *call);
-	static bool sdpRow(Call *call, unsigned index, s_sdp_store_data *sdp_row);
+	static unsigned rtpStreamsSize(void *rec, sRtpStreamColumns *columns);
+	static bool rtpStream(void *rec, sRtpStreamColumns *columns, unsigned index, Call::sSavedData::sRtpStream *stream);
+	static unsigned sdpRowsSize(void *rec, sSdpRowColumns *columns);
+	static bool sdpRow(void *rec, sSdpRowColumns *columns, unsigned index, s_sdp_store_data *sdp_row);
 	static bool matchSide(eSide side, bool is_caller, bool caller_flag_value) {
 		return(side == _any ||
 		       (side == _caller ? is_caller == caller_flag_value : is_caller != caller_flag_value));
@@ -382,8 +497,8 @@ private:
 		       (!lt_set || streamValue < lt) &&
 		       (!le_set || streamValue <= le));
 	}
-	bool getStreamValue(Call *call, unsigned index, double *streamValue);
-	bool getSdpRowValue(Call *call, unsigned index, double *streamValue);
+	bool getStreamValue(void *rec, sRtpStreamColumns *columns, unsigned index, double *streamValue);
+	bool getSdpRowValue(void *rec, sSdpRowColumns *columns, unsigned index, double *streamValue);
 private:
 	eField field;
 	eSide side;
@@ -597,7 +712,8 @@ public:
 		_tf_flags_eq,
 		_tf_rtp_state,
 		_tf_country_compare_numbers,
-		_tf_country_compare_ips
+		_tf_country_compare_ips,
+		_tf_ccs_license
 	};
 	struct sCodecData {
 		int payload_ab[2];
@@ -605,6 +721,14 @@ public:
 		int payload;
 		bool payload_null;
 		bool rtp_rows_match;
+	};
+	enum eRtpState {
+		_rs_na,
+		_rs_missing,
+		_rs_exists,
+		_rs_zero_one,
+		_rs_one_way,
+		_rs_two_way
 	};
 public:
 	cRecordFilterItem_Call(cRecordFilter *parent, eTypeFilter typeFilter, const char *filter);
@@ -617,16 +741,8 @@ private:
 	bool codecMatch(int codec) {
 		return(codec >= 0 && filter_int.find(codec) != filter_int.end());
 	}
-	void getSaddrExists(Call *call, bool *a_saddr, bool *b_saddr) {
-		if(call->saved_data) {
-			*a_saddr = call->saved_data->saddr_exists[0];
-			*b_saddr = call->saved_data->saddr_exists[1];
-		} else {
-			*a_saddr = call->lastactivecallerrtp != NULL;
-			*b_saddr = call->lastactivecalledrtp != NULL;
-		}
-	}
-	void getCodecData(Call *call, sCodecData *codecData);
+	void getSaddrExists(void *rec, bool *a_saddr, bool *b_saddr);
+	void getCodecData(void *rec, sCodecData *codecData);
 	int rtpMosF2Mult10(RTP *rtp);
 	int sqlAnd(int cond1, int cond2) {
 		return(cond1 == 0 || cond2 == 0 ? 0 :
@@ -643,6 +759,7 @@ private:
 	u_int64_t filter_num;
 	u_int64_t filter_num2;
 	bool codec_all_streams;
+	eRtpState rtp_state;
 };
 
 
@@ -815,7 +932,7 @@ public:
 		map<string, sItem> data;
 	};
 public:
-	cCallFilter(const char *filter, const char *keyPrefix = NULL, bool nested = false);
+	cCallFilter(const char *filter, const char *keyPrefix = NULL, bool nested = false, cCodebookCache *codebookCache = NULL);
 	void setFilter(const char *filter, const char *keyPrefix = NULL, bool nested = false);
 	bool existsUnsupportedKeys() {
 		return(!unsupportedKeys.empty());
@@ -824,57 +941,67 @@ public:
 		return(unsupportedKeys);
 	}
 	int64_t getField_int(void *rec, unsigned registerFieldIndex) {
+		if(!recIsCall(rec)) {
+			return(getField_int_tc(recTablesContent(rec), registerFieldIndex));
+		}
+		Call *call = recCall(rec);
 		switch(registerFieldIndex) {
 		case cf_calldate:
-			return(((Call*)rec)->calltime_s());
+			return(call->calltime_s());
 		case cf_id_sensor:
-			return(((Call*)rec)->useSensorId);
+			return(call->useSensorId);
 		case cf_lastSIPresponseNum:
-			return(((Call*)rec)->branch_main()->lastSIPresponseNum);
+			return(call->branch_main()->lastSIPresponseNum);
 		case cf_callerport:
-			return(((Call*)rec)->isClosed() ?
-				((Call*)rec)->branch_main()->sipcallerport_rslt.getPort() :
-				((Call*)rec)->getSipcallerport(((Call*)rec)->branch_main()).getPort());
+			return(call->isClosed() ?
+				call->branch_main()->sipcallerport_rslt.getPort() :
+				call->getSipcallerport(call->branch_main()).getPort());
 		case cf_calledport:
-			return(((Call*)rec)->isClosed() ?
-				((Call*)rec)->branch_main()->sipcalledport_rslt.getPort() :
-				((Call*)rec)->getSipcalledport(((Call*)rec)->branch_main()).getPort());
+			return(call->isClosed() ?
+				call->branch_main()->sipcalledport_rslt.getPort() :
+				call->getSipcalledport(call->branch_main()).getPort());
 		case cf_called_international:
-			return(!isLocalByPhoneNumber(((Call*)rec)->get_called(((Call*)rec)->branch_main()), ((Call*)rec)->getSipcalledip_corrected(((Call*)rec)->branch_main())));
+			return(!isLocalByPhoneNumber(call->get_called(call->branch_main()), call->getSipcalledip_corrected(call->branch_main())));
 		case cf_vlan:
-			return(((Call*)rec)->branch_main()->getVlan());
+			return(call->branch_main()->getVlan());
 		}
 		return(0);
 	}
+	int64_t getField_int_tc(cDbTablesContent *tc, unsigned registerFieldIndex);
 	double getField_float(void *rec, unsigned registerFieldIndex, bool *null);
+	double getField_float_tc(cDbTablesContent *tc, unsigned registerFieldIndex, bool *null);
 	vmIP getField_ip(void *rec, unsigned registerFieldIndex) {
+		if(!recIsCall(rec)) {
+			return(getField_ip_tc(recTablesContent(rec), registerFieldIndex));
+		}
+		Call *call = recCall(rec);
 		switch(registerFieldIndex) {
 		case cf_callerip:
-			return(((Call*)rec)->isClosed() ?
-				((Call*)rec)->branch_main()->sipcallerip_rslt :
-				((Call*)rec)->getSipcallerip_corrected(((Call*)rec)->branch_main()));
+			return(call->isClosed() ?
+				call->branch_main()->sipcallerip_rslt :
+				call->getSipcallerip_corrected(call->branch_main()));
 		case cf_calledip:
-			return(((Call*)rec)->isClosed() ?
-				((Call*)rec)->branch_main()->sipcalledip_rslt :
-				((Call*)rec)->getSipcalledip_corrected(((Call*)rec)->branch_main()));
+			return(call->isClosed() ?
+				call->branch_main()->sipcalledip_rslt :
+				call->getSipcalledip_corrected(call->branch_main()));
 		case cf_callerip_encaps:
-			return(((Call*)rec)->isClosed() ?
-				((Call*)rec)->branch_main()->sipcallerip_encaps_rslt :
-				((Call*)rec)->getSipcallerip_encaps(((Call*)rec)->branch_main(), true));
+			return(call->isClosed() ?
+				call->branch_main()->sipcallerip_encaps_rslt :
+				call->getSipcallerip_encaps(call->branch_main(), true));
 		case cf_calledip_encaps:
-			return(((Call*)rec)->isClosed() ?
-				((Call*)rec)->branch_main()->sipcalledip_encaps_rslt :
-				((Call*)rec)->getSipcalledip_encaps(((Call*)rec)->branch_main(), true, true));
+			return(call->isClosed() ?
+				call->branch_main()->sipcalledip_encaps_rslt :
+				call->getSipcalledip_encaps(call->branch_main(), true, true));
 		case cf_rtp_src:
 		case cf_rtp_dst: {
 			int side = registerFieldIndex == cf_rtp_src ? 0 : 1;
-			if(((Call*)rec)->saved_data) {
-				if(((Call*)rec)->saved_data->saddr_exists[side]) {
-					return(((Call*)rec)->saved_data->saddr[side]);
+			if(call->saved_data) {
+				if(call->saved_data->saddr_exists[side]) {
+					return(call->saved_data->saddr[side]);
 				}
 				return(0);
 			}
-			RTP *rtp = side == 0 ? ((Call*)rec)->lastactivecallerrtp : ((Call*)rec)->lastactivecalledrtp;
+			RTP *rtp = side == 0 ? call->lastactivecallerrtp : call->lastactivecalledrtp;
 			if(rtp) {
 				return(rtp->saddr);
 			}
@@ -883,77 +1010,83 @@ public:
 		}
 		return(0);
 	}
+	vmIP getField_ip_tc(cDbTablesContent *tc, unsigned registerFieldIndex);
 	string getField_string(void *rec, unsigned registerFieldIndex) {
+		if(!recIsCall(rec)) {
+			return(getField_string_tc(recTablesContent(rec), registerFieldIndex));
+		}
+		Call *call = recCall(rec);
 		switch(registerFieldIndex) {
 		case cf_caller:
-			return(((Call*)rec)->saved_data ?
-				((Call*)rec)->saved_data->caller :
-				((Call*)rec)->branch_main()->caller);
+			return(call->saved_data ?
+				call->saved_data->caller :
+				call->branch_main()->caller);
 		case cf_called:
-			return(((Call*)rec)->saved_data ?
-				((Call*)rec)->saved_data->called :
-				((Call*)rec)->get_called(((Call*)rec)->branch_main()));
+			return(call->saved_data ?
+				call->saved_data->called :
+				call->get_called(call->branch_main()));
 		case cf_callerdomain:
-			return(((Call*)rec)->branch_main()->caller_domain);
+			return(call->branch_main()->caller_domain);
 		case cf_calleddomain:
-			return(((Call*)rec)->saved_data ?
-				((Call*)rec)->saved_data->called_domain :
-				((Call*)rec)->get_called_domain(((Call*)rec)->branch_main()));
+			return(call->saved_data ?
+				call->saved_data->called_domain :
+				call->get_called_domain(call->branch_main()));
 		case cf_calleragent:
-			return(((Call*)rec)->saved_data ?
-				((Call*)rec)->saved_data->a_ua :
-				((Call*)rec)->get_a_ua(((Call*)rec)->branch_main()));
+			return(call->saved_data ?
+				call->saved_data->a_ua :
+				call->get_a_ua(call->branch_main()));
 		case cf_calledagent:
-			return(((Call*)rec)->saved_data ?
-				((Call*)rec)->saved_data->b_ua :
-				((Call*)rec)->get_b_ua(((Call*)rec)->branch_main()));
+			return(call->saved_data ?
+				call->saved_data->b_ua :
+				call->get_b_ua(call->branch_main()));
 		case cf_callid:
-			return(((Call*)rec)->fbasename);
+			return(call->fbasename);
 		case cf_callername:
-			return(((Call*)rec)->saved_data ?
-				((Call*)rec)->saved_data->callername :
-				((Call*)rec)->branch_main()->callername);
+			return(call->saved_data ?
+				call->saved_data->callername :
+				call->branch_main()->callername);
 		case cf_digest_username:
-			return(((Call*)rec)->branch_main()->digest_username);
+			return(call->branch_main()->digest_username);
 		case cf_lastSIPresponse:
-			return(((Call*)rec)->branch_main()->lastSIPresponse);
+			return(call->branch_main()->lastSIPresponse);
 		case cf_caller_country:
 		case cf_callerip_country:
 			{
-			if(((Call*)rec)->saved_data) {
-				if(!((Call*)rec)->saved_data->countries_set) {
+			if(call->saved_data) {
+				if(!call->saved_data->countries_set) {
 					return("");
 				}
 				return(registerFieldIndex == cf_caller_country ?
-					((Call*)rec)->saved_data->caller_country :
-					((Call*)rec)->saved_data->callerip_country);
+					call->saved_data->caller_country :
+					call->saved_data->callerip_country);
 			}
-			vmIP ip = ((Call*)rec)->isClosed() ?
-				  ((Call*)rec)->getSipcallerip(((Call*)rec)->branch_main()) :
-				  ((Call*)rec)->getSipcallerip_corrected(((Call*)rec)->branch_main());
+			vmIP ip = call->isClosed() ?
+				  call->getSipcallerip(call->branch_main()) :
+				  call->getSipcallerip_corrected(call->branch_main());
 			return(registerFieldIndex == cf_caller_country ?
-				getCountryByPhoneNumber(((Call*)rec)->branch_main()->caller.c_str(), ip, true) :
+				getCountryByPhoneNumber(call->branch_main()->caller.c_str(), ip, true) :
 				getCountryByIP(ip, true));
 			}
 		case cf_called_country:
 		case cf_calledip_country:
 			{
-			if(((Call*)rec)->saved_data) {
-				if(!((Call*)rec)->saved_data->countries_set) {
+			if(call->saved_data) {
+				if(!call->saved_data->countries_set) {
 					return("");
 				}
 				return(registerFieldIndex == cf_called_country ?
-					((Call*)rec)->saved_data->called_country :
-					((Call*)rec)->saved_data->calledip_country);
+					call->saved_data->called_country :
+					call->saved_data->calledip_country);
 			}
 			vmIP ip = getField_ip(rec, cf_calledip);
 			return(registerFieldIndex == cf_called_country ?
-				getCountryByPhoneNumber(((Call*)rec)->get_called(((Call*)rec)->branch_main()), ip, true) :
+				getCountryByPhoneNumber(call->get_called(call->branch_main()), ip, true) :
 				getCountryByIP(ip, true));
 			}
 		}
 		return("");
 	}
+	string getField_string_tc(cDbTablesContent *tc, unsigned registerFieldIndex);
 private:
 	void addFilterAB(cFilterData &filterData, const char *name1, const char *name2, const char *typeName, sAbDef def);
 	void addFilterNumInterval(cFilterData &filterData, const char *name, unsigned field, cRecordFilterItem_base::eCmpCond cond, bool zeroIsEmpty = false, bool mysqlConversion = false);

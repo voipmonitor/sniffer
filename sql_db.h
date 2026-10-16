@@ -99,6 +99,8 @@ public:
 	SqlDb_row(SqlDb *sqlDb = NULL) {
 		this->sqlDb = sqlDb;
 		ignoreCheckExistsField = false;
+		fields_map_size = 0;
+		fields_map_used = false;
 	}
 	void setIgnoreCheckExistsField(bool ignoreCheckExistsField = true) {
 		this->ignoreCheckExistsField = ignoreCheckExistsField;
@@ -108,6 +110,38 @@ public:
 	string operator [] (int indexField);
 	operator int();
 	bool setContent(const char *fieldName, const char *newContent);
+	struct sFieldNameCmp {
+		using is_transparent = void;
+		bool operator () (const string &s1, const string &s2) const {
+			return(strcasecmp(s1.c_str(), s2.c_str()) < 0);
+		}
+		bool operator () (const string &s1, const char *s2) const {
+			return(strcasecmp(s1.c_str(), s2) < 0);
+		}
+		bool operator () (const char *s1, const string &s2) const {
+			return(strcasecmp(s1, s2.c_str()) < 0);
+		}
+	};
+	void rowPush(const SqlDb_rowField &field) {
+		if(fields_map_used) {
+			fields_map.insert(make_pair(field.fieldName, (unsigned)row.size()));
+			fields_map_size = row.size() + 1;
+		}
+		row.push_back(field);
+	}
+	void createFieldsMap() {
+		fields_map.clear();
+		for(size_t i = 0; i < row.size(); i++) {
+			fields_map.insert(make_pair(row[i].fieldName, (unsigned)i));
+		}
+		fields_map_size = row.size();
+		fields_map_used = true;
+	}
+	void enableFieldsMap() {
+		if(!fields_map_used) {
+			createFieldsMap();
+		}
+	}
 	SqlDb_rowField *add(const char *content, string fieldName = "", int type = 0, unsigned long length = 0, eInternalFieldType ift = _ift_string) {
 		if(!ignoreCheckExistsField && fieldName != "") {
 			for(size_t i = 0; i < row.size(); i++) {
@@ -117,7 +151,7 @@ public:
 				}
 			}
 		}
-		row.push_back(SqlDb_rowField(content, fieldName, type, length, ift));
+		rowPush(SqlDb_rowField(content, fieldName, type, length, ift));
 		return(&row[row.size() - 1]);
 	}
 	SqlDb_rowField *add(string content, string fieldName = "", bool null = false, eInternalFieldType ift = _ift_string) {
@@ -129,7 +163,7 @@ public:
 				}
 			}
 		}
-		row.push_back(SqlDb_rowField(content, fieldName, null, 0, 0, ift));
+		rowPush(SqlDb_rowField(content, fieldName, null, 0, 0, ift));
 		return(&row[row.size() - 1]);
 	}
 	SqlDb_rowField *add(string content, unsigned limitLength ,string fieldName = "", bool null = false, eInternalFieldType ift = _ift_string) {
@@ -144,10 +178,10 @@ public:
 				}
 			}
 		}
-		row.push_back(SqlDb_rowField(limitLength > 0 && content.length() > limitLength ? 
-					      content.substr(limitLength) : 
-					      content,
-					     fieldName, null, 0, 0, ift));
+		rowPush(SqlDb_rowField(limitLength > 0 && content.length() > limitLength ?
+					content.substr(limitLength) :
+					content,
+				       fieldName, null, 0, 0, ift));
 		return(&row[row.size() - 1]);
 	}
 	SqlDb_rowField *add(int content, string fieldName, bool null = false) {
@@ -238,12 +272,29 @@ public:
 	void add_cb_string(string content, string fieldName, int cb_type);
 	string add_id_or_insert(string fieldName, const char *sqlFunc, string varName, string funcArgsPrefix, string value, const char *table, const char *column);
 	void add_null(string fieldName) {
-		row.push_back(SqlDb_rowField(NULL, fieldName));
+		rowPush(SqlDb_rowField(NULL, fieldName));
 	}
 	int getIndexField(string fieldName) {
-		for(size_t i = 0; i < row.size(); i++) {
-			if(!strcasecmp(row[i].fieldName.c_str(), fieldName.c_str())) {
-				return(i);
+		return(getIndexField(fieldName.c_str(), fieldName.length()));
+	}
+	int getIndexField(const char *fieldName, size_t fieldNameLength = 0) {
+		if(fields_map_used) {
+			if(fields_map_size != row.size()) {
+				createFieldsMap();
+			}
+			map<string, unsigned, sFieldNameCmp>::iterator iter = fields_map.find(fieldName);
+			if(iter != fields_map.end()) {
+				return(iter->second);
+			}
+		} else {
+			if(!fieldNameLength) {
+				fieldNameLength = strlen(fieldName);
+			}
+			for(size_t i = 0; i < row.size(); i++) {
+				if(row[i].fieldName.length() == fieldNameLength &&
+				   !strcasecmp(row[i].fieldName.c_str(), fieldName)) {
+					return(i);
+				}
 			}
 		}
 		if(this->sqlDb) {
@@ -278,6 +329,16 @@ public:
 		}
 		return(0);
 	}
+	SqlDb_rowField *getField(const char *fieldName, int *_indexField = NULL) {
+		int indexField = this->getIndexField(fieldName);
+		if(indexField >= 0) {
+			if(_indexField) {
+				*_indexField = indexField;
+			}
+			return(&row[indexField]);
+		}
+		return(NULL);
+	}
 	SqlDb_rowField *getField(string fieldName, int *_indexField = NULL) {
 		int indexField = this->getIndexField(fieldName);
 		if(indexField >= 0) {
@@ -310,11 +371,16 @@ public:
 	void clearSqlDb();
 	void clear() {
 		row.clear();
+		fields_map.clear();
+		fields_map_size = 0;
 	}
 private:
 	SqlDb *sqlDb;
 	vector<SqlDb_rowField> row;
 	bool ignoreCheckExistsField;
+	map<string, unsigned, sFieldNameCmp> fields_map;
+	unsigned fields_map_size;
+	bool fields_map_used;
 };
 
 class SqlDb_rows {

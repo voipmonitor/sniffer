@@ -268,6 +268,7 @@ cDbTableContent::~cDbTableContent() {
 	for(vector<sRow>::iterator iter = rows.begin(); iter != rows.end(); iter++) {
 		iter->destroy();
 	}
+	clearColumnValues();
 }
 
 void cDbTableContent::addHeader(const char *source) {
@@ -320,13 +321,108 @@ string cDbTableContent::insertQuery(SqlDb *sqlDb) {
 	return(insert_str);
 }
 
+cDbTableContent::sColumnValues *cDbTableContent::getColumnValues_slow(int columnIndex, eColumnValues type) {
+	if(columnIndex < 0) {
+		return(NULL);
+	}
+	if((int)values_cache.size() <= columnIndex) {
+		values_cache.resize(columnIndex + 1, NULL);
+	}
+	sColumnValues *values = values_cache[columnIndex];
+	if(!values) {
+		values = new FILE_LINE(0) sColumnValues(rows.size());
+		values_cache[columnIndex] = values;
+		values_filled.push_back(columnIndex);
+	}
+	if((type == _cv_int && values->int_set) ||
+	   (type == _cv_float && values->float_set) ||
+	   (type == _cv_ip && values->ip_set) ||
+	   (type == _cv_str && values->str_set)) {
+		return(values);
+	}
+	for(unsigned i = 0; i < rows.size(); i++) {
+		bool absent = columnIndex >= (int)rows[i].items->size;
+		values->setValue(absent ? NULL : rows[i].items->strings[columnIndex].str,
+				 absent ? true : (rows[i].items->strings[columnIndex].flags & SqlDb_row::_ift_null) != 0,
+				 type);
+	}
+	values->null_set = true;
+	switch(type) {
+	case _cv_int:
+		values->int_set = true;
+		break;
+	case _cv_float:
+		values->float_set = true;
+		break;
+	case _cv_ip:
+		values->ip_set = true;
+		break;
+	case _cv_str:
+		values->str_set = true;
+		break;
+	}
+	return(values);
+}
+
+void cDbTableContent::clearColumnValues() {
+	for(unsigned i = 0; i < values_filled.size(); i++) {
+		delete values_cache[values_filled[i]];
+		values_cache[values_filled[i]] = NULL;
+	}
+	values_filled.clear();
+}
+
 cDbTablesContent::cDbTablesContent() {
+	slots_used = cdr_column_slots_used < CDR_COLUMN_SLOTS ? cdr_column_slots_used : CDR_COLUMN_SLOTS;
+	memset(slots, 0, slots_used * sizeof(sColumnSlot));
 }
 
 cDbTablesContent::~cDbTablesContent() {
 	for(vector<cDbTableContent*>::iterator iter = tables.begin(); iter != tables.end(); iter++) {
 		delete *iter;
 	}
+}
+
+cDbTableContent::sColumnValues *cDbTablesContent::getColumnValues(unsigned table_enum, const char *column, cDbTableContent::eColumnValues type, int *columnIndex) {
+	map<unsigned, cDbTableContent*>::iterator iter = tables_enum_map.find(table_enum);
+	if(iter == tables_enum_map.end()) {
+		if(columnIndex) {
+			*columnIndex = -2;
+		}
+		return(NULL);
+	}
+	int _columnIndex = iter->second->header.items->findIndex(column);
+	if(columnIndex) {
+		*columnIndex = _columnIndex;
+	}
+	return(iter->second->getColumnValues(_columnIndex, type));
+}
+
+cDbTableContent::sColumnValues *cDbTablesContent::getColumnValues_slot_slow(unsigned slot, unsigned table_enum, const char *column, cDbTableContent::eColumnValues type, int *columnIndex) {
+	if(slot >= slots_used) {
+		if(slot >= CDR_COLUMN_SLOTS) {
+			return(getColumnValues(table_enum, column, type, columnIndex));
+		}
+		unsigned slots_used_new = cdr_column_slots_used > slot + 1 ? cdr_column_slots_used : slot + 1;
+		if(slots_used_new > CDR_COLUMN_SLOTS) {
+			slots_used_new = CDR_COLUMN_SLOTS;
+		}
+		memset(slots + slots_used, 0, (slots_used_new - slots_used) * sizeof(sColumnSlot));
+		slots_used = slots_used_new;
+	}
+	sColumnSlot *columnSlot = &slots[slot];
+	columnSlot->table = NULL;
+	columnSlot->columnIndex = -2;
+	map<unsigned, cDbTableContent*>::iterator iter = tables_enum_map.find(table_enum);
+	if(iter != tables_enum_map.end()) {
+		columnSlot->table = iter->second;
+		columnSlot->columnIndex = iter->second->header.items->findIndex(column);
+	}
+	columnSlot->resolved = true;
+	if(columnIndex) {
+		*columnIndex = columnSlot->columnIndex;
+	}
+	return(columnSlot->table ? columnSlot->table->getColumnValues(columnSlot->columnIndex, type) : NULL);
 }
 
 void cDbTablesContent::addCsvRow(const char *source) {
@@ -502,6 +598,31 @@ double cDbTablesContent::getMinMaxValue(unsigned table_enum, const char *columns
 	return(rslt);
 }
 
+double cDbTablesContent::getAvgValue(unsigned table_enum, const char *columns[], bool nullIfAnyNull, bool onlyNotZero, bool *null) {
+	double sum = 0;
+	unsigned count = 0;
+	for(unsigned i = 0; columns[i]; i++) {
+		double v;
+		bool v_null;
+		v = getValue_float(table_enum, columns[i], false, &v_null);
+		if(v_null || (onlyNotZero && v == 0)) {
+			if(nullIfAnyNull) {
+				if(null) {
+					*null = true;
+				}
+				return(nan("0"));
+			}
+		} else {
+			sum += v;
+			count++;
+		}
+	}
+	if(null) {
+		*null = !count;
+	}
+	return(count ? sum / count : nan("0"));
+}
+
 void cDbTablesContent::removeColumn(unsigned table_enum, const char *column) {
 	map<unsigned, cDbTableContent*>::iterator iter = tables_enum_map.find(table_enum);
 	if(iter != tables_enum_map.end()) {
@@ -511,6 +632,7 @@ void cDbTablesContent::removeColumn(unsigned table_enum, const char *column) {
 			for(unsigned i = 0; i < iter->second->rows.size(); i++) {
 				iter->second->rows[i].items->strings[columnIndex].begin = NULL;
 			}
+			iter->second->clearColumnValues();
 		}
 	}
 }
@@ -522,6 +644,7 @@ void cDbTablesContent::removeColumn(unsigned table_enum, unsigned columnIndex) {
 		for(unsigned i = 0; i < iter->second->rows.size(); i++) {
 			iter->second->rows[i].items->strings[columnIndex].begin = NULL;
 		}
+		iter->second->clearColumnValues();
 	}
 }
 
@@ -546,5 +669,6 @@ int getDbTableEnumIndex(string *table) {
 	       !strcasecmp(table->c_str(), "cdr_rtp") ? _t_cdr_rtp :
 	       !strcasecmp(table->c_str(), "cdr_sdp") ? _t_cdr_sdp :
 	       !strcasecmp(table->c_str(), "cdr_text_data") ? _t_cdr_text_data :
-	       !strcasecmp(table->c_str(), "cdr_conference") ? _t_cdr_conference : 0);
+	       !strcasecmp(table->c_str(), "cdr_conference") ? _t_cdr_conference :
+	       !strcasecmp(table->c_str(), "cdr_dtmf") ? _t_cdr_dtmf : 0);
 }

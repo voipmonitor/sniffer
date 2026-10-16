@@ -6,6 +6,66 @@
 #include "tools.h"
 
 
+class cCodebookCache {
+private:
+	struct sColumn {
+		sColumn() {
+			loaded = false;
+		}
+		string get(u_int32_t id, bool *found = NULL);
+		void getList(vector<string> *values);
+		map<u_int32_t, string> values;
+		string column;
+		string condition;
+		bool loaded;
+	};
+	struct sTable {
+		map<string, sColumn> columns;
+	};
+	struct sName {
+		string table;
+		string column;
+		string condition;
+	};
+public:
+	cCodebookCache() {
+		_sync = 0;
+		_sync_load = 0;
+	}
+	string get(const char *table, const char *column, u_int32_t id, bool *found = NULL);
+	bool getList(const char *table, const char *column, const char *condition, vector<string> *values);
+	void reload(bool singlePass, SqlDb *sqlDb = NULL);
+	static bool getValues(cCodebookCache *cache, const char *table, const char *column, vector<int> *ids, map<u_int32_t, string> *values);
+	static bool getValues(cCodebookCache *cache, const char *table, const char **columns, unsigned columns_count, vector<int> *ids, vector<map<u_int32_t, string> > *values);
+	static bool loadList(const char *table, const char *column, const char *condition, vector<string> *values);
+private:
+	string getValue(const char *table, const char *column, u_int32_t id, bool *loaded, bool *found = NULL);
+	bool getListValues(const char *table, const char *column, const char *condition, vector<string> *values, bool *loaded);
+	bool isLoaded(const char *table, const char *column, const char *condition);
+	sColumn *findColumn(const char *table, const string &key);
+	sColumn *initColumn(const char *table, const char *column, const char *condition);
+	static string columnKey(const char *column, const char *condition);
+	static bool loadQuery(const string &query, bool key_by_id, const char **columns, unsigned columns_count, vector<map<u_int32_t, string> > *values, bool singlePass, SqlDb *sqlDb);
+	static bool loadValues(const char *table, const char *column, const char *condition, map<u_int32_t, string> *values, bool singlePass, SqlDb *sqlDb = NULL);
+	void setValues(const char *table, const char *column, const char *condition, map<u_int32_t, string> *values);
+	void lock() {
+		__SYNC_LOCK(_sync);
+	}
+	void unlock() {
+		__SYNC_UNLOCK(_sync);
+	}
+	void lock_load() {
+		__SYNC_LOCK_USLEEP(_sync_load, 100);
+	}
+	void unlock_load() {
+		__SYNC_UNLOCK(_sync_load);
+	}
+private:
+	map<string, sTable> tables;
+	volatile int _sync;
+	volatile int _sync_load;
+};
+
 class cRecordFilterItem_base {
 public:
 	enum eCmpCond {
@@ -31,8 +91,7 @@ public:
 	}
 	virtual void setNoLock() {
 	}
-	void setCodebook(const char *table, const char *column);
-	string getCodebookValue(u_int32_t id);
+	void getCodebookValues(const char *table, const char *column, const char *idstr, vector<string> *values);
 	virtual int64_t getField_int(void *rec);
 	virtual vmIP getField_ip(void *rec);
 	virtual double getField_float(void *rec, bool *null = NULL);
@@ -42,8 +101,6 @@ public:
 public:
 	cRecordFilter *parent;
 	unsigned recordFieldIndex;
-	string codebook_table;
-	string codebook_column;
 };
 
 class cRecordFilterItem_calldate : public cRecordFilterItem_base {
@@ -97,14 +154,11 @@ public:
 		ipData.addBlack(ip, false);
 	}
 	void addWhite(const char *table, const char *column, const char * idstr) {
-		vector<string> ids = split(idstr, ',');
-		for(unsigned i = 0; i < ids.size(); i++) {
-			addWhite(table, column, atol(ids[i].c_str()));
+		vector<string> values;
+		getCodebookValues(table, column, idstr, &values);
+		for(unsigned i = 0; i < values.size(); i++) {
+			ipData.addWhite(values[i].c_str(), false);
 		}
-	}
-	void addWhite(const char *table, const char *column, u_int32_t id) {
-		setCodebook(table, column);
-		ipData.addWhite(getCodebookValue(id).c_str(), false);
 	}
 	bool check(void *rec, bool *findInBlackList = NULL) {
 		if(!ipData.checkIP(getField_ip(rec), findInBlackList)) {
@@ -145,14 +199,11 @@ public:
 		phoneNumberData.addWhite(number, type, enableNull, true);
 	}
 	void addWhite(const char *table, const char *column, const char * idstr, PhoneNumber::eTypeNumber type) {
-		vector<string> ids = split(idstr, ',');
-		for(unsigned i = 0; i < ids.size(); i++) {
-			addWhite(table, column, atol(ids[i].c_str()), type);
+		vector<string> values;
+		getCodebookValues(table, column, idstr, &values);
+		for(unsigned i = 0; i < values.size(); i++) {
+			phoneNumberData.addWhite(values[i].c_str(), type, enableNull, true);
 		}
-	}
-	void addWhite(const char *table, const char *column, u_int32_t id, PhoneNumber::eTypeNumber type) {
-		setCodebook(table, column);
-		phoneNumberData.addWhite(getCodebookValue(id).c_str(), type, enableNull, true);
 	}
 	bool check(void *rec, bool *findInBlackList = NULL) {
 		if(!phoneNumberData.checkNumber(getField_string(rec).c_str(), findInBlackList)) {
@@ -208,14 +259,11 @@ public:
 		checkStringData.addBlack(checkString, enableSpaceSeparator, separators, separatorsSeparator, enableNoSplitBorders, enableNull, enableInterval);
 	}
 	void addWhite(const char *table, const char *column, const char * idstr) {
-		vector<string> ids = split(idstr, ',');
-		for(unsigned i = 0; i < ids.size(); i++) {
-			addWhite(table, column, atol(ids[i].c_str()));
+		vector<string> values;
+		getCodebookValues(table, column, idstr, &values);
+		for(unsigned i = 0; i < values.size(); i++) {
+			checkStringData.addWhite(values[i].c_str(), enableSpaceSeparator, separators, separatorsSeparator, enableNoSplitBorders, enableNull, enableInterval);
 		}
-	}
-	void addWhite(const char *table, const char *column, u_int32_t id) {
-		setCodebook(table, column);
-		checkStringData.addWhite(getCodebookValue(id).c_str(), enableSpaceSeparator, separators, separatorsSeparator, enableNoSplitBorders, enableNull, enableInterval);
 	}
 	bool check(void *rec, bool *findInBlackList = NULL) {
 		string checkString = getField_string(rec);
@@ -398,9 +446,9 @@ public:
 		if(findInBlackList) {
 			*findInBlackList = false;
 		}
-		for(list<cRecordFilterItem_base*>::iterator iter = fItems.begin(); iter != fItems.end(); iter++) {
+		for(unsigned i = 0; i < fItems.size(); i++) {
 			bool _findInBlackList = false;
-			bool rsltCheck = (*iter)->check(rec, &_findInBlackList);
+			bool rsltCheck = fItems[i]->check(rec, &_findInBlackList);
 			if(_findInBlackList) {
 				if(findInBlackList) {
 					*findInBlackList = true;
@@ -417,9 +465,9 @@ public:
 				}
 			}
 		}
-		for(list<cRecordFilterItems>::iterator iter = gItems.begin(); iter !=gItems.end(); iter++) {
+		for(unsigned i = 0; i < gItems.size(); i++) {
 			bool _findInBlackList = false;
-			bool rsltCheck = (*iter).check(rec, &_findInBlackList);
+			bool rsltCheck = gItems[i].check(rec, &_findInBlackList);
 			if(_findInBlackList) {
 				if(findInBlackList) {
 					*findInBlackList = true;
@@ -443,17 +491,17 @@ public:
 		return(fItems.size() > 0 || gItems.size() > 0);
 	}
 	void setNoLock() {
-		for(list<cRecordFilterItem_base*>::iterator iter = fItems.begin(); iter != fItems.end(); iter++) {
-			(*iter)->setNoLock();
+		for(unsigned i = 0; i < fItems.size(); i++) {
+			fItems[i]->setNoLock();
 		}
-		for(list<cRecordFilterItems>::iterator iter = gItems.begin(); iter != gItems.end(); iter++) {
-			iter->setNoLock();
+		for(unsigned i = 0; i < gItems.size(); i++) {
+			gItems[i].setNoLock();
 		}
 	}
 public:
 	eCond cond;
-	list<cRecordFilterItem_base*> fItems;
-	list<cRecordFilterItems> gItems;
+	vector<cRecordFilterItem_base*> fItems;
+	vector<cRecordFilterItems> gItems;
 };
 
 class cRecordFilter {
@@ -467,12 +515,35 @@ public:
 	virtual ~cRecordFilter();
 	void setCond(eCond cond);
 	void setUseRecordArray(bool useRecordArray);
+	void setCodebookCache(cCodebookCache *codebookCache) {
+		this->codebookCache = codebookCache;
+	}
+	cCodebookCache *getCodebookCache() {
+		return(codebookCache);
+	}
+	bool getCodebookList(const char *table, const char *column, const char *condition, vector<string> *values) {
+		return(codebookCache ?
+			codebookCache->getList(table, column, condition, values) :
+			cCodebookCache::loadList(table, column, condition, values));
+	}
+	bool getCodebookValues(const char *table, const char *column, vector<int> *ids, map<u_int32_t, string> *values) {
+		return(cCodebookCache::getValues(codebookCache, table, column, ids, values));
+	}
+	bool getCodebookValues(const char *table, const char **columns, unsigned columns_count, vector<int> *ids, vector<map<u_int32_t, string> > *values) {
+		return(cCodebookCache::getValues(codebookCache, table, columns, columns_count, ids, values));
+	}
 	void addFilter(cRecordFilterItem_base *filter1, cRecordFilterItem_base *filter2 = NULL, cRecordFilterItem_base *filter3 = NULL);
 	void addFilter(cRecordFilterItems *group);
+	void updateSingleItem();
 	bool check(void *rec) {
-		for(list<cRecordFilterItems>::iterator iter = gItems.begin(); iter != gItems.end(); iter++) {
+		if(single_item) {
 			bool _findInBlackList = false;
-			bool rsltCheck = iter->check(rec, &_findInBlackList);
+			bool rsltCheck = single_item->check(rec, &_findInBlackList);
+			return(_findInBlackList ? false : rsltCheck);
+		}
+		for(unsigned i = 0; i < gItems.size(); i++) {
+			bool _findInBlackList = false;
+			bool rsltCheck = gItems[i].check(rec, &_findInBlackList);
 			if(_findInBlackList) {
 				return(false);
 			}
@@ -489,8 +560,8 @@ public:
 		return(cond == _or ? false : true);
 	}
 	void setNoLock() {
-		for(list<cRecordFilterItems>::iterator iter = gItems.begin(); iter != gItems.end(); iter++) {
-			iter->setNoLock();
+		for(unsigned i = 0; i < gItems.size(); i++) {
+			gItems[i].setNoLock();
 		}
 	}
 	virtual int64_t getField_int(void *rec, unsigned recordFieldIndex) {
@@ -529,7 +600,9 @@ public:
 public:
 	eCond cond;
 	bool useRecordArray;
-	list<cRecordFilterItems> gItems;
+	vector<cRecordFilterItems> gItems;
+	cRecordFilterItem_base *single_item;
+	cCodebookCache *codebookCache;
 };
 
 int64_t cRecordFilterItem_base::getField_int(void *rec) {

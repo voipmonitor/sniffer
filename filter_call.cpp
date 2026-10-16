@@ -12,7 +12,7 @@ extern CustomHeaders *custom_headers_cdr;
 static const char *sipResponseSeparators = ",\n or \n OR \n|";
 static const char *orValuesSeparators = " or \n OR \n|";
 static const char *callidDtmfSeparators = ",\n;\n or \n OR \n|\n ";
-static const char *filterKeysIgnore = ",datefrom,dateto,datefrom_strict,dateto_strict,last_days,last_minutes,rec_filter_sections,";
+static const char *filterKeysIgnore = ",datefrom,dateto,datefrom_strict,dateto_strict,last_days,last_minutes,rec_filter_sections,series_title,";
 
 static struct {
 	const char *name;
@@ -194,9 +194,16 @@ bool cRecordFilterItem_CheckStringOr::checkValue(const char *value) {
 	return(false);
 }
 
+static string customHeaderValue_rec(void *rec, const char *header) {
+	if(!recIsCall(rec)) {
+		return(custom_headers_cdr->getValue(recTablesContent(rec), INVITE, header));
+	}
+	return(custom_headers_cdr->getValue(recCall(rec), INVITE, header));
+}
+
 bool cRecordFilterItem_CustomHeaderNum::check(void *rec, bool */*findInBlackList*/) {
 	if(custom_headers_cdr) {
-		string customHeaderContent = custom_headers_cdr->getValue((Call*)rec, INVITE, customHeader.c_str());
+		string customHeaderContent = customHeaderValue_rec(rec, customHeader.c_str());
 		if(!customHeaderContent.empty()) {
 			double customHeaderValue = atof(customHeaderContent.c_str());
 			return(cond == cRecordFilterItem_base::_ge ?
@@ -211,7 +218,7 @@ bool cRecordFilterItem_CustomHeader::check(void *rec, bool */*findInBlackList*/)
 	if(!custom_headers_cdr || (!items.size() && !null)) {
 		return(true);
 	}
-	string customHeaderContent = custom_headers_cdr->getValue((Call*)rec, INVITE, customHeader.c_str());
+	string customHeaderContent = customHeaderValue_rec(rec, customHeader.c_str());
 	if(customHeaderContent.empty()) {
 		return(null);
 	}
@@ -377,10 +384,22 @@ cRecordFilterItem_SipResponseAll::cRecordFilterItem_SipResponseAll(cRecordFilter
 	}
 }
 
+string codebookStringValue(const char *str) {
+	if(!str) {
+		return("");
+	}
+	if(strncmp(str, MYSQL_CODEBOOK_ID_PREFIX.c_str(), MYSQL_CODEBOOK_ID_PREFIX.length())) {
+		return(str);
+	}
+	const char *sep = strchr(str + MYSQL_CODEBOOK_ID_PREFIX.length(), ';');
+	return(sep ? sep + 1 : "");
+}
+
 bool cRecordFilterItem_SipResponseAll::check(void *rec, bool *findInBlackList) {
-	CallBranch *c_branch = ((Call*)rec)->branch_main();
+	vector<sResponse> responses;
+	getResponses(rec, &responses);
 	for(unsigned i = 0; i < items_not.size(); i++) {
-		if(checkItem(c_branch, &items_not[i])) {
+		if(checkItem(&responses, &items_not[i])) {
 			if(findInBlackList) {
 				*findInBlackList = true;
 			}
@@ -389,7 +408,7 @@ bool cRecordFilterItem_SipResponseAll::check(void *rec, bool *findInBlackList) {
 	}
 	if(items.size()) {
 		for(unsigned i = 0; i < items.size(); i++) {
-			if(checkItem(c_branch, &items[i])) {
+			if(checkItem(&responses, &items[i])) {
 				return(true);
 			}
 		}
@@ -398,26 +417,59 @@ bool cRecordFilterItem_SipResponseAll::check(void *rec, bool *findInBlackList) {
 	return(true);
 }
 
-bool cRecordFilterItem_SipResponseAll::checkItem(CallBranch *c_branch, sItem *item) {
+void cRecordFilterItem_SipResponseAll::getResponses(void *rec, vector<sResponse> *responses) {
 	extern bool opt_cdr_sipresp;
-	bool rslt = false;
+	if(!recIsCall(rec)) {
+		cDbTablesContent *tc = recTablesContent(rec);
+		int count = tc->getCountRows(_t_cdr_sipresp);
+		for(int i = 0; i < count; i++) {
+			sResponse response;
+			response.num = tc->getValue_int(_t_cdr_sipresp, "SIPresponseNum", false, NULL, i);
+			response.response = codebookStringValue(tc->getValue_str(_t_cdr_sipresp, "SIPresponse_id", NULL, i));
+			responses->push_back(response);
+		}
+		count = tc->getCountRows(_t_cdr_siphistory);
+		for(int i = 0; i < count; i++) {
+			sResponse response;
+			response.num = tc->getValue_int(_t_cdr_siphistory, "SIPresponseNum", false, NULL, i);
+			if(!response.num) {
+				continue;
+			}
+			response.response = codebookStringValue(tc->getValue_str(_t_cdr_siphistory, "SIPresponse_id", NULL, i));
+			responses->push_back(response);
+		}
+		return;
+	}
+	CallBranch *c_branch = recCall(rec)->branch_main();
 	c_branch->sip_resp_hist_lock();
 	if(opt_cdr_sipresp) {
-		for(list<Call::sSipResponse>::iterator iter = c_branch->SIPresponse.begin(); iter != c_branch->SIPresponse.end() && !rslt; iter++) {
-			rslt = item->num >= 0 ?
-				iter->SIPresponseNum == item->num :
-				item->pattern.check(iter->SIPresponse.c_str());
+		for(list<Call::sSipResponse>::iterator iter = c_branch->SIPresponse.begin(); iter != c_branch->SIPresponse.end(); iter++) {
+			sResponse response;
+			response.num = iter->SIPresponseNum;
+			response.response = iter->SIPresponse;
+			responses->push_back(response);
 		}
 	}
-	for(list<Call::sSipHistory>::iterator iter = c_branch->SIPhistory.begin(); iter != c_branch->SIPhistory.end() && !rslt; iter++) {
+	for(list<Call::sSipHistory>::iterator iter = c_branch->SIPhistory.begin(); iter != c_branch->SIPhistory.end(); iter++) {
 		if(iter->SIPresponseNum) {
-			rslt = item->num >= 0 ?
-				iter->SIPresponseNum == item->num :
-				item->pattern.check(iter->SIPresponse.c_str());
+			sResponse response;
+			response.num = iter->SIPresponseNum;
+			response.response = iter->SIPresponse;
+			responses->push_back(response);
 		}
 	}
 	c_branch->sip_resp_hist_unlock();
-	return(rslt);
+}
+
+bool cRecordFilterItem_SipResponseAll::checkItem(vector<sResponse> *responses, sItem *item) {
+	for(unsigned i = 0; i < responses->size(); i++) {
+		if(item->num >= 0 ?
+		    (*responses)[i].num == item->num :
+		    item->pattern.check((*responses)[i].response.c_str())) {
+			return(true);
+		}
+	}
+	return(false);
 }
 
 cRecordFilterItem_SipRequestHist::cRecordFilterItem_SipRequestHist(cRecordFilter *parent, const char *filter)
@@ -451,13 +503,26 @@ bool cRecordFilterItem_SipRequestHist::check(void *rec, bool */*findInBlackList*
 	if(!items.size()) {
 		return(true);
 	}
-	CallBranch *c_branch = ((Call*)rec)->branch_main();
+	vector<string> requests;
+	if(!recIsCall(rec)) {
+		cDbTablesContent *tc = recTablesContent(rec);
+		int count_rows = tc->getCountRows(_t_cdr_siphistory);
+		for(int i = 0; i < count_rows; i++) {
+			requests.push_back(codebookStringValue(tc->getValue_str(_t_cdr_siphistory, "SIPrequest_id", NULL, i)));
+		}
+	} else {
+		CallBranch *c_branch = recCall(rec)->branch_main();
+		c_branch->sip_resp_hist_lock();
+		for(list<Call::sSipHistory>::iterator iter = c_branch->SIPhistory.begin(); iter != c_branch->SIPhistory.end(); iter++) {
+			requests.push_back(iter->SIPrequest);
+		}
+		c_branch->sip_resp_hist_unlock();
+	}
 	bool rslt = false;
-	c_branch->sip_resp_hist_lock();
 	for(unsigned i = 0; i < items.size() && !rslt; i++) {
 		unsigned count = 0;
-		for(list<Call::sSipHistory>::iterator iter = c_branch->SIPhistory.begin(); iter != c_branch->SIPhistory.end(); iter++) {
-			if(iter->SIPrequest.length() && items[i].pattern.check(iter->SIPrequest.c_str())) {
+		for(unsigned j = 0; j < requests.size(); j++) {
+			if(requests[j].length() && items[i].pattern.check(requests[j].c_str())) {
 				++count;
 			}
 		}
@@ -465,7 +530,6 @@ bool cRecordFilterItem_SipRequestHist::check(void *rec, bool */*findInBlackList*
 			count == 0 :
 			count >= (items[i].count >= 2 ? items[i].count : 1);
 	}
-	c_branch->sip_resp_hist_unlock();
 	return(rslt);
 }
 
@@ -503,10 +567,20 @@ bool cRecordFilterItem_Reason::check(void *rec, bool */*findInBlackList*/) {
 	if(!items.size()) {
 		return(!positive_never);
 	}
-	CallBranch *c_branch = ((Call*)rec)->branch_main();
-	int cause = typeReason == _sip ? c_branch->reason_sip_cause : c_branch->reason_q850_cause;
-	string *text = typeReason == _sip ? &c_branch->reason_sip_text : &c_branch->reason_q850_text;
-	bool text_null = !opt_cdr_reason_string_enable || text->empty();
+	int cause;
+	string text;
+	bool text_null;
+	if(!recIsCall(rec)) {
+		cDbTablesContent *tc = recTablesContent(rec);
+		cause = tc->getValue_int(_t_cdr, typeReason == _sip ? "reason_sip_cause" : "reason_q850_cause");
+		text = codebookStringValue(tc->getValue_str(_t_cdr, typeReason == _sip ? "reason_sip_text_id" : "reason_q850_text_id"));
+		text_null = text.empty();
+	} else {
+		CallBranch *c_branch = recCall(rec)->branch_main();
+		cause = typeReason == _sip ? c_branch->reason_sip_cause : c_branch->reason_q850_cause;
+		text = typeReason == _sip ? c_branch->reason_sip_text : c_branch->reason_q850_text;
+		text_null = !opt_cdr_reason_string_enable || text.empty();
+	}
 	for(unsigned i = 0; i < items.size(); i++) {
 		bool rslt;
 		if(items[i].null) {
@@ -517,8 +591,8 @@ bool cRecordFilterItem_Reason::check(void *rec, bool */*findInBlackList*/) {
 				cause && cause == items[i].num;
 		} else {
 			rslt = items[i]._not ?
-				text_null || !items[i].pattern.check(text->c_str()) :
-				!text_null && items[i].pattern.check(text->c_str());
+				text_null || !items[i].pattern.check(text.c_str()) :
+				!text_null && items[i].pattern.check(text.c_str());
 		}
 		if(rslt) {
 			return(true);
@@ -527,21 +601,132 @@ bool cRecordFilterItem_Reason::check(void *rec, bool */*findInBlackList*/) {
 	return(false);
 }
 
+volatile unsigned cdr_column_slots_used = cf__max;
+
+static unsigned cdrColumnSlot(const char *column) {
+	static map<string, unsigned> slots;
+	static volatile int slots_sync = 0;
+	__SYNC_LOCK(slots_sync);
+	unsigned slot;
+	map<string, unsigned>::iterator iter = slots.find(column);
+	if(iter != slots.end()) {
+		slot = iter->second;
+	} else {
+		slot = cf__max + slots.size();
+		slots[column] = slot;
+		if(slot >= CDR_COLUMN_SLOTS) {
+			syslog(LOG_ERR, "cdrColumnSlot: column %s exceeds CDR_COLUMN_SLOTS (%i) - slot cache disabled for this column", column, CDR_COLUMN_SLOTS);
+		} else if(slot >= cdr_column_slots_used) {
+			cdr_column_slots_used = slot + 1;
+		}
+	}
+	__SYNC_UNLOCK(slots_sync);
+	return(slot);
+}
+
 cRecordFilterItem_CdrField::cRecordFilterItem_CdrField(cRecordFilter *parent, const char *columns, double divisor, eCond cond, double value)
  : cRecordFilterItem_rec(parent) {
 	this->columns = split(columns, ",", true);
+	for(unsigned i = 0; i < this->columns.size(); i++) {
+		this->slots.push_back(cdrColumnSlot(this->columns[i].c_str()));
+	}
 	this->divisor = divisor;
 	this->cond = cond;
 	this->value = value;
 }
 
+void cRecordFilterItem_CdrFieldsSum::addColumn(string column, double multiplier) {
+	sColumn c;
+	c.column = column;
+	c.multiplier = multiplier;
+	c.slot = cdrColumnSlot(column.c_str());
+	columns.push_back(c);
+}
+
+struct sSaddrColumnSlots {
+	sSaddrColumnSlots() {
+		saddr_ab[0] = cdrColumnSlot("a_saddr");
+		saddr_ab[1] = cdrColumnSlot("b_saddr");
+	}
+	unsigned saddr_ab[2];
+};
+
+struct sReceivedColumnSlots {
+	sReceivedColumnSlots() {
+		received_ab[0] = cdrColumnSlot("a_received");
+		received_ab[1] = cdrColumnSlot("b_received");
+	}
+	unsigned received_ab[2];
+};
+
+struct sCodecColumnSlots {
+	sCodecColumnSlots() {
+		payload_ab[0] = cdrColumnSlot("a_payload");
+		payload_ab[1] = cdrColumnSlot("b_payload");
+		mos_f2_ab[0] = cdrColumnSlot("a_mos_f2_mult10");
+		mos_f2_ab[1] = cdrColumnSlot("b_mos_f2_mult10");
+		payload = cdrColumnSlot("payload");
+		rtp_payload = cdrColumnSlot("cdr_rtp.payload");
+	}
+	unsigned payload_ab[2];
+	unsigned mos_f2_ab[2];
+	unsigned payload;
+	unsigned rtp_payload;
+};
+
+static cDbTableContent::sColumnValues *getCdrColumn(cDbTablesContent *tc, unsigned slot, const char *column, cDbTableContent::eColumnValues type, bool *null) {
+	int columnIndex;
+	cDbTableContent::sColumnValues *values = tc->getColumnValues_slot(slot, _t_cdr, column, type, &columnIndex);
+	if(!values) {
+		if(columnIndex == -1 && null) {
+			*null = true;
+		}
+		return(NULL);
+	}
+	if(!values->rows) {
+		return(NULL);
+	}
+	if(null) {
+		*null = values->isNull(0);
+	}
+	return(values);
+}
+
+static long long getCdrValue_int(cDbTablesContent *tc, unsigned slot, const char *column, bool *null = NULL) {
+	cDbTableContent::sColumnValues *values = getCdrColumn(tc, slot, column, cDbTableContent::_cv_int, null);
+	return(values ? values->value_int(0) : 0);
+}
+
+static double getCdrValue_float(cDbTablesContent *tc, unsigned slot, const char *column, bool *null = NULL) {
+	cDbTableContent::sColumnValues *values = getCdrColumn(tc, slot, column, cDbTableContent::_cv_float, null);
+	return(values ? values->value_float(0) : 0);
+}
+
+static vmIP getCdrValue_ip(cDbTablesContent *tc, unsigned slot, const char *column) {
+	cDbTableContent::sColumnValues *values = getCdrColumn(tc, slot, column, cDbTableContent::_cv_ip, NULL);
+	return(values ? values->value_ip(0) : 0);
+}
+
+static const char *getCdrValue_str(cDbTablesContent *tc, unsigned slot, unsigned table_enum, const char *column) {
+	cDbTableContent::sColumnValues *values = tc->getColumnValues_slot(slot, table_enum, column, cDbTableContent::_cv_str);
+	return(values && values->rows ? values->value_str(0) : "");
+}
+
+static bool getCdrFieldValue_rec(void *rec, unsigned slot, const char *fieldName, double *value) {
+	if(!recIsCall(rec)) {
+		bool null = true;
+		*value = getCdrValue_float(recTablesContent(rec), slot, fieldName, &null);
+		return(!null);
+	}
+	return(recCall(rec)->getCdrFieldValue(slot, fieldName, value));
+}
+
 bool cRecordFilterItem_CdrField::check(void *rec, bool */*findInBlackList*/) {
-	Call *call = (Call*)rec;
 	double field_value = 0;
 	bool field_value_set = false;
 	for(unsigned i = 0; i < columns.size(); i++) {
 		double column_value;
-		if(call->getCdrFieldValue(columns[i].c_str(), &column_value) &&
+		if(getCdrFieldValue_rec(rec, slots[i], columns[i].c_str(), &column_value) &&
 		   (!field_value_set || column_value < field_value)) {
 			field_value = column_value;
 			field_value_set = true;
@@ -570,11 +755,10 @@ bool cRecordFilterItem_CdrFieldsSum::check(void *rec, bool */*findInBlackList*/)
 	if(!columns.size()) {
 		return(false);
 	}
-	Call *call = (Call*)rec;
 	double sum = 0;
 	for(unsigned i = 0; i < columns.size(); i++) {
 		double column_value;
-		if(!call->getCdrFieldValue(columns[i].column.c_str(), &column_value)) {
+		if(!getCdrFieldValue_rec(rec, columns[i].slot, columns[i].column.c_str(), &column_value)) {
 			return(false);
 		}
 		sum += column_value * columns[i].multiplier;
@@ -582,11 +766,39 @@ bool cRecordFilterItem_CdrFieldsSum::check(void *rec, bool */*findInBlackList*/)
 	return(sum >= value);
 }
 
-unsigned cRecordFilterItem_CallStream::rtpStreamsSize(Call *call) {
+unsigned cRecordFilterItem_CallStream::rtpStreamsSize(void *rec, sRtpStreamColumns *columns) {
+	if(!recIsCall(rec)) {
+		columns->init(recTablesContent(rec));
+		return(columns->rows);
+	}
+	Call *call = recCall(rec);
 	return(call->saved_data ? call->saved_data->rtp_streams.size() : call->rtp_streams_size());
 }
 
-bool cRecordFilterItem_CallStream::rtpStream(Call *call, unsigned index, Call::sSavedData::sRtpStream *stream) {
+bool cRecordFilterItem_CallStream::rtpStream(void *rec, sRtpStreamColumns *columns, unsigned index, Call::sSavedData::sRtpStream *stream) {
+	if(!recIsCall(rec)) {
+		if(index >= columns->rows) {
+			return(false);
+		}
+		stream->src = vmIPport(columns->value_ip(sRtpStreamColumns::_c_saddr, index),
+				       vmPort(columns->value_int(sRtpStreamColumns::_c_sport, index)));
+		stream->dst = vmIPport(columns->value_ip(sRtpStreamColumns::_c_daddr, index),
+				       vmPort(columns->value_int(sRtpStreamColumns::_c_dport, index)));
+		bool received_null;
+		stream->received = columns->value_int(sRtpStreamColumns::_c_received, index, &received_null);
+		if(received_null) {
+			stream->received = -1;
+		}
+		stream->rtp_ptime = columns->value_int(sRtpStreamColumns::_c_rtp_ptime, index);
+		stream->sdp_ptime = columns->value_int(sRtpStreamColumns::_c_sdp_ptime, index);
+		bool flags_null;
+		long long flags = columns->value_int(sRtpStreamColumns::_c_flags, index, &flags_null);
+		stream->flags_null = flags_null;
+		stream->is_caller = flags & CDR_RTP_STREAM_IS_CALLER;
+		stream->in_multiple_calls = flags & CDR_RTP_STREAM_IN_MULTIPLE_CALLS;
+		return(true);
+	}
+	Call *call = recCall(rec);
 	Call::sSavedData *saved_data = call->saved_data;
 	if(saved_data) {
 		if(index >= saved_data->rtp_streams.size()) {
@@ -598,11 +810,28 @@ bool cRecordFilterItem_CallStream::rtpStream(Call *call, unsigned index, Call::s
 	return(call->getRtpStreamData(index, stream));
 }
 
-unsigned cRecordFilterItem_CallStream::sdpRowsSize(Call *call) {
+unsigned cRecordFilterItem_CallStream::sdpRowsSize(void *rec, sSdpRowColumns *columns) {
+	if(!recIsCall(rec)) {
+		columns->init(recTablesContent(rec));
+		return(columns->rows);
+	}
+	Call *call = recCall(rec);
 	return(call->saved_data ? call->saved_data->sdp_streams.size() : call->sdp_rows_size());
 }
 
-bool cRecordFilterItem_CallStream::sdpRow(Call *call, unsigned index, s_sdp_store_data *sdp_row) {
+bool cRecordFilterItem_CallStream::sdpRow(void *rec, sSdpRowColumns *columns, unsigned index, s_sdp_store_data *sdp_row) {
+	if(!recIsCall(rec)) {
+		if(index >= columns->rows) {
+			return(false);
+		}
+		sdp_row->ip_port = vmIPport(columns->value_ip(sSdpRowColumns::_c_ip, index),
+					    vmPort(columns->value_int(sSdpRowColumns::_c_port, index)));
+		sdp_row->is_caller = columns->value_int(sSdpRowColumns::_c_is_caller, index);
+		sdp_row->ptime = columns->value_int(sSdpRowColumns::_c_ptime, index);
+		sdp_row->leg_index = columns->value_int(sSdpRowColumns::_c_leg_index, index);
+		return(true);
+	}
+	Call *call = recCall(rec);
 	Call::sSavedData *saved_data = call->saved_data;
 	if(saved_data) {
 		if(index >= saved_data->sdp_streams.size()) {
@@ -619,9 +848,61 @@ bool cRecordFilterItem_CallStream::sdpRow(Call *call, unsigned index, s_sdp_stor
 	return(true);
 }
 
-bool cRecordFilterItem_CallStream::getStreamValue(Call *call, unsigned index, double *streamValue) {
+bool cRecordFilterItem_CallStream::getStreamValue(void *rec, sRtpStreamColumns *columns, unsigned index, double *streamValue) {
+	if(!recIsCall(rec)) {
+		if(side != _any) {
+			bool flags_null;
+			long long flags = columns->value_int(sRtpStreamColumns::_c_flags, index, &flags_null);
+			if(flags_null || !matchSide(side, flags & CDR_RTP_STREAM_IS_CALLER, true)) {
+				return(false);
+			}
+		}
+		switch(field) {
+		case _sf_received:
+			{
+			bool received_null;
+			long long received = columns->value_int(sRtpStreamColumns::_c_received, index, &received_null);
+			if(received_null || received < 0) {
+				return(false);
+			}
+			*streamValue = received;
+			}
+			return(true);
+		case _sf_rtp_ptime:
+			{
+			u_int16_t rtp_ptime = columns->value_int(sRtpStreamColumns::_c_rtp_ptime, index);
+			if(!rtp_ptime) {
+				return(false);
+			}
+			*streamValue = rtp_ptime;
+			}
+			return(true);
+		case _sf_diff_rtp_sdp_ptime:
+			{
+			u_int16_t rtp_ptime = columns->value_int(sRtpStreamColumns::_c_rtp_ptime, index);
+			u_int16_t sdp_ptime = columns->value_int(sRtpStreamColumns::_c_sdp_ptime, index);
+			if(!rtp_ptime || !sdp_ptime) {
+				return(false);
+			}
+			*streamValue = abs((int)rtp_ptime - (int)sdp_ptime);
+			}
+			return(true);
+		case _sf_in_multiple_calls:
+			{
+			bool flags_null;
+			long long flags = columns->value_int(sRtpStreamColumns::_c_flags, index, &flags_null);
+			if(flags_null) {
+				return(false);
+			}
+			*streamValue = flags & CDR_RTP_STREAM_IN_MULTIPLE_CALLS ? 1 : 0;
+			}
+			return(true);
+		default:
+			return(false);
+		}
+	}
 	Call::sSavedData::sRtpStream stream;
-	if(!rtpStream(call, index, &stream)) {
+	if(!rtpStream(rec, columns, index, &stream)) {
 		return(false);
 	}
 	if(side != _any && (stream.flags_null || !matchSide(side, stream.is_caller, true))) {
@@ -657,9 +938,21 @@ bool cRecordFilterItem_CallStream::getStreamValue(Call *call, unsigned index, do
 	}
 }
 
-bool cRecordFilterItem_CallStream::getSdpRowValue(Call *call, unsigned index, double *streamValue) {
+bool cRecordFilterItem_CallStream::getSdpRowValue(void *rec, sSdpRowColumns *columns, unsigned index, double *streamValue) {
+	if(!recIsCall(rec)) {
+		if(side != _any &&
+		   !matchSide(side, columns->value_int(sSdpRowColumns::_c_is_caller, index), false)) {
+			return(false);
+		}
+		u_int16_t ptime = columns->value_int(sSdpRowColumns::_c_ptime, index);
+		if(!ptime) {
+			return(false);
+		}
+		*streamValue = ptime;
+		return(true);
+	}
 	s_sdp_store_data sdp_row;
-	if(!sdpRow(call, index, &sdp_row)) {
+	if(!sdpRow(rec, columns, index, &sdp_row)) {
 		return(false);
 	}
 	if(!matchSide(side, sdp_row.is_caller, false)) {
@@ -673,17 +966,27 @@ bool cRecordFilterItem_CallStream::getSdpRowValue(Call *call, unsigned index, do
 }
 
 bool cRecordFilterItem_CallStream::check(void *rec, bool */*findInBlackList*/) {
-	Call *call = (Call*)rec;
-	bool sdp_rows = field == _sf_sdp_row_ptime;
-	unsigned size = sdp_rows ? sdpRowsSize(call) : rtpStreamsSize(call);
-	if(field == _sf_count) {
-		return(cmpValue(size));
-	}
-	for(unsigned i = 0; i < size; i++) {
-		double streamValue;
-		if((sdp_rows ? getSdpRowValue(call, i, &streamValue) : getStreamValue(call, i, &streamValue)) &&
-		   cmpValue(streamValue)) {
-			return(true);
+	double streamValue;
+	if(field == _sf_sdp_row_ptime) {
+		sSdpRowColumns sdp_columns;
+		unsigned size = sdpRowsSize(rec, &sdp_columns);
+		for(unsigned i = 0; i < size; i++) {
+			if(getSdpRowValue(rec, &sdp_columns, i, &streamValue) &&
+			   cmpValue(streamValue)) {
+				return(true);
+			}
+		}
+	} else {
+		sRtpStreamColumns rtp_columns;
+		unsigned size = rtpStreamsSize(rec, &rtp_columns);
+		if(field == _sf_count) {
+			return(cmpValue(size));
+		}
+		for(unsigned i = 0; i < size; i++) {
+			if(getStreamValue(rec, &rtp_columns, i, &streamValue) &&
+			   cmpValue(streamValue)) {
+				return(true);
+			}
 		}
 	}
 	return(false);
@@ -783,22 +1086,40 @@ bool cRecordFilterItem_CallStreamIpPort::matchEntries(vmIPport *ip_port) {
 }
 
 bool cRecordFilterItem_CallStreamIpPort::check(void *rec, bool */*findInBlackList*/) {
-	Call *call = (Call*)rec;
 	bool found = false;
 	if(target == _t_sdp) {
-		unsigned size = cRecordFilterItem_CallStream::sdpRowsSize(call);
+		sSdpRowColumns sdp_columns;
+		unsigned size = cRecordFilterItem_CallStream::sdpRowsSize(rec, &sdp_columns);
+		bool is_call = recIsCall(rec);
 		for(unsigned i = 0; i < size && !found; i++) {
+			if(!is_call) {
+				if(!cRecordFilterItem_CallStream::matchSide(side, sdp_columns.value_int(sSdpRowColumns::_c_is_caller, i), false)) {
+					continue;
+				}
+				vmIPport ip_port(sdp_columns.value_ip(sSdpRowColumns::_c_ip, i),
+						 vmPort(sdp_columns.value_int(sSdpRowColumns::_c_port, i)));
+				found = matchEntries(&ip_port);
+				continue;
+			}
 			s_sdp_store_data sdp_row;
-			if(cRecordFilterItem_CallStream::sdpRow(call, i, &sdp_row) &&
+			if(cRecordFilterItem_CallStream::sdpRow(rec, &sdp_columns, i, &sdp_row) &&
 			   cRecordFilterItem_CallStream::matchSide(side, sdp_row.is_caller, false)) {
 				found = matchEntries(&sdp_row.ip_port);
 			}
 		}
 	} else {
-		unsigned size = cRecordFilterItem_CallStream::rtpStreamsSize(call);
+		sRtpStreamColumns rtp_columns;
+		unsigned size = cRecordFilterItem_CallStream::rtpStreamsSize(rec, &rtp_columns);
+		bool is_call = recIsCall(rec);
 		for(unsigned i = 0; i < size && !found; i++) {
+			if(!is_call) {
+				vmIPport ip_port(rtp_columns.value_ip(target == _t_rtp_src ? sRtpStreamColumns::_c_saddr : sRtpStreamColumns::_c_daddr, i),
+						 vmPort(rtp_columns.value_int(target == _t_rtp_src ? sRtpStreamColumns::_c_sport : sRtpStreamColumns::_c_dport, i)));
+				found = matchEntries(&ip_port);
+				continue;
+			}
 			Call::sSavedData::sRtpStream stream;
-			if(cRecordFilterItem_CallStream::rtpStream(call, i, &stream)) {
+			if(cRecordFilterItem_CallStream::rtpStream(rec, &rtp_columns, i, &stream)) {
 				found = matchEntries(target == _t_rtp_src ? &stream.src : &stream.dst);
 			}
 		}
@@ -841,26 +1162,44 @@ cRecordFilterItem_Dtmf::cRecordFilterItem_Dtmf(cRecordFilter *parent, const char
 	}
 }
 
+static bool dtmfSequences_rec(void *rec, map<cRecordFilterItem_Dtmf::sStream, string> *sequences) {
+	if(!recIsCall(rec)) {
+		cDbTablesContent *tc = recTablesContent(rec);
+		int count = tc->getCountRows(_t_cdr_dtmf);
+		for(int i = 0; i < count; i++) {
+			(*sequences)[cRecordFilterItem_Dtmf::sStream(tc->getValue_ip(_t_cdr_dtmf, "saddr", NULL, i),
+								     tc->getValue_ip(_t_cdr_dtmf, "daddr", NULL, i))]
+				+= tc->getValue_string(_t_cdr_dtmf, "dtmf", NULL, i);
+		}
+		return(true);
+	}
+	Call *call = recCall(rec);
+	if(!(call->flags & FLAG_SAVEDTMFDB)) {
+		return(false);
+	}
+	__SYNC_LOCK_USLEEP(call->dtmf_sync, 50);
+	for(std::deque<s_dtmf>::iterator iter = call->dtmf_history.begin(); iter != call->dtmf_history.end(); iter++) {
+		(*sequences)[cRecordFilterItem_Dtmf::sStream(iter->saddr, iter->daddr)] += iter->dtmf;
+	}
+	__SYNC_UNLOCK(call->dtmf_sync);
+	return(true);
+}
+
 bool cRecordFilterItem_Dtmf::check(void *rec, bool */*findInBlackList*/) {
 	if(chars.empty() && !items.size()) {
 		return(true);
 	}
-	Call *call = (Call*)rec;
-	if(!(call->flags & FLAG_SAVEDTMFDB)) {
+	map<sStream, string> sequences;
+	if(!dtmfSequences_rec(rec, &sequences)) {
 		return(false);
 	}
 	bool rslt = false;
-	__SYNC_LOCK_USLEEP(call->dtmf_sync, 50);
 	if(!chars.empty()) {
-		for(std::deque<s_dtmf>::iterator iter = call->dtmf_history.begin(); iter != call->dtmf_history.end() && !rslt; iter++) {
-			rslt = chars.find(iter->dtmf) != string::npos;
+		for(map<sStream, string>::iterator iter = sequences.begin(); iter != sequences.end() && !rslt; iter++) {
+			rslt = iter->second.find_first_of(chars) != string::npos;
 		}
 	}
 	if(!rslt && items.size()) {
-		map<sStream, string> sequences;
-		for(std::deque<s_dtmf>::iterator iter = call->dtmf_history.begin(); iter != call->dtmf_history.end(); iter++) {
-			sequences[sStream(iter->saddr, iter->daddr)] += iter->dtmf;
-		}
 		for(unsigned i = 0; i < items.size() && !rslt; i++) {
 			for(map<sStream, string>::iterator iter = sequences.begin(); iter != sequences.end() && !rslt; iter++) {
 				bool match = items[i].pattern.check(iter->second.c_str());
@@ -868,30 +1207,23 @@ bool cRecordFilterItem_Dtmf::check(void *rec, bool */*findInBlackList*/) {
 			}
 		}
 	}
-	__SYNC_UNLOCK(call->dtmf_sync);
 	return(rslt);
 }
 
 bool cRecordFilterItem_DtmfCount::check(void *rec, bool */*findInBlackList*/) {
-	Call *call = (Call*)rec;
-	if(!(call->flags & FLAG_SAVEDTMFDB)) {
+	map<cRecordFilterItem_Dtmf::sStream, string> sequences;
+	if(!dtmfSequences_rec(rec, &sequences)) {
 		return(!count_ge && count_lt == 1);
 	}
 	bool rslt = false;
-	__SYNC_LOCK_USLEEP(call->dtmf_sync, 50);
 	if(!count_ge && count_lt == 1) {
-		rslt = call->dtmf_history.empty();
+		rslt = sequences.empty();
 	} else {
-		map<cRecordFilterItem_Dtmf::sStream, unsigned> counts;
-		for(std::deque<s_dtmf>::iterator iter = call->dtmf_history.begin(); iter != call->dtmf_history.end(); iter++) {
-			++counts[cRecordFilterItem_Dtmf::sStream(iter->saddr, iter->daddr)];
-		}
-		for(map<cRecordFilterItem_Dtmf::sStream, unsigned>::iterator iter = counts.begin(); iter != counts.end() && !rslt; iter++) {
-			rslt = (!count_ge || iter->second >= count_ge) &&
-			       (!count_lt || iter->second < count_lt);
+		for(map<cRecordFilterItem_Dtmf::sStream, string>::iterator iter = sequences.begin(); iter != sequences.end() && !rslt; iter++) {
+			rslt = (!count_ge || iter->second.length() >= count_ge) &&
+			       (!count_lt || iter->second.length() < count_lt);
 		}
 	}
-	__SYNC_UNLOCK(call->dtmf_sync);
 	return(rslt);
 }
 
@@ -1028,6 +1360,11 @@ cRecordFilterItem_Call::cRecordFilterItem_Call(cRecordFilter *parent, eTypeFilte
 	this->filter_num = 0;
 	this->filter_num2 = 0;
 	this->codec_all_streams = false;
+	this->rtp_state = this->filter == "missing" ? _rs_missing :
+			  this->filter == "exists" ? _rs_exists :
+			  this->filter == "zero_one" ? _rs_zero_one :
+			  this->filter == "one_way" ? _rs_one_way :
+			  this->filter == "two_way" ? _rs_two_way : _rs_na;
 	if(typeFilter == _tf_codec ||
 	   typeFilter == _tf_codec_exclude ||
 	   typeFilter == _tf_bye) {
@@ -1053,6 +1390,29 @@ cRecordFilterItem_Call::cRecordFilterItem_Call(cRecordFilter *parent, eTypeFilte
 	this->filter_num = filter_num;
 	this->filter_num2 = filter_num2;
 	this->codec_all_streams = false;
+	this->rtp_state = _rs_na;
+}
+
+void cRecordFilterItem_Call::getSaddrExists(void *rec, bool *a_saddr, bool *b_saddr) {
+	if(!recIsCall(rec)) {
+		static sSaddrColumnSlots slots;
+		cDbTablesContent *tc = recTablesContent(rec);
+		bool a_saddr_null = true;
+		bool b_saddr_null = true;
+		getCdrColumn(tc, slots.saddr_ab[0], "a_saddr", cDbTableContent::_cv_str, &a_saddr_null);
+		getCdrColumn(tc, slots.saddr_ab[1], "b_saddr", cDbTableContent::_cv_str, &b_saddr_null);
+		*a_saddr = !a_saddr_null;
+		*b_saddr = !b_saddr_null;
+		return;
+	}
+	Call *call = recCall(rec);
+	if(call->saved_data) {
+		*a_saddr = call->saved_data->saddr_exists[0];
+		*b_saddr = call->saved_data->saddr_exists[1];
+	} else {
+		*a_saddr = call->lastactivecallerrtp != NULL;
+		*b_saddr = call->lastactivecalledrtp != NULL;
+	}
 }
 
 int cRecordFilterItem_Call::rtpMosF2Mult10(RTP *rtp) {
@@ -1064,8 +1424,82 @@ int cRecordFilterItem_Call::rtpMosF2Mult10(RTP *rtp) {
 	return(-1);
 }
 
-void cRecordFilterItem_Call::getCodecData(Call *call, sCodecData *codecData) {
+static u_int64_t getCdrFlags_rec(void *rec) {
+	if(!recIsCall(rec)) {
+		static unsigned slot = cdrColumnSlot("flags");
+		return((u_int64_t)getCdrValue_int(recTablesContent(rec), slot, "flags"));
+	}
+	return(recCall(rec)->rslt_save_cdr_flags);
+}
+
+static unsigned getCdrBye_rec(void *rec) {
+	if(!recIsCall(rec)) {
+		static unsigned slot = cdrColumnSlot("bye");
+		return(getCdrValue_int(recTablesContent(rec), slot, "bye"));
+	}
+	return(recCall(rec)->rslt_save_cdr_bye);
+}
+
+static bool countriesSet_rec(void *rec) {
+	if(!recIsCall(rec)) {
+		return(recTablesContent(rec)->getCountRows(_t_cdr_country_code) > 0);
+	}
+	Call *call = recCall(rec);
+	return(!call->saved_data || call->saved_data->countries_set);
+}
+
+static bool isConnected_rec(void *rec) {
+	if(!recIsCall(rec)) {
+		static unsigned slot = cdrColumnSlot("connect_duration");
+		bool connect_duration_null = true;
+		getCdrValue_int(recTablesContent(rec), slot, "connect_duration", &connect_duration_null);
+		return(!connect_duration_null);
+	}
+	return(recCall(rec)->connect_time_us != 0);
+}
+
+static long long getCdrReceived_rec(void *rec, int side, bool *null) {
+	if(!recIsCall(rec)) {
+		static sReceivedColumnSlots slots;
+		return(getCdrValue_int(recTablesContent(rec), slots.received_ab[side], side == 0 ? "a_received" : "b_received", null));
+	}
+	RTP *rtp = recCall(rec)->rtpab[side];
+	if(!rtp) {
+		return(0);
+	}
+	*null = false;
+	return(rtp->received_() + (rtp->first_codec_() >= 0 ? 2 : 0));
+}
+
+void cRecordFilterItem_Call::getCodecData(void *rec, sCodecData *codecData) {
 	codecData->rtp_rows_match = false;
+	if(!recIsCall(rec)) {
+		static sCodecColumnSlots slots;
+		cDbTablesContent *tc = recTablesContent(rec);
+		for(int i = 0; i < 2; i++) {
+			bool payload_null = true;
+			int payload = getCdrValue_int(tc, slots.payload_ab[i], i == 0 ? "a_payload" : "b_payload", &payload_null);
+			codecData->payload_ab[i] = payload_null ? -1 : payload;
+			bool mos_null = true;
+			int mos = getCdrValue_int(tc, slots.mos_f2_ab[i], i == 0 ? "a_mos_f2_mult10" : "b_mos_f2_mult10", &mos_null);
+			codecData->mos_f2_ab[i] = mos_null ? -1 : mos;
+		}
+		bool payload_null = true;
+		codecData->payload = getCdrValue_int(tc, slots.payload, "payload", &payload_null);
+		codecData->payload_null = payload_null;
+		if(codec_all_streams) {
+			cDbTableContent::sColumnValues *values = tc->getColumnValues_slot(slots.rtp_payload, _t_cdr_rtp, "payload", cDbTableContent::_cv_int);
+			if(values) {
+				for(unsigned i = 0; i < values->rows && !codecData->rtp_rows_match; i++) {
+					if(!values->isNull(i)) {
+						codecData->rtp_rows_match = codecMatch(values->value_int(i));
+					}
+				}
+			}
+		}
+		return;
+	}
+	Call *call = recCall(rec);
 	if(call->saved_data) {
 		for(int i = 0; i < 2; i++) {
 			codecData->payload_ab[i] = call->saved_data->payload_ab[i];
@@ -1104,13 +1538,12 @@ void cRecordFilterItem_Call::getCodecData(Call *call, sCodecData *codecData) {
 }
 
 bool cRecordFilterItem_Call::check(void *rec, bool */*findInBlackList*/) {
-	Call *call = (Call*)rec;
 	switch(typeFilter) {
 	case _tf_codec:
 	case _tf_codec_exclude:
 		{
 		sCodecData codecData;
-		getCodecData(call, &codecData);
+		getCodecData(rec, &codecData);
 		int a_mos = codecData.mos_f2_ab[0] >= 0 ? codecData.mos_f2_ab[0] > 0 : -1;
 		int b_mos = codecData.mos_f2_ab[1] >= 0 ? codecData.mos_f2_ab[1] > 0 : -1;
 		int a_payload = codecData.payload_ab[0] >= 0 ? codecMatch(codecData.payload_ab[0]) : -1;
@@ -1125,7 +1558,7 @@ bool cRecordFilterItem_Call::check(void *rec, bool */*findInBlackList*/) {
 	case _tf_codec_ab_diff:
 		{
 		sCodecData codecData;
-		getCodecData(call, &codecData);
+		getCodecData(rec, &codecData);
 		return(typeFilter == _tf_codec_ab_eq ?
 			codecData.payload_ab[0] >= 0 && codecData.payload_ab[0] == codecData.payload_ab[1] :
 			codecData.payload_ab[0] >= 0 && codecData.payload_ab[1] >= 0 && codecData.payload_ab[0] != codecData.payload_ab[1]);
@@ -1133,7 +1566,11 @@ bool cRecordFilterItem_Call::check(void *rec, bool */*findInBlackList*/) {
 	case _tf_custom_headers_cond:
 		if(custom_headers_cdr) {
 			map<string, string> custom_headers;
-			custom_headers_cdr->getHeaderValues(call, INVITE, &custom_headers);
+			if(recIsCall(rec)) {
+				custom_headers_cdr->getHeaderValues(recCall(rec), INVITE, &custom_headers);
+			} else {
+				custom_headers_cdr->getHeaderValues(recTablesContent(rec), INVITE, &custom_headers);
+			}
 			string filter_data = filter;
 			size_t pos[2];
 			while((pos[0] = filter_data.find("{{")) != string::npos &&
@@ -1148,23 +1585,28 @@ bool cRecordFilterItem_Call::check(void *rec, bool */*findInBlackList*/) {
 		}
 		break;
 	case _tf_flags:
-		return((call->rslt_save_cdr_flags & filter_num) != 0);
+		return((getCdrFlags_rec(rec) & filter_num) != 0);
 	case _tf_bye:
-		return(filter_int.find(call->rslt_save_cdr_bye) != filter_int.end());
+		return(filter_int.find(getCdrBye_rec(rec)) != filter_int.end());
 	case _tf_who_hangup:
-		{
-		int whohanged = call->branch_main()->whohanged;
-		return((whohanged == 0 || whohanged == 1) && (u_int64_t)(whohanged ? 2 : 1) == filter_num);
+		if(!recIsCall(rec)) {
+			static unsigned slot = cdrColumnSlot("whohanged");
+			bool whohanged_null = true;
+			long long whohanged = getCdrValue_int(recTablesContent(rec), slot, "whohanged", &whohanged_null);
+			return(!whohanged_null && (u_int64_t)whohanged == filter_num);
+		} else {
+			int whohanged = recCall(rec)->branch_main()->whohanged;
+			return((whohanged == 0 || whohanged == 1) && (u_int64_t)(whohanged ? 2 : 1) == filter_num);
 		}
 	case _tf_one_way:
 	case _tf_missing_rtp:
 		{
-		if(!call->connect_time_us) {
+		if(!isConnected_rec(rec)) {
 			return(false);
 		}
 		bool a_saddr;
 		bool b_saddr;
-		getSaddrExists(call, &a_saddr, &b_saddr);
+		getSaddrExists(rec, &a_saddr, &b_saddr);
 		return(typeFilter == _tf_one_way ?
 			a_saddr != b_saddr :
 			!a_saddr && !b_saddr);
@@ -1184,7 +1626,7 @@ bool cRecordFilterItem_Call::check(void *rec, bool */*findInBlackList*/) {
 		case 4:
 			{
 			string local_country;
-			if(!countryDetect || !countryDetect->getCountryCodeForLocalNumbers(call->useSensorId, &local_country)) {
+			if(!countryDetect || !countryDetect->getCountryCodeForLocalNumbers(parent->getField_int(rec, cf_id_sensor), &local_country)) {
 				return(filter_num == 3 ? country_a == country_b : country_a != country_b);
 			}
 			if(local_country.empty()) {
@@ -1194,7 +1636,7 @@ bool cRecordFilterItem_Call::check(void *rec, bool */*findInBlackList*/) {
 				return(!strcasecmp(country_a.c_str(), local_country.c_str()) &&
 				       !strcasecmp(country_b.c_str(), local_country.c_str()));
 			} else {
-				return((!call->saved_data || call->saved_data->countries_set) &&
+				return(countriesSet_rec(rec) &&
 				       (strcasecmp(country_a.c_str(), local_country.c_str()) ||
 					strcasecmp(country_b.c_str(), local_country.c_str())));
 			}
@@ -1203,22 +1645,47 @@ bool cRecordFilterItem_Call::check(void *rec, bool */*findInBlackList*/) {
 		}
 		break;
 	case _tf_flags_eq:
-		return((call->rslt_save_cdr_flags & filter_num) == filter_num2);
+		return((getCdrFlags_rec(rec) & filter_num) == filter_num2);
+	case _tf_ccs_license:
+		{
+		if(!isConnected_rec(rec) &&
+		   parent->getField_int(rec, cf_lastSIPresponseNum) != 200) {
+			return(false);
+		}
+		if(getCdrBye_rec(rec) >= 100) {
+			return(false);
+		}
+		if(filter_num) {
+			int received_cond = 0;
+			for(int side = 0; side < 2; side++) {
+				bool received_null = true;
+				long long received = getCdrReceived_rec(rec, side, &received_null);
+				received_cond = sqlOr(received_cond, received_null ? -1 : (received > 0 ? 1 : 0));
+			}
+			if(received_cond <= 0) {
+				return(false);
+			}
+		}
+		return(true);
+		}
 	case _tf_rtp_state:
 		{
 		bool a_saddr;
 		bool b_saddr;
-		getSaddrExists(call, &a_saddr, &b_saddr);
-		if(filter == "missing") {
+		getSaddrExists(rec, &a_saddr, &b_saddr);
+		switch(rtp_state) {
+		case _rs_missing:
 			return(!a_saddr && !b_saddr);
-		} else if(filter == "exists") {
+		case _rs_exists:
 			return(a_saddr || b_saddr);
-		} else if(filter == "zero_one") {
+		case _rs_zero_one:
 			return(!a_saddr || !b_saddr);
-		} else if(filter == "one_way") {
+		case _rs_one_way:
 			return(a_saddr != b_saddr);
-		} else if(filter == "two_way") {
+		case _rs_two_way:
 			return(a_saddr && b_saddr);
+		default:
+			break;
 		}
 		}
 		break;
@@ -1238,8 +1705,9 @@ bool cRecordFilterItem_CallSubFilter::check(void *rec, bool */*findInBlackList*/
 	return(negative ? !rslt : rslt);
 }
 
-cCallFilter::cCallFilter(const char *filter, const char *keyPrefix, bool nested) {
+cCallFilter::cCallFilter(const char *filter, const char *keyPrefix, bool nested, cCodebookCache *codebookCache) {
 	setUseRecordArray(false);
+	setCodebookCache(codebookCache);
 	setFilter(filter, keyPrefix, nested);
 }
 
@@ -1275,6 +1743,10 @@ void cCallFilter::setFilter(const char *filter, const char *keyPrefix, bool nest
 		cRecordFilterItem_calldate *filter = new FILE_LINE(0) cRecordFilterItem_calldate(this, cf_calldate, atol(filterData["calldate_to"].c_str()), cRecordFilterItem_base::_lt);
 		addFilter(filter);
 	}
+	addFilterAB(filterData, "caller", "called", "callerd_type",
+		    sAbDef(_ab_phone_number, cf_caller, cf_called).phoneType((PhoneNumber::eTypeNumber)atoi(filterData["callerd_search_type"].c_str())).nullValue());
+	addFilterAB(filterData, "caller_group_id", "called_group_id", "callerd_group_id_type",
+		    sAbDef(_ab_phone_number, cf_caller, cf_called).codebook("cb_number_groups", "number").phoneType(PhoneNumber::_tn_prefix_auto));
 	addFilterAB(filterData, "sipcallerip", "sipcalledip", "sipcallerdip_type",
 		    sAbDef(_ab_ip, cf_callerip, cf_calledip).proxy("sipcallerdip_with_proxy"));
 	if(!isEmptyOrZero(filterData["proxyip"])) {
@@ -1294,12 +1766,8 @@ void cCallFilter::setFilter(const char *filter, const char *keyPrefix, bool nest
 		    sAbDef(_ab_ip, cf_rtp_src, cf_rtp_dst));
 	addFilterAB(filterData, "a_saddr_group_id", "b_saddr_group_id", "ab_saddr_group_id_type",
 		    sAbDef(_ab_ip, cf_rtp_src, cf_rtp_dst).codebook("cb_ip_groups", "ip"));
-	addFilterAB(filterData, "caller", "called", "callerd_type",
-		    sAbDef(_ab_phone_number, cf_caller, cf_called).phoneType((PhoneNumber::eTypeNumber)atoi(filterData["callerd_search_type"].c_str())).nullValue());
 	addFilterAB(filterData, "country_code_caller", "country_code_called", "country_code_callerd_type",
 		    sAbDef(_ab_country_code, cf_caller_country, cf_called_country).sideComb());
-	addFilterAB(filterData, "caller_group_id", "called_group_id", "callerd_group_id_type",
-		    sAbDef(_ab_phone_number, cf_caller, cf_called).codebook("cb_number_groups", "number").phoneType(PhoneNumber::_tn_prefix_auto));
 	addFilterAB(filterData, "caller_domain", "called_domain", "callerd_domain_type",
 		    sAbDef(_ab_check_string, cf_callerdomain, cf_calleddomain).nullValue());
 	if(!filterData["caller_domain_group_id"].empty() || !filterData["called_domain_group_id"].empty()) {
@@ -1309,21 +1777,15 @@ void cCallFilter::setFilter(const char *filter, const char *keyPrefix, bool nest
 		if(!type0) {
 			ids[1] = split2int(filterData["called_domain_group_id"], ',');
 		}
-		string ids_str;
-		for(int i = 0; i < 2; i++) {
-			for(unsigned j = 0; j < ids[i].size(); j++) {
-				ids_str += (ids_str.empty() ? "" : ",") + intToString(ids[i][j]);
-			}
-		}
-		if(!ids_str.empty()) {
+		if(ids[0].size() || ids[1].size()) {
 			map<int, int> groups_side;
-			SqlDb *sqlDb = createSqlObject();
-			sqlDb->query("select id, side from cb_domain_groups where id in (" + ids_str + ")");
-			SqlDb_row row;
-			while((row = sqlDb->fetchRow())) {
-				groups_side[atoi(row["id"].c_str())] = atoi(row["side"].c_str());
+			vector<int> ids_all = ids[0];
+			ids_all.insert(ids_all.end(), ids[1].begin(), ids[1].end());
+			map<u_int32_t, string> sides;
+			getCodebookValues("cb_domain_groups", "side", &ids_all, &sides);
+			for(map<u_int32_t, string>::iterator iter = sides.begin(); iter != sides.end(); iter++) {
+				groups_side[iter->first] = atoi(iter->second.c_str());
 			}
-			delete sqlDb;
 			bool split_by_side = !type0;
 			for(unsigned j = 0; j < ids[0].size() && !split_by_side; j++) {
 				map<int, int>::iterator iter = groups_side.find(ids[0][j]);
@@ -1364,6 +1826,8 @@ void cCallFilter::setFilter(const char *filter, const char *keyPrefix, bool nest
 		addFilter(new FILE_LINE(0) cRecordFilterItem_CheckStringOr(this, cf_callername, filterData["callername"].c_str(), orValuesSeparators, "\n", true));
 	}
 	addFilterDataNotAvailable(filterData, "note");
+	addFilterDataNotAvailable(filterData, "alert_sent_id");
+	addFilterDataNotAvailable(filterData, "daily_report_sent_id");
 	if(!isEmptyOrZero(filterData["digest_username"])) {
 		cRecordFilterItems gItems(cRecordFilterItems::_or);
 		if(existsColumns.cdr_next_digest_username) {
@@ -1423,16 +1887,15 @@ void cCallFilter::setFilter(const char *filter, const char *keyPrefix, bool nest
 		if(!sensors_all) {
 			vector<int> id_sensors;
 			if(!sensors_ids.empty()) {
-				SqlDb *sqlDb = createSqlObject();
-				sqlDb->query("select id_sensor from sensors where id in (" + sensors_ids + ")");
-				SqlDb_row row;
-				while((row = sqlDb->fetchRow())) {
-					int id_sensor = atoi(row["id_sensor"].c_str());
+				vector<int> ids = split2int(sensors_ids, ',');
+				map<u_int32_t, string> sensors_values;
+				getCodebookValues("sensors", "id_sensor", &ids, &sensors_values);
+				for(map<u_int32_t, string>::iterator iter = sensors_values.begin(); iter != sensors_values.end(); iter++) {
+					int id_sensor = atoi(iter->second.c_str());
 					if(id_sensor > 0) {
 						id_sensors.push_back(id_sensor);
 					}
 				}
-				delete sqlDb;
 			}
 			cRecordFilterItems gItems(cRecordFilterItems::_or);
 			if(id_sensors.size()) {
@@ -1455,15 +1918,14 @@ void cCallFilter::setFilter(const char *filter, const char *keyPrefix, bool nest
 			     atoi(filterData["trunk"].c_str()) :
 			     0;
 		vector<string> trunk_ips;
-		SqlDb *sqlDb = createSqlObject();
-		sqlDb->query("select ip from cb_ip_groups where trunk");
-		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
-			if(!isEmptyOrZero(row["ip"])) {
-				trunk_ips.push_back(row["ip"]);
+		vector<string> trunk_ips_all;
+		if(getCodebookList("cb_ip_groups", "ip", "trunk", &trunk_ips_all)) {
+			for(unsigned i = 0; i < trunk_ips_all.size(); i++) {
+				if(!isEmptyOrZero(trunk_ips_all[i])) {
+					trunk_ips.push_back(trunk_ips_all[i]);
+				}
 			}
 		}
-		delete sqlDb;
 		if(trunk_ips.size() && trunk >= 1 && trunk <= 3) {
 			addFilter(new FILE_LINE(0) cRecordFilterItem_Trunk(this, trunk, &trunk_ips));
 		}
@@ -1568,6 +2030,7 @@ void cCallFilter::setFilter(const char *filter, const char *keyPrefix, bool nest
 		}
 		addFilter(new FILE_LINE(0) cRecordFilterItem_Call(this, cRecordFilterItem_Call::_tf_flags_eq, CDR_PROTO_TCP | CDR_PROTO_UDP | CDR_PROTO_TLS, protocols));
 	}
+	filterData.setUsed("sdp_media_type_multiple_operator");
 	if(!filterData["sdp_media_type"].empty()) {
 		u_int64_t media_types = 0;
 		unsigned media_types_count = 0;
@@ -1591,6 +2054,10 @@ void cCallFilter::setFilter(const char *filter, const char *keyPrefix, bool nest
 	}
 	if(!filterData["rtp_state"].empty()) {
 		addFilter(new FILE_LINE(0) cRecordFilterItem_Call(this, cRecordFilterItem_Call::_tf_rtp_state, filterData["rtp_state"].c_str()));
+	}
+	bool ccs_license_rtpcheck = !filterData["ccs_license_rtpcheck"].empty() && is_true(filterData["ccs_license_rtpcheck"].c_str());
+	if(!filterData["ccs_license"].empty() && is_true(filterData["ccs_license"].c_str())) {
+		addFilter(new FILE_LINE(0) cRecordFilterItem_Call(this, cRecordFilterItem_Call::_tf_ccs_license, ccs_license_rtpcheck));
 	}
 	for(unsigned i = 0; i < sizeof(cdrMosFilters) / sizeof(cdrMosFilters[0]); i++) {
 		addFilterAB(filterData, cdrMosFilters[i].name1, cdrMosFilters[i].name2, cdrMosFilters[i].typeName,
@@ -1702,23 +2169,19 @@ void cCallFilter::setFilter(const char *filter, const char *keyPrefix, bool nest
 			}
 		}
 		if(!filterData["custhead_group_id"].empty()) {
-			string group_ids;
 			vector<int> ids = split2int(filterData["custhead_group_id"], ',');
-			for(unsigned i = 0; i < ids.size(); i++) {
-				group_ids += (i ? "," : "") + intToString(ids[i]);
-			}
-			if(!group_ids.empty()) {
+			if(ids.size()) {
 				cRecordFilterItems gItems(cRecordFilterItems::_or);
-				SqlDb *sqlDb = createSqlObject();
-				sqlDb->query("select cdr_custom_headers_id, content from cb_custhead_cdr_groups where id in (" + group_ids + ")");
-				SqlDb_row row;
-				while((row = sqlDb->fetchRow())) {
-					string header = custom_headers_cdr->getHeaderKeyForDbId(atol(row["cdr_custom_headers_id"].c_str()));
-					if(!header.empty() && !row["content"].empty()) {
-						gItems.addFilter(new FILE_LINE(0) cRecordFilterItem_CustomHeader(this, header.c_str(), row["content"].c_str(), ",|;|\n", "|"));
+				static const char *columns[] = { "cdr_custom_headers_id", "content" };
+				vector<map<u_int32_t, string> > values;
+				getCodebookValues("cb_custhead_cdr_groups", columns, sizeof(columns) / sizeof(columns[0]), &ids, &values);
+				for(unsigned i = 0; i < ids.size(); i++) {
+					string header = custom_headers_cdr->getHeaderKeyForDbId(atol(values[0][ids[i]].c_str()));
+					string content = values[1][ids[i]];
+					if(!header.empty() && !content.empty()) {
+						gItems.addFilter(new FILE_LINE(0) cRecordFilterItem_CustomHeader(this, header.c_str(), content.c_str(), ",|;|\n", "|"));
 					}
 				}
-				delete sqlDb;
 				if(gItems.isSet()) {
 					addFilter(&gItems);
 				}
@@ -1975,6 +2438,9 @@ void cCallFilter::addFilterCdrMetric(cFilterData &filterData, const char *name, 
 	filterData.setUsed(name_lt_called.c_str());
 	cRecordFilterItems gItems(ab_type ? cRecordFilterItems::_and : cRecordFilterItems::_or);
 	for(int side = 0; side < 2; side++) {
+		if(side == 1 && !ab_type && !strcmp(columns_a, columns_b)) {
+			break;
+		}
 		const char *columns = side == 0 ? columns_a : columns_b;
 		string *value_ge = &filterData[ab_type && side == 1 ? name_ge_called : name_ge];
 		string *value_lt = &filterData[ab_type && side == 1 ? name_lt_called : name_lt];
@@ -2067,7 +2533,7 @@ cRecordFilterItem_base *cCallFilter::createCombinationLeaf(sCombRow *row) {
 	if(row->filter_cfg.empty()) {
 		return(new FILE_LINE(0) cRecordFilterItem_Fixed(this, true));
 	}
-	cCallFilter *subFilter = new FILE_LINE(0) cCallFilter(row->filter_cfg.c_str(), "f", true);
+	cCallFilter *subFilter = new FILE_LINE(0) cCallFilter(row->filter_cfg.c_str(), "f", true, getCodebookCache());
 	if(subFilter->existsUnsupportedKeys()) {
 		unsupportedKeysComb += (unsupportedKeysComb.empty() ? "" : ",") + subFilter->getUnsupportedKeys();
 	}
@@ -2282,9 +2748,151 @@ cRecordFilterItem_CallProxy *cCallFilter::createAbProxyItem(sAbDef *def, const c
 }
 
 
+double cCallFilter::getField_float_tc(cDbTablesContent *tc, unsigned registerFieldIndex, bool *null) {
+	bool _null = false;
+	double rslt = 0;
+	switch(registerFieldIndex) {
+	case cf_duration:
+		rslt = getCdrValue_float(tc, registerFieldIndex, "duration", &_null);
+		break;
+	case cf_connect_duration:
+		rslt = getCdrValue_float(tc, registerFieldIndex, "connect_duration", &_null);
+		break;
+	case cf_progress_time:
+		rslt = getCdrValue_float(tc, registerFieldIndex, "progress_time", &_null);
+		break;
+	case cf_ringing_time:
+		{
+		bool connect_duration_null;
+		double connect_duration = getField_float_tc(tc, cf_connect_duration, &connect_duration_null);
+		bool progress_time_null;
+		double progress_time = getField_float_tc(tc, cf_progress_time, &progress_time_null);
+		rslt = getField_float_tc(tc, cf_duration, NULL) - (connect_duration_null ? 0 : connect_duration) - (progress_time_null ? 0 : progress_time);
+		}
+		break;
+	case cf_post_bye_delay:
+		rslt = getCdrValue_float(tc, registerFieldIndex, "post_bye_delay", &_null);
+		break;
+	case cf_vlan:
+		rslt = getCdrValue_float(tc, registerFieldIndex, "vlan", &_null);
+		break;
+	case cf_response_time_100:
+		rslt = getCdrValue_float(tc, registerFieldIndex, "response_time_100", &_null);
+		break;
+	case cf_ttl_min:
+		rslt = getCdrValue_float(tc, registerFieldIndex, "ttl_min", &_null);
+		break;
+	case cf_ttl_max:
+		rslt = getCdrValue_float(tc, registerFieldIndex, "ttl_max", &_null);
+		break;
+	case cf_ttl_avg:
+		rslt = getCdrValue_float(tc, registerFieldIndex, "ttl_avg_mult10", &_null);
+		break;
+	case cf_dscp_caller_sip:
+	case cf_dscp_called_sip:
+	case cf_dscp_caller_rtp:
+	case cf_dscp_called_rtp:
+		{
+		long long dscp = getCdrValue_int(tc, registerFieldIndex, "dscp", &_null);
+		if(!_null) {
+			rslt = registerFieldIndex == cf_dscp_caller_sip ? ((dscp >> 24) & 0xFF) :
+			       registerFieldIndex == cf_dscp_called_sip ? ((dscp >> 16) & 0xFF) :
+			       registerFieldIndex == cf_dscp_caller_rtp ? ((dscp >> 8) & 0xFF) :
+							                  (dscp & 0xFF);
+		}
+		}
+		break;
+	case cf_max_retransmission_invite:
+		rslt = getCdrValue_float(tc, registerFieldIndex, "max_retransmission_invite", &_null);
+		if(!rslt) {
+			_null = true;
+		}
+		break;
+	}
+	if(null) {
+		*null = _null;
+	}
+	return(rslt);
+}
+
+int64_t cCallFilter::getField_int_tc(cDbTablesContent *tc, unsigned registerFieldIndex) {
+	switch(registerFieldIndex) {
+	case cf_calldate:
+		return(TIME_US_TO_S(getCdrValue_int(tc, registerFieldIndex, "calldate")));
+	case cf_id_sensor:
+		return(getCdrValue_int(tc, registerFieldIndex, "id_sensor"));
+	case cf_lastSIPresponseNum:
+		return(getCdrValue_int(tc, registerFieldIndex, "lastSIPresponseNum"));
+	case cf_callerport:
+		return(getCdrValue_int(tc, registerFieldIndex, "sipcallerport"));
+	case cf_calledport:
+		return(getCdrValue_int(tc, registerFieldIndex, "sipcalledport"));
+	case cf_called_international:
+		return(!isLocalByPhoneNumber(tc->getValue_string(_t_cdr, "called"), tc->getValue_ip(_t_cdr, "sipcalledip")));
+	case cf_vlan:
+		return(tc->existsColumn(_t_cdr, "vlan") ? tc->getValue_int(_t_cdr, "vlan") : VLAN_UNSET);
+	}
+	return(0);
+}
+
+vmIP cCallFilter::getField_ip_tc(cDbTablesContent *tc, unsigned registerFieldIndex) {
+	switch(registerFieldIndex) {
+	case cf_callerip:
+		return(getCdrValue_ip(tc, registerFieldIndex, "sipcallerip"));
+	case cf_calledip:
+		return(getCdrValue_ip(tc, registerFieldIndex, "sipcalledip"));
+	case cf_callerip_encaps:
+		return(getCdrValue_ip(tc, registerFieldIndex, "sipcallerip_encaps"));
+	case cf_calledip_encaps:
+		return(getCdrValue_ip(tc, registerFieldIndex, "sipcalledip_encaps"));
+	case cf_rtp_src:
+		return(getCdrValue_ip(tc, registerFieldIndex, "a_saddr"));
+	case cf_rtp_dst:
+		return(getCdrValue_ip(tc, registerFieldIndex, "b_saddr"));
+	}
+	return(0);
+}
+
+string cCallFilter::getField_string_tc(cDbTablesContent *tc, unsigned registerFieldIndex) {
+	switch(registerFieldIndex) {
+	case cf_caller:
+		return(getCdrValue_str(tc, registerFieldIndex, _t_cdr, "caller"));
+	case cf_called:
+		return(getCdrValue_str(tc, registerFieldIndex, _t_cdr, "called"));
+	case cf_callerdomain:
+		return(getCdrValue_str(tc, registerFieldIndex, _t_cdr, "caller_domain"));
+	case cf_calleddomain:
+		return(getCdrValue_str(tc, registerFieldIndex, _t_cdr, "called_domain"));
+	case cf_calleragent:
+		return(getCdrValue_str(tc, registerFieldIndex, _t_cdr, "a_ua_id"));
+	case cf_calledagent:
+		return(getCdrValue_str(tc, registerFieldIndex, _t_cdr, "b_ua_id"));
+	case cf_callid:
+		return(getCdrValue_str(tc, registerFieldIndex, _t_cdr_next, "fbasename"));
+	case cf_callername:
+		return(getCdrValue_str(tc, registerFieldIndex, _t_cdr, "callername"));
+	case cf_digest_username:
+		return(getCdrValue_str(tc, registerFieldIndex, _t_cdr_next, "digest_username"));
+	case cf_lastSIPresponse:
+		return(getCdrValue_str(tc, registerFieldIndex, _t_cdr, "lastSIPresponse_id"));
+	case cf_caller_country:
+		return(getCdrValue_str(tc, registerFieldIndex, _t_cdr_country_code, "caller_number_country_code"));
+	case cf_callerip_country:
+		return(getCdrValue_str(tc, registerFieldIndex, _t_cdr_country_code, "sipcallerip_country_code"));
+	case cf_called_country:
+		return(getCdrValue_str(tc, registerFieldIndex, _t_cdr_country_code, "called_number_country_code"));
+	case cf_calledip_country:
+		return(getCdrValue_str(tc, registerFieldIndex, _t_cdr_country_code, "sipcalledip_country_code"));
+	}
+	return("");
+}
+
 double cCallFilter::getField_float(void *rec, unsigned registerFieldIndex, bool *null) {
 	extern sExistsColumns existsColumns;
-	Call *call = (Call*)rec;
+	if(!recIsCall(rec)) {
+		return(getField_float_tc(recTablesContent(rec), registerFieldIndex, null));
+	}
+	Call *call = recCall(rec);
 	bool _null = false;
 	double rslt = 0;
 	switch(registerFieldIndex) {

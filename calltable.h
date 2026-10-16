@@ -3390,6 +3390,30 @@ public:
 	bool isEmptyCdrRow() {
 		return(cdr.isEmpty());
 	}
+	bool getCdrFieldValue(unsigned slot, const char *fieldName, double *value) {
+		if(!saved_data) {
+			return(getCdrFieldValue(fieldName, value));
+		}
+		if(saved_data->cdr_field_values.size() <= slot) {
+			saved_data->cdr_field_values.resize(slot + 1);
+		}
+		sSavedData::sCdrFieldValue *cache = &saved_data->cdr_field_values[slot];
+		if(!cache->set) {
+			cache->exists = getCdrFieldValue(fieldName, &cache->value);
+			cache->set = true;
+			saved_data->cdr_field_values_filled.push_back(slot);
+		}
+		*value = cache->value;
+		return(cache->exists);
+	}
+	void clearCdrFieldValues() {
+		if(saved_data) {
+			for(unsigned i = 0; i < saved_data->cdr_field_values_filled.size(); i++) {
+				saved_data->cdr_field_values[saved_data->cdr_field_values_filled[i]].set = false;
+			}
+			saved_data->cdr_field_values_filled.clear();
+		}
+	}
 	bool getCdrFieldValue(const char *fieldName, double *value) {
 		SqlDb_row::SqlDb_rowField *field = cdr.getField(fieldName);
 		if(!field || field->null) {
@@ -3691,6 +3715,18 @@ public:
 		set<int> rtp_rows_payloads;
 		vector<sRtpStream> rtp_streams;
 		vector<s_sdp_store_data> sdp_streams;
+		struct sCdrFieldValue {
+			sCdrFieldValue() {
+				value = 0;
+				set = false;
+				exists = false;
+			}
+			double value;
+			bool set;
+			bool exists;
+		};
+		vector<sCdrFieldValue> cdr_field_values;
+		vector<unsigned> cdr_field_values_filled;
 	};
 	sSavedData *saved_data;
 	unsigned rtp_streams_size();
@@ -3918,6 +3954,7 @@ struct sChartsCallData {
 	inline Call* call() { return((Call*)data); }
 	inline CallBranch* branch_main() { return(((Call*)data)->branch_main()); }
 	inline cDbTablesContent* tables_content() { return((cDbTablesContent*)data); }
+	string call_id();
 };
 
 
@@ -5050,9 +5087,12 @@ public:
 	void getHeaders(list<string> *rslt);
 	void getValues(Call *call, int type, list<string> *rslt);
 	void getHeaderValues(Call *call, int type, map<string, string> *rslt);
+	void getHeaderValues(cDbTablesContent *tablesContent, int type, map<string, string> *rslt);
 	void getNameValues(Call *call, int type, map<string, string> *rslt);
 	string getValue(Call *call, int type, const char *header);
+	string getValue(cDbTablesContent *tablesContent, int type, const char *header);
 	static string getCH_Content_value(sCH_Content *ch_content, int i1, int i2);
+	static string getTablesContent_value(cDbTablesContent *tablesContent, int i1, int i2, string header);
 	unsigned getSize();
 	int getCustomHeaderMaxSize();
 	string dump();

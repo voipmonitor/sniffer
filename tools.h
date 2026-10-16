@@ -2136,6 +2136,21 @@ public:
 	bool operator < (const PhoneNumber &phoneNumber) const {
 		return(strcasecmp(this->number.c_str(), phoneNumber.number.c_str()) < 0);
 	}
+	struct sCmpNumber {
+		bool operator () (const PhoneNumber &phoneNumber, const char *number) const {
+			return(strcasecmp(phoneNumber.number.c_str(), number) < 0);
+		}
+	};
+	struct sCmpPrefix {
+		sCmpPrefix(unsigned length) {
+			this->length = length;
+		}
+		bool operator () (const char *number, const PhoneNumber &phoneNumber) const {
+			int cmp = strncasecmp(number, phoneNumber.number.c_str(), length);
+			return(cmp ? cmp < 0 : phoneNumber.number.length() > length);
+		}
+		unsigned length;
+	};
 private:
 	bool setIntervalFilter() {
 		size_t separator = 0;
@@ -2738,12 +2753,19 @@ public:
 				std::sort(listPhoneNumber.begin(), listPhoneNumber.end());
 				_listPhoneNumber_sorted = true;
 			}
-			std::vector<PhoneNumber>::iterator it_number = std::lower_bound(listPhoneNumber.begin(), listPhoneNumber.end(), PhoneNumber(check_number, PhoneNumber::_tn_norm));
+			std::vector<PhoneNumber>::iterator it_number = std::lower_bound(listPhoneNumber.begin(), listPhoneNumber.end(), check_number, PhoneNumber::sCmpNumber());
 			if(it_number != listPhoneNumber.end() && it_number->checkNumber(check_number)) {
 				rslt = true;
 			}
 		}
-		if(!rslt && listPrefixes.size()) {
+		if(!rslt && listPrefixes.size() <= 8) {
+			for(unsigned i = 0; i < listPrefixes.size(); i++) {
+				if(!listPrefixes[i].number_length || listPrefixes[i].checkNumber(check_number)) {
+					rslt = true;
+					break;
+				}
+			}
+		} else if(!rslt && listPrefixes.size()) {
 			if(!_listPrefixes_sorted) {
 				std::sort (listPrefixes.begin(), listPrefixes.end());
 				_listPrefixes_sorted = true;
@@ -2751,9 +2773,9 @@ public:
 			if(listPrefixes[0].number.empty()) {
 				rslt = true;
 			}
-			string check_prefix = check_number;
-			while(!rslt && check_prefix.length()) {
-				std::vector<PhoneNumber>::iterator it_prefix = std::upper_bound(listPrefixes.begin(), listPrefixes.end(), PhoneNumber(check_prefix.c_str(), PhoneNumber::_tn_norm));
+			unsigned check_prefix_length = strlen(check_number);
+			while(!rslt && check_prefix_length) {
+				std::vector<PhoneNumber>::iterator it_prefix = std::upper_bound(listPrefixes.begin(), listPrefixes.end(), check_number, PhoneNumber::sCmpPrefix(check_prefix_length));
 				if(it_prefix == listPrefixes.begin()) {
 					break;
 				}
@@ -2762,11 +2784,11 @@ public:
 					rslt = true;
 				} else {
 					unsigned eq_length = 0;
-					while(eq_length < check_prefix.length() && eq_length < it_prefix->number.length() &&
-					      tolower(check_prefix[eq_length]) == tolower(it_prefix->number[eq_length])) {
+					while(eq_length < check_prefix_length && eq_length < it_prefix->number.length() &&
+					      tolower(check_number[eq_length]) == tolower(it_prefix->number[eq_length])) {
 						++eq_length;
 					}
-					check_prefix.resize(eq_length);
+					check_prefix_length = eq_length;
 				}
 			}
 		}
