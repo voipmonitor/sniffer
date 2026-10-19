@@ -436,6 +436,8 @@ bool opt_charts_cache = false;
 int opt_charts_cache_max_threads = 3;
 bool opt_charts_cache_filters_native = false;
 bool opt_charts_cache_filters_compare = false;
+bool opt_charts_cache_filters_diff_log = false;
+bool opt_charts_cache_log_ext = false;
 bool opt_charts_cache_store = false;
 bool opt_charts_cache_ip_boost = false;
 int opt_charts_cache_queue_limit = 100000;
@@ -8078,6 +8080,8 @@ void cConfig::addConfigItems() {
 				expert();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_filters_native", &opt_charts_cache_filters_native));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_filters_compare", &opt_charts_cache_filters_compare));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_filters_diff_log", &opt_charts_cache_filters_diff_log));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_log_ext", &opt_charts_cache_log_ext));
 			normal();
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_store", &opt_charts_cache_store));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_ip_boost", &opt_charts_cache_ip_boost));
@@ -8893,6 +8897,8 @@ void parse_verb_param(string verbParam) {
 								sverb.charts_cache_filters_loop_sql = 1;
 	else if(verbParam == "charts_cache_filters_cache_disable")
 								sverb.charts_cache_filters_cache_disable = 1;
+	else if(verbParam.substr(0, 41) == "charts_cache_filters_diff_log_disable_id=")
+								strcpy_null_term(sverb.charts_cache_filters_diff_log_disable_id, verbParam.c_str() + 41);
 	else if(verbParam.substr(0, 19) == "sipcallerip_filter=")
 								strcpy_null_term(sverb.sipcallerip_filter, verbParam.c_str() + 19);
 	else if(verbParam.substr(0, 19) == "sipcalledip_filter=")

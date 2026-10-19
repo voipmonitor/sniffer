@@ -13,6 +13,7 @@
 #include "esp_decrypt.h"
 #include "tar.h"
 #include "transcribe.h"
+#include "charts.h"
 
 #if HAVE_LIBTCMALLOC
 #include <gperftools/malloc_extension.h>
@@ -98,6 +99,7 @@ static void appendSection(string &out, const string &s) {
 	X(async_close_queue) \
 	X(storing)           \
 	X(charts)            \
+	X(charts_ext)        \
 	X(charts_store)      \
 	X(ipacc)             \
 	X(ipacc_buffer)      \
@@ -2313,6 +2315,100 @@ void sPcapStatData::sCharts::get_values(vector<sValue> &out) const {
 	if(remote_queue_valid) out.push_back(sValue("remote_queue_size", intToString(remote_queue_size), "qr"));
 }
 
+void sPcapStatData::sChartsExt::load() {
+	extern u_int64_t counter_charts_cache_ext_calls;
+	extern u_int64_t counter_charts_cache_ext_total_ticks;
+	extern u_int64_t counter_charts_cache_ext_filters_ticks;
+	extern u_int64_t counter_charts_cache_ext_native_cache_ticks;
+	extern u_int64_t counter_charts_cache_ext_native_cache_lookups;
+	extern u_int64_t counter_charts_cache_ext_native_cache_hits;
+	extern bool opt_charts_cache_log_ext;
+	if(!opt_charts_cache_log_ext) {
+		return;
+	}
+	if(counter_charts_cache_ext_calls && counter_charts_cache_ext_total_ticks && rdtsc_by_250ms) {
+		calls = counter_charts_cache_ext_calls;
+		filters_us = rdtsc_to_us(counter_charts_cache_ext_filters_ticks) / calls;
+		double total_us = rdtsc_to_us(counter_charts_cache_ext_total_ticks) / calls;
+		other_us = total_us > filters_us ? total_us - filters_us : 0;
+		native_sql_valid = chartsCacheFiltersTimePerCall(calls, &native_us, &sql_us);
+		if(counter_charts_cache_ext_native_cache_lookups) {
+			native_cache_us = rdtsc_to_us(counter_charts_cache_ext_native_cache_ticks) / calls;
+			native_cache_hit_perc = (double)counter_charts_cache_ext_native_cache_hits * 100 / counter_charts_cache_ext_native_cache_lookups;
+			native_cache_valid = true;
+		}
+		sChartsExtStat ext_stat;
+		if(chartsCacheExtStatDelta(&ext_stat)) {
+			if(ext_stat.sql_cache_lookups) {
+				sql_cache_hit_perc = (double)ext_stat.sql_cache_hits * 100 / ext_stat.sql_cache_lookups;
+				sql_cache_valid = true;
+			}
+			native_evals = (double)ext_stat.native_evals / calls;
+			sql_evals = (double)ext_stat.sql_evals / calls;
+			evals_valid = true;
+		}
+		diff_ids = chartsCacheDiffSeriesIdsStr();
+		valid = true;
+	}
+	counter_charts_cache_ext_calls = 0;
+	counter_charts_cache_ext_total_ticks = 0;
+	counter_charts_cache_ext_filters_ticks = 0;
+	counter_charts_cache_ext_native_cache_ticks = 0;
+	counter_charts_cache_ext_native_cache_lookups = 0;
+	counter_charts_cache_ext_native_cache_hits = 0;
+}
+
+string sPcapStatData::sChartsExt::render(bool with_title) const {
+	if(!valid) {
+		return("");
+	}
+	string out;
+	if(with_title) out += title() + "[";
+	out += "f" + floatToString(filters_us, 1) + "/o" + floatToString(other_us, 1) + "us";
+	if(native_sql_valid) {
+		out += "/n" + floatToString(native_us, 1) + "/s" + floatToString(sql_us, 1) + "us";
+	}
+	if(native_cache_valid) {
+		out += "/c" + floatToString(native_cache_us, 1) + "us/hn" + floatToString(native_cache_hit_perc, (unsigned)0) + "%";
+	}
+	if(sql_cache_valid) {
+		out += "/hs" + floatToString(sql_cache_hit_perc, (unsigned)0) + "%";
+	}
+	if(evals_valid) {
+		out += "/en" + floatToString(native_evals, 1) + "/es" + floatToString(sql_evals, 1);
+	}
+	if(!diff_ids.empty()) {
+		out += "/d" + string(diff_ids.c_str());
+	}
+	if(with_title) out += "] ";
+	return(out);
+}
+
+void sPcapStatData::sChartsExt::get_values(vector<sValue> &out) const {
+	if(!valid) return;
+	out.push_back(sValue("calls", intToString(calls), "r"));
+	out.push_back(sValue("filters", floatToString(filters_us, 1), "us"));
+	out.push_back(sValue("other", floatToString(other_us, 1), "us"));
+	if(native_sql_valid) {
+		out.push_back(sValue("native", floatToString(native_us, 1), "us"));
+		out.push_back(sValue("sql", floatToString(sql_us, 1), "us"));
+	}
+	if(native_cache_valid) {
+		out.push_back(sValue("native_cache", floatToString(native_cache_us, 1), "us"));
+		out.push_back(sValue("native_cache_hit", floatToString(native_cache_hit_perc, (unsigned)0), "%"));
+	}
+	if(sql_cache_valid) {
+		out.push_back(sValue("sql_cache_hit", floatToString(sql_cache_hit_perc, (unsigned)0), "%"));
+	}
+	if(evals_valid) {
+		out.push_back(sValue("native_evals", floatToString(native_evals, 1)));
+		out.push_back(sValue("sql_evals", floatToString(sql_evals, 1)));
+	}
+	if(!diff_ids.empty()) {
+		out.push_back(sValue("diff_ids", diff_ids.c_str()));
+	}
+}
+
 void sPcapStatData::sChartsStore::load(int pstatDataIndex) {
 	extern Calltable *calltable;
 	double store_cpu = calltable->processCallsInChartsCache_store_thread_cpuUsagePerc(pstatDataIndex);
@@ -3088,6 +3184,20 @@ void sPcapStatData::sCharts::get_help(sHelp &out) const {
 	out.add("rate", "requests per second of processing time - the count divided by the time actually spent on them, not by the length of the stat period");
 	out.add("queue", "calls waiting in the charts cache queue");
 	out.add("remote", "queue size reported by the remote chart server");
+}
+
+void sPcapStatData::sChartsExt::get_help(sHelp &out) const {
+	out.set("average processing time of one cdr in the charts cache - format: [f<filters>/o<other>us/n<native>/s<sql>us/c<native_cache>us/hn<native_cache_hit>%/hs<sql_cache_hit>%/en<native_evals>/es<sql_evals>/d<diff_ids>], printed only with the charts_cache_log_ext option");
+	out.add("filters", "time spent evaluating the chart filters, per cdr");
+	out.add("other", "the rest of the charts cache processing, per cdr - csv parsing, chart values and intervals, cdr stat");
+	out.add("native", "time of the native branch of the filters, per cdr - zero when no filter is evaluated natively");
+	out.add("sql", "time of the sql branch of the filters, per cdr - zero when no filter is evaluated via sql, both branches run only with charts_cache_filters_compare");
+	out.add("native_cache", "time of the native ip cache, per cdr - building the ip combination key, the lookup and filling the bitmap on a miss, it is a part of filters");
+	out.add("native_cache_hit", "percentage of calls whose ip combination was found in the native ip cache - one lookup per call");
+	out.add("sql_cache_hit", "percentage of lookups in the sql ip cache which were found - one lookup per filter and call, so it is not directly comparable with native_cache_hit");
+	out.add("native_evals", "how many filters per cdr are really evaluated natively - the rest is answered by the native ip cache");
+	out.add("sql_evals", "how many filters per cdr are really evaluated via sql - the rest is answered by the sql ip cache");
+	out.add("diff_ids", "ids of the series whose filters gave a different native and sql result, cumulative since start, needs charts_cache_filters_compare; ids listed in the charts_cache_filters_diff_log_disable_id verbose parameter are left out");
 }
 
 void sPcapStatData::sChartsStore::get_help(sHelp &out) const {

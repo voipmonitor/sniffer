@@ -940,6 +940,9 @@ public:
 	string getUnsupportedKeys() {
 		return(unsupportedKeys);
 	}
+	static bool isIpFilterKey(const char *key);
+	static string reduceFilterToIpKeys(const char *filter, const char *keyPrefix, bool *approx = NULL);
+	static string reduceFilterCombToIpKeys(const char *filters_comb, const char *keyPrefix);
 	int64_t getField_int(void *rec, unsigned registerFieldIndex) {
 		if(!recIsCall(rec)) {
 			return(getField_int_tc(recTablesContent(rec), registerFieldIndex));

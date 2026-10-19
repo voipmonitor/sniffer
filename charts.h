@@ -319,6 +319,9 @@ public:
 	string getDescr() {
 		return("id " + intToString(id) + " / config_id " + config_id + " / config_id_src " + config_id_src);
 	}
+	int getId() const {
+		return(id);
+	}
 private:
 	int id;
 	string config_id;
@@ -519,7 +522,7 @@ public:
 	void setInterval_summary(u_int32_t timeFrom, u_int32_t timeTo, sSummaryId &sum_id, sSummaryId &sum_nc_id);
 	void add_chart(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 		       u_int64_t calldate_from_us, u_int64_t calldate_to_us,
-		       map<class cChartFilter*, bool> *filters_map);
+		       u_int8_t *filters_rslt);
 	void add_stat(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 		      u_int64_t calldate_from_us, u_int64_t calldate_to_us,
 		      sStatId &src, sStatId &dst);
@@ -558,6 +561,7 @@ private:
 	union {
 		struct {
 			map<cChartSeriesId, cChartIntervalSeriesData*> *data;
+			vector<cChartIntervalSeriesData*> *data_v;
 		} chart;
 		struct {
 			map<sStatId, sSeriesDataCdrStat*> *src;
@@ -634,7 +638,7 @@ public:
 	cChartFilter(const char *filter, const char *filter_only_sip_ip, const char *filter_without_sip_ip, const char *filter_src,
 		     cCodebookCache *codebookCache);
 	~cChartFilter();
-	bool check(sChartsCallData *call, void *callData, bool ip_comb_v6, void *ip_comb, class cFiltersCache *filtersCache, int threadIndex);
+	bool check(sChartsCallData *call, void *callData, bool ip_comb_v6, void *ip_comb, class cFiltersCache *filtersCache, int threadIndex, u_int8_t *native_ip_bitmap);
 	bool existsNativeFilter() {
 		return(filter_call != NULL);
 	}
@@ -662,11 +666,14 @@ public:
 	void resetFilterTime();
 private:
 	bool check_sql(sChartsCallData *call, void *callData, bool ip_comb_v6, void *ip_comb, class cFiltersCache *filtersCache, int threadIndex);
-	bool check_native(sChartsCallData *call);
-	bool check_timed(bool native, sChartsCallData *call, void *callData, bool ip_comb_v6, void *ip_comb, class cFiltersCache *filtersCache, int threadIndex);
+	bool check_native(sChartsCallData *call, u_int8_t *native_ip_bitmap, int threadIndex);
+	bool check_timed(bool native, sChartsCallData *call, void *callData, bool ip_comb_v6, void *ip_comb, class cFiltersCache *filtersCache, int threadIndex, u_int8_t *native_ip_bitmap);
 	bool isLoopFilter();
+	bool diffIsIgnored();
+	void registerDiffSeriesIds();
 	void loopTest(sChartsCallData *call, void *callData, bool ip_comb_v6, void *ip_comb, class cFiltersCache *filtersCache, int threadIndex);
 	void createNativeFilter();
+	void createNativeIpFilter();
 	void evalLog(const char *type, sChartsCallData *call, bool rslt);
 private:
 	string filter;
@@ -674,6 +681,9 @@ private:
 	string filter_without_sip_ip;
 	string filter_src;
 	class cCallFilter *filter_call;
+	class cCallFilter *filter_call_ip;
+	bool native_ip_only;
+	unsigned filter_index;
 	cCodebookCache *codebookCache;
 	string filter_call_unsupported_keys;
 	map<cChartSeriesId, string> series_refs;
@@ -682,6 +692,8 @@ private:
 	cEvalFormula::sSplitOperands **filter_without_sip_ip_s;
 	sFilterTime *filter_time;
 	volatile bool diff_logged;
+	volatile bool diff_detected;
+	volatile bool diff_ignored;
 	volatile int loop_filter;
 	volatile int loop_done;
 	bool ip_filter_contain_sipcallerip;
@@ -743,7 +755,7 @@ public:
 	bool isArea() { 
 		return(def.subType == _chartSubType_area); 
 	}
-	bool checkFilters(map<class cChartFilter*, bool> *filters_map);
+	bool checkFilters(u_int8_t *filters_rslt);
 private:
 	eChartTypeUse typeUse;
 	cChartSeriesId series_id;
@@ -789,11 +801,14 @@ public:
 				const char *filter_src);
 	cChartFilter* addFilter(const char *filter, const char *filter_only_sip_ip, const char *filter_without_sip_ip,
 				const char *filter_src);
+	void reindexFilters();
 	void add(sChartsCallData *call, void *callData, class cFiltersCache *filtersCache, int threadIndex);
-	void checkFilters(sChartsCallData *call, void *callData, map<cChartFilter*, bool> *filters, class cFiltersCache *filtersCache, int threadIndex);
+	void checkFilters(sChartsCallData *call, void *callData, u_int8_t *filters_rslt, class cFiltersCache *filtersCache, int threadIndex);
+	u_int8_t *checkNativeIpFilters(sChartsCallData *call, int threadIndex);
 	void store(bool forceAll = false);
 	void cleanup(bool forceAll = false);
 	bool seriesIsUsed(cChartSeriesId series_id);
+	string modeReport();
 	string filtersTimeReport();
 	void lock_intervals() { __SYNC_LOCK(sync_intervals); }
 	void unlock_intervals() { __SYNC_UNLOCK(sync_intervals); }
@@ -803,6 +818,8 @@ private:
 	map<cChartSeriesId, cChartSeries*> series;
 	map<u_int32_t, cChartInterval*> intervals;
 	map<string, cChartFilter*> filters;
+	u_int8_t **filters_rslt;
+	unsigned filters_rslt_size;
 	volatile u_int32_t first_interval;
 	unsigned maxValuesPartsForPercentile;
 	unsigned maxLengthSipResponseText;
@@ -1069,7 +1086,7 @@ struct sFilterCache_call_ipv4_comb {
 		} d;
 		u_int64_t a[2];
 	} u;
-	inline void set(sChartsCallData *call);
+	inline bool set(sChartsCallData *call);
 	inline size_t hash() const {
 		u_int64_t k = ((u_int64_t)0x9E3779B9 << 32) | (u_int64_t)0x7F4A7C15;
 		return((size_t)(u.a[0] ^ (u.a[1] * k)));
@@ -1094,7 +1111,7 @@ struct sFilterCache_call_ipv6_comb {
 	vmIP src;
 	vmIP dst;
 	vmIP proxy[2];
-	inline void set(sChartsCallData *call);
+	inline bool set(sChartsCallData *call);
 	inline size_t hash() const {
 		u_int64_t k1 = ((u_int64_t)0x9E3779B9 << 32) | (u_int64_t)0x7F4A7C15;
 		u_int64_t k2 = ((u_int64_t)0xBF58476D << 32) | (u_int64_t)0x1CE4E5B9;
@@ -1130,6 +1147,100 @@ struct sFilterCache_call_ipv6_comb_hasher {
 	}
 };
 #endif
+
+struct sNativeFiltersCache_ip_comb {
+	vmIP src;
+	vmIP dst;
+	vector<vmIP> proxy;
+	void set(sChartsCallData *call);
+	inline size_t hash() const {
+		u_int64_t k1 = ((u_int64_t)0x9E3779B9 << 32) | (u_int64_t)0x7F4A7C15;
+		u_int64_t k2 = ((u_int64_t)0xBF58476D << 32) | (u_int64_t)0x1CE4E5B9;
+		u_int64_t k3 = ((u_int64_t)0x94D049BB << 32) | (u_int64_t)0x133111EB;
+		u_int64_t h = _hash_ip(src) ^ (_hash_ip(dst) * k1);
+		for(unsigned i = 0; i < proxy.size(); i++) {
+			h = (h ^ (_hash_ip(proxy[i]) + i * k3)) * k2;
+		}
+		return((size_t)h);
+	}
+	static inline u_int64_t _hash_ip(const vmIP &ip) {
+		#if VM_IPV6
+		if(ip.v6) {
+			const u_int32_t *p = (const u_int32_t*)&ip.ip.v6;
+			return(((u_int64_t)p[0] << 32 | p[1]) ^ ((u_int64_t)p[2] << 32 | p[3]));
+		}
+		#endif
+		return((u_int64_t)ip.ip.v4.n);
+	}
+	friend inline const bool operator == (const sNativeFiltersCache_ip_comb &d1, const sNativeFiltersCache_ip_comb &d2) {
+		if(!(d1.src == d2.src) || !(d1.dst == d2.dst) ||
+		   d1.proxy.size() != d2.proxy.size()) {
+			return(false);
+		}
+		for(unsigned i = 0; i < d1.proxy.size(); i++) {
+			if(!(d1.proxy[i] == d2.proxy[i])) {
+				return(false);
+			}
+		}
+		return(true);
+	}
+	friend inline const bool operator < (const sNativeFiltersCache_ip_comb &d1, const sNativeFiltersCache_ip_comb &d2) {
+		if(!(d1.src == d2.src)) {
+			return(d1.src < d2.src);
+		}
+		if(!(d1.dst == d2.dst)) {
+			return(d1.dst < d2.dst);
+		}
+		if(d1.proxy.size() != d2.proxy.size()) {
+			return(d1.proxy.size() < d2.proxy.size());
+		}
+		for(unsigned i = 0; i < d1.proxy.size(); i++) {
+			if(!(d1.proxy[i] == d2.proxy[i])) {
+				return(d1.proxy[i] < d2.proxy[i]);
+			}
+		}
+		return(false);
+	}
+};
+struct sNativeFiltersCache_ip_comb_hasher {
+	inline size_t operator () (const sNativeFiltersCache_ip_comb &c) const {
+		return(c.hash());
+	}
+};
+
+#define NATIVE_FILTERS_CACHE_LIMIT 2000
+
+struct sChartsExtStat {
+	u_int64_t sql_cache_lookups;
+	u_int64_t sql_cache_hits;
+	u_int64_t native_evals;
+	u_int64_t sql_evals;
+};
+
+class cNativeFiltersCache {
+public:
+	cNativeFiltersCache(unsigned limit);
+	~cNativeFiltersCache();
+	u_int8_t *get(sChartsCallData *call, unsigned filters_count, bool *created);
+	void clear();
+	static inline bool getBit(u_int8_t *bitmap, unsigned index) {
+		return(bitmap[index >> 3] & (1 << (index & 7)));
+	}
+	static inline void setBit(u_int8_t *bitmap, unsigned index) {
+		bitmap[index >> 3] |= 1 << (index & 7);
+	}
+private:
+	unsigned limit;
+	unsigned filters_count;
+	unsigned bitmap_size;
+	sNativeFiltersCache_ip_comb key;
+	#if CHARTS_FAST_CACHE
+	unordered_map<sNativeFiltersCache_ip_comb, u_int8_t*, sNativeFiltersCache_ip_comb_hasher> cache_map;
+	#else
+	map<sNativeFiltersCache_ip_comb, u_int8_t*> cache_map;
+	#endif
+	queue<sNativeFiltersCache_ip_comb> order;
+};
 
 #if CHARTS_FLAT_CACHE
 template<class K>
@@ -1355,6 +1466,9 @@ bool chartsCacheRequestAll(bool store, bool cleanup, unsigned timeout_s = 10);
 void chartsCacheProcessRequestAll();
 bool chartsCacheGetAndResetFiltersRemoved();
 string chartsCacheFiltersTimeReport();
+bool chartsCacheFiltersTimePerCall(u_int64_t calls, double *native_us, double *sql_us);
+bool chartsCacheExtStatDelta(sChartsExtStat *delta);
+string chartsCacheDiffSeriesIdsStr();
 
 void cdrStatInit(SqlDb *sqlDb);
 void cdrStatTerm();

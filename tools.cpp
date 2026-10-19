@@ -4267,6 +4267,29 @@ GroupIP *GroupsIP::getGroup(vmIP ip) {
 	return(NULL);
 }
 
+bool needDecodePhoneNumber(const char *number) {
+	return(strchr(number, '#') != NULL);
+}
+
+bool decodePhoneNumber(const char *number, string *decoded) {
+	const char *pos_enc = strstr(number, "%23");
+	if(!pos_enc) {
+		return(false);
+	}
+	decoded->clear();
+	decoded->reserve(strlen(number));
+	decoded->append(number, pos_enc - number);
+	for(const char *p = pos_enc; *p; p++) {
+		if(*p == '%' && !strncmp(p, "%23", 3)) {
+			*decoded += '#';
+			p += 2;
+		} else {
+			*decoded += *p;
+		}
+	}
+	return(true);
+}
+
 void ListPhoneNumber::addComb(string &number, ListPhoneNumber *negList, PhoneNumber::eTypeNumber type, bool enableNull, bool filterInterval) {
 	addComb(number.c_str(), negList, type, enableNull, filterInterval);
 }
@@ -10729,11 +10752,10 @@ cEvalFormula::sValue cEvalFormula::sValue::like(sValue &pattern_v) {
 		if(pattern_v_length) {
 			if(!pattern_v.v_str_wildcard) {
 				pattern_v.v_str_wildcard = (pattern_v.v._string->find('_') != string::npos) ? 2 : 1;
-				size_t pos_enc_grid;
-				if((pos_enc_grid = pattern_v.v._string->find("\\%23")) != string::npos) {
-					string _str = pattern_v.v._string->substr(pos_enc_grid + 1);
-					pattern_v.v._string->resize(pos_enc_grid);
-					pattern_v.v._string->append(_str);
+				size_t pos_escape = 0;
+				while((pos_escape = pattern_v.v._string->find("\\%", pos_escape)) != string::npos) {
+					pattern_v.v._string->erase(pos_escape, 1);
+					++pos_escape;
 					--pattern_v_length;
 				}
 			}

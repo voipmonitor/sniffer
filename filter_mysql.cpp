@@ -698,17 +698,7 @@ int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, sNatAliases
 	string decoded[2];
 	unsigned telnum_len[2];
 	for(int k = 0; k < 2; k++) {
-		if(strchr(telnum_in[k], '%')) {
-			unsigned in_len = strlen(telnum_in[k]);
-			decoded[k].reserve(in_len);
-			for(unsigned int i = 0; i < in_len; i++) {
-				if(telnum_in[k][i] == '%' && !strncmp(telnum_in[k] + i, "%23", 3)) {
-					decoded[k] += '#';
-					i += 2;
-				} else {
-					decoded[k] += telnum_in[k][i];
-				}
-			}
+		if(decodePhoneNumber(telnum_in[k], &decoded[k])) {
 			telnum_p[k] = decoded[k].c_str();
 			telnum_len[k] = decoded[k].length();
 		} else {

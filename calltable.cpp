@@ -262,6 +262,7 @@ extern sStreamAnalysisData *rtp_stream_analysis_data;
 
 extern int opt_charts_cache_max_threads;
 extern bool opt_charts_cache_ip_boost;
+extern bool opt_charts_cache_log_ext;
 extern int terminating_charts_cache;
 extern volatile int terminating;
 
@@ -13334,6 +13335,12 @@ void Calltable::processCallsInChartsCache_stop() {
 
 u_int32_t counter_charts_cache;
 u_int64_t counter_charts_cache_delay_us;
+u_int64_t counter_charts_cache_ext_calls;
+u_int64_t counter_charts_cache_ext_total_ticks;
+u_int64_t counter_charts_cache_ext_filters_ticks;
+u_int64_t counter_charts_cache_ext_native_cache_ticks;
+u_int64_t counter_charts_cache_ext_native_cache_lookups;
+u_int64_t counter_charts_cache_ext_native_cache_hits;
 
 void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 	chc_threads[threadIndex].tid = get_unix_tid();
@@ -13398,6 +13405,9 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 				u_int64_t _end = getTimeUS();
 				counter_charts_cache += chc_count * max(sverb.charts_cache_multiply, 1);
 				counter_charts_cache_delay_us += _end - _start;
+				if(opt_charts_cache_log_ext) {
+					counter_charts_cache_ext_calls += chc_count * max(sverb.charts_cache_multiply, 1);
+				}
 				filters_time_report = sverb.charts_cache_filters_time;
 				if(chc_threads_count_mod < 0) {
 					__SYNC_DEC(chc_threads_count);
@@ -13471,6 +13481,7 @@ void Calltable::processCallsInChartsCache_batch(int threadIndex) {
 	u_int32_t batch_index;
 	while((batch_index = __sync_fetch_and_add(&chc_batch_pos, 1)) < chc_batch.size()) {
 		sChartsCallData *batch_item = &chc_batch[batch_index];
+		u_int64_t ext_start_ticks = opt_charts_cache_log_ext ? rdtsc() : 0;
 		switch(batch_item->type) {
 		case sChartsCallData::_call:
 			{
@@ -13511,6 +13522,9 @@ void Calltable::processCallsInChartsCache_batch(int threadIndex) {
 			delete csv;
 			}
 			break;
+		}
+		if(ext_start_ticks) {
+			__sync_fetch_and_add(&counter_charts_cache_ext_total_ticks, rdtsc() - ext_start_ticks);
 		}
 	}
 	if(calls_for_delete.size()) {

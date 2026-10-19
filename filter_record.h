@@ -535,6 +535,9 @@ public:
 	void addFilter(cRecordFilterItem_base *filter1, cRecordFilterItem_base *filter2 = NULL, cRecordFilterItem_base *filter3 = NULL);
 	void addFilter(cRecordFilterItems *group);
 	void updateSingleItem();
+	unsigned countFilters() {
+		return(gItems.size());
+	}
 	bool check(void *rec) {
 		if(single_item) {
 			bool _findInBlackList = false;

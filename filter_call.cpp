@@ -1711,6 +1711,99 @@ cCallFilter::cCallFilter(const char *filter, const char *keyPrefix, bool nested,
 	setFilter(filter, keyPrefix, nested);
 }
 
+bool cCallFilter::isIpFilterKey(const char *key) {
+	static const char *ip_keys[] = {
+		"sipcallerip",
+		"sipcalledip",
+		"sipcallerdip_type",
+		"sipcallerdip_with_proxy",
+		"sipcallerip_group_id",
+		"sipcalledip_group_id",
+		"sipcallerdip_group_id_type",
+		"proxyip",
+		"trunk"
+	};
+	for(unsigned i = 0; i < sizeof(ip_keys) / sizeof(ip_keys[0]); i++) {
+		if(!strcmp(key, ip_keys[i])) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
+string cCallFilter::reduceFilterToIpKeys(const char *filter, const char *keyPrefix, bool *approx) {
+	if(approx) {
+		*approx = false;
+	}
+	JsonItem jsonData;
+	jsonData.parse(filter);
+	unsigned keyPrefixLength = keyPrefix ? strlen(keyPrefix) : 0;
+	JsonExport json;
+	unsigned counter = 0;
+	for(unsigned int i = 0; i < jsonData.getLocalCount(); i++) {
+		JsonItem *item = jsonData.getLocalItem(i);
+		string filterName = item->getLocalName();
+		string filterTypeName = filterName;
+		string filterValue = item->getLocalValue();
+		if(filterValue.empty()) {
+			continue;
+		}
+		if(keyPrefixLength && filterTypeName.length() > keyPrefixLength &&
+		   !strncmp(filterTypeName.c_str(), keyPrefix, keyPrefixLength)) {
+			filterTypeName = filterTypeName.substr(keyPrefixLength);
+		}
+		if(isIpFilterKey(filterTypeName.c_str())) {
+			json.add(filterName.c_str(), filterValue);
+			++counter;
+		} else if(filterTypeName == "filters_comb") {
+			string filters_comb_ip = reduceFilterCombToIpKeys(filterValue.c_str(), keyPrefix);
+			if(!filters_comb_ip.empty()) {
+				json.add(filterName.c_str(), filters_comb_ip);
+				++counter;
+				if(approx) {
+					*approx = true;
+				}
+			}
+		}
+	}
+	return(counter ? json.getJson() : "");
+}
+
+string cCallFilter::reduceFilterCombToIpKeys(const char *filters_comb, const char *keyPrefix) {
+	vector<string> rowsStr = split(filters_comb, "\n", true);
+	string rslt;
+	unsigned counter = 0;
+	for(unsigned i = 0; i < rowsStr.size(); i++) {
+		vector<string> fields = split(rowsStr[i].c_str(), "||F||", false, true);
+		if(fields.size() < 9) {
+			return("");
+		}
+		bool negative = !fields[6].empty() && fields[6] != "0";
+		string filter_cfg_ip = negative || fields[8].empty() ?
+					"" :
+					reduceFilterToIpKeys(fields[8].c_str(), keyPrefix);
+		if(filter_cfg_ip.empty()) {
+			fields[0] = "-1";
+			fields[1] = "";
+			fields[6] = "0";
+			fields[8] = "";
+		} else {
+			fields[8] = filter_cfg_ip;
+			++counter;
+		}
+		if(i) {
+			rslt += "\n";
+		}
+		for(unsigned j = 0; j < fields.size(); j++) {
+			if(j) {
+				rslt += "||F||";
+			}
+			rslt += fields[j];
+		}
+	}
+	return(counter ? rslt : "");
+}
+
 void cCallFilter::setFilter(const char *filter, const char *keyPrefix, bool nested) {
 	JsonItem jsonData;
 	jsonData.parse(filter);

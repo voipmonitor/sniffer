@@ -10,6 +10,10 @@ extern MySqlStore *sqlStore;
 extern int opt_charts_cache_max_threads;
 extern bool opt_charts_cache_filters_native;
 extern bool opt_charts_cache_filters_compare;
+extern bool opt_charts_cache_filters_diff_log;
+extern bool opt_charts_cache_log_ext;
+extern bool opt_charts_cache_ip_boost;
+extern bool opt_charts_cache_remote_only;
 extern int opt_cdr_stat_values;
 extern bool opt_cdr_stat_sources;
 extern int opt_cdr_stat_interval;
@@ -20,6 +24,10 @@ extern bool opt_cdr_summary_number_complete;
 extern bool opt_cdr_summary_only_first_interval;
 extern bool opt_time_precision_in_ms;
 extern int absolute_timeout;
+extern u_int64_t counter_charts_cache_ext_filters_ticks;
+extern u_int64_t counter_charts_cache_ext_native_cache_ticks;
+extern u_int64_t counter_charts_cache_ext_native_cache_lookups;
+extern u_int64_t counter_charts_cache_ext_native_cache_hits;
 
 
 static sChartTypeDef ChartTypeDef[] = { 
@@ -103,6 +111,12 @@ static sChartTypeDef ChartTypeDef[] = {
 };
 
 static cCharts *chartsCache;
+static cChartFilter::sFilterTime *chartsCacheExtFilterTime;
+static sChartsExtStat *chartsExtStat;
+static set<u_int32_t> chartsCacheDiffSeriesIds;
+static set<u_int32_t> chartsCacheDiffIgnoreIds;
+static volatile int chartsCacheDiffSeriesIdsSync;
+static cNativeFiltersCache **nativeFiltersCache;
 static volatile int chartsCacheFiltersRemoved;
 static volatile int chartsCacheRequestAll_store;
 static volatile int chartsCacheRequestAll_cleanup;
@@ -1279,16 +1293,16 @@ void cChartInterval::setInterval_summary(u_int32_t timeFrom, u_int32_t timeTo, s
 
 void cChartInterval::add_chart(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 			       u_int64_t calldate_from_us, u_int64_t calldate_to_us,
-			       map<cChartFilter*, bool> *filters_map) {
+			       u_int8_t *filters_rslt) {
 	if(typeUse != _chartTypeUse_chartCache) {
 		return;
 	}
 	bool update = false;
-	if(chart.data) {
-		for(map<cChartSeriesId, cChartIntervalSeriesData*>::iterator iter = chart.data->begin(); iter != chart.data->end(); iter++) {
-			if(iter->second->series->checkFilters(filters_map)) {
-				iter->second->add_us(call, call_interval, firstInterval, lastInterval, beginInInterval, 
-						     calldate_from_us, calldate_to_us);
+	if(chart.data_v) {
+		for(vector<cChartIntervalSeriesData*>::iterator iter = chart.data_v->begin(); iter != chart.data_v->end(); iter++) {
+			if((*iter)->series->checkFilters(filters_rslt)) {
+				(*iter)->add_us(call, call_interval, firstInterval, lastInterval, beginInInterval,
+						calldate_from_us, calldate_to_us);
 				__SYNC_SET(counter_add);
 				update = true;
 			}
@@ -1706,9 +1720,12 @@ void cChartInterval::init_chart() {
 			if(!iter->second->terminating) {
 				if(!chart.data) {
 					chart.data = new map<cChartSeriesId, cChartIntervalSeriesData*>;
+					chart.data_v = new vector<cChartIntervalSeriesData*>;
 				}
-				(*chart.data)[iter->second->series_id] = new FILE_LINE(0) cChartIntervalSeriesData(typeUse, iter->second, this);
-				(*chart.data)[iter->second->series_id]->prepareData();
+				cChartIntervalSeriesData *seriesData = new FILE_LINE(0) cChartIntervalSeriesData(typeUse, iter->second, this);
+				seriesData->prepareData();
+				(*chart.data)[iter->second->series_id] = seriesData;
+				chart.data_v->push_back(seriesData);
 			}
 		}
 	}
@@ -1821,6 +1838,8 @@ void cChartInterval::clear() {
 			chart.data->clear();
 			delete chart.data;
 			chart.data = NULL;
+			delete chart.data_v;
+			chart.data_v = NULL;
 		}
 	} else if(typeUse == _chartTypeUse_cdrStat) {
 		for(int src_dst = 0; src_dst < 2; src_dst++) {
@@ -1897,6 +1916,9 @@ cChartFilter::cChartFilter(const char *filter, const char *filter_only_sip_ip, c
 		this->filter_src = filter_src;
 	}
 	filter_call = NULL;
+	filter_call_ip = NULL;
+	native_ip_only = false;
+	filter_index = 0;
 	createNativeFilter();
 	this->filter_s = new FILE_LINE(0) cEvalFormula::sSplitOperands*[opt_charts_cache_max_threads];
 	this->filter_only_sip_ip_s = new FILE_LINE(0) cEvalFormula::sSplitOperands*[opt_charts_cache_max_threads];
@@ -1909,6 +1931,8 @@ cChartFilter::cChartFilter(const char *filter, const char *filter_only_sip_ip, c
 	}
 	resetFilterTime();
 	diff_logged = false;
+	diff_detected = false;
+	diff_ignored = false;
 	loop_filter = -1;
 	loop_done = 0;
 	ip_filter_contain_sipcallerip = strcasestr(filter_only_sip_ip, "sipcallerip") != NULL;
@@ -1928,6 +1952,35 @@ void cChartFilter::createNativeFilter() {
 		return;
 	}
 	this->filter_call = filter_call;
+	createNativeIpFilter();
+}
+
+void cChartFilter::createNativeIpFilter() {
+	if(!opt_charts_cache_ip_boost) {
+		return;
+	}
+	bool approx = false;
+	string filter_src_ip = cCallFilter::reduceFilterToIpKeys(filter_src.c_str(), "f", &approx);
+	if(filter_src_ip.empty()) {
+		return;
+	}
+	cCallFilter *filter_call_ip = new FILE_LINE(0) cCallFilter(filter_src_ip.c_str(), "f", false, codebookCache);
+	if(filter_call_ip->existsUnsupportedKeys() ||
+	   !filter_call_ip->countFilters()) {
+		delete filter_call_ip;
+		return;
+	}
+	if(!approx &&
+	   filter_call_ip->countFilters() == filter_call->countFilters()) {
+		native_ip_only = true;
+		delete filter_call_ip;
+		return;
+	}
+	if(filter_call->cond != cRecordFilter::_and) {
+		delete filter_call_ip;
+		return;
+	}
+	this->filter_call_ip = filter_call_ip;
 }
 
 string cChartFilter::filterKey(const char *filter, const char *filter_src) {
@@ -1937,6 +1990,9 @@ string cChartFilter::filterKey(const char *filter, const char *filter_src) {
 cChartFilter::~cChartFilter() {
 	if(filter_call) {
 		delete filter_call;
+	}
+	if(filter_call_ip) {
+		delete filter_call_ip;
 	}
 	for(int i = 0; i < opt_charts_cache_max_threads; i++) {
 		if(filter_s[i]) {
@@ -1976,7 +2032,7 @@ u_int64_t __cc2;
 u_int64_t __ss2;
 #endif
 
-bool cChartFilter::check(sChartsCallData *call, void *callData, bool ip_comb_v6, void *ip_comb, cFiltersCache *filtersCache, int threadIndex) {
+bool cChartFilter::check(sChartsCallData *call, void *callData, bool ip_comb_v6, void *ip_comb, cFiltersCache *filtersCache, int threadIndex, u_int8_t *native_ip_bitmap) {
 	if(sverb.charts_cache_filters_loop_id && !isLoopFilter()) {
 		return(false);
 	}
@@ -1984,14 +2040,24 @@ bool cChartFilter::check(sChartsCallData *call, void *callData, bool ip_comb_v6,
 		if(sverb.charts_cache_filters_loop_id) {
 			loopTest(call, callData, ip_comb_v6, ip_comb, filtersCache, threadIndex);
 		}
-		bool rslt_native = check_timed(true, call, callData, ip_comb_v6, ip_comb, filtersCache, threadIndex);
+		bool rslt_native = check_timed(true, call, callData, ip_comb_v6, ip_comb, filtersCache, threadIndex, native_ip_bitmap);
 		evalLog("native", call, rslt_native);
 		if(!opt_charts_cache_filters_compare || !existsSqlFilter()) {
 			return(rslt_native);
 		}
-		bool rslt_sql = check_timed(false, call, callData, ip_comb_v6, ip_comb, filtersCache, threadIndex);
+		bool rslt_sql = check_timed(false, call, callData, ip_comb_v6, ip_comb, filtersCache, threadIndex, native_ip_bitmap);
 		evalLog("sql", call, rslt_sql);
+		if(rslt_native != rslt_sql && !diff_detected) {
+			diff_detected = true;
+			if(diffIsIgnored()) {
+				diff_ignored = true;
+			} else {
+				registerDiffSeriesIds();
+			}
+		}
 		if(rslt_native != rslt_sql &&
+		   !diff_ignored &&
+		   opt_charts_cache_filters_diff_log &&
 		   !(sverb.charts_cache_filters_time && diff_logged)) {
 			diff_logged = true;
 			syslog(LOG_NOTICE, "charts cache filter - different result : %s : call %s : native %s / sql %s : used %s : filter %s",
@@ -2004,12 +2070,44 @@ bool cChartFilter::check(sChartsCallData *call, void *callData, bool ip_comb_v6,
 		}
 		return(opt_charts_cache_filters_native ? rslt_native : rslt_sql);
 	}
-	bool rslt = check_timed(false, call, callData, ip_comb_v6, ip_comb, filtersCache, threadIndex);
+	bool rslt = check_timed(false, call, callData, ip_comb_v6, ip_comb, filtersCache, threadIndex, native_ip_bitmap);
 	evalLog("sql", call, rslt);
 	return(rslt);
 }
 
-bool cChartFilter::check_native(sChartsCallData *call) {
+bool cChartFilter::diffIsIgnored() {
+	if(chartsCacheDiffIgnoreIds.empty()) {
+		return(false);
+	}
+	for(map<cChartSeriesId, string>::iterator iter = series_refs.begin(); iter != series_refs.end(); iter++) {
+		if(chartsCacheDiffIgnoreIds.find(iter->first.getId()) != chartsCacheDiffIgnoreIds.end()) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
+void cChartFilter::registerDiffSeriesIds() {
+	__SYNC_LOCK(chartsCacheDiffSeriesIdsSync);
+	for(map<cChartSeriesId, string>::iterator iter = series_refs.begin(); iter != series_refs.end(); iter++) {
+		chartsCacheDiffSeriesIds.insert(iter->first.getId());
+	}
+	__SYNC_UNLOCK(chartsCacheDiffSeriesIdsSync);
+}
+
+bool cChartFilter::check_native(sChartsCallData *call, u_int8_t *native_ip_bitmap, int threadIndex) {
+	if(native_ip_bitmap) {
+		bool ip_rslt = cNativeFiltersCache::getBit(native_ip_bitmap, filter_index);
+		if(native_ip_only) {
+			return(ip_rslt);
+		}
+		if(filter_call_ip && !ip_rslt) {
+			return(false);
+		}
+	}
+	if(chartsExtStat) {
+		++chartsExtStat[threadIndex].native_evals;
+	}
 	return(filter_call->check(call));
 }
 
@@ -2044,7 +2142,7 @@ void cChartFilter::loopTest(sChartsCallData *call, void *callData, bool ip_comb_
 	       mode, refs.c_str(), filter_src.c_str(), get_unix_tid());
 	bool rslt = sql ?
 		     check_sql(call, callData, ip_comb_v6, ip_comb, filtersCache, threadIndex) :
-		     check_native(call);
+		     check_native(call, NULL, threadIndex);
 	u_int64_t start_ticks = rdtsc();
 	u_int64_t log_ticks = start_ticks + rdtsc_by_250ms * 40;
 	u_int64_t log_loops = 0;
@@ -2062,7 +2160,7 @@ void cChartFilter::loopTest(sChartsCallData *call, void *callData, bool ip_comb_
 			if(sql) {
 				check_sql(call, callData, ip_comb_v6, ip_comb, filtersCache, threadIndex);
 			} else {
-				check_native(call);
+				check_native(call, NULL, threadIndex);
 			}
 		}
 		loops += 1024;
@@ -2089,24 +2187,32 @@ void cChartFilter::loopTest(sChartsCallData *call, void *callData, bool ip_comb_
 	       floatToString(rdtsc_to_us(ticks) / 1000000, 1).c_str());
 }
 
-bool cChartFilter::check_timed(bool native, sChartsCallData *call, void *callData, bool ip_comb_v6, void *ip_comb, cFiltersCache *filtersCache, int threadIndex) {
-	if(!sverb.charts_cache_filters_time) {
+bool cChartFilter::check_timed(bool native, sChartsCallData *call, void *callData, bool ip_comb_v6, void *ip_comb, cFiltersCache *filtersCache, int threadIndex, u_int8_t *native_ip_bitmap) {
+	bool ext_time = opt_charts_cache_log_ext && chartsCacheExtFilterTime;
+	if(!sverb.charts_cache_filters_time && !ext_time) {
 		return(native ?
-			check_native(call) :
+			check_native(call, native_ip_bitmap, threadIndex) :
 			check_sql(call, callData, ip_comb_v6, ip_comb, filtersCache, threadIndex));
 	}
 	u_int64_t start_ticks = rdtsc();
 	bool rslt = native ?
-		     check_native(call) :
+		     check_native(call, native_ip_bitmap, threadIndex) :
 		     check_sql(call, callData, ip_comb_v6, ip_comb, filtersCache, threadIndex);
 	u_int64_t ticks = rdtsc() - start_ticks;
-	sFilterTimeBranch *branch = native ? &filter_time[threadIndex].native : &filter_time[threadIndex].sql;
-	if(!branch->first_count) {
-		branch->first_ticks = ticks;
-		branch->first_count = 1;
+	if(ext_time) {
+		sFilterTimeBranch *ext_branch = native ? &chartsCacheExtFilterTime[threadIndex].native : &chartsCacheExtFilterTime[threadIndex].sql;
+		ext_branch->ticks += ticks;
+		++ext_branch->count;
 	}
-	branch->ticks += ticks;
-	++branch->count;
+	if(sverb.charts_cache_filters_time) {
+		sFilterTimeBranch *branch = native ? &filter_time[threadIndex].native : &filter_time[threadIndex].sql;
+		if(!branch->first_count) {
+			branch->first_ticks = ticks;
+			branch->first_count = 1;
+		}
+		branch->ticks += ticks;
+		++branch->count;
+	}
 	return(rslt);
 }
 
@@ -2251,6 +2357,12 @@ bool cChartFilter::check_sql(sChartsCallData *call, void *callData, bool ip_comb
 				 filtersCache->get(this, (sFilterCache_call_ipv6_comb*)ip_comb) :
 				#endif
 				 filtersCache->get(this, (sFilterCache_call_ipv4_comb*)ip_comb);
+		if(chartsExtStat) {
+			++chartsExtStat[threadIndex].sql_cache_lookups;
+			if(rsltCache != -1) {
+				++chartsExtStat[threadIndex].sql_cache_hits;
+			}
+		}
 		switch(rsltCache) {
 		case 1:
 			if(filter_without_sip_ip.empty()) {
@@ -2285,6 +2397,9 @@ bool cChartFilter::check_sql(sChartsCallData *call, void *callData, bool ip_comb
 		}
 	}
 	
+	if(chartsExtStat) {
+		++chartsExtStat[threadIndex].sql_evals;
+	}
 	cEvalFormula f(cEvalFormula::_est_sql, sverb.charts_cache_filters_eval);
 	f.setSqlData(cEvalFormula::_estd_call, call, callData);
 	bool rslt;
@@ -2482,23 +2597,19 @@ void cChartSeries::clear() {
 	}
 }
 
-bool cChartSeries::checkFilters(map<cChartFilter*, bool> *filters_map) {
-	if(!filters.size()) {
-		return(true);
-	}
-	bool rslt = true;
+bool cChartSeries::checkFilters(u_int8_t *filters_rslt) {
 	for(unsigned i = 0; i < filters.size(); i++) {
-		cChartFilter *filter = filters[i];
-		if(!(*filters_map)[filter]) {
-			rslt = false;
-			break;
+		if(!filters_rslt[filters[i]->filter_index]) {
+			return(false);
 		}
 	}
-	return(rslt);
+	return(true);
 }
 
 
 cCharts::cCharts() {
+	filters_rslt = NULL;
+	filters_rslt_size = 0;
 	first_interval = 0;
 	maxValuesPartsForPercentile = 1000;
 	maxLengthSipResponseText = 0; // 24;
@@ -2524,6 +2635,14 @@ cCharts::~cCharts() {
 	}
 	if(reload_rows) {
 		delete reload_rows;
+	}
+	if(filters_rslt) {
+		for(int i = 0; i < opt_charts_cache_max_threads; i++) {
+			if(filters_rslt[i]) {
+				delete [] filters_rslt[i];
+			}
+		}
+		delete [] filters_rslt;
 	}
 	clear();
 }
@@ -2599,6 +2718,34 @@ void cCharts::applySeriesRows(SqlDb_rows *rows) {
 			iter->second->terminating = true;
 		}
 	}
+	reindexFilters();
+}
+
+void cCharts::reindexFilters() {
+	unsigned index = 0;
+	for(map<string, cChartFilter*>::iterator iter = filters.begin(); iter != filters.end(); iter++) {
+		iter->second->filter_index = index++;
+	}
+	if(index > filters_rslt_size) {
+		if(!filters_rslt) {
+			filters_rslt = new FILE_LINE(0) u_int8_t*[opt_charts_cache_max_threads];
+			for(int i = 0; i < opt_charts_cache_max_threads; i++) {
+				filters_rslt[i] = NULL;
+			}
+		}
+		for(int i = 0; i < opt_charts_cache_max_threads; i++) {
+			if(filters_rslt[i]) {
+				delete [] filters_rslt[i];
+			}
+			filters_rslt[i] = new FILE_LINE(0) u_int8_t[index];
+		}
+		filters_rslt_size = index;
+	}
+	if(nativeFiltersCache) {
+		for(int i = 0; i < opt_charts_cache_max_threads; i++) {
+			nativeFiltersCache[i]->clear();
+		}
+	}
 }
 
 void cCharts::reloadPrepare() {
@@ -2650,6 +2797,7 @@ void cCharts::reload() {
 			iter++;
 		}
 	}
+	reindexFilters();
 	unlock_store();
 }
 
@@ -2708,8 +2856,12 @@ cChartFilter* cCharts::addFilter(const char *filter, const char *filter_only_sip
 }
 
 void cCharts::add(sChartsCallData *call, void *callData, cFiltersCache *filtersCache, int threadIndex) {
-	map<cChartFilter*, bool> filters_map;
-	this->checkFilters(call, callData, &filters_map, filtersCache, threadIndex);
+	u_int8_t *filters_rslt = this->filters_rslt ? this->filters_rslt[threadIndex] : NULL;
+	u_int64_t ext_start_ticks = opt_charts_cache_log_ext ? rdtsc() : 0;
+	this->checkFilters(call, callData, filters_rslt, filtersCache, threadIndex);
+	if(ext_start_ticks) {
+		__sync_fetch_and_add(&counter_charts_cache_ext_filters_ticks, rdtsc() - ext_start_ticks);
+	}
 	u_int64_t calltime_us;
 	u_int64_t callend_us;
 	if(call->type == sChartsCallData::_call) {
@@ -2748,29 +2900,55 @@ void cCharts::add(sChartsCallData *call, void *callData, cFiltersCache *filtersC
 		unlock_intervals();
 		interval->add_chart(call, interval_counter, interval_counter == 0, interval_counter == intervals_begin.size() - 1, interval_counter == 0,
 				    calltime_us, callend_us,
-				    &filters_map);
+				    filters_rslt);
 		interval->dec_processing();
 		++interval_counter;
 	}
 }
 
-void cCharts::checkFilters(sChartsCallData *call, void *callData, map<cChartFilter*, bool> *filters_map, cFiltersCache *filtersCache, int threadIndex) {
+void cCharts::checkFilters(sChartsCallData *call, void *callData, u_int8_t *filters_rslt, cFiltersCache *filtersCache, int threadIndex) {
+	u_int8_t *native_ip_bitmap = nativeFiltersCache && !sverb.charts_cache_filters_cache_disable ?
+				      checkNativeIpFilters(call, threadIndex) :
+				      NULL;
 	#if VM_IPV6
 	if(useIPv6) {
 		sFilterCache_call_ipv6_comb ipv6_comb;
-		ipv6_comb.set(call);
+		cFiltersCache *_filtersCache = ipv6_comb.set(call) ? filtersCache : NULL;
 		for(map<string, cChartFilter*>::iterator iter = filters.begin(); iter != filters.end(); iter++) {
-			(*filters_map)[iter->second] = iter->second->check(call, callData, true, &ipv6_comb, filtersCache, threadIndex);
+			filters_rslt[iter->second->filter_index] = iter->second->check(call, callData, true, &ipv6_comb, _filtersCache, threadIndex, native_ip_bitmap);
 		}
-	} else 
+	} else
 	#endif
 	{
 		sFilterCache_call_ipv4_comb ipv4_comb;
-		ipv4_comb.set(call);
+		cFiltersCache *_filtersCache = ipv4_comb.set(call) ? filtersCache : NULL;
 		for(map<string, cChartFilter*>::iterator iter = filters.begin(); iter != filters.end(); iter++) {
-			(*filters_map)[iter->second] = iter->second->check(call, callData, false, &ipv4_comb, filtersCache, threadIndex);
+			filters_rslt[iter->second->filter_index] = iter->second->check(call, callData, false, &ipv4_comb, _filtersCache, threadIndex, native_ip_bitmap);
 		}
 	}
+}
+
+u_int8_t *cCharts::checkNativeIpFilters(sChartsCallData *call, int threadIndex) {
+	u_int64_t ext_start_ticks = opt_charts_cache_log_ext ? rdtsc() : 0;
+	bool created = false;
+	u_int8_t *native_ip_bitmap = nativeFiltersCache[threadIndex]->get(call, filters.size(), &created);
+	if(native_ip_bitmap && created) {
+		for(map<string, cChartFilter*>::iterator iter = filters.begin(); iter != filters.end(); iter++) {
+			cChartFilter *filter = iter->second;
+			cCallFilter *filter_ip = filter->native_ip_only ? filter->filter_call : filter->filter_call_ip;
+			if(filter_ip && filter_ip->check(call)) {
+				cNativeFiltersCache::setBit(native_ip_bitmap, filter->filter_index);
+			}
+		}
+	}
+	if(ext_start_ticks) {
+		__sync_fetch_and_add(&counter_charts_cache_ext_native_cache_ticks, rdtsc() - ext_start_ticks);
+		__sync_fetch_and_add(&counter_charts_cache_ext_native_cache_lookups, 1);
+		if(native_ip_bitmap && !created) {
+			__sync_fetch_and_add(&counter_charts_cache_ext_native_cache_hits, 1);
+		}
+	}
+	return(native_ip_bitmap);
 }
 
 void cCharts::store(bool forceAll) {
@@ -2858,6 +3036,79 @@ bool cCharts::seriesIsUsed(cChartSeriesId series_id) {
 		}
 	}
 	return(false);
+}
+
+string cCharts::modeReport() {
+	unsigned filters_native_cnt = 0;
+	unsigned filters_sql_cnt = 0;
+	unsigned filters_both_cnt = 0;
+	unsigned filters_sql_eval_cnt = 0;
+	unsigned filters_unsupported_cnt = 0;
+	unsigned filters_native_ip_cnt = 0;
+	unsigned filters_native_ip_only_cnt = 0;
+	lock_store();
+	for(map<string, cChartFilter*>::iterator iter = filters.begin(); iter != filters.end(); iter++) {
+		if(iter->second->existsNativeFilter()) {
+			++filters_native_cnt;
+		}
+		if(iter->second->existsSqlFilter()) {
+			++filters_sql_cnt;
+			if(iter->second->existsNativeFilter()) {
+				++filters_both_cnt;
+			}
+			if(!iter->second->existsNativeFilter() || opt_charts_cache_filters_compare) {
+				++filters_sql_eval_cnt;
+			}
+		}
+		if(!iter->second->getUnsupportedKeys().empty()) {
+			++filters_unsupported_cnt;
+		}
+		if(iter->second->native_ip_only) {
+			++filters_native_ip_cnt;
+			++filters_native_ip_only_cnt;
+		} else if(iter->second->filter_call_ip) {
+			++filters_native_ip_cnt;
+		}
+	}
+	string rslt = "charts cache";
+	rslt += string(" : filters evaluation ") + (opt_charts_cache_filters_native ? "native" : "sql");
+	if(opt_charts_cache_filters_compare && filters_both_cnt) {
+		rslt += string(" with comparison to ") + (opt_charts_cache_filters_native ? "sql" : "native");
+	}
+	if(!opt_charts_cache_filters_native && !filters_sql_eval_cnt && filters_native_cnt) {
+		rslt += " - no filter has a sql variant, everything is evaluated natively";
+	}
+	if(opt_charts_cache_filters_compare && !filters_both_cnt) {
+		rslt += " - nothing to compare, no filter has both variants";
+	}
+	rslt += " : call data from ";
+	if(is_remote_chart_server()) {
+		rslt += "remote chart server (csv)";
+	} else if(useChartsCacheInStore()) {
+		rslt += string("db store (csv store format ") + (useCsvStoreFormat() ? "yes" : "no") + ")";
+	} else if(useChartsCacheInProcessCall()) {
+		rslt += "process call";
+	} else {
+		rslt += "n/a";
+	}
+	if(opt_charts_cache_remote_only) {
+		rslt += " : remote only yes";
+	}
+	rslt += " : threads " + intToString(opt_charts_cache_max_threads);
+	if(filters_sql_eval_cnt) {
+		rslt += string(" : ip boost ") + (opt_charts_cache_ip_boost ? "yes" : "no");
+	}
+	rslt += " : series " + intToString(series.size());
+	rslt += " : filters " + intToString(filters.size()) +
+		" (native " + intToString(filters_native_cnt) +
+		" / sql " + intToString(filters_sql_cnt) +
+		" / unsupported keys " + intToString(filters_unsupported_cnt) + ")";
+	if(opt_charts_cache_ip_boost) {
+		rslt += " : native ip filters " + intToString(filters_native_ip_cnt) +
+			" (ip only " + intToString(filters_native_ip_only_cnt) + ")";
+	}
+	unlock_store();
+	return(rslt);
 }
 
 string cCharts::filtersTimeReport() {
@@ -3985,7 +4236,9 @@ map<string, bool> cCdrSummary::exists_columns[2];
 volatile int cCdrSummary::exists_column_sync;
 
 
-void sFilterCache_call_ipv4_comb::set(sChartsCallData *call) {
+bool sFilterCache_call_ipv4_comb::set(sChartsCallData *call) {
+	unsigned proxies_max = sizeof(u.d.proxy) / sizeof(u.d.proxy[0]);
+	bool complete = true;
 	u.a[1] = 0;
 	if(call->type == sChartsCallData::_call) {
 		CallBranch *c_branch = call->call()->branch_main();
@@ -3994,10 +4247,11 @@ void sFilterCache_call_ipv4_comb::set(sChartsCallData *call) {
 		unsigned proxies_counter = 0;
 		c_branch->proxies_lock();
 		for(list<vmIPport>::iterator iter = c_branch->proxies.begin(); iter != c_branch->proxies.end(); iter++) {
-			u.d.proxy[proxies_counter++] = iter->ip.getIPv4();
-			if(proxies_counter == sizeof(u.d.proxy) / sizeof(u.d.proxy[0]) - 1) {
+			if(proxies_counter == proxies_max) {
+				complete = false;
 				break;
 			}
+			u.d.proxy[proxies_counter++] = iter->ip.getIPv4();
 		}
 		c_branch->proxies_unlock();
 	} else {
@@ -4005,50 +4259,139 @@ void sFilterCache_call_ipv4_comb::set(sChartsCallData *call) {
 		u.d.dst = call->tables_content()->getValue_ip(_t_cdr, "sipcalledip").getIPv4();
 		int proxy_count = call->tables_content()->getCountRows(_t_cdr_proxy);
 		if(proxy_count > 0) {
-			for(int i = 0; i < min((int)(sizeof(u.d.proxy) / sizeof(u.d.proxy[0])), proxy_count); i++) {
+			if((unsigned)proxy_count > proxies_max) {
+				complete = false;
+			}
+			for(unsigned i = 0; i < min(proxies_max, (unsigned)proxy_count); i++) {
 				u.d.proxy[i] = call->tables_content()->getValue_ip(_t_cdr_proxy, "dst", NULL, i).getIPv4();
 			}
 		}
 	}
+	return(complete);
 }
 
 #if VM_IPV6
-void sFilterCache_call_ipv6_comb::set(sChartsCallData *call) {
-	proxy[0].clear();
-	proxy[1].clear();
+bool sFilterCache_call_ipv6_comb::set(sChartsCallData *call) {
+	unsigned proxies_max = sizeof(proxy) / sizeof(proxy[0]);
+	unsigned proxies_counter = 0;
+	bool complete = true;
 	if(call->type == sChartsCallData::_call) {
 		CallBranch *c_branch = call->call()->branch_main();
 		src = c_branch->sipcallerip[0].getIPv6();
 		dst = c_branch->sipcalledip_rslt.getIPv6();
-		unsigned proxies_counter = 0;
 		c_branch->proxies_lock();
 		for(list<vmIPport>::iterator iter = c_branch->proxies.begin(); iter != c_branch->proxies.end(); iter++) {
-			proxy[proxies_counter++] = iter->ip;
-			if(proxies_counter == sizeof(proxy) / sizeof(proxy[0]) - 1) {
+			if(proxies_counter == proxies_max) {
+				complete = false;
 				break;
 			}
+			proxy[proxies_counter++] = iter->ip;
 		}
 		c_branch->proxies_unlock();
-		while(proxies_counter < sizeof(proxy) / sizeof(proxy[0])) {
-			proxy[proxies_counter++].clear();
-		}
 	} else {
 		src = call->tables_content()->getValue_ip(_t_cdr, "sipcallerip");
 		dst = call->tables_content()->getValue_ip(_t_cdr, "sipcalledip");
-		unsigned proxies_counter = 0;
 		int proxy_count = call->tables_content()->getCountRows(_t_cdr_proxy);
 		if(proxy_count > 0) {
-			while(proxies_counter < min((unsigned)(sizeof(proxy) / sizeof(proxy[0])), (unsigned)proxy_count)) {
+			if((unsigned)proxy_count > proxies_max) {
+				complete = false;
+			}
+			while(proxies_counter < min(proxies_max, (unsigned)proxy_count)) {
 				proxy[proxies_counter] = call->tables_content()->getValue_ip(_t_cdr_proxy, "dst", NULL, proxies_counter);
 				++proxies_counter;
 			}
 		}
-		while(proxies_counter < sizeof(proxy) / sizeof(proxy[0])) {
-			proxy[proxies_counter++].clear();
-		}
 	}
+	while(proxies_counter < proxies_max) {
+		proxy[proxies_counter++].clear();
+	}
+	return(complete);
 }
 #endif
+
+void sNativeFiltersCache_ip_comb::set(sChartsCallData *call) {
+	proxy.clear();
+	if(call->type == sChartsCallData::_call) {
+		CallBranch *c_branch = call->call()->branch_main();
+		src = c_branch->sipcallerip[0];
+		dst = c_branch->sipcalledip_rslt;
+		c_branch->proxies_lock();
+		for(list<vmIPport>::iterator iter = c_branch->proxies.begin(); iter != c_branch->proxies.end(); iter++) {
+			proxy.push_back(iter->ip);
+		}
+		c_branch->proxies_unlock();
+	} else {
+		src = call->tables_content()->getValue_ip(_t_cdr, "sipcallerip");
+		dst = call->tables_content()->getValue_ip(_t_cdr, "sipcalledip");
+		int proxy_count = call->tables_content()->getCountRows(_t_cdr_proxy);
+		for(int i = 0; i < proxy_count; i++) {
+			proxy.push_back(call->tables_content()->getValue_ip(_t_cdr_proxy, "dst", NULL, i));
+		}
+	}
+	if(proxy.size() > 1) {
+		sort(proxy.begin(), proxy.end());
+		proxy.erase(unique(proxy.begin(), proxy.end()), proxy.end());
+	}
+}
+
+cNativeFiltersCache::cNativeFiltersCache(unsigned limit) {
+	this->limit = limit;
+	filters_count = 0;
+	bitmap_size = 0;
+}
+
+cNativeFiltersCache::~cNativeFiltersCache() {
+	clear();
+}
+
+u_int8_t *cNativeFiltersCache::get(sChartsCallData *call, unsigned filters_count, bool *created) {
+	*created = false;
+	if(filters_count != this->filters_count) {
+		clear();
+		this->filters_count = filters_count;
+		bitmap_size = (filters_count + 7) / 8;
+	}
+	if(!bitmap_size) {
+		return(NULL);
+	}
+	key.set(call);
+	#if CHARTS_FAST_CACHE
+	unordered_map<sNativeFiltersCache_ip_comb, u_int8_t*, sNativeFiltersCache_ip_comb_hasher>::iterator iter = cache_map.find(key);
+	#else
+	map<sNativeFiltersCache_ip_comb, u_int8_t*>::iterator iter = cache_map.find(key);
+	#endif
+	if(iter != cache_map.end()) {
+		return(iter->second);
+	}
+	u_int8_t *bitmap = new FILE_LINE(0) u_int8_t[bitmap_size];
+	memset(bitmap, 0, bitmap_size);
+	cache_map[key] = bitmap;
+	order.push(key);
+	if(order.size() > limit) {
+		iter = cache_map.find(order.front());
+		if(iter != cache_map.end()) {
+			delete [] iter->second;
+			cache_map.erase(iter);
+		}
+		order.pop();
+	}
+	*created = true;
+	return(bitmap);
+}
+
+void cNativeFiltersCache::clear() {
+	#if CHARTS_FAST_CACHE
+	for(unordered_map<sNativeFiltersCache_ip_comb, u_int8_t*, sNativeFiltersCache_ip_comb_hasher>::iterator iter = cache_map.begin(); iter != cache_map.end(); iter++) {
+	#else
+	for(map<sNativeFiltersCache_ip_comb, u_int8_t*>::iterator iter = cache_map.begin(); iter != cache_map.end(); iter++) {
+	#endif
+		delete [] iter->second;
+	}
+	cache_map.clear();
+	while(!order.empty()) {
+		order.pop();
+	}
+}
 
 cFilterCacheItem::cFilterCacheItem(unsigned limit) {
 	this->limit = limit;
@@ -4439,12 +4782,48 @@ void chartsCacheInit(SqlDb *sqlDb) {
 		_chartsCache->load(sqlDb);
 	}
 	chartsCache = _chartsCache;
+	if(opt_charts_cache_log_ext && !chartsCacheExtFilterTime) {
+		chartsCacheExtFilterTime = new FILE_LINE(0) cChartFilter::sFilterTime[opt_charts_cache_max_threads];
+		memset(chartsCacheExtFilterTime, 0, sizeof(cChartFilter::sFilterTime) * opt_charts_cache_max_threads);
+		chartsExtStat = new FILE_LINE(0) sChartsExtStat[opt_charts_cache_max_threads];
+		memset(chartsExtStat, 0, sizeof(sChartsExtStat) * opt_charts_cache_max_threads);
+	}
+	if(sverb.charts_cache_filters_diff_log_disable_id[0] && chartsCacheDiffIgnoreIds.empty()) {
+		vector<string> ids = split(sverb.charts_cache_filters_diff_log_disable_id, ",", true);
+		for(unsigned i = 0; i < ids.size(); i++) {
+			if(atol(ids[i].c_str()) > 0) {
+				chartsCacheDiffIgnoreIds.insert(atol(ids[i].c_str()));
+			}
+		}
+	}
+	if(opt_charts_cache_ip_boost && !nativeFiltersCache) {
+		nativeFiltersCache = new FILE_LINE(0) cNativeFiltersCache*[opt_charts_cache_max_threads];
+		for(int i = 0; i < opt_charts_cache_max_threads; i++) {
+			nativeFiltersCache[i] = new FILE_LINE(0) cNativeFiltersCache(NATIVE_FILTERS_CACHE_LIMIT);
+		}
+	}
+	syslog(LOG_NOTICE, "%s", _chartsCache->modeReport().c_str());
 }
 
 void chartsCacheTerm() {
 	if(chartsCache) {
 		delete chartsCache;
 		chartsCache = NULL;
+	}
+	if(chartsCacheExtFilterTime) {
+		delete [] chartsCacheExtFilterTime;
+		chartsCacheExtFilterTime = NULL;
+	}
+	if(chartsExtStat) {
+		delete [] chartsExtStat;
+		chartsExtStat = NULL;
+	}
+	if(nativeFiltersCache) {
+		for(int i = 0; i < opt_charts_cache_max_threads; i++) {
+			delete nativeFiltersCache[i];
+		}
+		delete [] nativeFiltersCache;
+		nativeFiltersCache = NULL;
 	}
 }
 
@@ -4559,6 +4938,75 @@ void chartsCacheProcessRequestAll() {
 
 string chartsCacheFiltersTimeReport() {
 	return(chartsCache ? chartsCache->filtersTimeReport() : "");
+}
+
+static double filtersTimeUsPerCall(u_int64_t ticks, u_int64_t count, u_int64_t overhead_ticks, u_int64_t calls) {
+	u_int64_t overhead = overhead_ticks * count;
+	return(rdtsc_to_us(ticks > overhead ? ticks - overhead : 0) / calls);
+}
+
+string chartsCacheDiffSeriesIdsStr() {
+	string rslt;
+	__SYNC_LOCK(chartsCacheDiffSeriesIdsSync);
+	for(set<u_int32_t>::iterator iter = chartsCacheDiffSeriesIds.begin(); iter != chartsCacheDiffSeriesIds.end(); iter++) {
+		rslt += (rslt.empty() ? "" : ",") + intToString(*iter);
+	}
+	__SYNC_UNLOCK(chartsCacheDiffSeriesIdsSync);
+	return(rslt);
+}
+
+bool chartsCacheExtStatDelta(sChartsExtStat *delta) {
+	memset(delta, 0, sizeof(*delta));
+	if(!chartsExtStat) {
+		return(false);
+	}
+	static sChartsExtStat last_sum;
+	sChartsExtStat sum;
+	memset(&sum, 0, sizeof(sum));
+	for(int i = 0; i < opt_charts_cache_max_threads; i++) {
+		sum.sql_cache_lookups += chartsExtStat[i].sql_cache_lookups;
+		sum.sql_cache_hits += chartsExtStat[i].sql_cache_hits;
+		sum.native_evals += chartsExtStat[i].native_evals;
+		sum.sql_evals += chartsExtStat[i].sql_evals;
+	}
+	bool rslt = false;
+	if(sum.sql_cache_lookups >= last_sum.sql_cache_lookups && sum.sql_cache_hits >= last_sum.sql_cache_hits &&
+	   sum.native_evals >= last_sum.native_evals && sum.sql_evals >= last_sum.sql_evals) {
+		delta->sql_cache_lookups = sum.sql_cache_lookups - last_sum.sql_cache_lookups;
+		delta->sql_cache_hits = sum.sql_cache_hits - last_sum.sql_cache_hits;
+		delta->native_evals = sum.native_evals - last_sum.native_evals;
+		delta->sql_evals = sum.sql_evals - last_sum.sql_evals;
+		rslt = true;
+	}
+	last_sum = sum;
+	return(rslt);
+}
+
+bool chartsCacheFiltersTimePerCall(u_int64_t calls, double *native_us, double *sql_us) {
+	*native_us = 0;
+	*sql_us = 0;
+	if(!chartsCacheExtFilterTime || !calls || !rdtsc_by_250ms) {
+		return(false);
+	}
+	static cChartFilter::sFilterTime last_sum;
+	cChartFilter::sFilterTime sum;
+	memset(&sum, 0, sizeof(sum));
+	for(int i = 0; i < opt_charts_cache_max_threads; i++) {
+		sum.add(&chartsCacheExtFilterTime[i]);
+	}
+	bool rslt = false;
+	if(sum.native.count > last_sum.native.count || sum.sql.count > last_sum.sql.count) {
+		u_int64_t overhead_ticks = rdtsc_overhead();
+		if(sum.native.count > last_sum.native.count) {
+			*native_us = filtersTimeUsPerCall(sum.native.ticks - last_sum.native.ticks, sum.native.count - last_sum.native.count, overhead_ticks, calls);
+		}
+		if(sum.sql.count > last_sum.sql.count) {
+			*sql_us = filtersTimeUsPerCall(sum.sql.ticks - last_sum.sql.ticks, sum.sql.count - last_sum.sql.count, overhead_ticks, calls);
+		}
+		rslt = true;
+	}
+	last_sum = sum;
+	return(rslt);
 }
 
 bool chartsCacheGetAndResetFiltersRemoved() {

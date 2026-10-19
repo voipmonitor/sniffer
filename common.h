@@ -145,6 +145,7 @@ struct sVerbose {
 	int charts_cache_filters_loop_clear;
 	int charts_cache_filters_loop_sql;
 	int charts_cache_filters_cache_disable;
+	char charts_cache_filters_diff_log_disable_id[1000];
 	char sipcallerip_filter[100];
 	char sipcalledip_filter[100];
 	int suppress_cdr_insert;

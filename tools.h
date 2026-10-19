@@ -1923,6 +1923,9 @@ public:
 	bool valid;
 };
 
+bool needDecodePhoneNumber(const char *number);
+bool decodePhoneNumber(const char *number, string *decoded);
+
 class PhoneNumber {
 public:
 	enum eTypeNumber {
@@ -2712,6 +2715,7 @@ public:
 		_listPhoneNumber_sorted = 0;
 		_listPrefixes_sorted = 0;
 		null = false;
+		need_decode_phone_number = false;
 	}
 	~ListPhoneNumber() {
 		for(std::list<cRegExp*>::iterator iter = listRegExp.begin(); iter != listRegExp.end(); iter++) {
@@ -2720,6 +2724,9 @@ public:
 	}
 	void add(const char *number, PhoneNumber::eTypeNumber type, PhoneNumber::eTypeInterval typeInterval = PhoneNumber::_ti_std) {
 		if(autoLock) lock();
+		if(needDecodePhoneNumber(number)) {
+			need_decode_phone_number = true;
+		}
 		bool regexp_format = number[0] == 'R' && number[1] == '(' && number[strlen(number) - 1] == ')';
 		cRegExp *regexp = regexp_format ?
 				   create_regexp(string(number).substr(2, strlen(number) - 3).c_str()) :
@@ -2746,6 +2753,18 @@ public:
 	void addComb(string &number, ListPhoneNumber *negList, PhoneNumber::eTypeNumber type, bool enableNull = false, bool filterInterval = false);
 	void addComb(const char *number, ListPhoneNumber *negList, PhoneNumber::eTypeNumber type, bool enableNull = false, bool filterInterval = false);
 	bool checkNumber(const char *check_number) {
+		if(checkNumberStr(check_number)) {
+			return(true);
+		}
+		if(need_decode_phone_number) {
+			string check_number_decoded;
+			if(decodePhoneNumber(check_number, &check_number_decoded)) {
+				return(checkNumberStr(check_number_decoded.c_str()));
+			}
+		}
+		return(false);
+	}
+	bool checkNumberStr(const char *check_number) {
 		bool rslt =  false;
 		if(autoLock) lock();
 		if(listPhoneNumber.size()) {
@@ -2824,6 +2843,7 @@ public:
 		}
 		listRegExp.clear();
 		null = false;
+		need_decode_phone_number = false;
 		if(autoLock) unlock();
 	}
 	bool is_empty() {
@@ -2854,6 +2874,7 @@ private:
 	std::vector<PhoneNumber> listWildcards;
 	std::list<cRegExp*> listRegExp;
 	bool null;
+	bool need_decode_phone_number;
 	bool autoLock;
 	volatile int _sync;
 	volatile int _listPhoneNumber_sorted;
