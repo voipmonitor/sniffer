@@ -3118,44 +3118,63 @@ void sStreamAnalysisData::clear() {
 }
 
 #if not EXPERIMENTAL_LITE_RTP_MOD
-double RTP::mos_min_from_avg(bool *null, bool prefer_f2) {
-	double mos_min = 0;
+int RTP::mos_min_mult10_from_avg(bool prefer_f2) {
+	int mos_min_mult10 = -1;
 	if(this->mosf1_avg > 0 && this->mosf1_avg != (uint8_t)-1) {
-		mos_min = this->mosf1_avg; 
+		mos_min_mult10 = (int)this->mosf1_avg;
 	}
-	if(this->mosf2_avg > 0 && this->mosf2_avg != (uint8_t)-1 &&
-	   (mos_min == 0 || this->mosf2_avg < mos_min)) {
-		mos_min = this->mosf2_avg;
+	if(this->mosf2_avg > 0 && this->mosf2_avg != (uint8_t)-1) {
+		int mos_f2_mult10 = (int)round(this->mosf2_avg);
+		if(mos_min_mult10 < 0 || mos_f2_mult10 < mos_min_mult10) {
+			mos_min_mult10 = mos_f2_mult10;
+		}
 	}
-	if(this->mosAD_avg > 0 && this->mosAD_avg != (uint8_t)-1 &&
-	   (mos_min == 0 || this->mosAD_avg < mos_min)) {
-		mos_min = this->mosAD_avg;
+	if(this->mosAD_avg > 0 && this->mosAD_avg != (uint8_t)-1) {
+		int mos_adapt_mult10 = (int)round(this->mosAD_avg);
+		if(mos_min_mult10 < 0 || mos_adapt_mult10 < mos_min_mult10) {
+			mos_min_mult10 = mos_adapt_mult10;
+		}
 	}
 	if(prefer_f2 && this->mosf2_avg > 0 && this->mosf2_avg != (uint8_t)-1) {
-		mos_min = this->mosf2_avg;
+		mos_min_mult10 = (int)round(this->mosf2_avg);
 	}
-	if(null) *null = mos_min == 0;
-	return(round(mos_min) / 10);
+	if(mos_min_mult10 > 0) {
+		mos_min_mult10 = LIMIT_TINYINT_UNSIGNED(mos_min_mult10);
+	}
+	return(mos_min_mult10);
+}
+
+double RTP::mos_min_from_avg(bool *null, bool prefer_f2) {
+	int mos_min_mult10 = mos_min_mult10_from_avg(prefer_f2);
+	if(null) *null = mos_min_mult10 <= 0;
+	return(mos_min_mult10 > 0 ? mos_min_mult10 / 10. : 0);
+}
+
+int RTP::mos_min_mult10_from_min(bool prefer_f2) {
+	int mos_min_mult10 = -1;
+	if(this->mosf1_min > 0 && this->mosf1_min != (uint8_t)-1) {
+		mos_min_mult10 = this->mosf1_min;
+	}
+	if(this->mosf2_min > 0 && this->mosf2_min != (uint8_t)-1) {
+		if(mos_min_mult10 < 0 || this->mosf2_min < mos_min_mult10) {
+			mos_min_mult10 = this->mosf2_min;
+		}
+	}
+	if(this->mosAD_min > 0 && this->mosAD_min != (uint8_t)-1) {
+		if(mos_min_mult10 < 0 || this->mosAD_min < mos_min_mult10) {
+			mos_min_mult10 = this->mosAD_min;
+		}
+	}
+	if(prefer_f2 && this->mosf2_min > 0 && this->mosf2_min != (uint8_t)-1) {
+		mos_min_mult10 = this->mosf2_min;
+	}
+	return(mos_min_mult10);
 }
 
 double RTP::mos_min_from_min(bool *null, bool prefer_f2) {
-	double mos_min = 0;
-	if(this->mosf1_min > 0 && this->mosf1_min != (uint8_t)-1) {
-		mos_min = this->mosf1_min; 
-	}
-	if(this->mosf2_min > 0 && this->mosf2_min != (uint8_t)-1 &&
-	   (mos_min == 0 || this->mosf2_min < mos_min)) {
-		mos_min = this->mosf2_min;
-	}
-	if(this->mosAD_min > 0 && this->mosAD_min != (uint8_t)-1 &&
-	   (mos_min == 0 || this->mosAD_min < mos_min)) {
-		mos_min = this->mosAD_min;
-	}
-	if(prefer_f2 && this->mosf2_min > 0 && this->mosf2_min != (uint8_t)-1) {
-		mos_min = this->mosf2_min;
-	}
-	if(null) *null = mos_min == 0;
-	return(round(mos_min) / 10);
+	int mos_min_mult10 = mos_min_mult10_from_min(prefer_f2);
+	if(null) *null = mos_min_mult10 <= 0;
+	return(mos_min_mult10 > 0 ? mos_min_mult10 / 10. : 0);
 }
 
 double RTP::mos_xr_min(bool *null) {
@@ -3201,7 +3220,7 @@ double RTP::mos_silence_avg(bool *null) {
 double RTP::packet_loss(bool *null) {
 	if(this->stats.received + this->stats.lost > 0) {
 		if(null) *null = false;
-		return((double)this->stats.lost / (this->stats.received + 2 + this->stats.lost) * 100);
+		return(round((double)this->stats.lost / (this->stats.received + 2 + this->stats.lost) * 100 * 1000) / 1000);
 	} else {
 		if(null) *null = true;
 		return(0);

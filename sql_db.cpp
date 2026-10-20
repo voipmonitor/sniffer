@@ -263,7 +263,7 @@ void SqlDb_row::add_calldate(u_int64_t calldate_us, string fieldName, bool use_m
 void SqlDb_row::add_duration(u_int64_t duration_us, string fieldName, bool use_ms, bool round_s, u_int64_t limit) {
 	if((int64_t)duration_us >= 0) {
 		if(use_ms) {
-			double duration = TIME_US_TO_SF(duration_us);
+			double duration = storedDurationS(duration_us, true);
 			if(limit && duration > limit) {
 				duration = limit;
 			}
@@ -280,7 +280,7 @@ void SqlDb_row::add_duration(u_int64_t duration_us, string fieldName, bool use_m
 
 void SqlDb_row::add_duration(int64_t duration_us, string fieldName, bool use_ms, bool round_s, int64_t limit) {
 	if(use_ms) {
-		double duration = TIME_US_TO_SF(duration_us);
+		double duration = storedDurationS_signed(duration_us, true);
 		if(limit) {
 			if(duration > limit) {
 				duration = limit;

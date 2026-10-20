@@ -91,6 +91,20 @@ inline unsigned int get_unix_tid(void) {
 
 #define TIME_DIFF_FIX_OVERFLOW(us1, us2) ((us1) > (us2) ? (us1) - (us2) : 0)
 
+inline double storedDurationS(u_int64_t duration_us, bool use_ms) {
+	u_int64_t duration_ms = (duration_us + 500ull) / 1000ull;
+	return(use_ms ?
+		(double)duration_ms / 1000. :
+		(double)TIME_US_TO_S(duration_us));
+}
+
+inline double storedDurationS_signed(int64_t duration_us, bool use_ms) {
+	int64_t duration_ms = (duration_us >= 0 ? duration_us + 500ll : duration_us - 500ll) / 1000ll;
+	return(use_ms ?
+		(double)duration_ms / 1000. :
+		(double)TIME_US_TO_S_signed(duration_us));
+}
+
 inline double ts2double(unsigned int sec, unsigned int usec) {
 	return double((double)sec + (0.000001f * (double)usec));
 }

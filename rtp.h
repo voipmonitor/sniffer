@@ -771,6 +771,8 @@ public:
 
 	void rtp_stream_analysis_output();
 	
+	int mos_min_mult10_from_avg(bool prefer_f2 = false);
+	int mos_min_mult10_from_min(bool prefer_f2 = false);
 	double mos_min_from_avg(bool *null, bool prefer_f2 = false);
 	double mos_min_from_min(bool *null, bool prefer_f2 = false);
 	double mos_xr_min(bool *null);

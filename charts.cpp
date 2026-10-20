@@ -22,12 +22,12 @@ extern int opt_cdr_summary_interval;
 extern int opt_cdr_summary_number_length;
 extern bool opt_cdr_summary_number_complete;
 extern bool opt_cdr_summary_only_first_interval;
-extern bool opt_time_precision_in_ms;
 extern int absolute_timeout;
 extern u_int64_t counter_charts_cache_ext_filters_ticks;
 extern u_int64_t counter_charts_cache_ext_native_cache_ticks;
 extern u_int64_t counter_charts_cache_ext_native_cache_lookups;
 extern u_int64_t counter_charts_cache_ext_native_cache_hits;
+extern sExistsColumns existsColumns;
 
 
 static sChartTypeDef ChartTypeDef[] = { 
@@ -142,6 +142,20 @@ static const char *getChartValueStringFromType(eChartValueType valueType);
 static bool cmpValCondEqLeft(const char *val1, const char *val2);
 
 
+static double callConnectDuration(Call *call) {
+	return(storedDurationS(call->connect_duration_us(), existsColumns.cdr_connect_duration_ms));
+}
+
+static const unsigned json_precision_base = 12;
+static const unsigned json_precision_vm = 6;
+
+static u_int64_t storedCallTimeUs(u_int64_t time_us, bool use_ms) {
+	return(use_ms ?
+		(u_int64_t)round(time_us / 1000.) * 1000ull :
+		TIME_S_TO_US(TIME_US_TO_S(time_us)));
+}
+
+
 cChartDataItem::cChartDataItem() {
 	this->max = 0;
 	this->min = -1;
@@ -207,9 +221,7 @@ void cChartDataItem::add(sChartsCallData *call,
 				if(call->type == sChartsCallData::_call) {
 					if(call->call()->connect_time_us) {
 						__SYNC_INC(this->countConected);
-						this->sumDuration += opt_time_precision_in_ms ?
-								      call->call()->connect_duration_sf() :
-								      call->call()->connect_duration_s();
+						this->sumDuration += callConnectDuration(call->call());
 					}
 				} else {
 					bool connect_duration_null;
@@ -277,9 +289,7 @@ void cChartDataItem::add(sChartsCallData *call,
 		case _chartType_count_perc_short:
 			if(call->type == sChartsCallData::_call) {
 				if(call->call()->connect_time_us) {
-					double connect_duration = opt_time_precision_in_ms ?
-								   call->call()->connect_duration_sf() :
-								   call->call()->connect_duration_s();
+					double connect_duration = callConnectDuration(call->call());
 					__SYNC_INC(this->countConected);
 					if(intervalSeries->param.size() && 
 					   connect_duration < atoi(intervalSeries->param[0].c_str())) {
@@ -306,8 +316,6 @@ void cChartDataItem::add(sChartsCallData *call,
 }
 
 string cChartDataItem::json(cChartSeries *series) {
-	unsigned precision_base = 12;
-	unsigned precision_vm = 6;
 	if(series->isArea() ||
 	   series->isIntervals() ||
 	   series->def.subType == _chartSubType_count) {
@@ -335,9 +343,9 @@ string cChartDataItem::json(cChartSeries *series) {
 		if(this->count > 0) {
 			JsonExport exp;
 			exp.add("_", "vcomb");
-			exp.add("m", floatToString(this->max, precision_base, true), JsonExport::_number);
-			exp.add("i", floatToString(this->min, precision_base, true), JsonExport::_number);
-			exp.add("s", floatToString(this->sum, precision_base, true), JsonExport::_number);
+			exp.add("m", floatToString(this->max, json_precision_base, true), JsonExport::_number);
+			exp.add("i", floatToString(this->min, json_precision_base, true), JsonExport::_number);
+			exp.add("s", floatToString(this->sum, json_precision_base, true), JsonExport::_number);
 			exp.add("c", this->count);
 			unsigned values_size = 0;
 			for(map<float, unsigned>::iterator iter = this->values.begin(); iter != this->values.end(); iter++) {
@@ -347,7 +355,7 @@ string cChartDataItem::json(cChartSeries *series) {
 				for(unsigned i = 0; i < 2; i++) {
 					int perc = i == 0 ? 95 : 99;
 					float perc_rslt = getPerc(perc, series->def.percType, values_size);
-					exp.add(i == 0 ? "p5" : "p9", floatToString(perc_rslt, precision_base, true), JsonExport::_number);
+					exp.add(i == 0 ? "p5" : "p9", floatToString(perc_rslt, json_precision_base, true), JsonExport::_number);
 				}
 				map<float, unsigned> valuesReduk;
 				map<float, unsigned> *valuesRslt;
@@ -385,7 +393,7 @@ string cChartDataItem::json(cChartSeries *series) {
 					valuesRslt = &this->values;
 				}
 				stringstream vm_stream;
-				vm_stream << setprecision(precision_vm);
+				vm_stream << setprecision(json_precision_vm);
 				vm_stream << '{';
 				unsigned counter = 0;
 				for(map<float, unsigned>::iterator iter = valuesRslt->begin(); iter != valuesRslt->end(); iter++) {
@@ -408,7 +416,7 @@ string cChartDataItem::json(cChartSeries *series) {
 			if(this->countConected) {
 				JsonExport exp;
 				exp.add("_", "cmp2");
-				exp.add("v1", this->sumDuration);
+				exp.add("v1", floatToString(this->sumDuration, json_precision_base, true), JsonExport::_number);
 				exp.add("v2", this->countConected);
 				return(exp.getJson());
 			}
@@ -673,7 +681,7 @@ void cChartDataPool::add_us(sChartsCallData *call, unsigned call_interval, bool 
 	case _chartType_total:
 	case _chartType_count:
 		from = ::max(TIME_US_TO_S(calldate_from_us), interval->timeFrom);
-		to = ::min(TIME_US_TO_S_ceil_ms(calldate_to_us), interval->timeTo - 1);
+		to = ::min(TIME_US_TO_S(calldate_to_us), interval->timeTo - 1);
 		__SYNC_INC(this->all);
 		if(call_interval >= 0) {
 			++this->all_intervals[call_interval];
@@ -690,7 +698,7 @@ void cChartDataPool::add_us(sChartsCallData *call, unsigned call_interval, bool 
 		break;
 	case _chartType_cps:
 		from = ::max(TIME_US_TO_S(calldate_from_us), interval->timeFrom);
-		to = ::min(TIME_US_TO_S_ceil_ms(calldate_to_us), interval->timeTo - 1);
+		to = ::min(TIME_US_TO_S(calldate_to_us), interval->timeTo - 1);
 		__SYNC_INC(this->all);
 		if(beginInInterval && firstInterval) {
 			__SYNC_INC(this->all_fi);
@@ -700,33 +708,25 @@ void cChartDataPool::add_us(sChartsCallData *call, unsigned call_interval, bool 
 	case _chartType_minutes: {
 		double connect_duration;
 		if(call->type == sChartsCallData::_call) {
-			connect_duration = opt_time_precision_in_ms ?
-					    call->call()->connect_duration_sf() :
-					    call->call()->connect_duration_s();
+			connect_duration = callConnectDuration(call->call());
 		} else {
 			connect_duration = call->tables_content()->getValue_float(_t_cdr, "connect_duration");
 		}
-		double duration = TIME_US_TO_SF(calldate_to_us - calldate_from_us);
-		double calldate_from_connected = TIME_US_TO_SF(calldate_from_us) + (duration - connect_duration);
+		u_int32_t calldate_from_s = TIME_US_TO_S(calldate_from_us);
+		u_int32_t calldate_to_s = TIME_US_TO_S(calldate_to_us);
+		double duration = calldate_to_s - calldate_from_s;
+		double calldate_from_connected = calldate_from_s + (duration - connect_duration);
 		double from_f = ::max(calldate_from_connected, (double)interval->timeFrom);
-		double to_f = ::min(TIME_US_TO_SF(calldate_to_us), (double)interval->timeTo);
-		//int secondsConnected = to - calldate_from_connected + 1;
+		double to_f = ::min((double)calldate_to_s, (double)interval->timeTo);
 		double secondsConnected = to_f - from_f;
 		if(secondsConnected > 0) {
-			 this->all_float += secondsConnected;
-			 /*
-			 for(unsigned int i = from; i <= to; i++) {
-				 this->pool[i - interval->timeFrom] += i - calldate_from_connected + 1;
-			 }
-			 */
+			this->all_float += secondsConnected;
 		}}
 		break;
 	case _chartType_minutes_all: {
 		double connect_duration;
 		if(call->type == sChartsCallData::_call) {
-			connect_duration = opt_time_precision_in_ms ?
-					    call->call()->connect_duration_sf() :
-					    call->call()->connect_duration_s();
+			connect_duration = callConnectDuration(call->call());
 		} else {
 			connect_duration = call->tables_content()->getValue_float(_t_cdr, "connect_duration");
 		}
@@ -803,9 +803,9 @@ string cChartDataPool::json(class cChartSeries *series, cChartInterval *interval
 	case _chartType_minutes:
 	case _chartType_minutes_all:
 		if(this->all > 0) {
-			return(floatToString(this->all / 60., 6, true));
+			return(floatToString(this->all / 60., json_precision_base, true));
 		} else if(this->all_float > 0) {
-			return(floatToString(this->all_float / 60., 6, true));
+			return(floatToString(this->all_float / 60., json_precision_base, true));
 		}
 		break;
 	}
@@ -912,7 +912,10 @@ void cChartIntervalSeriesData::prepareData() {
 	}
 	if(series->def.pool) {
 		this->dataPool = new FILE_LINE(0) cChartDataPool();
-		this->dataPool->createPool(interval->timeFrom, interval->timeTo);
+		if(series->def.chartType != _chartType_minutes &&
+		   series->def.chartType != _chartType_minutes_all) {
+			this->dataPool->createPool(interval->timeFrom, interval->timeTo);
+		}
 		this->dataItem = NULL;
 		this->dataMultiseriesItem = NULL;
 	} else {
@@ -2865,19 +2868,16 @@ void cCharts::add(sChartsCallData *call, void *callData, cFiltersCache *filtersC
 	u_int64_t calltime_us;
 	u_int64_t callend_us;
 	if(call->type == sChartsCallData::_call) {
-		if(opt_time_precision_in_ms) {
-			calltime_us = call->call()->calltime_us();
-			callend_us = call->call()->callend_us();
-		} else {
-			calltime_us = TIME_S_TO_US(call->call()->calltime_s());
-			callend_us = TIME_S_TO_US(call->call()->callend_s());
-		}
+		calltime_us = storedCallTimeUs(call->call()->calltime_us(), existsColumns.cdr_calldate_ms);
+		callend_us = storedCallTimeUs(call->call()->callend_us(), existsColumns.cdr_callend_ms);
 	} else {
 		calltime_us = call->tables_content()->getValue_int(_t_cdr, "calldate");
 		callend_us = call->tables_content()->getValue_int(_t_cdr, "callend");
 	}
-	u_int64_t calltime_min_s = TIME_US_TO_S(calltime_us) / 60 * 60;
-	u_int64_t callend_min_s = TIME_US_TO_S(callend_us) / 60 * 60;
+	u_int32_t calltime_s = TIME_US_TO_S(calltime_us);
+	u_int32_t callend_s = TIME_US_TO_S(callend_us);
+	u_int64_t calltime_min_s = calltime_s / 60 * 60;
+	u_int64_t callend_min_s = (callend_s > calltime_s ? callend_s - 1 : callend_s) / 60 * 60;
 	list<u_int32_t> intervals_begin;
 	for(u_int64_t acttime_min_s = calltime_min_s; acttime_min_s <= callend_min_s; acttime_min_s += 60) {
 		intervals_begin.push_back(acttime_min_s);
@@ -3285,13 +3285,8 @@ void cCdrStat::add(sChartsCallData *call) {
 		Call *_call = call->call();
 		CallBranch *_branch = _call->branch_main();
 		sensor_id = _call->useSensorId;
-		if(opt_time_precision_in_ms) {
-			callbegin_us = _call->calltime_us();
-			callend_us = _call->callend_us();
-		} else {
-			callbegin_us = TIME_S_TO_US(_call->calltime_s());
-			callend_us = TIME_S_TO_US(_call->callend_s());
-		}
+		callbegin_us = storedCallTimeUs(_call->calltime_us(), existsColumns.cdr_calldate_ms);
+		callend_us = storedCallTimeUs(_call->callend_us(), existsColumns.cdr_callend_ms);
 		if(cCdrStat::enableBySrc()) {
 			ip_src = _call->getSipcallerip(_branch);
 		}
@@ -3626,11 +3621,7 @@ void cCdrProblems::add(sChartsCallData *call) {
 		Call *_call = call->call();
 		CallBranch *_branch = _call->branch_main();
 		sensor_id = _call->useSensorId;
-		if(opt_time_precision_in_ms) {
-			callbegin_us = _call->calltime_us();
-		} else {
-			callbegin_us = TIME_S_TO_US(_call->calltime_s());
-		}
+		callbegin_us = storedCallTimeUs(_call->calltime_us(), existsColumns.cdr_calldate_ms);
 		ip_src = _call->getSipcallerip(_branch);
 		ip_dst = _call->getSipcalledip(_branch);
 		_branch->proxies_lock();
@@ -4017,13 +4008,8 @@ void cCdrSummary::add(sChartsCallData *call) {
 		Call *_call = call->call();
 		CallBranch *_branch = _call->branch_main();
 		sensor_id = _call->useSensorId;
-		if(opt_time_precision_in_ms) {
-			callbegin_us = _call->calltime_us();
-			callend_us = _call->callend_us();
-		} else {
-			callbegin_us = TIME_S_TO_US(_call->calltime_s());
-			callend_us = TIME_S_TO_US(_call->callend_s());
-		}
+		callbegin_us = storedCallTimeUs(_call->calltime_us(), existsColumns.cdr_calldate_ms);
+		callend_us = storedCallTimeUs(_call->callend_us(), existsColumns.cdr_callend_ms);
 		src_ip = _call->getSipcallerip(_branch);
 		dst_ip = _call->getSipcalledip(_branch);
 		src_number = _branch->caller;

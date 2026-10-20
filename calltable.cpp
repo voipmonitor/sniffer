@@ -5841,14 +5841,14 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 			for(unsigned i = begin; i <= end; i++) {
 				double _v = 0;
 				if(i == 1 && caller_silence + caller_noise > 0) {
-					_v = caller_silence * 100. / (caller_silence + caller_noise);
+					_v = LIMIT_TINYINT_UNSIGNED(caller_silence * 100 / (caller_silence + caller_noise));
 					setNull = false;
 					if(_v > v) {
 						v = _v;
 					}
 				}
 				if(i == 2 && called_silence + called_noise > 0) {
-					_v = called_silence * 100. / (called_silence + called_noise);
+					_v = LIMIT_TINYINT_UNSIGNED(called_silence * 100 / (called_silence + called_noise));
 					setNull = false;
 					if(_v > v) {
 						v = _v;
@@ -5871,14 +5871,14 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 			for(unsigned i = begin; i <= end; i++) {
 				double _v = 0;
 				if(i == 1 && caller_lastsilence > 0) {
-					_v = caller_lastsilence / 1000.;
+					_v = LIMIT_SMALLINT_UNSIGNED(caller_lastsilence / 1000);
 					setNull = false;
 					if(_v > v) {
 						v = _v;
 					}
 				}
 				if(i == 2 && called_lastsilence > 0) {
-					_v = called_lastsilence / 1000;
+					_v = LIMIT_SMALLINT_UNSIGNED(called_lastsilence / 1000);
 					setNull = false;
 					if(_v > v) {
 						v = _v;
@@ -5901,14 +5901,14 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 			for(unsigned i = begin; i <= end; i++) {
 				double _v = 0;
 				if(i == 1 && caller_clipping_8k > 0) {
-					_v = caller_clipping_8k / 3.;
+					_v = LIMIT_SMALLINT_UNSIGNED(caller_clipping_8k / 3) * 3;
 					setNull = false;
 					if(_v > v) {
 						v = _v;
 					}
 				}
 				if(i == 2 && called_clipping_8k > 0) {
-					_v = called_clipping_8k / 3.;
+					_v = LIMIT_SMALLINT_UNSIGNED(called_clipping_8k / 3) * 3;
 					setNull = false;
 					if(_v > v) {
 						v = _v;
@@ -5935,16 +5935,16 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		break;
 	case _chartType_pdd:
 		if(progress_time_us) {
-			v = (progress_time_us - first_packet_time_us) / 1e6;
+			v = storedDurationS(progress_time_us - first_packet_time_us, existsColumns.cdr_progress_time_ms);
 		} else {
 			setNull = true;
 		}
 		break;
 	case _chartType_pbd:
 		{
-		if(c_branch->seenbye_time_usec && c_branch->seenbye_and_ok_time_usec && 
+		if(c_branch->seenbye_time_usec && c_branch->seenbye_and_ok_time_usec &&
 		   c_branch->seenbye_and_ok_time_usec > c_branch->seenbye_time_usec) {
-			v = (c_branch->seenbye_and_ok_time_usec - c_branch->seenbye_time_usec) / 1e6;
+			v = storedDurationS(c_branch->seenbye_and_ok_time_usec - c_branch->seenbye_time_usec, existsColumns.cdr_post_bye_delay_ms);
 		} else {
 			setNull = true;
 		}
@@ -8454,7 +8454,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(rtpab[i]->mosf1_avg > 0) {
 					int mos_f1_mult10 = (int)rtpab[i]->mosf1_avg;
 					cdr.add(LIMIT_TINYINT_UNSIGNED(mos_f1_mult10), c+"_mos_f1_mult10");
-					mos_min_mult10[i] = mos_f1_mult10;
 				}
 				if(existsColumns.cdr_mos_min && rtpab[i]->mosf1_min > 0 && rtpab[i]->mosf1_min != (uint8_t)-1) {
 					cdr.add(LIMIT_TINYINT_UNSIGNED(rtpab[i]->mosf1_min), c+"_mos_f1_min_mult10");
@@ -8469,9 +8468,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					if(_saved_data) {
 						_saved_data->mos_f2_ab[i] = LIMIT_TINYINT_UNSIGNED(mos_f2_mult10);
 					}
-					if(mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i]) {
-						mos_min_mult10[i] = mos_f2_mult10;
-					}
 				}
 				if(existsColumns.cdr_mos_min && rtpab[i]->mosf2_min > 0 && rtpab[i]->mosf2_min != (uint8_t)-1) {
 					cdr.add(LIMIT_TINYINT_UNSIGNED(rtpab[i]->mosf2_min), c+"_mos_f2_min_mult10");
@@ -8483,9 +8479,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(rtpab[i]->mosAD_avg > 0) {
 					int mos_adapt_mult10 = (int)round(rtpab[i]->mosAD_avg);
 					cdr.add(LIMIT_TINYINT_UNSIGNED(mos_adapt_mult10), c+"_mos_adapt_mult10");
-					if(mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i]) {
-						mos_min_mult10[i] = mos_adapt_mult10;
-					}
 				}
 				if(existsColumns.cdr_mos_min && rtpab[i]->mosAD_min > 0 && rtpab[i]->mosAD_min != (uint8_t)-1) {
 					cdr.add(LIMIT_TINYINT_UNSIGNED(rtpab[i]->mosAD_min), c+"_mos_adapt_min_mult10");
@@ -8513,10 +8506,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					}
 				}
 
-				if(opt_mosmin_f2 && rtpab[i]->mosf2_avg > 0) {
-					mos_min_mult10[i] = (int)round(rtpab[i]->mosf2_avg);
-				}
-				
+				mos_min_mult10[i] = rtpab[i]->mos_min_mult10_from_avg(opt_mosmin_f2);
 				if(mos_min_mult10[i] >= 0) {
 					cdr.add(LIMIT_TINYINT_UNSIGNED(mos_min_mult10[i]), c+"_mos_min_mult10");
 				}
