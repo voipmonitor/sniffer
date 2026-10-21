@@ -12,6 +12,7 @@
 
 
 #if defined(__i386__)
+#define HAVE_RDTSC
 __inline__ unsigned long long rdtsc(void)
 {
     unsigned long long int x;
@@ -19,11 +20,17 @@ __inline__ unsigned long long rdtsc(void)
     return x;
 }
 #elif defined(__x86_64__)
+#define HAVE_RDTSC
 __inline__ unsigned long long rdtsc(void)
 {
     unsigned hi, lo;
     __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
     return ( (unsigned long long)lo)|( ((unsigned long long)hi)<<32 );
+}
+#else
+__inline__ unsigned long long rdtsc(void)
+{
+    return(0);
 }
 #endif
 
@@ -32,7 +39,7 @@ extern u_int64_t rdtsc_by_250ms;
 
 
 inline void init_rdtsc_interval() {
-	#if defined(__i386__) or  defined(__x86_64__)
+	#ifdef HAVE_RDTSC
 	u_int64_t rdtsc_by_250ms_v[2] = { 0, 0 };
 	for(int i = 0; i < 5; i++) {
 		u_int64_t _rdtsc_1 = rdtsc();
@@ -76,7 +83,7 @@ inline void init_rdtsc_interval() {
 }
 
 inline u_int64_t getTimeMS_rdtsc() {
-	#if defined(__i386__) or defined(__x86_64__)
+	#ifdef HAVE_RDTSC
 	static __thread u_int64_t last_time = 0;
 	static __thread u_int64_t last_rdtsc = 0;
 	if(rdtsc_by_250ms && last_rdtsc) {
@@ -90,7 +97,7 @@ inline u_int64_t getTimeMS_rdtsc() {
 	#endif
 	timespec time;
 	clock_gettime(CLOCK_REALTIME, &time);
-	#if defined(__i386__) or defined(__x86_64__)
+	#ifdef HAVE_RDTSC
 	last_time = time.tv_sec * 1000ull + time.tv_nsec / 1000000;
 	last_rdtsc = rdtsc();
 	return(last_time);
@@ -108,7 +115,7 @@ inline double rdtsc_to_us(u_int64_t ticks) {
 }
 
 inline u_int64_t rdtsc_overhead() {
-	#if defined(__i386__) or defined(__x86_64__)
+	#ifdef HAVE_RDTSC
 	u_int64_t min_ticks = 0;
 	for(unsigned i = 0; i < 1000; i++) {
 		u_int64_t begin = rdtsc();
