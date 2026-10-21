@@ -111,15 +111,8 @@ public:
 	operator int();
 	bool setContent(const char *fieldName, const char *newContent);
 	struct sFieldNameCmp {
-		using is_transparent = void;
 		bool operator () (const string &s1, const string &s2) const {
 			return(strcasecmp(s1.c_str(), s2.c_str()) < 0);
-		}
-		bool operator () (const string &s1, const char *s2) const {
-			return(strcasecmp(s1.c_str(), s2) < 0);
-		}
-		bool operator () (const char *s1, const string &s2) const {
-			return(strcasecmp(s1, s2.c_str()) < 0);
 		}
 	};
 	void rowPush(const SqlDb_rowField &field) {

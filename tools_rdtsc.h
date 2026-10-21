@@ -108,6 +108,7 @@ inline double rdtsc_to_us(u_int64_t ticks) {
 }
 
 inline u_int64_t rdtsc_overhead() {
+	#if defined(__i386__) or defined(__x86_64__)
 	u_int64_t min_ticks = 0;
 	for(unsigned i = 0; i < 1000; i++) {
 		u_int64_t begin = rdtsc();
@@ -117,6 +118,9 @@ inline u_int64_t rdtsc_overhead() {
 		}
 	}
 	return(min_ticks);
+	#else
+	return(0);
+	#endif
 }
 
 
