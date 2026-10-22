@@ -936,7 +936,7 @@ bool TcpReassemblyLink::streamIterator::findFirstDataToDest() {
 }
 
 
-#ifdef HAVE_LIBGNUTLS
+#ifdef HAVE_SSL_WS
 extern void end_decrypt_ssl(unsigned int saddr, unsigned int daddr, int sport, int dport);
 #endif
 
@@ -970,7 +970,7 @@ TcpReassemblyLink::~TcpReassemblyLink() {
 	clearRemainData(TcpReassemblyDataItem::DIRECTION_NA);
 	if(reassembly->getType() == TcpReassembly::ssl) {
 		if(opt_enable_ssl == 10) {
-			#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
+			#if defined(HAVE_SSL_WS)
 			end_decrypt_ssl(htonl(ip_src), htonl(ip_dst), port_src, port_dst);
 			#endif
 		} else {
@@ -1041,7 +1041,7 @@ bool TcpReassemblyLink::push_normal(
 				extern bool opt_ssl_destroy_ssl_session_on_rst;
 				if(opt_ssl_destroy_ssl_session_on_rst) {
 					if(opt_enable_ssl == 10) {
-						#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
+						#if defined(HAVE_SSL_WS)
 						end_decrypt_ssl(htonl(ip_src), htonl(ip_dst), port_src, port_dst);
 						#endif
 					} else {

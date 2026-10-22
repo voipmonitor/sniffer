@@ -13,7 +13,7 @@ extern int opt_ssl_dtls_handshake_safe;
 extern cDtls dtls_handshake_safe_links;
 
 
-#if HAVE_LIBGNUTLS
+#if HAVE_LIBGCRYPT
 static struct {
 	string crypro_suite;
 	int key_size;
@@ -37,7 +37,7 @@ static struct {
 
 
 bool RTPsecure::sCryptoConfig::init() {
-	#if HAVE_LIBGNUTLS
+	#if HAVE_LIBGCRYPT
 	if(suite.length()) {
 		for(unsigned i = 0; i < sizeof(srtp_crypto_suites) / sizeof(srtp_crypto_suites[0]); i++) {
 			if(suite == srtp_crypto_suites[i].crypro_suite) {
@@ -430,7 +430,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 }
 
 bool RTPsecure::decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len) {
-	#if HAVE_LIBGNUTLS
+	#if HAVE_LIBGCRYPT
 	uint16_t seq = get_seq_rtp(data);
 	uint32_t ssrc = get_ssrc_rtp(data);
 	if(!rtp_seq_init) {
@@ -616,7 +616,7 @@ bool RTPsecure::decrypt_rtcp(u_char *data, unsigned *data_len, u_int64_t time_us
 }
 
 bool RTPsecure::decrypt_rtcp_native(u_char *data, unsigned *data_len) {
-	#if HAVE_LIBGNUTLS
+	#if HAVE_LIBGCRYPT
 	if(is_aead()) {
 		u_char decrypted[*data_len];
 		unsigned decrypted_len;
@@ -678,7 +678,7 @@ void RTPsecure::clearError() {
 }
 
 bool RTPsecure::isOkCryptoSuite(const char *crypto_suite) {
-	#if HAVE_LIBGNUTLS
+	#if HAVE_LIBGCRYPT
 	if(crypto_suite && *crypto_suite) {
 		for(unsigned i = 0; i < sizeof(srtp_crypto_suites) / sizeof(srtp_crypto_suites[0]); i++) {
 			if(crypto_suite == srtp_crypto_suites[i].crypro_suite) {
@@ -692,7 +692,7 @@ bool RTPsecure::isOkCryptoSuite(const char *crypto_suite) {
 }
 
 int RTPsecure::getTagSize(const char *crypto_suite) {
-	#if HAVE_LIBGNUTLS
+	#if HAVE_LIBGCRYPT
 	if(crypto_suite && *crypto_suite) {
 		for(unsigned i = 0; i < sizeof(srtp_crypto_suites) / sizeof(srtp_crypto_suites[0]); i++) {
 			if(crypto_suite == srtp_crypto_suites[i].crypro_suite) {
@@ -736,7 +736,7 @@ void RTPsecure::term() {
 }
 
 bool RTPsecure::init_native() {
-	#if HAVE_LIBGNUTLS
+	#if HAVE_LIBGCRYPT
 	if(is_aead()) {
 		#if HAVE_OPENSSL
 		derive_key_aead(key(), salt(), 0x00, rtp->session_key, key_len());
@@ -896,7 +896,7 @@ bool RTPsecure::rtpDecrypt(u_char *payload, unsigned payload_len, uint16_t seq, 
 		rtp->window |= 1 << diff;
 	}
 	#endif
-	#if HAVE_LIBGNUTLS
+	#if HAVE_LIBGCRYPT
 	if(rtp_decrypt(payload, payload_len, ssrc, roc, seq)) {
 		return(false);
 	}
@@ -930,7 +930,7 @@ bool RTPsecure::rtcpDecrypt(u_char *data, unsigned data_len) {
 		rtcp->window |= 1 << diff;
 	}
 	#endif
-	#if HAVE_LIBGNUTLS
+	#if HAVE_LIBGCRYPT
 	if(rtcp_decrypt(data + rtcp_unencrypt_header_len, data_len - rtcp_unencrypt_header_len - rtcp_unencrypt_footer_len, get_ssrc_rtcp(data), index)) {
 		return(false);
 	}
@@ -1021,7 +1021,7 @@ uint32_t RTPsecure::compute_rtp_roc(uint16_t seq) {
 }
 
 u_char *RTPsecure::rtp_digest(u_char *data, size_t data_len, uint32_t roc) {
-	#if HAVE_LIBGNUTLS
+	#if HAVE_LIBGCRYPT
 	gcry_md_reset(rtp->md);
 	gcry_md_write(rtp->md, data, data_len);
 	roc = htonl(roc);
@@ -1033,7 +1033,7 @@ u_char *RTPsecure::rtp_digest(u_char *data, size_t data_len, uint32_t roc) {
 }
 
 u_char *RTPsecure::rtcp_digest(u_char *data, size_t data_len) {
-	#if HAVE_LIBGNUTLS
+	#if HAVE_LIBGCRYPT
 	gcry_md_reset(rtcp->md);
 	gcry_md_write(rtcp->md, data, data_len);
 	return(gcry_md_read(rtcp->md, 0));
@@ -1042,7 +1042,7 @@ u_char *RTPsecure::rtcp_digest(u_char *data, size_t data_len) {
 	#endif
 }
 
-#if HAVE_LIBGNUTLS
+#if HAVE_LIBGCRYPT
 int RTPsecure::rtp_decrypt(u_char *data, unsigned data_len, uint32_t ssrc, uint32_t roc, uint16_t seq) {
 	// Determines cryptographic counter (IV)
 	uint32_t counter[4];

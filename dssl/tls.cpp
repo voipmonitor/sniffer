@@ -5,7 +5,7 @@ TODO:
 
 #include "../config.h"
 
-#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS) and defined(HAVE_DSSL_TLS13) and HAVE_DSSL_TLS13
+#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGCRYPT) and defined(HAVE_DSSL_TLS13) and HAVE_DSSL_TLS13
 
 #include "stdinc.h"
 

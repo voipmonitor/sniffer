@@ -8,7 +8,7 @@
 #include "ip.h"
 #include "tools_global.h"
 
-#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGCRYPT)
 #include <openssl/ssl.h>
 #else
     #ifndef SSL3_MASTER_SECRET_SIZE

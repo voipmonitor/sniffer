@@ -19,7 +19,7 @@ extern bool opt_ssl_enable_redirection_unencrypted_sip_content;
 
 extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp);
 
-#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
+#if defined(HAVE_SSL_WS)
 extern void decrypt_ssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport);
 #endif
 
@@ -233,7 +233,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 					}
 					vector<string> rslt_decrypt_part;
 					if(opt_enable_ssl == 10) {
-						#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
+						#if defined(HAVE_SSL_WS)
 						decrypt_ssl(&rslt_decrypt_part, (char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), htonl(_ip_src), htonl(_ip_dst), _port_src, _port_dst);
 						#endif
 					} else {
@@ -299,7 +299,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 					}
 					vector<string> rslt_decrypt_part;
 					if(opt_enable_ssl == 10) {
-						#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
+						#if defined(HAVE_SSL_WS)
 						decrypt_ssl(&rslt_decrypt_part, (char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), htonl(_ip_src), htonl(_ip_dst), _port_src, _port_dst);
 						#endif
 					} else {

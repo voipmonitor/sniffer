@@ -4,7 +4,7 @@
 
 #include "../config.h"
 
-#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS) and defined(HAVE_DSSL_TLS13) and HAVE_DSSL_TLS13
+#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGCRYPT) and defined(HAVE_DSSL_TLS13) and HAVE_DSSL_TLS13
 
 #include <glib.h>
 #include <gcrypt.h>
@@ -227,9 +227,6 @@ struct SslDecryptSession {
     SslDecoder *client;
     SslDecoder *server_new;
     SslDecoder *client_new;
-#if defined(HAVE_LIBGNUTLS)
-    struct cert_key_id *cert_key_id;   /**< SHA-1 Key ID of public key in certificate. */
-#endif
     StringInfo psk;
     StringInfo app_data_segment;
     SslSession session;

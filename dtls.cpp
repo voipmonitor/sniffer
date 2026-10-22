@@ -599,7 +599,7 @@ void cDtls::unlock() {
 }
 
 
-#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGCRYPT)
 
 #include <gcrypt.h>
 
@@ -680,10 +680,10 @@ static bool tls_hash(SimpleBuffer *secret, SimpleBuffer *seed, int md, SimpleBuf
 	return(true);
 }
 
-#endif //defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+#endif //defined(HAVE_OPENSSL101) and defined(HAVE_LIBGCRYPT)
 
 static bool dtls_srtp_keys_block(SimpleBuffer *secret, const char *label, SimpleBuffer* rnd1, SimpleBuffer* rnd2, SimpleBuffer* out, unsigned out_len) {
-	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGCRYPT)
 	out->set_data_capacity(out_len);
 	size_t label_len = strlen(label);
 	SimpleBuffer label_seed;

@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#if HAVE_LIBGNUTLS
+#if HAVE_LIBGCRYPT
 #include <gcrypt.h>
 #endif
 
@@ -86,7 +86,7 @@ public:
 	};
 	struct sDecrypt {
 		sDecrypt() {
-			#if HAVE_LIBGNUTLS
+			#if HAVE_LIBGCRYPT
 			cipher = NULL;
 			md = NULL;
 			#endif
@@ -106,7 +106,7 @@ public:
 			#endif
 		}
 		~sDecrypt() {
-			#if HAVE_LIBGNUTLS
+			#if HAVE_LIBGCRYPT
 			if(cipher) {
 				gcry_cipher_close(cipher);
 			}
@@ -125,7 +125,7 @@ public:
 			}
 			#endif
 		}
-		#if HAVE_LIBGNUTLS
+		#if HAVE_LIBGCRYPT
 		gcry_cipher_hd_t cipher;
 		gcry_md_hd_t md;
 		#endif
@@ -195,7 +195,7 @@ private:
 	uint32_t compute_rtp_roc(uint16_t seq);
 	u_char *rtp_digest(u_char *data, size_t data_len, uint32_t roc);
 	u_char *rtcp_digest(u_char *data, size_t data_len);
-	#if HAVE_LIBGNUTLS
+	#if HAVE_LIBGCRYPT
 	int do_derive(gcry_cipher_hd_t cipher, u_char *r, unsigned rlen, uint8_t label, u_char *out, unsigned outlen);
 	int do_ctr_crypt (gcry_cipher_hd_t cipher, u_char *ctr, u_char *data, unsigned len);
 	#endif

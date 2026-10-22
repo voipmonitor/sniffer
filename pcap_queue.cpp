@@ -2499,7 +2499,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 					lapTimeDescr.push_back("tssl");
 				}
 			}
-#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
+#if defined(HAVE_SSL_WS)
 			stat_data.ssl_ws.load();
 			if(sverb.log_profiler) {
 				lapTime.push_back(getTimeMS_rdtsc());

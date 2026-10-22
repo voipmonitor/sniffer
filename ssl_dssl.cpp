@@ -1,14 +1,10 @@
 #include "voipmonitor.h"
 #include "pcap_queue.h"
 
-#if defined HAVE_OPENSSL101 and defined HAVE_LIBGNUTLS
-#include <gcrypt.h>
-#endif //HAVE_OPENSSL101 and HAVE_LIBGNUTLS
-
 #include "ssl_dssl.h"
 
 
-#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+#if defined(HAVE_OPENSSL101)
 
 
 extern int isSslIpPort(vmIP sip, vmPort sport, vmIP dip, vmPort dport);
@@ -1297,20 +1293,20 @@ string sSslDsslStats::str() {
 }
 
 
-#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
+#endif //HAVE_OPENSSL101
 
 
 void ssl_dssl_init() {
-	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	#if defined(HAVE_OPENSSL101)
 	SslDsslSessions = new FILE_LINE(0) cSslDsslSessions;
 	SslDsslEnv = DSSL_EnvCreate(10000 /*sessionTableSize*/, 4 * 60 * 60 /*key_timeout_interval*/);
 	extern bool init_lib_gcrypt();
 	init_lib_gcrypt();
-	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
+	#endif //HAVE_OPENSSL101
 }
 
 void ssl_dssl_clean() {
-	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	#if defined(HAVE_OPENSSL101)
 	if(SslDsslSessions) {
 		SslDsslSessions->storeSessions();
 		delete SslDsslSessions;
@@ -1320,27 +1316,27 @@ void ssl_dssl_clean() {
 		DSSL_EnvDestroy(SslDsslEnv);
 		SslDsslEnv = NULL;
 	}
-	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
+	#endif //HAVE_OPENSSL101
 }
 
 
 void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, timeval ts,
 		      bool forceTryIfExistsError) {
-	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	#if defined(HAVE_OPENSSL101)
 	SslDsslSessions->processData(rslt_decrypt, data, datalen, saddr, daddr, sport, dport, ts,
 				     forceTryIfExistsError);
-	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
+	#endif //HAVE_OPENSSL101
 }
 
 void end_decrypt_ssl_dssl(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport) {
-	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	#if defined(HAVE_OPENSSL101)
 	SslDsslSessions->destroySession(saddr, daddr, sport, dport);
 	SslDsslSessions->keysCleanup();
-	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
+	#endif //HAVE_OPENSSL101
 }
 
 bool ssl_parse_client_random(u_char *data, unsigned datalen) {
-	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	#if defined(HAVE_OPENSSL101)
 	if(!SslDsslSessions) {
 		return(false);
 	}
@@ -1364,12 +1360,12 @@ bool ssl_parse_client_random(u_char *data, unsigned datalen) {
 	} else {
 		return(SslDsslSessions->keySet((const char*)data, datalen));
 	}
-	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
+	#endif //HAVE_OPENSSL101
 	return(false);
 }
 
 void ssl_parse_client_random(const char *fileName) {
-	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	#if defined(HAVE_OPENSSL101)
 	if(!SslDsslSessions) {
 		return;
 	}
@@ -1387,11 +1383,11 @@ void ssl_parse_client_random(const char *fileName) {
 		SslDsslSessions->keySet(buff, length);
 	}
 	fclose(file);
-	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
+	#endif //HAVE_OPENSSL101
 }
 
 
-#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+#if defined(HAVE_OPENSSL101)
 void jsonAddKey(JsonExport *json, const char *name, DSSL_Session_get_keys_data_item *key) {
 	json->add(name, hexencode(key->key, key->length));
 }
@@ -1403,35 +1399,35 @@ void jsonGetKey(JsonItem *json, const char *name, DSSL_Session_get_keys_data_ite
 		key->length = key_str.length() / 2;
 	}
 }
-#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
+#endif //HAVE_OPENSSL101
 
 
-#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+#if defined(HAVE_OPENSSL101)
 static cClientRandomServer *clientRandomServer;
-#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
+#endif //HAVE_OPENSSL101
 
 void clientRandomServerStart(const char *host, int port) {
-	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	#if defined(HAVE_OPENSSL101)
 	if(clientRandomServer) {
 		delete clientRandomServer;
 	}
 	clientRandomServer =  new FILE_LINE(0) cClientRandomServer;
 	clientRandomServer->setStartVerbString("START SSL_SESSIONKEY LISTEN");
 	clientRandomServer->listen_start("client_random_server", host, port);
-	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
+	#endif //HAVE_OPENSSL101
 }
 
 void clientRandomServerStop() {
-	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	#if defined(HAVE_OPENSSL101)
 	if(clientRandomServer) {
 		delete clientRandomServer;
 		clientRandomServer = NULL;
 	}
-	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
+	#endif //HAVE_OPENSSL101
 }
 
 bool find_master_secret(u_char *client_random, u_char *key, unsigned *key_length) {
-	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	#if defined(HAVE_OPENSSL101)
 	if(!SslDsslSessions) {
 		return(false);
 	}
@@ -1450,7 +1446,7 @@ bool find_master_secret(u_char *client_random, u_char *key, unsigned *key_length
 }
 
 void erase_client_random(u_char *client_random) {
-	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	#if defined(HAVE_OPENSSL101)
 	if(SslDsslSessions) {
 		SslDsslSessions->keyErase(client_random);
 	}
@@ -1458,7 +1454,7 @@ void erase_client_random(u_char *client_random) {
 }
 
 string ssl_stats_str() {
-	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	#if defined(HAVE_OPENSSL101)
 	if(sverb.ssl_stats) {
 		return(stats.str());
 	}
@@ -1467,7 +1463,7 @@ string ssl_stats_str() {
 }
 
 void ssl_stats_reset() {
-	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	#if defined(HAVE_OPENSSL101)
 	if(sverb.ssl_stats) {
 		stats.reset();
 	}
@@ -1475,7 +1471,7 @@ void ssl_stats_reset() {
 }
 
 void ssl_stats_add_delay_processPacket(u_int64_t time_us) {
-	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	#if defined(HAVE_OPENSSL101)
 	if(sverb.ssl_stats) {
 		stats.delay_processPacket.add_delay_from_act(time_us);
 	}
@@ -1483,7 +1479,7 @@ void ssl_stats_add_delay_processPacket(u_int64_t time_us) {
 }
 
 void ssl_stats_add_delay_parseSdp(u_int64_t time_us) {
-	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	#if defined(HAVE_OPENSSL101)
 	if(sverb.ssl_stats) {
 		stats.delay_parseSdp.add_delay_from_act(time_us);
 	}

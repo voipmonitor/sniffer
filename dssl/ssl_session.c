@@ -33,7 +33,7 @@
 
 #include "../config.h"
 
-#if defined(HAVE_LIBGNUTLS)
+#if defined(HAVE_LIBGCRYPT)
 #include <gcrypt.h>
 #endif
 
@@ -229,7 +229,7 @@ int ssls_set_session_version( DSSL_Session* sess, uint16_t ver )
 int ssls_decode_master_secret( DSSL_Session* sess )
 {
 	DSSL_CipherSuite* suite = NULL;
-	#ifdef HAVE_LIBGNUTLS
+	#ifdef HAVE_LIBGCRYPT
 	int rc;
 	gcry_md_hd_t gcry_h;
 	int gcry_algo;
@@ -258,7 +258,7 @@ int ssls_decode_master_secret( DSSL_Session* sess )
 			suite = DSSL_GetSSL3CipherSuite( sess->cipher_suite );
 		if( !suite ) return NM_ERROR( DSSL_E_SSL_CANNOT_DECRYPT );
 		
-		#ifdef HAVE_LIBGNUTLS
+		#ifdef HAVE_LIBGCRYPT
 		if((sess->flags & (SSF_TLS_SERVER_EXTENDED_MASTER_SECRET|SSF_TLS_CLIENT_EXTENDED_MASTER_SECRET)) == (SSF_TLS_SERVER_EXTENDED_MASTER_SECRET|SSF_TLS_CLIENT_EXTENDED_MASTER_SECRET) &&
 		   sess->handshake_data) {
 			gcry_md_open(&gcry_h, !strcmp(suite->digest, LN_sha384) ? GCRY_MD_SHA384 : GCRY_MD_SHA256, GCRY_MD_FLAG_SECURE);

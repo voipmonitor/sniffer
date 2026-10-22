@@ -185,7 +185,7 @@ signal_def signal_data[] =
 };
 #endif
 
-#ifdef HAVE_LIBGNUTLS
+#ifdef HAVE_SSL_WS
 extern void ssl_init();
 extern void ssl_clean();
 #endif
@@ -5402,7 +5402,7 @@ int main_init_read() {
 	}
 	if(opt_enable_ssl) {
 		if(opt_enable_ssl == 10) {
-			#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
+			#if defined(HAVE_SSL_WS)
 			ssl_init();
 			#endif
 		} else {
@@ -5846,7 +5846,7 @@ void terminate_processpacket() {
 	}
 	if(opt_enable_ssl) {
 		if(opt_enable_ssl == 10) {
-			#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
+			#if defined(HAVE_SSL_WS)
 			ssl_clean();
 			#endif
 		} else {
@@ -11140,7 +11140,7 @@ void set_all_ports_for_tcp() {
 }
 
 
-#ifdef HAVE_LIBGNUTLS
+#ifdef HAVE_LIBGCRYPT
 #include <gcrypt.h>
 GCRY_THREAD_OPTION_PTHREAD_IMPL;
 #endif
@@ -11156,7 +11156,7 @@ bool init_lib_gcrypt() {
 		return(_init_lib_gcrypt_rslt);
 	}
 	bool rslt = false;
-	#ifdef HAVE_LIBGNUTLS
+	#ifdef HAVE_LIBGCRYPT
 	gcry_control(GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
 	if(gcry_check_version(GCRYPT_VERSION)) {
 		gcry_control(GCRYCTL_SUSPEND_SECMEM_WARN);

@@ -10,7 +10,7 @@
 #include <vector>
 
 
-#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+#if defined(HAVE_OPENSSL101)
 
 
 #include <openssl/ssl.h>
@@ -333,7 +333,7 @@ struct sSslDsslStats {
 };
 
 
-#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
+#endif //HAVE_OPENSSL101
 
 
 void ssl_dssl_init();
