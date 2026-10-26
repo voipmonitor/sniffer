@@ -4735,31 +4735,6 @@ void process_ua(CallBranch *c_branch, packet_s_process *packetS, bool called_sid
 	}
 }
 
-// position of the first separator outside double quotes (a backslash escapes the next character), length if there is none
-static unsigned long find_reason_separator(const char *str, unsigned long length, char separator) {
-	bool in_quotes = false;
-	for(unsigned long i = 0; i < length; i++) {
-		if(str[i] == '\\' && in_quotes) {
-			++i;
-		} else if(str[i] == '"') {
-			in_quotes = !in_quotes;
-		} else if(str[i] == separator && !in_quotes) {
-			return(i);
-		}
-	}
-	return(length);
-}
-
-static void trim_reason_param(const char **param, unsigned long *length) {
-	while(*length > 0 && ((*param)[0] == ' ' || (*param)[0] == '\t')) {
-		++*param;
-		--*length;
-	}
-	while(*length > 0 && ((*param)[*length - 1] == ' ' || (*param)[*length - 1] == '\t')) {
-		--*length;
-	}
-}
-
 // parse of one reason-value of the Reason header (RFC 3326): protocol *(";" name "=" value), the text is a quoted string with backslash escapes or a bare token
 static void parse_reason_value(const char *reason_value, unsigned long reason_value_length, char *protocol, unsigned protocol_size,
 			    			   int *cause, char *text, unsigned text_size) {
@@ -4770,9 +4745,10 @@ static void parse_reason_value(const char *reason_value, unsigned long reason_va
 	bool text_set = false;
 	for(unsigned long pos = 0, param_index = 0; pos < reason_value_length; param_index++) {
 		const char *param = reason_value + pos;
-		unsigned long param_length = find_reason_separator(param, reason_value_length - pos, ';');
+		const char *param_end = strnchr_outside_quotes(param, ';', reason_value_length - pos);
+		size_t param_length = param_end ? param_end - param : reason_value_length - pos;
 		pos += param_length + 1;
-		trim_reason_param(&param, &param_length);
+		trim(&param, &param_length);
 		if(param_index == 0) {
 			if(param_length < protocol_size) {
 				memcpy(protocol, param, param_length);
@@ -4784,11 +4760,11 @@ static void parse_reason_value(const char *reason_value, unsigned long reason_va
 		if(!param_value) {
 			continue;
 		}
-		unsigned long param_name_length = param_value - param;
+		size_t param_name_length = param_value - param;
 		++param_value;
-		unsigned long param_value_length = param + param_length - param_value;
-		trim_reason_param(&param, &param_name_length);
-		trim_reason_param(&param_value, &param_value_length);
+		size_t param_value_length = param + param_length - param_value;
+		trim(&param, &param_name_length);
+		trim(&param_value, &param_value_length);
 		if(!cause_set && param_name_length == 5 && !strncasecmp(param, "cause", 5)) {
 			char cause_str[12];
 			unsigned cause_str_length = MIN(param_value_length, sizeof(cause_str) - 1);
@@ -5605,11 +5581,13 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 		bool reason_q850_set = false;
 		while(reason) {
 			for(unsigned long value_pos = 0, value_length; value_pos < l; value_pos += value_length + 1) {
-				value_length = find_reason_separator(reason + value_pos, l - value_pos, ',');
+				char *value = reason + value_pos;
+				char *value_end = strnchr_outside_quotes(value, ',', l - value_pos);
+				value_length = value_end ? value_end - value : l - value_pos;
 				char protocol[16];
 				int cause;
 				char text[1024];
-				parse_reason_value(reason + value_pos, value_length, protocol, sizeof(protocol), &cause, text, sizeof(text));
+				parse_reason_value(value, value_length, protocol, sizeof(protocol), &cause, text, sizeof(text));
 				if(!strcasecmp(protocol, "SIP") && !reason_sip_set) {
 					reason_sip_set = true;
 					set_reason(packetS, cause, text, &c_branch->reason_sip_cause, &c_branch->reason_sip_text);
