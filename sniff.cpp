@@ -4735,6 +4735,93 @@ void process_ua(CallBranch *c_branch, packet_s_process *packetS, bool called_sid
 	}
 }
 
+// position of the first separator outside double quotes (a backslash escapes the next character), length if there is none
+static unsigned long find_reason_separator(const char *str, unsigned long length, char separator) {
+	bool in_quotes = false;
+	for(unsigned long i = 0; i < length; i++) {
+		if(str[i] == '\\' && in_quotes) {
+			++i;
+		} else if(str[i] == '"') {
+			in_quotes = !in_quotes;
+		} else if(str[i] == separator && !in_quotes) {
+			return(i);
+		}
+	}
+	return(length);
+}
+
+static void trim_reason_param(const char **param, unsigned long *length) {
+	while(*length > 0 && ((*param)[0] == ' ' || (*param)[0] == '\t')) {
+		++*param;
+		--*length;
+	}
+	while(*length > 0 && ((*param)[*length - 1] == ' ' || (*param)[*length - 1] == '\t')) {
+		--*length;
+	}
+}
+
+// parse of one reason-value of the Reason header (RFC 3326): protocol *(";" name "=" value), the text is a quoted string with backslash escapes or a bare token
+static void parse_reason_value(const char *reason_value, unsigned long reason_value_length, char *protocol, unsigned protocol_size,
+			    			   int *cause, char *text, unsigned text_size) {
+	protocol[0] = 0;
+	*cause = 0;
+	text[0] = 0;
+	bool cause_set = false;
+	bool text_set = false;
+	for(unsigned long pos = 0, param_index = 0; pos < reason_value_length; param_index++) {
+		const char *param = reason_value + pos;
+		unsigned long param_length = find_reason_separator(param, reason_value_length - pos, ';');
+		pos += param_length + 1;
+		trim_reason_param(&param, &param_length);
+		if(param_index == 0) {
+			if(param_length < protocol_size) {
+				memcpy(protocol, param, param_length);
+				protocol[param_length] = 0;
+			}
+			continue;
+		}
+		const char *param_value = strnchr(param, '=', param_length);
+		if(!param_value) {
+			continue;
+		}
+		unsigned long param_name_length = param_value - param;
+		++param_value;
+		unsigned long param_value_length = param + param_length - param_value;
+		trim_reason_param(&param, &param_name_length);
+		trim_reason_param(&param_value, &param_value_length);
+		if(!cause_set && param_name_length == 5 && !strncasecmp(param, "cause", 5)) {
+			char cause_str[12];
+			unsigned cause_str_length = MIN(param_value_length, sizeof(cause_str) - 1);
+			memcpy(cause_str, param_value, cause_str_length);
+			cause_str[cause_str_length] = 0;
+			*cause = atoi(cause_str);
+			cause_set = true;
+		} else if(!text_set && param_name_length == 4 && !strncasecmp(param, "text", 4)) {
+			bool quoted = param_value_length > 0 && param_value[0] == '"';
+			unsigned text_length = 0;
+			for(unsigned long i = quoted ? 1 : 0; i < param_value_length && text_length < text_size - 1; i++) {
+				if(quoted && param_value[i] == '\\' && i + 1 < param_value_length) {
+					++i;
+				} else if(quoted && param_value[i] == '"') {
+					break;
+				}
+				text[text_length++] = param_value[i];
+			}
+			text[text_length] = 0;
+			text_set = true;
+		}
+	}
+}
+
+// the first value of the call wins, only a BYE / CANCEL overwrites it; without opt_get_reason_from_bye_cancel every value overwrites
+static void set_reason(packet_s_process *packetS, int cause, const char *text, int *branch_cause, string *branch_text) {
+	if((cause > 0 || text[0]) &&
+	   (!opt_get_reason_from_bye_cancel || *branch_cause == 0 || packetS->sip_method == BYE || packetS->sip_method == CANCEL)) {
+		*branch_cause = cause;
+		*branch_text = text[0] ? string(text) : intToString(cause) + " (text missing)";
+	}
+}
+
 void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 	
 	Call *call = NULL;
@@ -5513,58 +5600,35 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 	   !(packetS->sip_method == CANCEL && c_branch->seeninviteok &&
 	     (c_branch->called_invite_branch_map.size() > 1 || call->is_multiple_to_branch(c_branch)))) {
 		char *reason = gettag_sip(packetS, "reason:", &l);
-		if(reason) {
-			char oldEndChar = reason[l];
-			reason[l] = 0;
-			char *pointerToFirstSemicolon = strchr(reason, ';');
-			char *pointerToCause = strcasestr(reason, ";cause=");
-			char *pointerToText = strcasestr(reason, ";text=\"");
-			if(pointerToFirstSemicolon && pointerToFirstSemicolon - reason < 10 &&
-			   (pointerToCause || pointerToText)) {
-				char type[10];
-				memcpy(type, reason, pointerToFirstSemicolon - reason);
-				type[pointerToFirstSemicolon - reason] = 0;
-				unsigned type_length = strlen(type);
-				while(type_length > 0 && type[type_length - 1] == ' ') {
-					type[type_length - 1] = 0;
-					--type_length;
-				}
-				int cause = pointerToCause ? atoi(pointerToCause + 7) : 0;
-				char text[1024] = "";
-				if(pointerToText) {
-					pointerToText += 7;
-					char *pointerToEndText = strstr(pointerToText, "\";");
-					unsigned int lengthText = MIN(pointerToEndText ?
-								       pointerToEndText - pointerToText :
-								       l - (pointerToText - reason),
-								      sizeof(text) - 1);
-					memcpy(text, pointerToText, lengthText);
-					text[lengthText] = 0;
-					if(lengthText > 0 && text[lengthText - 1] == '"') {
-						--lengthText;
-						text[lengthText] = 0;
-					}
-				}
-				if(cause > 0 || text[0]) {
-					if(!text[0]) {
-						snprintf(text, sizeof(text), "%i (text missing)", cause);
-					}
-					if(!strcasecmp(type, "SIP")) {
-						if(!opt_get_reason_from_bye_cancel || c_branch->reason_sip_cause == 0 || 
-						   (opt_get_reason_from_bye_cancel && (packetS->sip_method == BYE || packetS->sip_method == CANCEL))) {
-							c_branch->reason_sip_cause = cause;
-							c_branch->reason_sip_text = text;
-						}
-					} else if(!strcasecmp(type, "Q.850")) {
-						if(!opt_get_reason_from_bye_cancel || c_branch->reason_q850_cause == 0 || 
-						   (opt_get_reason_from_bye_cancel && (packetS->sip_method == BYE || packetS->sip_method == CANCEL))) {
-							c_branch->reason_q850_cause = cause;
-							c_branch->reason_q850_text = text;
-						}
-					}
+		// one value per protocol in a message (RFC 3326), the lines and the comma separated values are read until both are found
+		bool reason_sip_set = false;
+		bool reason_q850_set = false;
+		while(reason) {
+			for(unsigned long value_pos = 0, value_length; value_pos < l; value_pos += value_length + 1) {
+				value_length = find_reason_separator(reason + value_pos, l - value_pos, ',');
+				char protocol[16];
+				int cause;
+				char text[1024];
+				parse_reason_value(reason + value_pos, value_length, protocol, sizeof(protocol), &cause, text, sizeof(text));
+				if(!strcasecmp(protocol, "SIP") && !reason_sip_set) {
+					reason_sip_set = true;
+					set_reason(packetS, cause, text, &c_branch->reason_sip_cause, &c_branch->reason_sip_text);
+				} else if(!strcasecmp(protocol, "Q.850") && !reason_q850_set) {
+					reason_q850_set = true;
+					set_reason(packetS, cause, text, &c_branch->reason_q850_cause, &c_branch->reason_q850_text);
 				}
 			}
-			reason[l] = oldEndChar;
+			if(reason_sip_set && reason_q850_set) {
+				break;
+			}
+			// parseContents keeps only the first Reason line, the next ones are searched up to the end of the headers
+			char *headers_end = packetS->parseContents.doubleEndLine;
+			char *from = reason + l;
+			reason = headers_end && headers_end - from >= 8 ? strncasestr(from, "\nReason:", headers_end - from) : NULL;
+			if(reason) {
+				reason += 8;
+				for(l = 0; reason + l < headers_end && reason[l] != '\r' && reason[l] != '\n'; l++);
+			}
 		}
 	}
 	
