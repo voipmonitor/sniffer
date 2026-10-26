@@ -3965,6 +3965,7 @@ inline unsigned int setCallFlags(unsigned long int flags, sNatAliases **nat_alia
 }
 
 static inline void process_packet__parse_custom_headers(Call *call, CallBranch *c_branch, packet_s_process *packetS);
+void process_ua(CallBranch *c_branch, packet_s_process *packetS, bool called_side, bool is_register = false);
 
 inline bool init_call_branch(Call *call, CallBranch *c_branch, packet_s_process *packetS, int sip_method, s_detect_callerd *data_callerd) {
 
@@ -3999,6 +4000,7 @@ inline bool init_call_branch(Call *call, CallBranch *c_branch, packet_s_process 
 		c_branch->caller_tag = data_callerd->caller_tag;
 		c_branch->called_tag_to = data_callerd->called_tag_to;
 		c_branch->callername = data_callerd->callername;
+		process_ua(c_branch, packetS, false, sip_method == REGISTER);
 
 		if (opt_sipalg_detect) {
 			char via_ip_hostname[100];
@@ -4036,14 +4038,6 @@ inline bool init_call_branch(Call *call, CallBranch *c_branch, packet_s_process 
 */			}
 
 			// copy contact num <sip:num@domain>
-			s = gettag_sip_ua(packetS, &l);
-			if(s) {
-				c_branch->a_ua = string(s, l);
-				if(sverb.set_ua) {
-					cout << "set a_ua " << c_branch->a_ua << endl;
-				}
-			}
-
 			get_sip_peername(packetS, "\nContact:", "\nm:", &c_branch->contact_num, ppntt_contact, ppndt_contact);
 			// copy contact domain <sip:num@domain>
 			get_sip_domain(packetS, "\nContact:", "\nm:", &c_branch->contact_domain, ppntt_contact, ppndt_contact_domain);
@@ -4716,20 +4710,27 @@ static inline void parse_packet__message_content(char *message, unsigned int mes
 static inline Call *process_packet__merge(packet_s_process *packetS, char *callidstr, int *merged, bool preprocess);
 static inline bool checkEqNumbers(Call::sInviteSD_Addr *item1, Call::sInviteSD_Addr *item2);
 
-void process_ua(Call */*call*/, CallBranch *c_branch, packet_s_process *packetS) {
+void process_ua(CallBranch *c_branch, packet_s_process *packetS, bool called_side, bool is_register) {
 	bool is_response = IS_SIP_RESXXX(packetS->sip_method);
 	bool maybe_proxy_ua = is_response && (packetS->sip_method == RES10X || packetS->cseq.method == CANCEL);
-	if(c_branch->check_exists_ua(packetS->saddr_(), packetS->source_(), is_response, maybe_proxy_ua)) {
+	if(is_register ?
+	    !c_branch->user_agents.needSet(is_response, maybe_proxy_ua) :
+	    !c_branch->user_agents.needSet(packetS->saddr_(), packetS->source_(), is_response, maybe_proxy_ua)) {
 		return;
 	}
 	unsigned long l;
 	char *s = gettag_sip_ua(packetS, &l);
 	if(s) {
-		c_branch->set_ua(packetS->saddr_(), packetS->source_(), is_response, maybe_proxy_ua, s, l);
+		if(is_register) {
+			c_branch->user_agents.set(is_response, maybe_proxy_ua, s, l);
+		} else {
+			c_branch->user_agents.set(packetS->saddr_(), packetS->source_(), is_response, maybe_proxy_ua, s, l, called_side);
+		}
 		if(sverb.set_ua) {
 			cout << "set ua " << string(s, l)
 			     << " for " << packetS->saddr_().getString() << ":" << packetS->source_().getString()
-			     << (is_response ? (maybe_proxy_ua ? " (response maybe proxy)" : " (response)") : " (request)") << endl;
+			     << (is_response ? (maybe_proxy_ua ? " (response maybe proxy)" : " (response)") : " (request)")
+			     << (called_side ? " called side" : " caller side") << endl;
 		}
 	}
 }
@@ -4776,6 +4777,8 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 	bool domain_to_detected = false;
 	char tag_content_to[1024] = "";
 	bool tag_content_to_detected = false;
+	bool reverse_direction_by_to_tag = false;
+	bool from_called_side = false;
 	bool in_dialog_invite = false;
 	bool dont_save = false;
 	bool prematureResponsesProcess = false;
@@ -4869,7 +4872,9 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 		string to_tag;
 	
 		get_sip_peertag(packetS, "\nFrom:", "\nf:", &from_tag, ppntt_from, ppndt_caller_tag);
-		get_sip_peertag(packetS, "\nTo:", "\nt:", &to_tag, ppntt_to, ppndt_called_tag);
+		get_sip_peertag(packetS, "\nTo:", "\nt:", tag_content_to, sizeof(tag_content_to), ppntt_to, ppndt_called_tag);
+		tag_content_to_detected = true;
+		to_tag = tag_content_to;
 
 		bool create_enable = to_tag.empty() && !from_tag.empty() &&
 				     packetS->sip_method == INVITE;
@@ -5190,6 +5195,14 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 		call->first_message_time_us = packet_time_us;
 	}
 	
+	if(!c_branch->caller_tag.empty()) {
+		if(!tag_content_to_detected) {
+			get_sip_peertag(packetS, "\nTo:", "\nt:", tag_content_to, sizeof(tag_content_to), ppntt_to, ppndt_called_tag);
+			tag_content_to_detected = true;
+		}
+		reverse_direction_by_to_tag = tag_content_to[0] && c_branch->caller_tag == tag_content_to;
+	}
+
 	if(packetS->sip_method == INVITE || (opt_sip_message && packetS->sip_method == MESSAGE)) {
 		extern int opt_vlan_siprtpsame;
 		if(opt_vlan_siprtpsame == 2 && packetS->sip_method == INVITE && VLAN_IS_SET(packetS->pid.vlan)) {
@@ -5202,16 +5215,10 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 			}
 			goto endsip_save_packet;
 		}
-		if(opt_reverse_invite_by_tag && !c_branch->caller_tag.empty() && c_branch->called_tag_to.empty()) {
-			if(!tag_content_to_detected) {
-				get_sip_peertag(packetS, "\nTo:", "\nt:", tag_content_to, sizeof(tag_content_to), ppntt_to, ppndt_called_tag);
-				tag_content_to_detected = true;
-			}
-			if(tag_content_to[0] && c_branch->caller_tag == tag_content_to) {
-				reverseInviteSdaddr_by_tag = true;
-				if(sverb.reverse_invite) {
-					cout << "reverse invite by tag: invite / " << call->call_id << endl;
-				}
+		if(opt_reverse_invite_by_tag && c_branch->called_tag_to.empty() && reverse_direction_by_to_tag) {
+			reverseInviteSdaddr_by_tag = true;
+			if(sverb.reverse_invite) {
+				cout << "reverse invite by tag: invite / " << call->call_id << endl;
 			}
 		}
 		c_branch->invite_list_lock();
@@ -5444,6 +5451,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 	
 	if(detectCallerd) {
 		call->handle_dscp(packetS->header_ip_(), iscaller > 0);
+		from_called_side = reverse_direction_by_to_tag ? !IS_SIP_RESXXX(packetS->sip_method) : iscaller > 0;
 	}
 	call->handle_ttl(packetS->header_ip_());
 	
@@ -5684,7 +5692,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 		++call->onInvite_counter;
 		if(isSendCallInfoReady()) {
 			if(call && c_branch && detectCallerd) {
-				process_ua(call, c_branch, packetS);
+				process_ua(c_branch, packetS, from_called_side);
 			}
 			sSciPacketInfo *packet_info = NULL;
 			if(useAdditionalPacketInformationInSendCallInfo()) {
@@ -6645,14 +6653,6 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 					}
 				}
 			}
-			bool skip_close_check_due_to_reverse_direction = false;
-			if(!c_branch->caller_tag.empty()) {
-				if(!tag_content_to_detected) {
-					get_sip_peertag(packetS, "\nTo:", "\nt:", tag_content_to, sizeof(tag_content_to), ppntt_to, ppndt_called_tag);
-					tag_content_to_detected = true;
-				}
-				skip_close_check_due_to_reverse_direction = tag_content_to[0] && c_branch->caller_tag == tag_content_to;
-			}
 			if(is_application_sdp) {
 				detect_to(packetS, to, sizeof(to), &to_detected);
 				detect_to_uri(packetS, to_uri, sizeof(to_uri), &to_uri_detected);
@@ -6661,7 +6661,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 				detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 				process_sdp(call, c_branch, packetS, _iscaller_process_sdp, contenttype_data_ptr, 0,
 					    packetS->get_callid(), to, to_uri, domain_to, domain_to_uri, branch,
-					    skip_close_check_due_to_reverse_direction,
+					    reverse_direction_by_to_tag,
 					    batch_process);
 			} else if(is_multipart_mixed) {
 				char *content_data = contenttype_data_ptr + contenttypetaglen;
@@ -6737,7 +6737,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 									detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 									process_sdp(call, c_branch, packetS, _iscaller_process_sdp, content_data_begin, content_data_length,
 										    packetS->get_callid(), to, to_uri, domain_to, domain_to_uri, branch,
-										    skip_close_check_due_to_reverse_direction,
+										    reverse_direction_by_to_tag,
 										    batch_process);
 								} else if(strcasestr(content_type, "application/rs-metadata+xml")) {
 									call->add_txt(packet_time_us, Call::txt_type_sdp_xml, content_data_begin, content_data_length);
@@ -6761,7 +6761,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 								detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 								process_sdp(call, c_branch, packetS, _iscaller_process_sdp, s2, 0,
 									    packetS->get_callid(), to, to_uri, domain_to, domain_to_uri, branch,
-									    skip_close_check_due_to_reverse_direction,
+									    reverse_direction_by_to_tag,
 									    batch_process);
 								break;	// stop searching
 							} else {
@@ -6853,7 +6853,7 @@ endsip:
 	}
 
 	if(call && c_branch && detectCallerd) {
-		process_ua(call, c_branch, packetS);
+		process_ua(c_branch, packetS, from_called_side);
 	}
 
 	if(logPacketSipMethodCall_enable) {
@@ -7320,8 +7320,12 @@ void process_packet_sip_register(packet_s_process *packetS) {
 	}
 	if(call->reg.regstate && !call->reg.regresponse) {
 		if(opt_enable_fraud && isFraudReady()) {
+			string ua = call->get_a_ua(c_branch);
+			if(ua.empty()) {
+				ua = call->get_b_ua(c_branch);
+			}
 			fraudRegisterResponse(c_branch->sipcallerip[0], c_branch->sipcalledip[0], call->first_packet_time_us,
-					      !c_branch->a_ua.empty() ? c_branch->a_ua.c_str() : !c_branch->b_ua.empty() ? c_branch->b_ua.c_str() : NULL, -1);
+					      !ua.empty() ? ua.c_str() : NULL, -1);
 		}
 		call->reg.regresponse = true;
 	}
@@ -7363,13 +7367,7 @@ endsip:
 	}
 	
 	if(call && c_branch && packetS->sip_method != REGISTER) {
-		s = gettag_sip_ua(packetS, &l);
-		if(s) {
-			c_branch->b_ua = string(s, l);
-			if(sverb.set_ua) {
-				cout << "set b_ua " << c_branch->b_ua << endl;
-			}
-		}
+		process_ua(c_branch, packetS, true, true);
 	}
 	if(call) {
 		call->reg.last_sip_method = packetS->sip_method;

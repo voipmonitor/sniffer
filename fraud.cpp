@@ -3361,7 +3361,7 @@ void FraudAlerts::completeRegisterInfo(sFraudRegisterInfo *registerInfo, Call *c
 	registerInfo->from_name = c_branch->callername;
 	registerInfo->from_domain = c_branch->caller_domain;
 	registerInfo->digest_realm = c_branch->digest_realm;
-	registerInfo->ua = c_branch->a_ua;
+	registerInfo->ua = call->get_a_ua(c_branch);
 	registerInfo->at = call->calltime_us();
 }
 

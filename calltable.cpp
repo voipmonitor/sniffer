@@ -622,7 +622,6 @@ CallBranch::CallBranch(Call *call, unsigned branch_id) {
 
 	_proxies_lock = 0;
 	_sip_resp_hist_lock = 0;
-	_ua_map_lock = 0;
 	
 	whohanged = -1;
 	oneway = 1;
@@ -718,53 +717,35 @@ void CallBranch::proxies_undup(set<vmIP> *proxies_undup, list<vmIPport> *proxies
 	}
 }
 
-bool CallBranch::check_exists_ua(vmIP ip, vmPort port, bool is_response, bool maybe_proxy_ua) {
-	map<vmIPport, sUaData>::iterator iter = ua_map.find(vmIPport(ip, port));
-	if(iter == ua_map.end()) {
-		return(false);
+string cUserAgents::get(vmIP ip, vmPort port, bool called_side, vmIP other_side_ip, vmPort other_side_port) {
+	if(simple_data) {
+		return(get(called_side));
 	}
-	if(is_response) {
-		return(!iter->second.ua_resp.empty() && (!iter->second.ua_resp_maybe_proxy || maybe_proxy_ua));
-	} else {
-		return(!iter->second.ua_req.empty());
+	if(!ua_map) {
+		return("");
 	}
-}
-
-void CallBranch::set_ua(vmIP ip, vmPort port, bool is_response, bool maybe_proxy_ua, const char *ua, unsigned ua_length) {
-	ua_map_lock();
-	sUaData *ua_data = &ua_map[vmIPport(ip, port)];
-	if(is_response) {
-		if(ua_data->ua_resp.empty() || (ua_data->ua_resp_maybe_proxy && !maybe_proxy_ua)) {
-			ua_data->ua_resp = string(ua, ua_length);
-			ua_data->ua_resp_maybe_proxy = maybe_proxy_ua;
-		}
-	} else {
-		if(ua_data->ua_req.empty()) {
-			ua_data->ua_req = string(ua, ua_length);
-		}
-	}
-	ua_map_unlock();
-}
-
-string CallBranch::get_ua(vmIP ip, vmPort port, bool prefer_resp) {
 	string rslt;
-	ua_map_lock();
-	map<vmIPport, sUaData>::iterator iter = ua_map.find(vmIPport(ip, port));
-	if(iter == ua_map.end()) {
-		for(iter = ua_map.begin(); iter != ua_map.end(); iter++) {
-			if(iter->first.ip == ip) {
+	lock();
+	map<vmIPport, sUaData>::iterator iter = ua_map->find(vmIPport(ip, port));
+	if(iter == ua_map->end()) {
+		vmIPport other_side(other_side_ip, other_side_port);
+		for(iter = ua_map->begin(); iter != ua_map->end(); iter++) {
+			if(iter->first.ip == ip &&
+			   !(iter->first == other_side) &&
+			   (other_side_ip != ip ||
+			    (called_side ? iter->second.from_called_side : iter->second.from_caller_side))) {
 				break;
 			}
 		}
 	}
-	if(iter != ua_map.end()) {
-		if(prefer_resp) {
+	if(iter != ua_map->end()) {
+		if(called_side) {
 			rslt = !iter->second.ua_resp.empty() ? iter->second.ua_resp : iter->second.ua_req;
 		} else {
 			rslt = !iter->second.ua_req.empty() ? iter->second.ua_req : iter->second.ua_resp;
 		}
 	}
-	ua_map_unlock();
+	unlock();
 	return(rslt);
 }
 
@@ -6559,7 +6540,9 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 		}
 		return(true);
 	} else if(*column == "ua") {
-		*value = cEvalFormula::sValue(table->find("a_ua") != string::npos ? get_a_ua(branch_main()) : get_b_ua(branch_main()));
+		*value = cEvalFormula::sValue(table->find("a_ua") != string::npos ?
+					       (saved_data ? saved_data->a_ua : get_a_ua(branch_main())) :
+					       (saved_data ? saved_data->b_ua : get_b_ua(branch_main())));
 		if(ord) {
 			ord->u.s.column = table->find("a_ua") != string::npos ? 5 : 6;
 		}
@@ -7879,14 +7862,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	sSavedData *_saved_data = !saved_data && useChartsCacheOrCdrStatInProcessCall() ? new FILE_LINE(0) sSavedData : NULL;
 	set<vmIP> proxies_undup;
 	prepareSipIpForSave(c_branch, &proxies_undup);
-	adjustUA(c_branch);
+	adjustUA_rslt(c_branch);
 	if(_saved_data) {
 		if(opt_cdrproxy) {
 			_saved_data->proxies = proxies_undup;
 		}
 		if(opt_cdr_ua_enable) {
-			_saved_data->a_ua = c_branch->a_ua;
-			_saved_data->b_ua = c_branch->b_ua;
+			_saved_data->a_ua = c_branch->a_ua_rslt;
+			_saved_data->b_ua = c_branch->b_ua_rslt;
 		}
 	}
 
@@ -8979,27 +8962,27 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		if(opt_cdr_ua_enable) {
-			if(!c_branch->a_ua.empty()) {
+			if(!c_branch->a_ua_rslt.empty()) {
 				if(useSetId()) {
-					cdr.add_cb_string(c_branch->a_ua, "a_ua_id", cSqlDbCodebook::_cb_ua);
+					cdr.add_cb_string(c_branch->a_ua_rslt, "a_ua_id", cSqlDbCodebook::_cb_ua);
 				} else {
-					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua, false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua_rslt, false, true);
 					if(_cb_id) {
 						cdr.add(_cb_id, "a_ua_id");
 					} else {
-						query_str += cdr.add_id_or_insert("a_ua_id", "getIdOrInsertUA", "uaA_id", "", c_branch->a_ua, "cdr_ua", "ua");
+						query_str += cdr.add_id_or_insert("a_ua_id", "getIdOrInsertUA", "uaA_id", "", c_branch->a_ua_rslt, "cdr_ua", "ua");
 					}
 				}
 			}
-			if(!c_branch->b_ua.empty()) {
+			if(!c_branch->b_ua_rslt.empty()) {
 				if(useSetId()) {
-					cdr.add_cb_string(c_branch->b_ua, "b_ua_id", cSqlDbCodebook::_cb_ua);
+					cdr.add_cb_string(c_branch->b_ua_rslt, "b_ua_id", cSqlDbCodebook::_cb_ua);
 				} else {
-					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->b_ua, false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->b_ua_rslt, false, true);
 					if(_cb_id) {
 						cdr.add(_cb_id, "b_ua_id");
 					} else {
-						query_str += cdr.add_id_or_insert("b_ua_id", "getIdOrInsertUA", "uaB_id", "", c_branch->b_ua, "cdr_ua", "ua");
+						query_str += cdr.add_id_or_insert("b_ua_id", "getIdOrInsertUA", "uaB_id", "", c_branch->b_ua_rslt, "cdr_ua", "ua");
 					}
 				}
 			}
@@ -9949,11 +9932,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 	}
 	if(opt_cdr_ua_enable) {
-		if(!c_branch->a_ua.empty()) {
-			a_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua, true);
+		if(!c_branch->a_ua_rslt.empty()) {
+			a_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua_rslt, true);
 		}
-		if(!c_branch->b_ua.empty()) {
-			b_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->b_ua, true);
+		if(!c_branch->b_ua_rslt.empty()) {
+			b_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->b_ua_rslt, true);
 		}
 	}
 		
@@ -10299,7 +10282,7 @@ void Call::prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch
 	
 	set<vmIP> n_branch_proxies_undup;
 	prepareSipIpForSave(n_branch, &n_branch_proxies_undup);
-	adjustUA(n_branch);
+	adjustUA_rslt(n_branch);
 	
 	if(batch) {
 		next_branch_row.setIgnoreCheckExistsField();
@@ -10492,38 +10475,38 @@ void Call::prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch
 	}
 	
 	if(opt_cdr_ua_enable) {
-		if(!n_branch->a_ua.empty()) {
+		if(!n_branch->a_ua_rslt.empty()) {
 			if(batch) {
 				if(useSetId()) {
-					next_branch_row.add_cb_string(n_branch->a_ua, "a_ua_id", cSqlDbCodebook::_cb_ua);
+					next_branch_row.add_cb_string(n_branch->a_ua_rslt, "a_ua_id", cSqlDbCodebook::_cb_ua);
 				} else {
-					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, n_branch->a_ua, false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, n_branch->a_ua_rslt, false, true);
 					if(_cb_id) {
 						next_branch_row.add(_cb_id, "a_ua_id");
 					} else {
-						*query_str += next_branch_row.add_id_or_insert("a_ua_id", "getIdOrInsertUA", "uaA_id" + n_branch_var_suffix, "", n_branch->a_ua, "cdr_ua", "ua");
+						*query_str += next_branch_row.add_id_or_insert("a_ua_id", "getIdOrInsertUA", "uaA_id" + n_branch_var_suffix, "", n_branch->a_ua_rslt, "cdr_ua", "ua");
 					}
 				}
 			} else {
-				next_branch_row.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, n_branch->a_ua, true), "a_ua_id");
+				next_branch_row.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, n_branch->a_ua_rslt, true), "a_ua_id");
 			}
 		} else {
 			next_branch_row.add_null("a_ua_id");
 		}
-		if(!n_branch->b_ua.empty()) {
+		if(!n_branch->b_ua_rslt.empty()) {
 			if(batch) {
 				if(useSetId()) {
-					next_branch_row.add_cb_string(n_branch->b_ua, "b_ua_id", cSqlDbCodebook::_cb_ua);
+					next_branch_row.add_cb_string(n_branch->b_ua_rslt, "b_ua_id", cSqlDbCodebook::_cb_ua);
 				} else {
-					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, n_branch->b_ua, false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, n_branch->b_ua_rslt, false, true);
 					if(_cb_id) {
 						next_branch_row.add(_cb_id, "b_ua_id");
 					} else {
-						*query_str += next_branch_row.add_id_or_insert("b_ua_id", "getIdOrInsertUA", "uaB_id" + n_branch_var_suffix, "", n_branch->b_ua, "cdr_ua", "ua");
+						*query_str += next_branch_row.add_id_or_insert("b_ua_id", "getIdOrInsertUA", "uaB_id" + n_branch_var_suffix, "", n_branch->b_ua_rslt, "cdr_ua", "ua");
 					}
 				}
 			} else {
-				next_branch_row.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, n_branch->b_ua, true), "b_ua_id");
+				next_branch_row.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, n_branch->b_ua_rslt, true), "b_ua_id");
 			}
 		} else {
 			next_branch_row.add_null("b_ua_id");
@@ -10625,7 +10608,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		sqlDbSaveCall->setEnableSqlStringInContent(true);
 	}
 	
-	adjustUA(c_branch);
+	string adj_ua = get_a_ua(c_branch);
+	if(!adj_ua.empty()) {
+		::adjustUA(adj_ua);
+	}
 
 	const char *register_table = "register";
 	
@@ -10711,7 +10697,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				intToString(reg.regstate) + "'," +
 				sqlEscapeStringBorder(sqlDateTimeString(calltime_s() + reg.register_expires).c_str()) + ",'" + //mexpires_at
 				intToString(reg.register_expires) + "', " +
-				sqlEscapeStringBorder(c_branch->a_ua) + ", " +
+				sqlEscapeStringBorder(adj_ua) + ", " +
 				sqlEscapeStringBorder(intToString(fname_register)) + ", " +
 				intToString(useSensorId);
 				//srcmac ;
@@ -10794,8 +10780,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						reg.add(5, "state");
 						reg.add(intToString(fname_register), "fname");
 						reg.add(useSensorId, "id_sensor");
-						if(!c_branch->a_ua.empty()) {
-							reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua, true), "ua_id");
+						if(!adj_ua.empty()) {
+							reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, adj_ua, true), "ua_id");
 						}
 						sqlDbSaveCall->insert("register_state", reg);
 					}
@@ -10818,8 +10804,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						reg.add(sqlEscapeString(c_branch->digest_username), "digestusername");
 						reg.add(this->reg.register_expires, "expires");
 						reg.add(this->reg.regstate, "state");
-						if(!c_branch->a_ua.empty()) {
-							reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua, true), "ua_id");
+						if(!adj_ua.empty()) {
+							reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, adj_ua, true), "ua_id");
 						}
 						reg.add(intToString(fname_register), "fname");
 						reg.add(useSensorId, "id_sensor");
@@ -10843,8 +10829,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(sqlEscapeString(c_branch->digest_username), "digestusername");
 					reg.add(this->reg.register_expires, "expires");
 					reg.add(this->reg.regstate, "state");
-					if(!c_branch->a_ua.empty()) {
-						reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua, true), "ua_id");
+					if(!adj_ua.empty()) {
+						reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, adj_ua, true), "ua_id");
 					}
 					reg.add(intToString(fname_register), "fname");
 					reg.add(useSensorId, "id_sensor");
@@ -10871,8 +10857,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(sqlEscapeString(c_branch->contact_domain), "contact_domain");
 					reg.add(sqlEscapeString(c_branch->digest_username), "digestusername");
 					reg.add(sqlEscapeString(c_branch->digest_realm), "digestrealm");
-					if(!c_branch->a_ua.empty()) {
-						reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua, true), "ua_id");
+					if(!adj_ua.empty()) {
+						reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, adj_ua, true), "ua_id");
 					}
 					reg.add(this->reg.register_expires, "expires");
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime_s() + this->reg.register_expires).c_str()), "expires_at");
@@ -10948,7 +10934,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			if(useSensorId > -1) {
 				reg.add(useSensorId, "id_sensor");
 			}
-			string q3 = string("set @ua_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(c_branch->a_ua) + ");\n";
+			string q3 = string("set @ua_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(adj_ua) + ");\n";
 			q3 += sqlDbSaveCall->insertQuery("register_failed", reg);
 
 			string query = "SET @mcounter = (" + q1 + ");";
@@ -10986,8 +10972,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(sqlEscapeString(c_branch->contact_num), "contact_num");
 					reg.add(sqlEscapeString(c_branch->contact_domain), "contact_domain");
 					reg.add(sqlEscapeString(c_branch->digest_username), "digestusername");
-					if(!c_branch->a_ua.empty()) {
-						reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua, true), "ua_id");
+					if(!adj_ua.empty()) {
+						reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, adj_ua, true), "ua_id");
 					}
 					reg.add(intToString(fname_register), "fname");
 					if(useSensorId > -1) {
@@ -11031,9 +11017,9 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		sqlDbSaveCall->setEnableSqlStringInContent(true);
 	}
 	
-	c_branch->a_ua = get_a_ua(c_branch);
-	c_branch->b_ua = get_b_ua(c_branch);
-	adjustUA(c_branch);
+	c_branch->a_ua_rslt = get_a_ua(c_branch);
+	c_branch->b_ua_rslt = get_b_ua(c_branch);
+	adjustUA_rslt(c_branch);
 	
 	string sql_message_table = "message";
 	string sql_message_proxy_table = "message_proxy";
@@ -11183,27 +11169,27 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			}
 		}
 		if(opt_cdr_ua_enable) {
-			if(!c_branch->a_ua.empty()) {
+			if(!c_branch->a_ua_rslt.empty()) {
 				if(useSetId()) {
-					msg.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, c_branch->a_ua), "a_ua_id");
+					msg.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, c_branch->a_ua_rslt), "a_ua_id");
 				} else {
-					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua, false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua_rslt, false, true);
 					if(_cb_id) {
 						msg.add(_cb_id, "a_ua_id");
 					} else {
-						query_str += msg.add_id_or_insert("a_ua_id", "getIdOrInsertUA", "uaA_id", "", c_branch->a_ua, "cdr_ua", "ua");
+						query_str += msg.add_id_or_insert("a_ua_id", "getIdOrInsertUA", "uaA_id", "", c_branch->a_ua_rslt, "cdr_ua", "ua");
 					}
 				}
 			}
-			if(!c_branch->b_ua.empty()) {
+			if(!c_branch->b_ua_rslt.empty()) {
 				if(useSetId()) {
-					msg.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, c_branch->b_ua), "b_ua_id");
+					msg.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, c_branch->b_ua_rslt), "b_ua_id");
 				} else {
-					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->b_ua, false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->b_ua_rslt, false, true);
 					if(_cb_id) {
 						msg.add(_cb_id, "b_ua_id");
 					} else {
-						query_str += msg.add_id_or_insert("b_ua_id", "getIdOrInsertUA", "uaB_id", "", c_branch->b_ua, "cdr_ua", "ua");
+						query_str += msg.add_id_or_insert("b_ua_id", "getIdOrInsertUA", "uaB_id", "", c_branch->b_ua_rslt, "cdr_ua", "ua");
 					}
 				}
 			}
@@ -11319,11 +11305,11 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			b_ua_id = 0;
 
 	lastSIPresponse_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, c_branch->lastSIPresponse, true);
-	if(!c_branch->a_ua.empty()) {
-		a_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua, true);
+	if(!c_branch->a_ua_rslt.empty()) {
+		a_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua_rslt, true);
 	}
-	if(!c_branch->b_ua.empty()) {
-		b_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->b_ua, true);
+	if(!c_branch->b_ua_rslt.empty()) {
+		b_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->b_ua_rslt, true);
 	}
 	if(contenttype && contenttype[0]) {
 		msg.add(dbData->getCbId(cSqlDbCodebook::_cb_contenttype, contenttype, true), "id_contenttype");
@@ -11765,30 +11751,39 @@ void Call::prepareRtcpXrData(sRtcpXrStreams *streams, bool checkOK) {
 }
 
 string Call::get_a_ua(CallBranch *c_branch) {
-	// REGISTER does not fill ua_map - UA is stored directly into a_ua/b_ua (init_call_branch, process_packet_sip_register)
-	if(typeIs(REGISTER)) {
-		return(c_branch->a_ua);
+	if(c_branch->user_agents.empty()) {
+		return("");
+	}
+	if(c_branch->user_agents.isSimpleMode()) {
+		return(c_branch->user_agents.get(false));
 	}
 	vmPort port;
 	vmIP ip = getSipcallerip_corrected(c_branch, &port);
-	return(c_branch->get_ua(ip, port, false));
+	vmPort called_port;
+	vmIP called_ip = getSipcalledip_corrected(c_branch, &called_port);
+	return(c_branch->user_agents.get(ip, port, false, called_ip, called_port));
 }
 
 string Call::get_b_ua(CallBranch *c_branch) {
-	if(typeIs(REGISTER)) {
-		return(c_branch->b_ua);
+	if(c_branch->user_agents.empty()) {
+		return("");
+	}
+	if(c_branch->user_agents.isSimpleMode()) {
+		return(c_branch->user_agents.get(true));
 	}
 	vmPort port;
 	vmIP ip = getSipcalledip_corrected(c_branch, &port);
-	return(c_branch->get_ua(ip, port, true));
+	vmPort caller_port;
+	vmIP caller_ip = getSipcallerip_corrected(c_branch, &caller_port);
+	return(c_branch->user_agents.get(ip, port, true, caller_ip, caller_port));
 }
 
-void Call::adjustUA(CallBranch *c_branch) {
-	if(!c_branch->a_ua.empty()) {
-		::adjustUA(c_branch->a_ua);
+void Call::adjustUA_rslt(CallBranch *c_branch) {
+	if(!c_branch->a_ua_rslt.empty()) {
+		::adjustUA(c_branch->a_ua_rslt);
 	}
-	if(!c_branch->b_ua.empty()) {
-		::adjustUA(c_branch->b_ua);
+	if(!c_branch->b_ua_rslt.empty()) {
+		::adjustUA(c_branch->b_ua_rslt);
 	}
 }
 
@@ -12077,8 +12072,8 @@ void Call::prepareSipIpForSave(CallBranch *c_branch, set<vmIP> *proxies_undup) {
 		vmIPport proxy_exclude(c_branch->sipcalledip_rslt, c_branch->sipcalledport_rslt);
 		c_branch->proxies_undup(proxies_undup, NULL, &proxy_exclude);
 	}
-	c_branch->a_ua = c_branch->get_ua(c_branch->sipcallerip_rslt, c_branch->sipcallerport_rslt, false);
-	c_branch->b_ua = c_branch->get_ua(c_branch->sipcalledip_rslt, c_branch->sipcalledport_rslt, true);
+	c_branch->a_ua_rslt = c_branch->user_agents.get(c_branch->sipcallerip_rslt, c_branch->sipcallerport_rslt, false, c_branch->sipcalledip_rslt, c_branch->sipcalledport_rslt);
+	c_branch->b_ua_rslt = c_branch->user_agents.get(c_branch->sipcalledip_rslt, c_branch->sipcalledport_rslt, true, c_branch->sipcallerip_rslt, c_branch->sipcallerport_rslt);
 }
 
 unsigned Call::getMaxRetransmissionInvite(CallBranch *c_branch) {

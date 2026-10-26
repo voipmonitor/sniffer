@@ -688,16 +688,114 @@ public:
 	};
 };
 
-class CallBranch : public CallStructs {
-public: 
+class cUserAgents {
+public:
 	struct sUaData {
 		sUaData() {
 			ua_resp_maybe_proxy = false;
+			from_caller_side = false;
+			from_called_side = false;
+		}
+		bool needSet(bool is_response, bool maybe_proxy_ua) {
+			return(is_response ?
+				ua_resp.empty() || (ua_resp_maybe_proxy && !maybe_proxy_ua) :
+				ua_req.empty());
+		}
+		void set(bool is_response, bool maybe_proxy_ua, const char *ua, unsigned ua_length) {
+			if(!needSet(is_response, maybe_proxy_ua)) {
+				return;
+			}
+			if(is_response) {
+				ua_resp = string(ua, ua_length);
+				ua_resp_maybe_proxy = maybe_proxy_ua;
+			} else {
+				ua_req = string(ua, ua_length);
+			}
 		}
 		string ua_req;
 		string ua_resp;
 		bool ua_resp_maybe_proxy;
+		bool from_caller_side;
+		bool from_called_side;
 	};
+public:
+	cUserAgents() {
+		simple_data = NULL;
+		ua_map = NULL;
+		_sync = 0;
+	}
+	~cUserAgents() {
+		if(simple_data) {
+			delete simple_data;
+		}
+		if(ua_map) {
+			delete ua_map;
+		}
+	}
+	bool isSimpleMode() {
+		return(simple_data != NULL);
+	}
+	bool empty() {
+		return(!simple_data && !ua_map);
+	}
+	bool needSet(bool is_response, bool maybe_proxy_ua) {
+		return(!simple_data || simple_data->needSet(is_response, maybe_proxy_ua));
+	}
+	bool needSet(vmIP ip, vmPort port, bool is_response, bool maybe_proxy_ua) {
+		if(!ua_map) {
+			return(true);
+		}
+		map<vmIPport, sUaData>::iterator iter = ua_map->find(vmIPport(ip, port));
+		return(iter == ua_map->end() || iter->second.needSet(is_response, maybe_proxy_ua));
+	}
+	void set(bool is_response, bool maybe_proxy_ua, const char *ua, unsigned ua_length) {
+		lock();
+		if(!simple_data) {
+			simple_data = new FILE_LINE(0) sUaData;
+		}
+		simple_data->set(is_response, maybe_proxy_ua, ua, ua_length);
+		unlock();
+	}
+	void set(vmIP ip, vmPort port, bool is_response, bool maybe_proxy_ua, const char *ua, unsigned ua_length, bool called_side) {
+		lock();
+		if(!ua_map) {
+			ua_map = new FILE_LINE(0) map<vmIPport, sUaData>;
+		}
+		sUaData *ua_data = &(*ua_map)[vmIPport(ip, port)];
+		ua_data->set(is_response, maybe_proxy_ua, ua, ua_length);
+		if(called_side) {
+			ua_data->from_called_side = true;
+		} else {
+			ua_data->from_caller_side = true;
+		}
+		unlock();
+	}
+	string get(bool called_side) {
+		string rslt;
+		lock();
+		if(simple_data) {
+			rslt = called_side ? simple_data->ua_resp : simple_data->ua_req;
+		}
+		unlock();
+		return(rslt);
+	}
+	string get(vmIP ip, vmPort port, bool called_side, vmIP other_side_ip = 0, vmPort other_side_port = 0);
+private:
+	cUserAgents(const cUserAgents&);
+	cUserAgents& operator=(const cUserAgents&);
+	void lock() {
+		__SYNC_LOCK(this->_sync);
+	}
+	void unlock() {
+		__SYNC_UNLOCK(this->_sync);
+	}
+private:
+	sUaData *simple_data;
+	map<vmIPport, sUaData> *ua_map;
+	volatile int _sync;
+};
+
+class CallBranch : public CallStructs {
 public:
 	CallBranch(Call *call = NULL, unsigned branch_id = 0);
 	virtual ~CallBranch();
@@ -812,15 +910,6 @@ public:
 		}
 		sip_resp_hist_unlock();
 		return(exists);
-	}
-	bool check_exists_ua(vmIP ip, vmPort port, bool is_response, bool maybe_proxy_ua);
-	void set_ua(vmIP ip, vmPort port, bool is_response, bool maybe_proxy_ua, const char *ua, unsigned ua_length);
-	string get_ua(vmIP ip, vmPort port, bool prefer_resp);
-	void ua_map_lock() {
-		__SYNC_LOCK(this->_ua_map_lock);
-	}
-	void ua_map_unlock() {
-		__SYNC_UNLOCK(this->_ua_map_lock);
 	}
 	void sip_addr_cache_corrected_lock() {
 		__SYNC_LOCK(this->_sip_addr_cache_corrected_lock);
@@ -985,8 +1074,9 @@ public:
 	volatile int _proxies_lock;
 	list<vmIPport> proxies;
 	
-	volatile int _ua_map_lock;
-	map<vmIPport, sUaData> ua_map;
+	cUserAgents user_agents;
+	string a_ua_rslt;
+	string b_ua_rslt;
 
 	int whohanged;
 	char oneway;
@@ -1013,9 +1103,6 @@ public:
 	string reason_sip_text;
 	int reason_q850_cause;
 	string reason_q850_text;
-	
-	string a_ua;
-	string b_ua;
 	
 	bool seeninvite;
 	bool seeninviteok;
@@ -2766,7 +2853,7 @@ public:
 	
 	string get_a_ua(CallBranch *c_branch);
 	string get_b_ua(CallBranch *c_branch);
-	void adjustUA(CallBranch *c_branch);
+	void adjustUA_rslt(CallBranch *c_branch);
 	void adjustReason(CallBranch *c_branch);
 	
 	void createListeningBuffers();

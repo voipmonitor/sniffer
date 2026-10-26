@@ -367,9 +367,10 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		digest_realm = reg->digest_realm && REG_EQ_STR(c_branch->digest_realm.c_str(), reg->digest_realm) ?
 				EQ_REG :
 				REG_NEW_STR(c_branch->digest_realm.c_str());
-		ua = reg->ua && REG_EQ_STR(c_branch->a_ua.c_str(), reg->ua) ?
+		string a_ua = call->get_a_ua(c_branch);
+		ua = reg->ua && REG_EQ_STR(a_ua.c_str(), reg->ua) ?
 		      EQ_REG :
-		      REG_NEW_STR(c_branch->a_ua.c_str());
+		      REG_NEW_STR(a_ua.c_str());
 		spool_index = call->getSpoolIndex();
 		fname = fname_last = call->fname_register;
 		expires = call->reg.register_expires;
@@ -442,6 +443,7 @@ bool RegisterState::isEq(Call *call, Register *reg, bool *exp_state) {
 	else if(REG_EQ_STR(ua == EQ_REG ? reg->ua : ua, call->a_ua)) cout << "ok ua" << endl;
 	*/
 	CallBranch *c_branch = call->branch_main();
+	string a_ua = opt_sip_register_state_compare_ua ? call->get_a_ua(c_branch) : string();
 	bool eq = state == convRegisterState(call) &&
 		  (!opt_sip_register_state_compare_contact_num || REG_EQ_STR(contact_num == EQ_REG ? reg->contact_num : contact_num, c_branch->contact_num.c_str())) &&
 		  (!opt_sip_register_state_compare_contact_domain || REG_EQ_STR(contact_domain == EQ_REG ? reg->contact_domain : contact_domain, c_branch->contact_domain.c_str())) &&
@@ -449,7 +451,7 @@ bool RegisterState::isEq(Call *call, Register *reg, bool *exp_state) {
 		  (!opt_sip_register_state_compare_from_name || REG_EQ_STR(from_name == EQ_REG ? reg->from_name : from_name, c_branch->callername.c_str())) &&
 		  (!opt_sip_register_state_compare_from_domain || REG_EQ_STR(from_domain == EQ_REG ? reg->from_domain : from_domain, c_branch->caller_domain.c_str())) &&
 		  (!opt_sip_register_state_compare_digest_realm || REG_EQ_STR(digest_realm == EQ_REG ? reg->digest_realm : digest_realm, c_branch->digest_realm.c_str())) &&
-		  (!opt_sip_register_state_compare_ua || REG_EQ_STR(ua == EQ_REG ? reg->ua : ua, c_branch->a_ua.c_str())) &&
+		  (!opt_sip_register_state_compare_ua || REG_EQ_STR(ua == EQ_REG ? reg->ua : ua, a_ua.c_str())) &&
 		  (!opt_sip_register_state_compare_sipalg || (!opt_sipalg_detect || is_sipalg_detected == c_branch->is_sipalg_detected)) &&
 		  (!opt_sip_register_state_compare_vlan || (vlan == c_branch->vlan_first)) &&
 		  id_sensor == call->useSensorId;
@@ -537,7 +539,8 @@ Register::Register(Call *call) {
 	from_name = REG_NEW_STR(c_branch->callername.c_str());
 	from_domain = REG_NEW_STR(c_branch->caller_domain.c_str());
 	digest_realm = REG_NEW_STR(c_branch->digest_realm.c_str());
-	ua = REG_NEW_STR(c_branch->a_ua.c_str());
+	string a_ua = call->get_a_ua(c_branch);
+	ua = REG_NEW_STR(a_ua.c_str());
 	vlan = c_branch->vlan_first;
 	rrd_sum = 0;
 	rrd_count = 0;
@@ -599,9 +602,11 @@ void Register::update(Call *call, eRegisterState state) {
 	   !digest_realm && !c_branch->digest_realm.empty()) {
 		digest_realm = REG_NEW_STR(c_branch->digest_realm.c_str());
 	}
-	if(!opt_sip_register_state_compare_ua &&
-	   !ua && !c_branch->a_ua.empty()) {
-		ua = REG_NEW_STR(c_branch->a_ua.c_str());
+	if(!opt_sip_register_state_compare_ua && !ua) {
+		string a_ua = call->get_a_ua(c_branch);
+		if(!a_ua.empty()) {
+			ua = REG_NEW_STR(a_ua.c_str());
+		}
 	}
 	sipcallerip = c_branch->sipcallerip[0];
 	sipcalledip = c_branch->sipcalledip[0];
@@ -738,7 +743,7 @@ void Register::updateLastState(Call *call, RegisterStates *states) {
 			this->updateLastStateItem(c_branch->digest_realm.c_str(), this->digest_realm, &state->digest_realm);
 		}
 		if(!opt_sip_register_state_compare_ua) {
-			this->updateLastStateItem(c_branch->a_ua.c_str(), this->ua, &state->ua);
+			this->updateLastStateItem(call->get_a_ua(c_branch).c_str(), this->ua, &state->ua);
 		}
 		if(c_branch->is_sipalg_detected) {
 			state->is_sipalg_detected = true;
