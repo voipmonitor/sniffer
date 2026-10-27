@@ -450,6 +450,7 @@ extern "C" {
 char *strnstr(const char *haystack, const char *needle, size_t len);
 char *strncasestr(const char *haystack, const char *needle, size_t len);
 char *strnchr(const char *haystack, char needle, size_t len);
+char *strnchr_outside_quotes(const char *haystack, char needle, size_t len);
 char *strnrchr(const char *haystack, char needle, size_t len);
 char *strncasechr(const char *haystack, char needle, size_t len);
 size_t strCaseEqLengthR(const char *str1, const char *str2, bool *eqMinLength);
@@ -726,6 +727,7 @@ string find_and_replace(const char *source, const char *find, const char *replac
 string &find_and_replace_all(string &source, const string find, string replace);
 
 std::string &trim(std::string &s, const char *trimChars = NULL);
+void trim(const char **str, size_t *length, const char *trimChars = NULL);
 std::string trim_str(std::string s, const char *trimChars = NULL);
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems);
 std::vector<std::string> split(const std::string &s, char delim);

@@ -1287,6 +1287,24 @@ char *strnchr(const char *haystack, char needle, size_t len) {
         return NULL;
 }
 
+// a backslash inside the quotes escapes the next character
+char *strnchr_outside_quotes(const char *haystack, char needle, size_t len) {
+	if(!memchr(haystack, needle, len)) {
+		return(NULL);
+	}
+	bool in_quotes = false;
+	for(size_t i = 0; i < len; i++) {
+		if(haystack[i] == '\\' && in_quotes) {
+			++i;
+		} else if(haystack[i] == '"') {
+			in_quotes = !in_quotes;
+		} else if(haystack[i] == needle && !in_quotes) {
+			return((char*)(haystack + i));
+		}
+	}
+	return(NULL);
+}
+
 char *strnrchr(const char *haystack, char needle, size_t len) {
         int i;
 
@@ -1625,6 +1643,20 @@ std::string &trim(std::string &s, const char *trimChars) {
 		s = s.substr(0, length - trimCharsRight);
 	}
 	return(s);
+}
+
+// trim of a span of bytes (pointer + length) in place: the pointer moves forward and the length shrinks, nothing is copied or written
+void trim(const char **str, size_t *length, const char *trimChars) {
+	if(!trimChars) {
+		trimChars = "\r\n\t \x0B";
+	}
+	while(*length > 0 && strchr(trimChars, (*str)[0])) {
+		++*str;
+		--*length;
+	}
+	while(*length > 0 && strchr(trimChars, (*str)[*length - 1])) {
+		--*length;
+	}
 }
 
 std::string trim_str(std::string s, const char *trimChars) {
