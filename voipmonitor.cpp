@@ -704,6 +704,7 @@ int opt_register_max_registers = 4;
 int opt_register_max_messages = 20;
 int opt_register_ignore_res_401 = 0;
 int opt_register_ignore_res_401_nonce_has_changed = 0;
+char opt_register_fail_text[128] = "";
 bool opt_sip_register_compare_sipcallerip = false;
 bool opt_sip_register_compare_sipcalledip = false;
 bool opt_sip_register_compare_sipcallerip_encaps = false;
@@ -7629,6 +7630,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip-register-max-messages", &opt_register_max_messages));
 				addConfigItem(new FILE_LINE(42293) cConfigItem_yesno("sip-register-ignore-res401", &opt_register_ignore_res_401));
 				addConfigItem(new FILE_LINE(42294) cConfigItem_yesno("sip-register-ignore-res401-nonce-has-changed", &opt_register_ignore_res_401_nonce_has_changed));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("sip-register-fail-text", opt_register_fail_text, sizeof(opt_register_fail_text)));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcallerip", &opt_sip_register_compare_sipcallerip));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcalledip", &opt_sip_register_compare_sipcalledip));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcallerip-encaps", &opt_sip_register_compare_sipcallerip_encaps));

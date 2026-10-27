@@ -246,6 +246,7 @@ extern ManagerClientThreads ClientThreads;
 extern int opt_register_timeout;
 extern int opt_register_ignore_res_401;
 extern int opt_register_ignore_res_401_nonce_has_changed;
+extern char opt_register_fail_text[128];
 extern int opt_register_max_registers;
 extern int opt_register_max_messages;
 extern int opt_nocdr;
@@ -7231,6 +7232,16 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			}
 		}
 
+	} else if(opt_register_fail_text[0] && packetS->lastSIPresponseNum / 100 == 2 &&
+		  strcasestr(packetS->lastSIPresponse, opt_register_fail_text)) {
+		// registration failed
+		call->reg.regstate = rs_Failed;
+		save_packet(call, packetS, _t_packet_sip);
+		call->saveregister(packetS->getTimeval_pt());
+		if(logPacketSipMethodCall_enable) {
+			logPacketSipMethodCallDescr = "REGISTER 2xx response contains sip-register-fail-text";
+		}
+		goto_endsip = true;
 	} else if(packetS->sip_method == RES2XX) {
 		c_branch->seenRES2XX = true;
 		call->reg.reg401count = 0;
