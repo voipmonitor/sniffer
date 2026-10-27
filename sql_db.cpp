@@ -8257,6 +8257,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		"KEY `created_at` (`created_at`),\
 		KEY `sipcallerip` (`sipcallerip`),\
 		KEY `sipcalledip` (`sipcalledip`),\
+		KEY `digestusername` (`digestusername`, `created_at`),\
 		" + (opt_save_ip_from_encaps_ipheader ?
 		      "KEY `sipcallerip_encaps` (`sipcallerip_encaps`),\
 		       KEY `sipcalledip_encaps` (`sipcalledip_encaps`),\
@@ -8360,6 +8361,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		"KEY `created_at` (`created_at`),\
 		KEY `sipcallerip` (`sipcallerip`),\
 		KEY `sipcalledip` (`sipcalledip`),\
+		KEY `digestusername` (`digestusername`, `created_at`),\
 		" + (opt_save_ip_from_encaps_ipheader ?
 		      "KEY `sipcallerip_encaps` (`sipcallerip_encaps`),\
 		       KEY `sipcalledip_encaps` (`sipcalledip_encaps`),\
@@ -11127,6 +11129,16 @@ void SqlDb_mysql::checkColumns_register(bool enableAlter) {
 				"from_num_country_code", (opt_register_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), NULL_CHAR_PTR,
 				"to_num_country_code", (opt_register_country_code == 2 ? "smallint DEFAULT NULL" : "varchar(5) DEFAULT NULL"), NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
+	if(enableAlter && !this->existsIndex("register_state", "digestusername", 1)) {
+		this->tryAlterAndLog("register_state", "index for faster search by digest username",
+				     "ALTER TABLE register_state ADD KEY `digestusername` (`digestusername`, `created_at`);",
+				     &tableSize, NULL);
+	}
+	if(enableAlter && !this->existsIndex("register_failed", "digestusername", 1)) {
+		this->tryAlterAndLog("register_failed", "index for faster search by digest username",
+				     "ALTER TABLE register_failed ADD KEY `digestusername` (`digestusername`, `created_at`);",
+				     &tableSize, NULL);
+	}
 	if(opt_sip_register == 2) {
 		existsColumns.register_rrd_count = this->existsColumn("register", "rrd_count");
 	}
