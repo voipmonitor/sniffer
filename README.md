@@ -66,13 +66,13 @@ G.711, G.722, G.723, G.726, G.729a, OPUS, AMR, AMR-WB, iLBC, Speex, GSM, Silk, i
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         Network Traffic                              │
+│                         Network Traffic                             │
 │            (SPAN/RSPAN/ERSPAN/TAP/SBC Mirroring)                    │
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                     VoIPmonitor Sniffer (GPL)                        │
+│                     VoIPmonitor Sniffer (GPL)                       │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │
 │  │ SIP Parser  │  │ RTP Decoder │  │ Quality     │  │ Audio       │ │
 │  │             │  │             │  │ Analysis    │  │ Recording   │ │
@@ -90,7 +90,7 @@ G.711, G.722, G.723, G.726, G.729a, OPUS, AMR, AMR-WB, iLBC, Speex, GSM, Silk, i
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    VoIPmonitor WEB GUI (Commercial)                  │
+│                    VoIPmonitor WEB GUI (Commercial)                 │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │
 │  │ Dashboards  │  │ Analytics   │  │ Alerting    │  │ Billing     │ │
 │  │ & Reports   │  │ & OLAP      │  │ & Fraud     │  │ Engine      │ │
