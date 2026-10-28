@@ -64,8 +64,6 @@ typedef WOLFSSL_SESSION SSL_SESSION;
 #define min(a, b) (a < b ? a : b)
 
 #define _SYNC_LOCK(vint) while(__sync_lock_test_and_set(&vint, 1)) {};
-#define _SYNC_LOCK_USLEEP(vint, us_sleep) while(__sync_lock_test_and_set(&vint, 1)) { if(us_sleep) { usleep(us_sleep); } }
-#define _SYNC_UNLOCK(vint) __sync_lock_release(&vint);
 
 
 extern "C" {
@@ -122,7 +120,8 @@ struct sKeyQueueItem {
 };
 static sKeyQueueItem *key_queue_first;
 static sKeyQueueItem *key_queue_last;
-volatile int key_queue_sync;
+static pthread_mutex_t key_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t key_queue_cond = PTHREAD_COND_INITIALIZER;
 
 struct sPerCallerOrig {
 	void resolve(void *lib_handle);
@@ -474,26 +473,18 @@ static int init_keylog(void) {
 #if WRITE_THREAD
 static void *write_thread(void *arg) {
 	while(true) {
-		if(key_queue_first) {
-			sKeyQueueItem *kqi = NULL;
-			_SYNC_LOCK_USLEEP(key_queue_sync, 100);
-			if(key_queue_first) {
-				kqi = key_queue_first;
-				if(kqi->next) {
-					key_queue_first = kqi->next;
-				} else {
-					key_queue_first = NULL;
-					key_queue_last = NULL;
-				}
-			}
-			_SYNC_UNLOCK(key_queue_sync);
-			if(kqi) {
-				write_keylog_to_dest(kqi->key);
-				delete kqi;
-			}
-		} else {
-			usleep(1000);
+		pthread_mutex_lock(&key_queue_mutex);
+		while(!key_queue_first) {
+			pthread_cond_wait(&key_queue_cond, &key_queue_mutex);
 		}
+		sKeyQueueItem *kqi = key_queue_first;
+		key_queue_first = kqi->next;
+		if(!key_queue_first) {
+			key_queue_last = NULL;
+		}
+		pthread_mutex_unlock(&key_queue_mutex);
+		write_keylog_to_dest(kqi->key);
+		delete kqi;
 	}
 }
 
@@ -507,7 +498,7 @@ static void create_write_thread() {
 }
 
 static void write_keylog_to_queue(const char *key) {
-	_SYNC_LOCK_USLEEP(key_queue_sync, 100);
+	pthread_mutex_lock(&key_queue_mutex);
 	create_write_thread();
 	sKeyQueueItem *kqi = new sKeyQueueItem(key);
 	if(key_queue_last) {
@@ -517,7 +508,8 @@ static void write_keylog_to_queue(const char *key) {
 		key_queue_first = kqi;
 		key_queue_last = kqi;
 	}
-	_SYNC_UNLOCK(key_queue_sync);
+	pthread_cond_signal(&key_queue_cond);
+	pthread_mutex_unlock(&key_queue_mutex);
 }
 #endif
 
