@@ -1388,6 +1388,7 @@ vector<vmIPmask> ssl_client_random_net;
 string ssl_client_random_tcp_host;
 int ssl_client_random_tcp_port;
 int ssl_client_random_maxwait_ms = 0;
+int ssl_client_random_idle_timeout_s = 90;
 char ssl_master_secret_file[1024];
 bool ssl_client_random_keep = true;
 bool ssl_client_random_use = false;
@@ -7419,6 +7420,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_hosts("ssl_sessionkey_udp_ip", &ssl_client_random_ip, &ssl_client_random_net));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("ssl_sessionkey_bind", &ssl_client_random_tcp_host));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_sessionkey_bind_port", &ssl_client_random_tcp_port));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_sessionkey_bind_idle_timeout", &ssl_client_random_idle_timeout_s));
 			addConfigItem((new FILE_LINE(0) cConfigItem_integer("ssl_sessionkey_maxwait_ms", &ssl_client_random_maxwait_ms))
 				->addAlias("ssl_sessionkey_udp_maxwait_ms"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_sessionkey_keep", &ssl_client_random_keep));
