@@ -498,6 +498,26 @@ static void *write_thread(void *arg) {
 }
 
 static bool write_thread_created;
+// fork() copies write_thread_created but not the writer thread, nor a key_queue_sync it may
+// hold, so a child would queue keys forever; the keylog TCP session is the parent's too.
+static void keylog_atfork_child(void) {
+	write_thread_created = false;
+	key_queue_sync = 0;
+	key_queue_first = NULL;
+	key_queue_last = NULL;
+	#ifdef SSLKEYLOG_TCP
+	if(keylog_tcp_socket) {
+		close(keylog_tcp_socket->getHandle());
+		keylog_tcp_socket = NULL;
+	}
+	#endif
+}
+
+static pthread_once_t keylog_atfork_once = PTHREAD_ONCE_INIT;
+static void register_keylog_atfork(void) {
+	pthread_atfork(NULL, NULL, keylog_atfork_child);
+}
+
 static void create_write_thread() {
 	if(!write_thread_created) {
 		write_thread_created = true;
@@ -507,6 +527,7 @@ static void create_write_thread() {
 }
 
 static void write_keylog_to_queue(const char *key) {
+	pthread_once(&keylog_atfork_once, register_keylog_atfork);
 	_SYNC_LOCK_USLEEP(key_queue_sync, 100);
 	create_write_thread();
 	sKeyQueueItem *kqi = new sKeyQueueItem(key);
