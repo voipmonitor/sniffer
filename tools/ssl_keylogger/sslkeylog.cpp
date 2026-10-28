@@ -859,6 +859,7 @@ __attribute__((constructor)) static void setup(void) {
 cResolver resolver;
 bool opt_socket_use_poll = true;
 bool useIPv6 = true;
+int opt_server_log_suppress = 0;
 
 sCloudRouterVerbose& CR_VERBOSE() {
 	static sCloudRouterVerbose cr_verbose;
