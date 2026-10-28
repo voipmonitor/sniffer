@@ -301,6 +301,11 @@ static void keylog_tcp_socket_write(u_char *data, size_t datalen) {
 	unsigned pass = 0;
 	unsigned max_pass = 10;
 	while(pass < max_pass) {
+		// A write to a connection the sniffer has closed would succeed locally but be lost.
+		char peek;
+		if(keylog_tcp_socket && recv(keylog_tcp_socket->getHandle(), &peek, 1, MSG_PEEK | MSG_DONTWAIT) == 0) {
+			keylog_tcp_socket_close();
+		}
 		if(!keylog_tcp_socket) {
 			keylog_tcp_socket_open();
 		}
