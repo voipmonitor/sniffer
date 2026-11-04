@@ -6056,7 +6056,7 @@ void process_packet_sip_call(packet_s_process *packetS, bool batch_process) {
 			if(packetS->cseq.method != BYE ||
 			   !call->existsByeCseq(c_branch, &packetS->cseq)) {
 				c_branch->seenRES2XX_no_BYE = true;
-				if(!call->progress_time_us) {
+				if(!call->progress_time_us && packetS->cseq.method == INVITE) {
 					call->progress_time_us = packet_time_us;
 				}
 			}

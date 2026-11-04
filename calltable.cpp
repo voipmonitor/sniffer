@@ -1581,6 +1581,12 @@ Call::closeRawFiles() {
 			}
 		} else if(rtp_stream_analysis_data) {
 			rtp_i->save_mos_graph(true);
+		} else if(!rtp_i->is_video() && rtp_i->first_codec >= 0 &&
+			  !suppress_rtp_read_due_to_insufficient_hw_performance &&
+			  rtp_i->stats.received > rtp_i->last_stat_received &&
+			  (rtp_i->last_call_save_mos_graph_ms ? rtp_i->last_call_save_mos_graph_ms : TIME_US_TO_MS(rtp_i->first_packet_time_us)) + 1000 < TIME_US_TO_MS(rtp_i->last_packet_time_us)) {
+			rtp_i->save_mos_graph(true);
+			rtp_i->last_call_save_mos_graph_ms = TIME_US_TO_MS(rtp_i->last_packet_time_us);
 		}
 		#endif
 	}
@@ -2514,11 +2520,6 @@ read:
 							evProcessRtpStream(rtp_i->c_branch_created ? rtp_i->c_branch_created : c_branch, rtp_i->index_call_ip_port, rtp_i->index_call_ip_port_by_dest,
 									   packet_saddr, packet_source, packet_daddr, packet_dest, packetS->header_pt->ts.tv_sec);
 						}
-						if(find_by_dest ?
-						    rtp_i->prev_sport.isSet() && rtp_i->prev_sport != packet_source :
-						    rtp_i->prev_dport.isSet() && rtp_i->prev_dport != packet_dest) {
-							rtp_i->change_src_port = true;
-						}
 						if(rtp_i->iscaller) {
 							if(!lastactivecallerrtp || 
 							   (lastactivecallerrtp != rtp_i && lastactivecallerrtp->last_packet_time_us + 500000 < rtp_i->last_packet_time_us)) {
@@ -2545,8 +2546,6 @@ read:
 							rtp_i->rtp_stream_analysis_output();
 						}
 						packetS->set_datalen_(datalen);
-						rtp_i->prev_sport = packet_source;
-						rtp_i->prev_dport = packet_dest;
 						if(rtp_i->iscaller) {
 							lastcallerrtp = rtp_i;
 						} else {
@@ -2832,8 +2831,20 @@ read:
 			rtp_new->rtp_stream_analysis_output();
 		}
 		packetS->set_datalen_(datalen);
-		rtp_new->prev_sport = packetS->source_();
-		rtp_new->prev_dport = packetS->dest_();
+		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
+			if(rtp_i->ssrc2 == curSSRC &&
+			   rtp_i->saddr == packetS->saddr_() && rtp_i->daddr == packetS->daddr_() &&
+			   (find_by_dest ?
+			     rtp_i->dport == packetS->dest_() && rtp_i->sport != packetS->source_() :
+			     rtp_i->sport == packetS->source_() && rtp_i->dport != packetS->dest_())) {
+				if(find_by_dest) {
+					rtp_new->change_src_port = true;
+				} else {
+					rtp_new->change_dst_port = true;
+				}
+				break;
+			}
+		}
 		if(sverb.check_is_caller_called) printf("new rtp[%p] ssrc[%x] seq[%u] saddr[%s] dport[%u] iscaller[%u]\n", rtp_new, curSSRC, rtp_new->seq, packetS->saddr_().getString().c_str(), packetS->dest_().getPort(), rtp_new->iscaller);
 		rtp_new->ssrc = rtp_new->ssrc2 = curSSRC;
 		rtp_new->payload2 = curpayload;
@@ -5438,13 +5449,18 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		break;
 	case _chartType_response_time_100:
 		extern bool opt_response_time_from_first_invite;
-		if(first_response_100_time_us) {
-			v = MIN(65535, 
-				opt_response_time_from_first_invite ?
-				 round((first_response_100_time_us - first_invite_time_us) / 1000.0) :
-				 round(c_branch->get_min_response_100_time_us() / 1000.0));
+		{
+		int64_t response_time_100_us = -1;
+		if(first_invite_time_us && first_response_100_time_us) {
+			response_time_100_us = opt_response_time_from_first_invite ?
+						(int64_t)(first_response_100_time_us - first_invite_time_us) :
+						c_branch->get_min_response_100_time_us();
+		}
+		if(response_time_100_us >= 0) {
+			v = MIN(65535, round(response_time_100_us / 1000.0));
 		} else {
 			setNull = true;
+		}
 		}
 		break;
 	case _chartType_mos:
@@ -5748,8 +5764,32 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 			}
 			break;
 		case _chartType_rtcp_avgjitter:
-		case _chartType_rtcp_maxjitter:
 		case _chartType_rtcp_avgfr:
+			{
+			setNull = true;
+			int v_mult10[2] = { -1, -1 };
+			for(unsigned i = 0; i < 2; i++) {
+				if(rtpab[i] && rtpab[i]->rtcp.counter > 0) {
+					if(type == _chartType_rtcp_avgjitter) {
+						v_mult10[i] = (int)round(rtpab[i]->rtcp.avgjitter / get_ticks_bycodec(rtpab[i]->first_codec) * 10);
+					} else {
+						v_mult10[i] = (int)round(rtpab[i]->rtcp.avgfr * 10);
+					}
+				}
+			}
+			if(v_mult10[0] >= 0 && v_mult10[1] >= 0) {
+				setNull = false;
+				v = round((v_mult10[0] + v_mult10[1]) / 2.);
+			} else if(v_mult10[0] >= 0 || v_mult10[1] >= 0) {
+				setNull = false;
+				v = v_mult10[0] >= 0 ? v_mult10[0] : v_mult10[1];
+			}
+			if(!setNull) {
+				v /= type == _chartType_rtcp_avgjitter ? 10 : 10 * 2.56;
+			}
+			}
+			break;
+		case _chartType_rtcp_maxjitter:
 		case _chartType_rtcp_maxfr:
 		case _chartType_rtcp_maxrtd:
 			setNull = true;
@@ -5757,14 +5797,8 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 				if(rtpab[i]) {
 					double _v = 0; bool _null = false;
 					switch(type) {
-					case _chartType_rtcp_avgjitter:
-						_v = rtpab[i]->jitter_rtcp_avg(&_null);
-						break;
 					case _chartType_rtcp_maxjitter:
 						_v = rtpab[i]->jitter_rtcp_max(&_null);
-						break;
-					case _chartType_rtcp_avgfr:
-						_v = rtpab[i]->fr_rtcp_avg(&_null);
 						break;
 					case _chartType_rtcp_maxfr:
 						_v = rtpab[i]->fr_rtcp_max(&_null);
@@ -5813,27 +5847,20 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		case _chartType_silence_called:
 			{
 			setNull = true;
-			unsigned begin = type == _chartType_silence ? 1 :
-					 type == _chartType_silence_caller ? 1 :
-					 type == _chartType_silence_called ? 2 : 0;
-			unsigned end = type == _chartType_silence ? 2 :
-				       type == _chartType_silence_caller ? 1 :
-				       type == _chartType_silence_called ? 2 : 0;
-			for(unsigned i = begin; i <= end; i++) {
-				double _v = 0;
-				if(i == 1 && caller_silence + caller_noise > 0) {
-					_v = LIMIT_TINYINT_UNSIGNED(caller_silence * 100 / (caller_silence + caller_noise));
-					setNull = false;
-					if(_v > v) {
-						v = _v;
-					}
+			bool use_caller = type == _chartType_silence || type == _chartType_silence_caller;
+			bool use_called = type == _chartType_silence || type == _chartType_silence_called;
+			if(use_caller && caller_silence + caller_noise > 0) {
+				double _v = LIMIT_TINYINT_UNSIGNED(caller_silence * 100 / (caller_silence + caller_noise));
+				setNull = false;
+				if(_v > v) {
+					v = _v;
 				}
-				if(i == 2 && called_silence + called_noise > 0) {
-					_v = LIMIT_TINYINT_UNSIGNED(called_silence * 100 / (called_silence + called_noise));
-					setNull = false;
-					if(_v > v) {
-						v = _v;
-					}
+			}
+			if(use_called && called_silence + called_noise > 0) {
+				double _v = LIMIT_TINYINT_UNSIGNED(called_silence * 100 / (called_silence + called_noise));
+				setNull = false;
+				if(_v > v) {
+					v = _v;
 				}
 			}
 			}
@@ -5843,27 +5870,20 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		case _chartType_silence_end_called:
 			{
 			setNull = true;
-			unsigned begin = type == _chartType_silence ? 1 :
-					 type == _chartType_silence_caller ? 1 :
-					 type == _chartType_silence_called ? 2 : 0;
-			unsigned end = type == _chartType_silence ? 2 :
-				       type == _chartType_silence_caller ? 1 :
-				       type == _chartType_silence_called ? 2 : 0;
-			for(unsigned i = begin; i <= end; i++) {
-				double _v = 0;
-				if(i == 1 && caller_lastsilence > 0) {
-					_v = LIMIT_SMALLINT_UNSIGNED(caller_lastsilence / 1000);
-					setNull = false;
-					if(_v > v) {
-						v = _v;
-					}
+			bool use_caller = type == _chartType_silence_end || type == _chartType_silence_end_caller;
+			bool use_called = type == _chartType_silence_end || type == _chartType_silence_end_called;
+			if(use_caller && caller_silence + caller_noise > 0) {
+				double _v = LIMIT_SMALLINT_UNSIGNED(caller_lastsilence / 1000);
+				setNull = false;
+				if(_v > v) {
+					v = _v;
 				}
-				if(i == 2 && called_lastsilence > 0) {
-					_v = LIMIT_SMALLINT_UNSIGNED(called_lastsilence / 1000);
-					setNull = false;
-					if(_v > v) {
-						v = _v;
-					}
+			}
+			if(use_called && called_silence + called_noise > 0) {
+				double _v = LIMIT_SMALLINT_UNSIGNED(called_lastsilence / 1000);
+				setNull = false;
+				if(_v > v) {
+					v = _v;
 				}
 			}
 			}
@@ -5873,27 +5893,20 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		case _chartType_clipping_called:
 			{
 			setNull = true;
-			unsigned begin = type == _chartType_silence ? 1 :
-					 type == _chartType_silence_caller ? 1 :
-					 type == _chartType_silence_called ? 2 : 0;
-			unsigned end = type == _chartType_silence ? 2 :
-				       type == _chartType_silence_caller ? 1 :
-				       type == _chartType_silence_called ? 2 : 0;
-			for(unsigned i = begin; i <= end; i++) {
-				double _v = 0;
-				if(i == 1 && caller_clipping_8k > 0) {
-					_v = LIMIT_SMALLINT_UNSIGNED(caller_clipping_8k / 3) * 3;
-					setNull = false;
-					if(_v > v) {
-						v = _v;
-					}
+			bool use_caller = type == _chartType_clipping || type == _chartType_clipping_caller;
+			bool use_called = type == _chartType_clipping || type == _chartType_clipping_called;
+			if(use_caller && caller_clipping_8k > 0) {
+				double _v = LIMIT_SMALLINT_UNSIGNED(caller_clipping_8k / 3) * 3;
+				setNull = false;
+				if(_v > v) {
+					v = _v;
 				}
-				if(i == 2 && called_clipping_8k > 0) {
-					_v = LIMIT_SMALLINT_UNSIGNED(called_clipping_8k / 3) * 3;
-					setNull = false;
-					if(_v > v) {
-						v = _v;
-					}
+			}
+			if(use_called && called_clipping_8k > 0) {
+				double _v = LIMIT_SMALLINT_UNSIGNED(called_clipping_8k / 3) * 3;
+				setNull = false;
+				if(_v > v) {
+					v = _v;
 				}
 			}
 			}
@@ -7475,16 +7488,16 @@ void Call::prepareDbRow_cdr_rtp_ext_stats(SqlDb_row &rtps, RTP *rtp_i) {
 	}
 	if(existsColumns.cdr_rtp_ext_mos) {
 		bool mos_f1_ok = rtp_i->mosf1_avg > 0;
-		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_f1_ok ? (int)rtp_i->mosf1_avg : 0), "mos_f1_mult10", !mos_f1_ok);
-		bool mos_f1_min_ok = rtp_i->mosf1_min > 0 && rtp_i->mosf1_min != (uint8_t)-1;
+		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_f1_ok ? (int)round(rtp_i->mosf1_avg) : 0), "mos_f1_mult10", !mos_f1_ok);
+		bool mos_f1_min_ok = rtp_i->mosf1_avg > 0 && rtp_i->mosf1_min > 0 && rtp_i->mosf1_min != (uint8_t)-1;
 		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_f1_min_ok ? rtp_i->mosf1_min : 0), "mos_f1_min_mult10", !mos_f1_min_ok);
 		bool mos_f2_ok = rtp_i->mosf2_avg > 0;
 		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_f2_ok ? (int)round(rtp_i->mosf2_avg) : 0), "mos_f2_mult10", !mos_f2_ok);
-		bool mos_f2_min_ok = rtp_i->mosf2_min > 0 && rtp_i->mosf2_min != (uint8_t)-1;
+		bool mos_f2_min_ok = rtp_i->mosf2_avg > 0 && rtp_i->mosf2_min > 0 && rtp_i->mosf2_min != (uint8_t)-1;
 		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_f2_min_ok ? rtp_i->mosf2_min : 0), "mos_f2_min_mult10", !mos_f2_min_ok);
 		bool mos_adapt_ok = rtp_i->mosAD_avg > 0;
 		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_adapt_ok ? (int)round(rtp_i->mosAD_avg) : 0), "mos_adapt_mult10", !mos_adapt_ok);
-		bool mos_adapt_min_ok = rtp_i->mosAD_min > 0 && rtp_i->mosAD_min != (uint8_t)-1;
+		bool mos_adapt_min_ok = rtp_i->mosAD_avg > 0 && rtp_i->mosAD_min > 0 && rtp_i->mosAD_min != (uint8_t)-1;
 		rtps.add(LIMIT_TINYINT_UNSIGNED(mos_adapt_min_ok ? rtp_i->mosAD_min : 0), "mos_adapt_min_mult10", !mos_adapt_min_ok);
 		bool mos_silence_valid = rtp_i->mosSilence_min != (uint8_t)-1;
 		int mos_silence_mult10 = mos_silence_valid ? (int)round(rtp_i->mosSilence_avg) : 0;
@@ -8122,22 +8135,25 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(this->first_invite_time_us) {
 		extern bool opt_response_time_from_first_invite;
 		if(existsColumns.cdr_response_time_100 && this->first_response_100_time_us) {
-			double response_time_100 = MIN(65535,
-						       opt_response_time_from_first_invite ?
-							round((this->first_response_100_time_us - this->first_invite_time_us) / 1000.0) :
-							round(c_branch->get_min_response_100_time_us() / 1000.0));
-			cdr.add(response_time_100, "response_time_100");
-			if(_saved_data) {
-				_saved_data->response_time_100 = response_time_100;
-				_saved_data->response_time_100_null = false;
+			int64_t response_time_100_us = opt_response_time_from_first_invite ?
+							(int64_t)(this->first_response_100_time_us - this->first_invite_time_us) :
+							c_branch->get_min_response_100_time_us();
+			if(response_time_100_us >= 0) {
+				double response_time_100 = MIN(65535, round(response_time_100_us / 1000.0));
+				cdr.add(response_time_100, "response_time_100");
+				if(_saved_data) {
+					_saved_data->response_time_100 = response_time_100;
+					_saved_data->response_time_100_null = false;
+				}
 			}
 		}
 		if(existsColumns.cdr_response_time_xxx && this->first_response_xxx_time_us) {
-			cdr.add(MIN(65535,
-				    opt_response_time_from_first_invite ?
-				     round((this->first_response_xxx_time_us - this->first_invite_time_us) / 1000.0) :
-				     round(c_branch->get_min_response_xxx_time_us() / 1000.0)),
-				    "response_time_xxx");
+			int64_t response_time_xxx_us = opt_response_time_from_first_invite ?
+							(int64_t)(this->first_response_xxx_time_us - this->first_invite_time_us) :
+							c_branch->get_min_response_xxx_time_us();
+			if(response_time_xxx_us >= 0) {
+				cdr.add(MIN(65535, round(response_time_xxx_us / 1000.0)), "response_time_xxx");
+			}
 		}
 	}
 
@@ -8295,12 +8311,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			if(opt_silencedetect && existsColumns.cdr_silencedetect) {
 				if(caller_silence > 0 or caller_noise > 0) {
 					cdr.add(LIMIT_TINYINT_UNSIGNED(caller_silence * 100 / (caller_silence + caller_noise)), "caller_silence");
+					cdr.add(LIMIT_SMALLINT_UNSIGNED(caller_lastsilence / 1000), "caller_silence_end");
 				}
 				if(called_silence > 0 or called_noise > 0) {
 					cdr.add(LIMIT_TINYINT_UNSIGNED(called_silence * 100 / (called_silence + called_noise)), "called_silence");
+					cdr.add(LIMIT_SMALLINT_UNSIGNED(called_lastsilence / 1000), "called_silence_end");
 				}
-				cdr.add(LIMIT_SMALLINT_UNSIGNED(caller_lastsilence / 1000), "caller_silence_end");
-				cdr.add(LIMIT_SMALLINT_UNSIGNED(called_lastsilence / 1000), "called_silence_end");
 			}
 			if(opt_silence_detect_after_answer && existsColumns.cdr_silence_afteranswer && connect_time_us) {
 				u_int64_t dead_air_us = 0;
@@ -8435,10 +8451,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				//burstr_calculate(rtpab[i]->channel_fix1, rtpab[i]->stats.received, &burstr, &lossr, 0);
 				//int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
 				if(rtpab[i]->mosf1_avg > 0) {
-					int mos_f1_mult10 = (int)rtpab[i]->mosf1_avg;
+					int mos_f1_mult10 = (int)round(rtpab[i]->mosf1_avg);
 					cdr.add(LIMIT_TINYINT_UNSIGNED(mos_f1_mult10), c+"_mos_f1_mult10");
 				}
-				if(existsColumns.cdr_mos_min && rtpab[i]->mosf1_min > 0 && rtpab[i]->mosf1_min != (uint8_t)-1) {
+				if(existsColumns.cdr_mos_min && rtpab[i]->mosf1_avg > 0 && rtpab[i]->mosf1_min > 0 && rtpab[i]->mosf1_min != (uint8_t)-1) {
 					cdr.add(LIMIT_TINYINT_UNSIGNED(rtpab[i]->mosf1_min), c+"_mos_f1_min_mult10");
 				}
 
@@ -8452,7 +8468,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 						_saved_data->mos_f2_ab[i] = LIMIT_TINYINT_UNSIGNED(mos_f2_mult10);
 					}
 				}
-				if(existsColumns.cdr_mos_min && rtpab[i]->mosf2_min > 0 && rtpab[i]->mosf2_min != (uint8_t)-1) {
+				if(existsColumns.cdr_mos_min && rtpab[i]->mosf2_avg > 0 && rtpab[i]->mosf2_min > 0 && rtpab[i]->mosf2_min != (uint8_t)-1) {
 					cdr.add(LIMIT_TINYINT_UNSIGNED(rtpab[i]->mosf2_min), c+"_mos_f2_min_mult10");
 				}
 
@@ -8463,7 +8479,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					int mos_adapt_mult10 = (int)round(rtpab[i]->mosAD_avg);
 					cdr.add(LIMIT_TINYINT_UNSIGNED(mos_adapt_mult10), c+"_mos_adapt_mult10");
 				}
-				if(existsColumns.cdr_mos_min && rtpab[i]->mosAD_min > 0 && rtpab[i]->mosAD_min != (uint8_t)-1) {
+				if(existsColumns.cdr_mos_min && rtpab[i]->mosAD_avg > 0 && rtpab[i]->mosAD_min > 0 && rtpab[i]->mosAD_min != (uint8_t)-1) {
 					cdr.add(LIMIT_TINYINT_UNSIGNED(rtpab[i]->mosAD_min), c+"_mos_adapt_min_mult10");
 				}
 
@@ -8602,13 +8618,15 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					"delay_avg_mult100");
 			}
 			if(rtcp_avgfr_mult10[0] >= 0 || rtcp_avgfr_mult10[1] >= 0) {
-				cdr.add(LIMIT_SMALLINT_UNSIGNED((rtcp_avgfr_mult10[0] >= 0 ? rtcp_avgfr_mult10[0] : 0) + 
-								(rtcp_avgfr_mult10[1] >= 0 ? rtcp_avgfr_mult10[1] : 0)),
+				cdr.add(LIMIT_SMALLINT_UNSIGNED(rtcp_avgfr_mult10[0] >= 0 && rtcp_avgfr_mult10[1] >= 0 ?
+								(int)round((rtcp_avgfr_mult10[0] + rtcp_avgfr_mult10[1]) / 2.) :
+								(rtcp_avgfr_mult10[0] >= 0 ? rtcp_avgfr_mult10[0] : rtcp_avgfr_mult10[1])),
 					"rtcp_avgfr_mult10");
 			}
 			if(rtcp_avgjitter_mult10[0] >= 0 || rtcp_avgjitter_mult10[1] >= 0) {
-				cdr.add(LIMIT_SMALLINT_UNSIGNED((rtcp_avgjitter_mult10[0] >= 0 ? rtcp_avgjitter_mult10[0] : 0) + 
-								(rtcp_avgjitter_mult10[1] >= 0 ? rtcp_avgjitter_mult10[1] : 0)),
+				cdr.add(LIMIT_SMALLINT_UNSIGNED(rtcp_avgjitter_mult10[0] >= 0 && rtcp_avgjitter_mult10[1] >= 0 ?
+								(int)round((rtcp_avgjitter_mult10[0] + rtcp_avgjitter_mult10[1]) / 2.) :
+								(rtcp_avgjitter_mult10[0] >= 0 ? rtcp_avgjitter_mult10[0] : rtcp_avgjitter_mult10[1])),
 					"rtcp_avgjitter_mult10");
 			}
 		}
@@ -8622,6 +8640,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
 			if(rtp_i->change_src_port) {
 				cdr_flags |= rtp_i->iscaller ? CDR_CHANGE_SRC_PORT_CALLER : CDR_CHANGE_SRC_PORT_CALLED;
+			}
+			if(rtp_i->change_dst_port) {
+				cdr_flags |= rtp_i->iscaller ? CDR_CHANGE_SRC_PORT_CALLED : CDR_CHANGE_SRC_PORT_CALLER;
 			}
 		}
 		#endif

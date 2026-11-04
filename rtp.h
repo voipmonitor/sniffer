@@ -355,9 +355,8 @@ public:
 	vmIP daddr;	//!< last source IP adress 
 	vmPort sport;
 	vmPort dport;
-	vmPort prev_sport;
-	vmPort prev_dport;
 	bool change_src_port;
+	bool change_dst_port;
 	bool find_by_dest;
 	bool ok_other_ip_side_by_sip;
 	u_int16_t sdp_ptime;

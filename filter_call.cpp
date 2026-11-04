@@ -2860,7 +2860,11 @@ double cCallFilter::getField_float_tc(cDbTablesContent *tc, unsigned registerFie
 		double connect_duration = getField_float_tc(tc, cf_connect_duration, &connect_duration_null);
 		bool progress_time_null;
 		double progress_time = getField_float_tc(tc, cf_progress_time, &progress_time_null);
-		rslt = getField_float_tc(tc, cf_duration, NULL) - (connect_duration_null ? 0 : connect_duration) - (progress_time_null ? 0 : progress_time);
+		if(progress_time_null && connect_duration_null && getField_int_tc(tc, cf_lastSIPresponseNum) >= 300) {
+			_null = true;
+		} else {
+			rslt = max(0., getField_float_tc(tc, cf_duration, NULL) - (connect_duration_null ? 0 : connect_duration) - (progress_time_null ? 0 : progress_time));
+		}
 		}
 		break;
 	case cf_post_bye_delay:
@@ -3012,7 +3016,11 @@ double cCallFilter::getField_float(void *rec, unsigned registerFieldIndex, bool 
 		double connect_duration = getField_float(rec, cf_connect_duration, &connect_duration_null);
 		bool progress_time_null;
 		double progress_time = getField_float(rec, cf_progress_time, &progress_time_null);
-		rslt = getField_float(rec, cf_duration, NULL) - (connect_duration_null ? 0 : connect_duration) - (progress_time_null ? 0 : progress_time);
+		if(progress_time_null && connect_duration_null && getField_int(rec, cf_lastSIPresponseNum) >= 300) {
+			_null = true;
+		} else {
+			rslt = max(0., getField_float(rec, cf_duration, NULL) - (connect_duration_null ? 0 : connect_duration) - (progress_time_null ? 0 : progress_time));
+		}
 		}
 		break;
 	case cf_post_bye_delay:
@@ -3045,9 +3053,14 @@ double cCallFilter::getField_float(void *rec, unsigned registerFieldIndex, bool 
 			}
 		} else if(call->first_invite_time_us && call->first_response_100_time_us) {
 			extern bool opt_response_time_from_first_invite;
-			rslt = min(65535., opt_response_time_from_first_invite ?
-					    round((call->first_response_100_time_us - call->first_invite_time_us) / 1000.) :
-					    round(call->branch_main()->get_min_response_100_time_us() / 1000.));
+			int64_t response_time_100_us = opt_response_time_from_first_invite ?
+							(int64_t)(call->first_response_100_time_us - call->first_invite_time_us) :
+							call->branch_main()->get_min_response_100_time_us();
+			if(response_time_100_us >= 0) {
+				rslt = min(65535., round(response_time_100_us / 1000.));
+			} else {
+				_null = true;
+			}
 		} else {
 			_null = true;
 		}

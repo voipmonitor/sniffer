@@ -512,11 +512,11 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_br
 		
 		c_branch->rtcp_rtd.addReportBlock(&senderinfo, &reportblock);
 
+		int32_t loss = ntoh24(reportblock.packets_lost);
+		loss = loss & 0x800000 ? 0xff000000 | loss : loss;
 		if(!prepare_rtcp_data_params) {
 			int rtp_find_type;
 			RTP *rtp = find_rtp(c_branch->call, reportblock.ssrc, senderinfo.sender_ssrc, ip_src, ip_dst, &rtp_find_type);
-			int32_t loss = ntoh24(reportblock.packets_lost);
-			loss = loss & 0x800000 ? 0xff000000 | loss : loss;
 			if(rtp) {
 				#if not EXPERIMENTAL_LITE_RTP_MOD
 				rtp->rtcp.counter++;
@@ -585,7 +585,10 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_br
 				     << (srtcp ? "1" : "") << ","
 					 << ip_src.getString() << ","
 					 << ip_dst.getString() << ","
-					 << "Sender Report"
+					 << "Sender Report" << ","
+					 << loss << ","
+					 << reportblock.ext_seqno_recvd << ","
+					 << senderinfo.sender_ssrc
 				     << endl;
 			}
 		}
@@ -646,12 +649,12 @@ char *dump_rtcp_rr(char *data, int datalen, int count, CallBranch *c_branch, str
 		reportblock.lsr = ntohl(reportblock.lsr);
 		reportblock.delay_since_lsr = ntohl(reportblock.delay_since_lsr);
 		
+		int32_t loss = ntoh24(reportblock.packets_lost);
+		loss = loss & 0x800000 ? 0xff000000 | loss : loss;
 		if(!prepare_rtcp_data_params) {
 
 			int rtp_find_type;
 			RTP *rtp = find_rtp(c_branch->call, reportblock.ssrc, 0, ip_src, ip_dst, &rtp_find_type);
-			int32_t loss = ntoh24(reportblock.packets_lost);
-			loss = loss & 0x800000 ? 0xff000000 | loss : loss;
 			if(rtp) {
 				#if not EXPERIMENTAL_LITE_RTP_MOD
 				rtp->rtcp.counter++;
@@ -712,7 +715,10 @@ char *dump_rtcp_rr(char *data, int datalen, int count, CallBranch *c_branch, str
 				     << (srtcp ? "1" : "") << ","
 					 << ip_src.getString() << ","
 					 << ip_dst.getString() << ","
-					 << "Receiver Report"
+					 << "Receiver Report" << ","
+					 << loss << ","
+					 << reportblock.ext_seqno_recvd << ","
+					 << ssrc
 				     << endl;
 			}
 		}

@@ -66,6 +66,7 @@
 
 #include "dsp.h"
 #include "voipmonitor_define.h"
+#include "codecs.h"
 
 #define ARRAY_LEN(a) (size_t) (sizeof(a) / sizeof(0[a]))
 
@@ -974,6 +975,7 @@ static int __dsp_silence_noise(struct dsp *dsp, short *s, int len, int *totalsil
 	int accum;
 	int x;
 	int res = 0;
+	int zero_threshold = dsp->codec == PAYLOAD_PCMA ? 8 : 0;
 
 	if (!len) {
 		return 0;
@@ -983,7 +985,7 @@ static int __dsp_silence_noise(struct dsp *dsp, short *s, int len, int *totalsil
 
 	accum = 0;
 	for (x = 0; x < len; x++) {
-		if(s[x] <= 1) {
+		if(abs(s[x]) <= zero_threshold) {
 			if(dsp->last_zero == true) {
 				dsp->counter++;
 			}

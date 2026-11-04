@@ -262,9 +262,8 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	daddr.clear();
 	sport.clear();
 	dport.clear();
-	prev_sport.clear();
-	prev_dport.clear();
 	change_src_port = false;
+	change_dst_port = false;
 	find_by_dest = false;
 	ok_other_ip_side_by_sip = false;
 	ssrc = 0;
@@ -283,7 +282,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	mosf1_min = 45;
 	mosf2_min = 45;
 	mosAD_min = 45;
-	mosSilence_min = 45;
+	mosSilence_min = (uint8_t)-1;
 	mosf1_avg = 0;
 	mosf2_avg = 0;
 	mosAD_avg = 0;
@@ -640,11 +639,12 @@ RTP::save_mos_graph(bool delimiter) {
 		// reset 10 second MOS stats
 		memcpy(DSP->last_interval_loss_hist, DSP->loss_hist, sizeof(unsigned short int) * 32);
 		DSP->received = 0;
+		bool mosSilence_first = mosSilence_min == (uint8_t)-1;
 		if(mosSilence_min > last_interval_mosSilence) {
 			mosSilence_min = last_interval_mosSilence;
 			//printf("[%p] min[%u] %p DSP[%p]\n", this, mosSilence_min, &mosSilence_min, DSP);
 		}
-		if(mos_time_ms && new_mos_time_ms) {
+		if(mos_time_ms && new_mos_time_ms && !mosSilence_first) {
 			mosSilence_avg = ((mosSilence_avg * mos_time_ms) + (last_interval_mosSilence * diff_mos_time_ms)) / new_mos_time_ms;
 		} else {
 			mosSilence_avg = last_interval_mosSilence;
@@ -662,12 +662,17 @@ RTP::save_mos_graph(bool delimiter) {
 			     << " last_mos: " << (int)last_interval_mosSilence << " avg_mos: " << mosSilence_avg
 			     << endl;
 		}
-	} else {
+	} else if(opt_silencedetect and mosSilence_min != (uint8_t)-1) {
 		last_interval_mosSilence = 45;
 		mosSilence_min = 45;
 		mosSilence_avg = 45;
 		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
 			this->graph.write((char*)&last_interval_mosSilence, 1);
+		}
+	} else {
+		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+			char zero = 0;
+			this->graph.write(&zero, 1);
 		}
 	}
 
@@ -2510,6 +2515,7 @@ bool RTP::read(CallBranch *c_branch,
 			int totalnoise = 0;
 			int res_call_progress = 0;
 			u_int16_t energylevel = 0;
+			DSP->codec = codec;
 			res = dsp_process(DSP, sdata, payload_len, &event_digit, &event_len, &silence0, &totalsilence, &totalnoise, &res_call_progress, &energylevel);
 			if(do_silencedetect) {
 				if(silence0) {
@@ -2740,25 +2746,28 @@ RTP::update_stats() {
 
 
 		// store mark bit in graph file
-		if((getMarker() or ((codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB  or codec == PAYLOAD_EVS) and (payload_len <= 7)))
-		    and owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+		if(getMarker() or ((codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB  or codec == PAYLOAD_EVS) and (payload_len <= 7))) {
 
-			uint32_t diff = (uint32_t)tsdiff2;
-			this->graph.write((char*)&graph_mark, 4);
-			this->graph.write((char*)&diff, 4);
-			if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms transit[%Lf] avgdelay[%f] mark\n", this, getSSRC(), seq, diff, transit, s->avgdelay);
-			owner->save_rtp_graph = true;
+			if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+				uint32_t diff = (uint32_t)tsdiff2;
+				this->graph.write((char*)&graph_mark, 4);
+				this->graph.write((char*)&diff, 4);
+				if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms transit[%Lf] avgdelay[%f] mark\n", this, getSSRC(), seq, diff, transit, s->avgdelay);
+				owner->save_rtp_graph = true;
+			}
 
 			//s->fdelay = 0;
 			//s->fdelay -= transit;
 			s->fdelay = s->avgdelay;
 			adelay = 0;
-		} else if(resetgraph and owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
-			uint32_t diff = (uint32_t)tsdiff2;
-			this->graph.write((char*)&graph_silence, 4);
-			this->graph.write((char*)&diff, 4);
-			if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms avgdelay[%f]\n", this, getSSRC(), seq, diff, s->avgdelay);
-			owner->save_rtp_graph = true;
+		} else if(resetgraph) {
+			if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+				uint32_t diff = (uint32_t)tsdiff2;
+				this->graph.write((char*)&graph_silence, 4);
+				this->graph.write((char*)&diff, 4);
+				if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms avgdelay[%f]\n", this, getSSRC(), seq, diff, s->avgdelay);
+				owner->save_rtp_graph = true;
+			}
 
 			//s->fdelay = 0;
 			s->fdelay = s->avgdelay;
@@ -3121,7 +3130,7 @@ void sStreamAnalysisData::clear() {
 int RTP::mos_min_mult10_from_avg(bool prefer_f2) {
 	int mos_min_mult10 = -1;
 	if(this->mosf1_avg > 0 && this->mosf1_avg != (uint8_t)-1) {
-		mos_min_mult10 = (int)this->mosf1_avg;
+		mos_min_mult10 = (int)round(this->mosf1_avg);
 	}
 	if(this->mosf2_avg > 0 && this->mosf2_avg != (uint8_t)-1) {
 		int mos_f2_mult10 = (int)round(this->mosf2_avg);

@@ -331,6 +331,7 @@ struct dsp {
 	unsigned short int loss_hist[32];
 	unsigned short int last_interval_loss_hist[32];
 	unsigned int received;
+	int codec;
 };
 
 enum threshold {
