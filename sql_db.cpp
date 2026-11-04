@@ -2709,7 +2709,7 @@ bool SqlDb_mysql::createRoutine(string routine, string routineName, string routi
 			  this->routineBodyCanonical(routine) != this->routineBodyCanonical(row["routine_definition"])) {
 			diff = true;
 		}
-		if(!missing && !diff) {
+		if(!missing && !diff && this->getDbVersion() >= 50500) {
 			vector<string> paramsCharsetDefinition;
 			vector<string> paramsCharsetDb;
 			if(this->routineParamsCanonicalFromDefinition(routineParamsAndReturn, &paramsCharsetDefinition) !=

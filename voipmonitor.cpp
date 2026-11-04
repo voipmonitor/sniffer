@@ -2244,6 +2244,12 @@ int SqlInitSchema(string *rsltConnectErrorString = NULL) {
 				cLogSensor::log(cLogSensor::critical, "The save-energylevels option is supported for mysql since version 5.6.1. Please update mysql if you require this option enabled.");
 				opt_save_energylevels = false;
 			}
+			if(opt_mysql_latin1_utf_bytes &&
+			   sqlDb->getDbVersion() > 0 && sqlDb->getDbVersion() < 50503) {
+				cLogSensor::log(cLogSensor::warning, "Your database version does not support the utf8mb4 character set (supported since version 5.5.3) - the mysql_latin1_utf_bytes option has been disabled.");
+				opt_mysql_latin1_utf_bytes = false;
+				opt_mysql_codebook_utf_in_set_id_mode = false;
+			}
 			if(connectOk > 0) {
 				if(isSqlDriver("mysql")) {
 					sql_disable_next_attempt_if_error = 1;
