@@ -68,6 +68,7 @@ struct sSnifferServerOptions {
 	}
 	string host;
 	unsigned port;
+	string password_2;
 	unsigned mysql_queue_limit;
 	unsigned mysql_redirect_queue_limit;
 	unsigned mysql_concat_limit;

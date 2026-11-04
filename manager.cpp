@@ -5902,6 +5902,7 @@ int Mgmt_get_sensor_information(Mgmt_params *params) {
 		"odbcpass",
 		"manager_sshpassword",
 		"server_password",
+		"server_password_2",
 		"cloud_token"
 	};
 	list<string> hidePasswordForOptions;

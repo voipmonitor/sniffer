@@ -493,7 +493,8 @@ sSnifferServerGuiTask cSnifferServerConnection::getTask() {
 }
 
 bool cSnifferServerConnection::checkPassword(string password, string *rsltStr) {
-	if(password == snifferServerClientOptions.password) {
+	if(password == snifferServerClientOptions.password ||
+	   (!snifferServerOptions.password_2.empty() && password == snifferServerOptions.password_2)) {
 		*rsltStr = "";
 		return(true);
 	} else {
