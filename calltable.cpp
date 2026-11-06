@@ -7943,6 +7943,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(useSensorId > -1) {
 		cdr.add(useSensorId, "id_sensor");
 	}
+	if(is_server() && existsColumns.cdr_next_id_server && opt_id_sensor > -1 && opt_id_sensor != useSensorId) {
+		cdr_next.add(opt_id_sensor, "id_server");
+	}
 
 	string num_caller = c_branch->caller;
 	string num_caller_reverse = reverseString(num_caller.c_str());

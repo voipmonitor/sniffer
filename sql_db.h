@@ -1507,6 +1507,7 @@ struct sExistsColumns {
 	bool cdr_next_leg_flag;
 	bool cdr_next_srvcc_call_id;
 	bool cdr_next_srvcc_flag;
+	bool cdr_next_id_server;
 	bool cdr_next_branches;
 	bool cdr_next_branches_calldate;
 	bool cdr_next_branches_sipport;

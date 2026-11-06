@@ -7039,7 +7039,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`match_header` VARCHAR(128) DEFAULT NULL,\
 			`GeoPosition` varchar(255) DEFAULT NULL, \
 			`hold` varchar(1024) DEFAULT NULL, \
-			`spool_index` tinyint unsigned DEFAULT NULL," +
+			`spool_index` tinyint unsigned DEFAULT NULL,\
+			`id_server` smallint unsigned DEFAULT NULL," +
 			(opt_conference_processing ?
 				"`conference_flag` enum('main','leg') DEFAULT NULL,\
 				 `conference_referred_by` varchar(1024) DEFAULT NULL,\
@@ -10697,7 +10698,7 @@ void SqlDb_mysql::checkColumns_cdr_next(bool enableAlter) {
 	if(opt_mo_mt_identification_prefix.size()) {
 		this->checkExistsColumn("cdr_next", "leg flag", enableAlter,
 					&tableSize, &existsColumns.cdr_next_leg_flag,
-					"srvcc_call_id", "enum('mo','mt') DEFAULT NULL", NULL_CHAR_PTR,
+					"leg_flag", "enum('mo','mt') DEFAULT NULL", NULL_CHAR_PTR,
 					NULL_CHAR_PTR);
 	}
 	if(srvcc_set) {
@@ -10708,6 +10709,12 @@ void SqlDb_mysql::checkColumns_cdr_next(bool enableAlter) {
 		this->checkExistsColumn("cdr_next", "srvcc flag", enableAlter,
 					&tableSize, &existsColumns.cdr_next_srvcc_flag,
 					"srvcc_flag", "enum('post_srvcc','pre_srvcc') DEFAULT NULL", "srvcc_flag (srvcc_flag)",
+					NULL_CHAR_PTR);
+	}
+	if(is_server()) {
+		this->checkExistsColumn("cdr_next", "id of the server which processed the call (server mode with packetbuffer_sender clients)", enableAlter,
+					&tableSize, &existsColumns.cdr_next_id_server,
+					"id_server", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					NULL_CHAR_PTR);
 	}
 }
