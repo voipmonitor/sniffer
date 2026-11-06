@@ -5802,6 +5802,37 @@ bool PcapQueue_readFromInterfaceThread::dpdk_check_block(pcap_dispatch_data *dd,
 	return(rslt);
 }
 
+bool PcapQueue_readFromInterfaceThread::dpdk_terminate_rte_threads() {
+	dpdk_terminating(dpdkHandle);
+	u_int64_t wait_start = getTimeMS_rdtsc();
+	while(dpdk_rte_threads_running(dpdkHandle)) {
+		if(getTimeMS_rdtsc() > wait_start + 2000) {
+			syslog(LOG_ERR, "packetbuffer terminating: DPDK rte threads not terminated (%s)", getInterfaceAlias().c_str());
+			return(false);
+		}
+		if(opt_dpdk_copy_packetbuffer) {
+			for(int i = 0; i < 2; i++) {
+				if(dispatch_data.copy_block[i] && dispatch_data.copy_block_full[i]) {
+					dispatch_data.copy_block[i]->clear(false);
+					dispatch_data.copy_block_full[i] = 0;
+				}
+			}
+		} else {
+			if(opt_dpdk_prealloc_packetbuffer && !dispatch_data.next_free_block) {
+				pcap_block_store *next_free_block = new FILE_LINE(0) pcap_block_store(pcap_block_store::plus2, opt_dpdk_mbufs_in_packetbuffer);
+				next_free_block->init(true);
+				dispatch_data.next_free_block = next_free_block;
+			}
+			if(opt_dpdk_defer_send_packetbuffer && dispatch_data.last_full_block) {
+				delete dispatch_data.last_full_block;
+				dispatch_data.last_full_block = NULL;
+			}
+		}
+		USLEEP(10);
+	}
+	return(true);
+}
+
 #define DEBUG_threadFunction_blocks_LAG 0
 
 void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
@@ -5839,7 +5870,7 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 						}
 					}
 				}
-				if(dispatch_data.block) {
+				if(dpdk_terminate_rte_threads() && dispatch_data.block) {
 					delete dispatch_data.block;
 				}
 			} else {
@@ -5912,8 +5943,10 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 						}
 						USLEEP(1);
 					}
-					for(int i = 0; i < 2; i++) {
-						delete dispatch_data.copy_block[i];
+					if(dpdk_terminate_rte_threads()) {
+						for(int i = 0; i < 2; i++) {
+							delete dispatch_data.copy_block[i];
+						}
 					}
 				} else {
 					while(!(is_terminating() || this->threadDoTerminate)) {
@@ -5937,14 +5970,16 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 						}
 						USLEEP(opt_dpdk_prealloc_packetbuffer || opt_dpdk_defer_send_packetbuffer ? 1 : 50);
 					}
-					if(dispatch_data.block) {
-						delete dispatch_data.block;
-					}
-					if(dispatch_data.next_free_block) {
-						delete dispatch_data.next_free_block;
-					}
-					if(dispatch_data.last_full_block) {
-						delete dispatch_data.last_full_block;
+					if(dpdk_terminate_rte_threads()) {
+						if(dispatch_data.block) {
+							delete dispatch_data.block;
+						}
+						if(dispatch_data.next_free_block) {
+							delete dispatch_data.next_free_block;
+						}
+						if(dispatch_data.last_full_block) {
+							delete dispatch_data.last_full_block;
+						}
 					}
 				}
 			}

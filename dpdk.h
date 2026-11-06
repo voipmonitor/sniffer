@@ -82,6 +82,7 @@ int dpdk_worker_proc(sDpdk *dpdk);
 int pcap_dpdk_stats(sDpdk *dpdk, pcap_stat *ps, string *str_out = NULL);
 sDpdkConfig *dpdk_config(sDpdk *dpdk);
 void dpdk_terminating(sDpdk *dpdk);
+bool dpdk_rte_threads_running(sDpdk *dpdk);
 void dpdk_check_params();
 u_int16_t count_rte_read_threads();
 double rte_read_thread_cpu_usage(sDpdk *dpdk, u_int16_t rte_read_thread_id);

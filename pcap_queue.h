@@ -1738,6 +1738,7 @@ private:
 		dd->me->dpdk_check_block(dd, pos, count);
 	}
 	bool dpdk_check_block(pcap_dispatch_data *dd, unsigned pos, unsigned count, bool only_check = false);
+	bool dpdk_terminate_rte_threads();
 	void processBlock(pcap_block_store *block);
 	void preparePstatData(int pstatDataIndex);
 	double getCpuUsagePerc(int pstatDataIndex, bool preparePstatData = true);

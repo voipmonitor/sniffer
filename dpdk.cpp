@@ -237,6 +237,7 @@ struct sDpdk {
 	pstat_data rte_worker2_thread_pstat_data[2];
 	#endif
 	volatile bool initialized;
+	volatile int rte_threads_running;
 	#if DEBUG_CYCLES
 	sDpdk_cycles cycles[10];
 	#endif
@@ -294,6 +295,16 @@ struct sRteReadThreadArg {
 	sDpdk *dpdk;
 	int read_thread_id;
 	int rxq;
+};
+
+struct sRteThreadRunningGuard {
+	sRteThreadRunningGuard(sDpdk *dpdk) {
+		this->dpdk = dpdk;
+	}
+	~sRteThreadRunningGuard() {
+		__SYNC_DEC(dpdk->rte_threads_running);
+	}
+	sDpdk *dpdk;
 };
 
 
@@ -356,6 +367,15 @@ sDpdkHandle *create_dpdk_handle() {
 
 
 void destroy_dpdk_handle(sDpdkHandle *dpdk) {
+	dpdk->terminating = true;
+	u_int64_t wait_start = getTimeMS_rdtsc();
+	while(dpdk->rte_threads_running > 0) {
+		if(getTimeMS_rdtsc() > wait_start + 2000) {
+			syslog(LOG_ERR, "DPDK - rte threads not terminated (%s)", dpdk->config.device);
+			return;
+		}
+		USLEEP(1000);
+	}
 	if(dpdk->portid_set) {
 		if(dpdk->must_clear_promisc) {
 			rte_eth_promiscuous_disable(dpdk->portid);
@@ -569,6 +589,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 		if(lcore_id < 0) {
 			return(PCAP_ERROR);
 		} else {
+			__SYNC_INC(dpdk->rte_threads_running);
 			ret = rte_eal_remote_launch(rte_worker_thread, dpdk, lcore_id);
 			string cores_info;
 			if(ret >= 0) {
@@ -583,6 +604,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 				      lcore_id,
 				      cores_info.c_str());
 			if(ret < 0) {
+				__SYNC_DEC(dpdk->rte_threads_running);
 				return(PCAP_ERROR);
 			}
 			dpdk_tools->setUseLcore(lcore_id);
@@ -597,6 +619,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 		if(lcore_id < 0) {
 			return(PCAP_ERROR);
 		} else {
+			__SYNC_INC(dpdk->rte_threads_running);
 			ret = rte_eal_remote_launch(rte_worker_slave_thread, dpdk, lcore_id);
 			string cores_info;
 			if(ret >= 0) {
@@ -611,6 +634,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 				      lcore_id,
 				      cores_info.c_str());
 			if(ret < 0) {
+				__SYNC_DEC(dpdk->rte_threads_running);
 				return(PCAP_ERROR);
 			}
 			dpdk_tools->setUseLcore(lcore_id);
@@ -664,6 +688,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 			#endif
 			syslog(LOG_INFO, "DPDK: Launching read thread %d on lcore %d with rxq %d", 
 				   rte_read_thread_id, lcore_id, arg->rxq);
+			__SYNC_INC(dpdk->rte_threads_running);
 			ret = rte_eal_remote_launch(rte_read_thread, arg, lcore_id);
 			string cores_info;
 			if(ret >= 0) {
@@ -678,6 +703,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 				      lcore_id,
 				      cores_info.c_str());
 			if(ret < 0) {
+				__SYNC_DEC(dpdk->rte_threads_running);
 				return(PCAP_ERROR);
 			}
 			dpdk_tools->setUseLcore(lcore_id);
@@ -1036,6 +1062,10 @@ void dpdk_terminating(sDpdk *dpdk) {
 	dpdk->terminating = true;
 }
 
+bool dpdk_rte_threads_running(sDpdk *dpdk) {
+	return(dpdk->rte_threads_running > 0);
+}
+
 void dpdk_check_params() {
 	extern int opt_dpdk_nb_rxq;
 	if(count_rte_read_threads() > DPDK_MAX_COUNT_RTE_READ_THREADS) {
@@ -1139,6 +1169,7 @@ string get_dpdk_cpu_cores(bool without_main, bool detect_ht) {
 static int rte_read_thread(void *arg) {
 	sRteReadThreadArg *rte_read_thread_arg = (sRteReadThreadArg*)arg;
 	sDpdk *dpdk = rte_read_thread_arg->dpdk;
+	sRteThreadRunningGuard rte_thread_running_guard(dpdk);
 	int read_thread_id = rte_read_thread_arg->read_thread_id;
 	int rxq = rte_read_thread_arg->rxq;
 	delete rte_read_thread_arg;
@@ -1148,6 +1179,10 @@ static int rte_read_thread(void *arg) {
 	       dpdk->rte_read_thread_pid[read_thread_id], read_thread_id, rxq);
 	threadMonitor.registerThread(dpdk->rte_read_thread_pid[read_thread_id], ("DPDK - READ (rte) - rxq=" + intToString(rxq)).c_str());
 	while(!dpdk->initialized) {
+		if(dpdk->terminating) {
+			threadMonitor.unregisterThread(dpdk->rte_read_thread_pid[read_thread_id]);
+			return 0;
+		}
 		USLEEP(1000);
 	}
 	dpdk_reset_statistics(dpdk, true);
@@ -1403,6 +1438,7 @@ static int rte_read_thread(void *arg) {
 
 static int rte_worker_thread(void *arg) {
 	sDpdk *dpdk = (sDpdk*)arg;
+	sRteThreadRunningGuard rte_thread_running_guard(dpdk);
 	dpdk->rte_worker_thread_pid = get_unix_tid();
 	syslog(LOG_INFO, "DPDK - WORKER (rte) THREAD %i\n", dpdk->rte_worker_thread_pid);
 	threadMonitor.registerThread(dpdk->rte_worker_thread_pid, "DPDK - WORKER (rte)");
@@ -1607,6 +1643,7 @@ static int rte_worker_thread(void *arg) {
 
 static int rte_worker_slave_thread(void *arg) {
 	sDpdk *dpdk = (sDpdk*)arg;
+	sRteThreadRunningGuard rte_thread_running_guard(dpdk);
 	dpdk->rte_worker_slave_thread_pid = get_unix_tid();
 	syslog(LOG_INFO, "DPDK - WORKER SLAVE (rte) THREAD %i\n", dpdk->rte_worker_slave_thread_pid);
 	threadMonitor.registerThread(dpdk->rte_worker_slave_thread_pid, "DPDK - WORKER SLAVE (rte)");
@@ -2605,6 +2642,10 @@ sDpdkConfig *dpdk_config(sDpdk *dpdk) {
 }
 
 void dpdk_terminating(sDpdk *dpdk) {
+}
+
+bool dpdk_rte_threads_running(sDpdk *dpdk) {
+	return(false);
 }
 
 void dpdk_check_params() {
