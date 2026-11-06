@@ -1648,6 +1648,8 @@ cSnifferClientService::cSnifferClientService(int32_t sensor_id, const char *sens
 	this->sensor_version = sensor_version;
 	port = 0;
 	connection_ok = false;
+	connection_lost_counter = 0;
+	connection_lost_last_log_s = 0;
 	client_options = NULL;
 	response_sender = NULL;
 }
@@ -1688,7 +1690,20 @@ int cSnifferClientService::receive_process_loop_begin() {
 		if(receive_socket->isError()) {
 			_close();
 			connection_ok = false;
+			++connection_lost_counter;
 		} else {
+			// logged while connected (the row goes through the server) and checked every loop, so the count is reported once the 10 minutes elapse even when the losses have stopped
+			extern cSnifferClientService *snifferClientService;
+			if(this == snifferClientService &&
+			   connection_lost_counter &&
+			   getTimeS() >= connection_lost_last_log_s + 10 * 60) {
+				cLogSensor::log(cLogSensor::warning,
+						"connection to the server has been lost",
+						"count of lost connections since the last report: %u",
+						connection_lost_counter);
+				connection_lost_counter = 0;
+				connection_lost_last_log_s = getTimeS();
+			}
 			return(true);
 		}
 	}

@@ -387,6 +387,8 @@ protected:
 	sHosts hosts;
 	u_int16_t port;
 	bool connection_ok;
+	unsigned connection_lost_counter;
+	u_int32_t connection_lost_last_log_s;
 	string connect_from;
 	sSnifferClientOptions *client_options;
 	class cSnifferClientResponseSender *response_sender;
