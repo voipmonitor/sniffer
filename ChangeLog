@@ -1,3 +1,33 @@
+2026.11.0 06.11.2026
+====================
+- Add hep_rtcp_mos_calc option - calculate MOS from the RTCP-JSON packet loss when the HEP packet carries no MOS chunk (HEP3 only), stored in the CDR as RTCP-XR MOS-LQ [VS-1878]
+- Add sip-register-fail-text option - mark a registration as failed by the text of a 2xx response [VS-1473]
+- Add server_password_2 option - second password accepted by the server (server_bind), so clients with the old and the new password can connect during a password change
+- Add ignore_rtp_before_connect option - ignore RTP until the call is connected
+- Server mode with packetbuffer_sender clients: store the id_sensor of the server in the new column cdr_next.id_server (if it differs from cdr.id_sensor) [VS-1884]
+- Client sensors log lost connections to the server sensor to the database (sensor log, the count of losses is reported at most once per 10 minutes) [VS-1066]
+- Call analysis using AI: --prepare_rtcp_data RTCP lines also contain cumulative lost, extended highest sequence number and reporter SSRC [VG-3168]
+- Charts cache: separate store thread with dynamic batch distribution, optional native evaluation of chart filters instead of SQL (expert options charts_cache_filters_native, charts_cache_filters_compare, charts_cache_filters_diff_log) with native ip boost, filter results and interval series in arrays instead of maps (about 30% less time per CDR), new pcap_stat section charts_ext (charts_cache_log_ext)
+- Charts cache: cached values unified with the GUI calculation from CDR - interval placement (whole seconds, an end exactly on an interval boundary does not enter the next interval), values rounded to what the CDR column holds, minutes counted from whole seconds, json export precision of the ACD sum and of minutes; silence_end and clipping from call data were always empty
+- Charts cache fixes: caller / called filters match numbers with %23 in place of #, LIKE unescaped only the first \% of a pattern, sql ip boost off by one in the proxy part of the cache key
+- Fixes of CDR / RTP statistics, values of some columns change [VG-3168]: "change source RTP port" flag was never set since 2017 (now detected when a new stream is created, a port change at the receiver (NAT) is flagged for the opposite side); PDV intervals no longer depend on savegraph; MOS F1 is rounded like F2 and adapt (was truncated); MOS min is NULL when the average is not calculated (was 4.5), without savegraph the last MOS interval is calculated at the end of the call; MOS silence: PCMA silence is detected, NULL when not measured - silencedetect disabled or codec other than G.711 (was 4.5); cdr.rtcp_avgjitter_mult10 and cdr.rtcp_avgfr_mult10 are the average of both sides (was the sum); response_time_100 / response_time_xxx is NULL when no INVITE/response pair matches (was 0 ms); progress_time is set by 2xx only for a response to INVITE (200 OK to CANCEL set PDD)
+- Reason header parser is more RFC friendly - more Reason headers in one packet, more protocols (SIP, Q.850, ...) in one header separated by comma [VS-1881]
+- register_state, register_failed: add index (digestusername, created_at) to speed up searching by digest username in the GUI [VG-3148]
+- Remove the dependency of decryption (SRTP/DTLS/SIP TLS) on gnutls - gcrypt is sufficient
+- Storing CDR: optimization
+- Processing limitations: suppress dynamic removal of threads while any limitation is active
+- UA: resolve the ambiguity between a_ua/b_ua and the per-address UA map
+- Call branches: fix closing of calls (reverse-direction SDP detected as fork, out-of-order INVITE/response, missing BYE, merged legs); add branches state to d_lc_all
+- Packet copy: fix data shared with the original packet - deep copy of audiocodes / kamailio_subst / long call-id (double free, use after free, lost call-id), rebase pre-parsed SIP headers to the new buffer, fix data length of a cloned packet with audiocodes header
+- Fix release of the previous long call-id in set_callid; reset the SDP canceled flag when an ip/port slot is reused after 3xx; fix destination port in SIP records from the audiocodes system trace point
+- ssl keylogger: resolve the original libssl functions per caller - fixes crash in processes with more than one libssl loaded (issue #135)
+- Fix overload of the first RTP read thread when the enable_premature_response option is enabled
+- Fix missing new UA in 'change register country' alert [VG-3175]
+- Fix check and alter of column cdr_next.leg_flag (srvcc_call_id was checked instead)
+- Fix startup on MySQL/MariaDB older than 5.5
+- voipmonitor.conf: fixed comments of onewaytimeout, max_sip_packets_in_call, save_sip_history, cdrproxy, jitterbuffer_f2, ignore_rtp_after_cancel_confirmed
+
+
 2026.09.0 16.09.2026
 ====================
 - Add support for decryption of SIP protected by IPsec ESP (3GPP IMS AKA, TS 33.203) - the cipher key is taken from the WWW-Authenticate header of the 401 on the Mw interface, SPI and algorithms from the Security-Server header on the Gm interface; the security associations can be stored in the database so they survive a restart (esp_decrypt, esp_store_sa) [VS-1869]
