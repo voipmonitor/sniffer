@@ -75,6 +75,7 @@ and insert them into Call class.
 #include "ssl_dssl.h"
 #include "websocket.h"
 #include "diameter.h"
+#include "ss7_parser.h"
 #include "options.h"
 #include "sniff_inline.h"
 #include "config_param.h"
@@ -407,6 +408,7 @@ unsigned long process_packet__last_cleanup_calls__count_sip_cancel_confirmed;
 link_packets_queue dtls_queue;
 cDtls dtls_handshake_safe_links;
 cDiameterPacketStack diameter_packet_stack;
+cSs7Parser ss7_parser;
 
 
 #if DEBUG_PACKET_COUNT
@@ -8041,14 +8043,8 @@ bool _process_packet_rtp(packet_s_process_0 *packetS) {
 }
 
 struct sDissectPart {
-	enum eTypePart {
-		_sctp,
-		_sonus,
-		_rudp,
-		_other
-	};
 	size_t pos;
-	int type;
+	Ss7::sParseData::eEncaps encaps;
 };
 
 void process_packet_other(packet_s_stack *packetS) {
@@ -8057,74 +8053,111 @@ void process_packet_other(packet_s_stack *packetS) {
 		return;
 	}
 	process_packet__cleanup_ss7(packetS);
-	extern void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, string *rslt);
-	string dissect_rslt;
-	ws_dissect_packet(packetS->header_pt, packetS->packet, packetS->dlt, &dissect_rslt);
-	if(!dissect_rslt.empty()) {
-		vector<sDissectPart> dissect_parts;
-		for(int i = 0; i < 3; i++) {
-			const char *tag = i == 0 ? "sctp" : 
-					  i == 1 ? "sonuscm" :
-						   "rudp";
-			size_t pos = 0;
-			size_t _pos;
-			do {
-				_pos = string::npos;
-				for(int j = 0; j < 2; j++) {
-					string find_tag = string("\"") + tag + (j == 0 ? "\": {" : "\":{");
-					size_t __pos = dissect_rslt.find(find_tag, pos);
-					if(__pos != string::npos && (_pos == string::npos || __pos < _pos)) {
-						_pos = __pos;
+	vector<Ss7::sParseData> parse_data;
+	vector<Ss7::sParseData> parse_data_retransmissions;
+	if(opt_enable_ss7 == _ss7_mode_ws) {
+		extern void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, string *rslt);
+		string dissect_rslt;
+		ws_dissect_packet(packetS->header_pt, packetS->packet, packetS->dlt, &dissect_rslt);
+		if(!dissect_rslt.empty()) {
+			vector<sDissectPart> dissect_parts;
+			for(int i = 0; i < 3; i++) {
+				const char *tag = i == 0 ? "sctp" :
+						  i == 1 ? "sonuscm" :
+							   "rudp";
+				size_t pos = 0;
+				size_t _pos;
+				do {
+					_pos = string::npos;
+					for(int j = 0; j < 2; j++) {
+						string find_tag = string("\"") + tag + (j == 0 ? "\": {" : "\":{");
+						size_t __pos = dissect_rslt.find(find_tag, pos);
+						if(__pos != string::npos && (_pos == string::npos || __pos < _pos)) {
+							_pos = __pos;
+						}
 					}
+					if(_pos != string::npos) {
+						sDissectPart part;
+						part.pos = _pos;
+						part.encaps = i == 0 ? Ss7::sParseData::_encaps_sctp :
+							      i == 1 ? Ss7::sParseData::_encaps_sonus :
+								       Ss7::sParseData::_encaps_rudp;
+						dissect_parts.push_back(part);
+						pos = _pos + 1;
+					}
+				} while(_pos != string::npos);
+				if(dissect_parts.size()) {
+					break;
 				}
-				if(_pos != string::npos) {
-					sDissectPart part;
-					part.pos = _pos;
-					part.type = i == 0 ? sDissectPart::_sctp : 
-						    i == 1 ? sDissectPart::_sonus :
-							     sDissectPart::_rudp;
-					dissect_parts.push_back(part);
-					pos = _pos + 1;
+			}
+			if(!dissect_parts.size()) {
+				sDissectPart part;
+				part.pos = 0;
+				part.encaps = Ss7::sParseData::_encaps_other;
+				dissect_parts.push_back(part);
+			}
+			for(size_t i = 0; i < dissect_parts.size(); i++) {
+				Ss7::sParseData parseData;
+				string dissect_part = dissect_rslt.substr(dissect_parts[i].pos,
+									  i < dissect_parts.size() - 1 ? dissect_parts[i + 1].pos - dissect_parts[i].pos : string::npos);
+				if(parseData.parse(packetS, dissect_part.c_str())) {
+					parseData.encaps = dissect_parts[i].encaps;
+					parse_data.push_back(parseData);
 				}
-			} while(_pos != string::npos);
-			if(dissect_parts.size()) {
-				break;
 			}
 		}
-		if(!dissect_parts.size()) {
-			sDissectPart part;
-			part.pos = 0;
-			part.type = sDissectPart::_other;
-			dissect_parts.push_back(part);
+		if(sverb.ss7_compare) {
+			ss7_parser.compare(packetS, &parse_data);
 		}
-		for(size_t i = 0; i < dissect_parts.size(); i++) {
-			Ss7::sParseData parseData;
-			string dissect_part = dissect_rslt.substr(dissect_parts[i].pos,
-								  i < dissect_parts.size() - 1 ? dissect_parts[i + 1].pos - dissect_parts[i].pos : string::npos);
-			if(parseData.parse(packetS, dissect_part.c_str()) && parseData.isOk()) {
-				Ss7 *ss7 = NULL;
-				string ss7_id = parseData.ss7_id();
-				calltable->lock_process_ss7_listmap();
-				ss7 = calltable->find_by_ss7_id(&ss7_id);
-				if(ss7 && parseData.isup_message_type == SS7_IAM) {
+	} else if(opt_enable_ss7 == _ss7_mode_native) {
+		ss7_parser.parse(packetS, &parse_data, &parse_data_retransmissions);
+	}
+	for(size_t i = 0; i < parse_data.size(); i++) {
+		Ss7::sParseData *parseData = &parse_data[i];
+		if(sverb.ss7) {
+			cout << " * SS7 " << (opt_enable_ss7 == _ss7_mode_native ? "native" : "ws") << " * "
+			     << Ss7::packetAddressesToString(packetS) << endl;
+			parseData->debugOutput();
+		}
+		if(parseData->isOk()) {
+			Ss7 *ss7 = NULL;
+			string ss7_id = parseData->ss7_id();
+			calltable->lock_process_ss7_listmap();
+			ss7 = calltable->find_by_ss7_id(&ss7_id);
+			bool retransmission_of_previous_call = false;
+			if(ss7 && ss7->isRetransmission(packetS, parseData, &retransmission_of_previous_call)) {
+				if(!retransmission_of_previous_call) {
+					ss7->dumpPacket(packetS);
+				}
+			} else if(ss7 && parseData->isup_message_type == SS7_IAM) {
+				Ss7 *new_ss7 = calltable->add_ss7(packetS, parseData);
+				new_ss7->takeOverProcessedMessages(ss7);
+				ss7->pushToQueue();
+			} else if(ss7) {
+				ss7->processData(packetS, parseData);
+				if(parseData->isup_message_type == SS7_RLC && !opt_ss7timeout_rlc) {
 					ss7->pushToQueue(&ss7_id);
-					ss7 = NULL;
 				}
-				if(ss7) {
-					ss7->processData(packetS, &parseData);
-					if(parseData.isup_message_type == SS7_RLC && !opt_ss7timeout_rlc) {
-						ss7->pushToQueue(&ss7_id);
-					}
-				} else if(parseData.isup_message_type == SS7_IAM) {
-					ss7 = calltable->add_ss7(packetS, &parseData);
-					if(dissect_parts[i].type == sDissectPart::_sonus) {
-						ss7->sonus = true;
-					} else if(dissect_parts[i].type == sDissectPart::_rudp) {
-						ss7->rudp = true;
-					}
-				}
-				calltable->unlock_process_ss7_listmap();
+			} else if(parseData->isup_message_type == SS7_IAM) {
+				calltable->add_ss7(packetS, parseData);
 			}
+			calltable->unlock_process_ss7_listmap();
+		}
+	}
+	for(size_t i = 0; i < parse_data_retransmissions.size(); i++) {
+		Ss7::sParseData *parseData = &parse_data_retransmissions[i];
+		if(parseData->isOk()) {
+			string ss7_id = parseData->ss7_id();
+			calltable->lock_process_ss7_listmap();
+			Ss7 *ss7 = calltable->find_by_ss7_id(&ss7_id);
+			if(ss7) {
+				bool retransmission_of_previous_call = false;
+				ss7->isRetransmission(packetS, parseData, &retransmission_of_previous_call);
+				if(!retransmission_of_previous_call) {
+					ss7->dumpPacket(packetS);
+				}
+			}
+			calltable->unlock_process_ss7_listmap();
 		}
 	}
 }
@@ -8328,7 +8361,11 @@ inline void process_packet__cleanup_ss7(packet_s *packetS) {
 	if(actTimeS - process_packet__last_cleanup_ss7 < 10) {
 		return;
 	}
+	if(!packetS && is_read_from_file()) {
+		return;
+	}
 	calltable->cleanup_ss7(false, packetS ? packetS->getTime_s() : 0);
+	ss7_parser.cleanup(actTimeS);
 	process_packet__last_cleanup_ss7 = actTimeS;
 }
 
@@ -8340,6 +8377,7 @@ void reset_cleanup_variables() {
 	process_packet__last_cleanup_ss7 = 0;
 	__last_memory_purge = 0;
 	__last_memory_purge_test = 0;
+	ss7_parser.clearStreams();
 }
 
 int process_packet__parse_sip_method_ext(char *data, unsigned int datalen, bool check_end_space, bool *sip_response) {
@@ -11001,6 +11039,9 @@ void *PreProcessPacket::outThreadFunction() {
 		}
 		if(this->typePreProcessThread == ppt_sip) {
 			_parse_packet_global_process_packet.refreshIfNeed();
+			if(opt_enable_ss7 && !preProcessPacket[ppt_pp_other]->outThreadState) {
+				_process_packet__cleanup_ss7(NULL);
+			}
 		}
 		if(this->typePreProcessThread == ppt_pp_find_call && opt_t2_boost_ht_cleanup_calls) {
 			extern Calltable::sCleanupCallsData cc_data;
@@ -12475,6 +12516,7 @@ void PreProcessPacket::push_batch_nothread() {
 				}
 			}
 		}
+		break;
 	case ppt_pp_other:
 		_process_packet__cleanup_ss7(NULL);
 		break;

@@ -3131,7 +3131,7 @@ double PcapQueue::getCpuUsagePerc(eTypeThread typeThread, int pstatDataIndex, bo
 void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packet, u_int offset) {
 	extern SocketSimpleBufferWrite *sipSendSocket;
 	extern int opt_sip_send_before_packetbuffer;
-	if(!sipSendSocket || !opt_sip_send_before_packetbuffer) {
+	if(!sipSendSocket || !opt_sip_send_before_packetbuffer || offset == 0xFFFF) {
 		return;
 	}
  
@@ -3841,6 +3841,9 @@ bool PcapQueue_readFromInterface_base::check_protocol(pcap_pkthdr* header, u_cha
 }
 
 bool PcapQueue_readFromInterface_base::check_filter_ip(pcap_pkthdr* header, u_char* packet, sCheckProtocolData *checkProtocolData) {
+	if(checkProtocolData->header_ip_offset == 0xFFFF) {
+		return(true);
+	}
 	if(filter_ip) {
 		iphdr2 *iphdr = (iphdr2*)(packet + checkProtocolData->header_ip_offset);
 		bool ip_ok = false;
@@ -8752,6 +8755,9 @@ void *PcapQueue_readFromFifo::destroyBlocksThreadFunction(void */*arg*/, unsigne
 			if(opt_ipaccount) {
 				for(size_t i = 0; i < block->count && !TERMINATING; i++) {
 					pcap_block_store::pcap_pkthdr_pcap headerPcap = (*block)[i];
+					if(headerPcap.header->header_ip_offset == 0xFFFF) {
+						continue;
+					}
 					#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
 					ipaccount(headerPcap.header->header.ts.tv_sec,
 						  (iphdr2*)(headerPcap.packet + headerPcap.header->header_ip_offset),
@@ -9778,7 +9784,8 @@ bool PcapQueue_readFromFifo::processPacket_push(sHeaderPacketPQout *hp) {
 			return(true);
 		} else if(opt_ipaccount &&
 			  !(sipportmatrix[hp->sport] || sipportmatrix[hp->dport]) &&
-			  !(opt_enable_diameter && (diameter_tcp_portmatrix[hp->sport] || diameter_tcp_portmatrix[hp->dport]))) {
+			  !(opt_enable_diameter && (diameter_tcp_portmatrix[hp->sport] || diameter_tcp_portmatrix[hp->dport])) &&
+			  !(opt_enable_ss7 && (ss7portmatrix[hp->sport] || ss7portmatrix[hp->dport]))) {
 			return(false);
 		}
 	}
@@ -11140,7 +11147,7 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 		_dc_ct_md5 = &((pcap_pkthdr_plus2*)hp->header)->dc_ct_md5;
 		#endif
 	} else {
-		if(hp->header->header_ip_offset) {
+		if(hp->header->header_ip_offset && hp->header->header_ip_offset != 0xFFFF) {
 			iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
 			char *data = NULL;
 			int datalen = 0;

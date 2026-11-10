@@ -3,6 +3,7 @@
 #include <pcap.h>
 #include <string>
 #include <vector>
+#include <map>
 #include <syslog.h>
 
 #if HAVE_LIBWIRESHARK
@@ -48,6 +49,10 @@
 #include <wireshark/epan/print.h>
 #endif
 
+#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 40200
+#include <wireshark/epan/addr_resolv.h>
+#endif
+
 #include "heap_safe.h"
 
 
@@ -66,7 +71,9 @@ using namespace std;
 extern std::string trim_str(std::string s, const char *trimChars = NULL);
 
 static epan_t *ws_epan_new(capture_file *cf);
+#if not defined(LIBWIRESHARK_VERSION) or LIBWIRESHARK_VERSION < 40600
 static tvbuff_t *frame_tvbuff_new(const frame_data *fd, const guint8 *buf);
+#endif
 static void ws_set_params();
 static bool ws_set_param(string param, string value);
 static void ws_set_dissectors();
@@ -112,7 +119,7 @@ void ws_epan_term() {
 }
 
 void ws_set_params() {
-	#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605
+	#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605 and LIBWIRESHARK_VERSION < 40200
 	ws_set_param("ip.use_geoip", "FALSE");
 	#endif
 	extern vector<string> opt_ws_params;
@@ -123,6 +130,10 @@ void ws_set_params() {
 			string value = trim_str(opt_ws_params[i].substr(pv_separator + 1));
 			ws_set_param(param, value);
 		}
+	}
+	extern map<string, string> opt_ws_params_ss7;
+	for(map<string, string>::iterator iter = opt_ws_params_ss7.begin(); iter != opt_ws_params_ss7.end(); iter++) {
+		ws_set_param(iter->first, iter->second);
 	}
 }
 
@@ -154,7 +165,8 @@ bool ws_set_param(string param, string value) {
 		int ev = -1;
 		const enum_val_t* ev_list = prefs_get_enumvals(ws_pref);
 		for(unsigned i = 0; ev_list[i].name; i++) {
-			if(!strcasecmp(ev_list[i].name, value.c_str())) {
+			if(!strcasecmp(ev_list[i].name, value.c_str()) ||
+			   (ev_list[i].description && !strcasecmp(ev_list[i].description, value.c_str()))) {
 				ev = ev_list[i].value;
 				break;
 			}
@@ -245,6 +257,11 @@ void ws_gener_json(epan_dissect_t *edt, string *rslt) {
 
 void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, string *rslt) {
  
+	unsigned skip_hdr = dlt == DLT_MTP2_WITH_PHDR ? 4 : 0;
+	if(header->caplen < skip_hdr) {
+		rslt->resize(0);
+		return;
+	}
 	ws_init();
 	ws_epan_init();
 	
@@ -256,7 +273,11 @@ void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, strin
 	#else
 	wtap_pkthdr whdr;
 	#endif
+	#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 40600
+	wtap_rec_init(&whdr, header->caplen);
+	#else
 	memset(&whdr, 0, sizeof(whdr));
+	#endif
 	whdr.ts.secs = header->ts.tv_sec;
 	whdr.ts.nsecs = header->ts.tv_usec * 1000;
 	whdr.presence_flags = 3;
@@ -265,7 +286,10 @@ void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, strin
 			  dlt == DLT_LINUX_SLL ? WTAP_ENCAP_SLL :
 			  dlt == DLT_LINUX_SLL2 ? WTAP_ENCAP_SLL2 :
 			  WTAP_ENCAP_ETHERNET;
-	unsigned skip_hdr = dlt == DLT_MTP2_WITH_PHDR ? 4 : 0;
+	#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 40600
+	wtap_setup_packet_rec(&whdr, ws_dlt);
+	ws_buffer_append(&whdr.data, packet + skip_hdr, header->caplen - skip_hdr);
+	#endif
 	#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605
 	whdr.rec_header.packet_header.caplen = header->caplen - skip_hdr;
 	whdr.rec_header.packet_header.len = header->len - skip_hdr;
@@ -294,6 +318,13 @@ void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, strin
 				      NULL); //cfile->prev_dis);
 	// cfile->ref = &fdlocal;
 
+	#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 40600
+	epan_dissect_run_with_taps(edt,
+			 1, // cfile->cd_t,
+			 &whdr,
+			 &fdlocal,
+			 NULL);
+	#else
 	tvbuff_t *tvb = frame_tvbuff_new(&fdlocal, packet + skip_hdr);
 
 	epan_dissect_run_with_taps(edt, 
@@ -302,6 +333,7 @@ void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, strin
 			 tvb, 
 			 &fdlocal, 
 			 NULL);
+	#endif
 
 	frame_data_set_after_dissect(&fdlocal, 
 				     &cum_bytes);
@@ -312,6 +344,9 @@ void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, strin
 	
 	epan_dissect_reset(edt);
 	epan_dissect_free(edt);
+	#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 40600
+	wtap_rec_cleanup(&whdr);
+	#endif
 	postseq_cleanup_all_protocols();
 	
 	static unsigned _counter;
@@ -325,27 +360,14 @@ void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, strin
 // -----------------------------------------------------------------------------
 
 
-#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 40000
-struct _e_addr_resolve {
-	gboolean mac_name;
-	gboolean network_name;
-	gboolean transport_name;
-	gboolean dns_pkt_addr_resolution;
-	gboolean use_external_net_name_resolver;
-	gboolean vlan_name;
-	gboolean ss7pc_name;
-	gboolean maxmind_geoip;
-};
-#endif
-
 void ws_local_data_init() {
-	#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 40000
-	extern _e_addr_resolve gbl_resolv_flags;
+	#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 40200
 	gbl_resolv_flags.maxmind_geoip = 0;
 	#endif
 }
 
 
+#if not defined(LIBWIRESHARK_VERSION) or LIBWIRESHARK_VERSION < 40600
 // epan/tvbuff-int.h
 struct tvbuff {
 	/* Doubly linked list pointers */
@@ -400,6 +422,7 @@ struct tvb_frame {
 
 	guint offset;
 };
+#endif
 
 // epan/epan-int.h
 struct epan_session {
@@ -440,6 +463,7 @@ void cap_file_init(capture_file *cf)
   #endif
 }
 
+#if not defined(LIBWIRESHARK_VERSION) or LIBWIRESHARK_VERSION < 40600
 // epan/tvbuff.c
 tvbuff_t *tvb_new(const struct tvb_ops *ops)
 {
@@ -536,6 +560,7 @@ tvbuff_t *frame_tvbuff_new(const frame_data *fd, const guint8 *buf)
 	
 	return tvb;
 }
+#endif
 
 #else
 

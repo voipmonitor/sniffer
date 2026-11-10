@@ -12264,36 +12264,69 @@ bool Ss7::sParseData::parse(packet_s_stack *packetS, const char *dissect_rslt) {
 		gettag_json(dissect_rslt, "m3ua.protocol_data_dpc", &m3ua_protocol_data_dpc, UINT_MAX);
 		gettag_json(dissect_rslt, "mtp3.opc", &mtp3_opc, UINT_MAX);
 		gettag_json(dissect_rslt, "mtp3.dpc", &mtp3_dpc, UINT_MAX);
-		gettag_json(dissect_rslt, "e164.called_party_number.digits", &e164_called_party_number_digits);
-		gettag_json(dissect_rslt, "e164.calling_party_number.digits", &e164_calling_party_number_digits);
+		gettag_json(dissect_rslt, "isup.called", &e164_called_party_number_digits);
+		gettag_json(dissect_rslt, "isup.calling", &e164_calling_party_number_digits);
 		gettag_json(dissect_rslt, "isup.subsequent_number", &isup_subsequent_number);
-		gettag_json(dissect_rslt, "isup.cause_indicator", &isup_cause_indicator, UINT_MAX);
+		if(!gettag_json(dissect_rslt, "isup.cause_indicator", &isup_cause_indicator, UINT_MAX)) {
+			gettag_json(dissect_rslt, "ansi_isup.cause_indicator", &isup_cause_indicator, UINT_MAX);
+		}
+		if(!gettag_json(dissect_rslt, "sctp.data_tsn_raw", &transport_seq, UINT_MAX) &&
+		   !gettag_json(dissect_rslt, "sonusimf.seq", &transport_seq, UINT_MAX) &&
+		   !gettag_json(dissect_rslt, "rudp.seq", &transport_seq, UINT_MAX) &&
+		   !gettag_json(dissect_rslt, "mtp2.fsn", &transport_seq, UINT_MAX)) {
+			gettag_json(dissect_rslt, "tcp.seq_raw", &transport_seq, UINT_MAX);
+		}
+		unsigned link_id = 0;
+		unsigned link_apc = 0;
+		unsigned link_na = 0;
+		if(gettag_json(dissect_rslt, "m2ua.interface_identifier_int", &link_id, UINT_MAX) ||
+		   gettag_json(dissect_rslt, "sm.channel", &link_id, UINT_MAX)) {
+			transport_link = link_id;
+		} else if(gettag_json(dissect_rslt, "sonusimf.slc", &link_id, UINT_MAX) &&
+			  gettag_json(dissect_rslt, "sonusimf.apc", &link_apc, UINT_MAX)) {
+			gettag_json(dissect_rslt, "sonusimf.na", &link_na, 0);
+			transport_link = ((u_int64_t)link_na << 32) | (link_id << 24) | link_apc;
+		} else if(gettag_json(dissect_rslt, "sonusimf.aspid", &link_id, UINT_MAX)) {
+			gettag_json(dissect_rslt, "sonusimf.aspslot", &link_na, 0);
+			transport_link = ((u_int64_t)link_na << 32) | link_id;
+		}
 		return(true);
 	}
 	return(false);
 }
 
+void Ss7::sParseData::getDebugFields(vector<sDebugField> *fields) {
+	fields->push_back(sDebugField("isup.message_type", debugValue(isup_message_type)));
+	fields->push_back(sDebugField("isup.cic", debugValue(isup_cic)));
+	fields->push_back(sDebugField("isup.satellite_indicator", debugValue(isup_satellite_indicator)));
+	fields->push_back(sDebugField("isup.echo_control_device_indicator", debugValue(isup_echo_control_device_indicator)));
+	fields->push_back(sDebugField("isup.calling_partys_category", debugValue(isup_calling_partys_category)));
+	fields->push_back(sDebugField("isup.calling_party_nature_of_address_indicator", debugValue(isup_calling_party_nature_of_address_indicator)));
+	fields->push_back(sDebugField("isup.ni_indicator", debugValue(isup_ni_indicator)));
+	fields->push_back(sDebugField("isup.address_presentation_restricted_indicator", debugValue(isup_address_presentation_restricted_indicator)));
+	fields->push_back(sDebugField("isup.screening_indicator", debugValue(isup_screening_indicator)));
+	fields->push_back(sDebugField("isup.transmission_medium_requirement", debugValue(isup_transmission_medium_requirement)));
+	fields->push_back(sDebugField("isup.called_party_nature_of_address_indicator", debugValue(isup_called_party_nature_of_address_indicator)));
+	fields->push_back(sDebugField("isup.inn_indicator", debugValue(isup_inn_indicator)));
+	fields->push_back(sDebugField("m3ua.protocol_data_opc", debugValue(m3ua_protocol_data_opc)));
+	fields->push_back(sDebugField("m3ua.protocol_data_dpc", debugValue(m3ua_protocol_data_dpc)));
+	fields->push_back(sDebugField("mtp3.opc", debugValue(mtp3_opc)));
+	fields->push_back(sDebugField("mtp3.dpc", debugValue(mtp3_dpc)));
+	fields->push_back(sDebugField("isup.called", e164_called_party_number_digits));
+	fields->push_back(sDebugField("isup.calling", e164_calling_party_number_digits));
+	fields->push_back(sDebugField("isup.subsequent_number", isup_subsequent_number));
+	fields->push_back(sDebugField("isup.cause_indicator", debugValue(isup_cause_indicator)));
+	fields->push_back(sDebugField("transport_seq", debugValue(transport_seq)));
+	fields->push_back(sDebugField("encaps", debugValue(encaps)));
+}
+
 void Ss7::sParseData::debugOutput() {
-	cout << "isup.message_type: " << isup_message_type << endl
-	     << "isup.cic: " << isup_cic << endl
-	     << "isup.satellite_indicator: " << isup_satellite_indicator << endl
-	     << "isup.echo_control_device_indicator: " << isup_echo_control_device_indicator << endl
-	     << "isup.calling_partys_category: " << isup_calling_partys_category << endl
-	     << "isup.calling_party_nature_of_address_indicator: " << isup_calling_party_nature_of_address_indicator << endl
-	     << "isup.ni_indicator: " << isup_ni_indicator << endl
-	     << "isup.address_presentation_restricted_indicator: " << isup_address_presentation_restricted_indicator << endl
-	     << "isup.screening_indicator: " << isup_screening_indicator << endl
-	     << "isup.transmission_medium_requirement: " << isup_transmission_medium_requirement << endl
-	     << "isup.called_party_nature_of_address_indicator: " << isup_called_party_nature_of_address_indicator << endl
-	     << "isup.inn_indicator: " << isup_inn_indicator << endl
-	     << "m3ua.protocol_data_opc: " << m3ua_protocol_data_opc << endl
-	     << "m3ua.protocol_data_dpc: " << m3ua_protocol_data_dpc << endl
-	     << "mtp3.opc: " << mtp3_opc << endl
-	     << "mtp3.dpc: " << mtp3_dpc << endl
-	     << "e164.called_party_number.digits: " << e164_called_party_number_digits << endl
-	     << "e164.calling_party_number.digits: " << e164_calling_party_number_digits << endl
-	     << "isup.subsequent_number: " << isup_subsequent_number << endl
-	     << "---" << endl;
+	vector<sDebugField> fields;
+	getDebugFields(&fields);
+	for(unsigned i = 0; i < fields.size(); i++) {
+		cout << fields[i].name << ": " << fields[i].value << endl;
+	}
+	cout << "---" << endl;
 }
 
 Ss7::Ss7(u_int64_t time_us) :
@@ -12302,13 +12335,55 @@ Ss7::Ss7(u_int64_t time_us) :
 	init();
 }
 
+string Ss7::packetAddressesToString(packet_s_stack *packetS) {
+	if(isMtp2Dlt(packetS->dlt)) {
+		return("mtp2");
+	}
+	return(packetS->saddr_().getString() + " -> " + packetS->daddr_().getString());
+}
+
+bool Ss7::isRetransmission(packet_s_stack *packetS, sParseData *data, bool *matched_previous_call) {
+	if(data->isup_message_type == SS7_IAM && last_message_type == rlc) {
+		return(false);
+	}
+	u_int64_t time_us = packetS->getTimeUS();
+	sTransportInstance transport_instance;
+	getTransportInstance(packetS, data, &transport_instance);
+	for(unsigned i = 0; i < processed_messages.size(); i++) {
+		sProcessedMessage *processed_message = &processed_messages[i];
+		if(processed_message->isup_message_type != data->isup_message_type ||
+		   processed_message->subsequent_number != data->isup_subsequent_number ||
+		   !processed_message->transport_instance.sameDirection(transport_instance)) {
+			continue;
+		}
+		bool same_path = processed_message->transport_instance.samePath(transport_instance);
+		if((same_path &&
+		    isset_unsigned(data->transport_seq) &&
+		    processed_message->encaps == data->encaps &&
+		    processed_message->transport_seq == data->transport_seq &&
+		    time_us < processed_message->time_us + SS7_RETRANSMISSION_WINDOW_MS * 1000) ||
+		   (!same_path &&
+		    data->isup_message_type != SS7_IAM &&
+		    !processed_message->previous_call &&
+		    time_us < processed_message->time_us + SS7_OTHER_PATH_DUPLICATE_WINDOW_MS * 1000)) {
+			if(matched_previous_call) {
+				*matched_previous_call = processed_message->previous_call;
+			}
+			return(true);
+		}
+	}
+	return(false);
+}
+
 void Ss7::processData(packet_s_stack *packetS, sParseData *data) {
 	switch(data->isup_message_type) {
 	case SS7_IAM:
 		last_message_type = iam;
 		iam_data = *data;
-		iam_src_ip = packetS->saddr_();
-		iam_dst_ip = packetS->daddr_();
+		if(!isMtp2Dlt(packetS->dlt)) {
+			iam_src_ip = packetS->saddr_();
+			iam_dst_ip = packetS->daddr_();
+		}
 		if(!iam_time_us) {
 			iam_time_us = packetS->getTimeUS();
 		}
@@ -12316,7 +12391,7 @@ void Ss7::processData(packet_s_stack *packetS, sParseData *data) {
 		break;
 	case SS7_SAM:
 		last_message_type = iam;
-		sam_data = *data;
+		sam_subsequent_number += data->isup_subsequent_number;
 		break;
 	case SS7_ACM:
 		last_message_type = acm;
@@ -12331,7 +12406,11 @@ void Ss7::processData(packet_s_stack *packetS, sParseData *data) {
 		}
 		break;
 	case SS7_ANM:
+	case SS7_CON:
 		last_message_type = anm;
+		if(data->isup_message_type == SS7_CON && !acm_time_us) {
+			acm_time_us = packetS->getTimeUS();
+		}
 		if(!anm_time_us) {
 			anm_time_us = packetS->getTimeUS();
 		}
@@ -12351,25 +12430,67 @@ void Ss7::processData(packet_s_stack *packetS, sParseData *data) {
 		destroy_at_s = getTimeS(packetS->header_pt) + opt_ss7timeout_rlc;
 		break;
 	}
-	switch(data->isup_message_type) {
-	case SS7_IAM:
-	case SS7_ACM:
-	case SS7_CPG:
-	case SS7_ANM:
-		destroy_at_s = 0;
-		rel_time_us = 0;
-		rlc_time_us = 0;
-		break;
+	u_int64_t time_us = packetS->getTimeUS();
+	while(!processed_messages.empty() &&
+	      processed_messages[0].time_us + max(SS7_RETRANSMISSION_WINDOW_MS, SS7_OTHER_PATH_DUPLICATE_WINDOW_MS) * 1000 <= time_us) {
+		processed_messages.erase(processed_messages.begin());
 	}
-	last_time_us = packetS->getTimeUS();
+	sProcessedMessage processed_message;
+	processed_message.encaps = data->encaps;
+	processed_message.transport_seq = data->transport_seq;
+	processed_message.isup_message_type = data->isup_message_type;
+	processed_message.subsequent_number = data->isup_subsequent_number;
+	getTransportInstance(packetS, data, &processed_message.transport_instance);
+	processed_message.previous_call = false;
+	processed_message.time_us = time_us;
+	processed_messages.push_back(processed_message);
+	last_time_us = time_us;
+	dumpPacket(packetS);
+}
+
+void Ss7::takeOverProcessedMessages(Ss7 *previous) {
+	vector<sProcessedMessage> previous_messages = previous->processed_messages;
+	for(unsigned i = 0; i < previous_messages.size(); i++) {
+		previous_messages[i].previous_call = true;
+	}
+	processed_messages.insert(processed_messages.begin(), previous_messages.begin(), previous_messages.end());
+}
+
+void Ss7::getTransportInstance(packet_s_stack *packetS, sParseData *data, sTransportInstance *transport_instance) {
+	transport_instance->opc = isset_unsigned(data->m3ua_protocol_data_opc) ? data->m3ua_protocol_data_opc : data->mtp3_opc;
+	transport_instance->dpc = isset_unsigned(data->m3ua_protocol_data_dpc) ? data->m3ua_protocol_data_dpc : data->mtp3_dpc;
+	transport_instance->sctp_vtag = 0;
+	transport_instance->mtp2_phdr = 0;
+	transport_instance->transport_link = data->transport_link;
+	if(isMtp2Dlt(packetS->dlt)) {
+		if(packetS->dlt == DLT_MTP2_WITH_PHDR && packetS->datalen_() >= 4) {
+			u_char *phdr = (u_char*)packetS->data_();
+			transport_instance->mtp2_phdr = (phdr[0] << 16) | (phdr[2] << 8) | phdr[3];
+		}
+	} else if(packetS->header_ip_protocol() == IPPROTO_SCTP) {
+		u_char *header_sctp = (u_char*)packetS->header_ip_() + packetS->header_ip_()->get_hdr_size();
+		transport_instance->sport = ntoh16(header_sctp);
+		transport_instance->dport = ntoh16(header_sctp + 2);
+		transport_instance->sctp_vtag = ntoh32(header_sctp + 4);
+	} else {
+		transport_instance->saddr = packetS->saddr_();
+		transport_instance->daddr = packetS->daddr_();
+		transport_instance->sport = packetS->source_();
+		transport_instance->dport = packetS->dest_();
+	}
+}
+
+void Ss7::dumpPacket(packet_s_stack *packetS) {
 	if(!pcap.isOpen()) {
 		string pathfilename = get_pathfilename(tsf_ss7);
 		pcap.open(tsf_ss7, pathfilename.c_str(), useHandle, useDlt);
 	}
 	if(pcap.isOpen()) {
-		if(packetS->header_pt->ts.tv_sec != last_dump_ts.tv_sec ||
+		if(packetS->packet != last_dump_packet ||
+		   packetS->header_pt->ts.tv_sec != last_dump_ts.tv_sec ||
 		   packetS->header_pt->ts.tv_usec != last_dump_ts.tv_usec) {
 			pcap.dump(packetS->header_pt, packetS->packet, packetS->dlt);
+			last_dump_packet = packetS->packet;
 			last_dump_ts = packetS->header_pt->ts;
 		}
 	}
@@ -12424,8 +12545,8 @@ int Ss7::saveToDb(bool enableBatchIfPossible) {
 	if(isset_unsigned(iam_data.isup_satellite_indicator)) {
 		ss7.add(iam_data.isup_satellite_indicator, "satellite_indicator");
 	}
-	if(isset_unsigned(iam_data.isup_satellite_indicator)) {
-		ss7.add(iam_data.isup_satellite_indicator, "echo_control_device_indicator");
+	if(isset_unsigned(iam_data.isup_echo_control_device_indicator)) {
+		ss7.add(iam_data.isup_echo_control_device_indicator, "echo_control_device_indicator");
 	}
 	if(isset_unsigned(iam_data.isup_calling_partys_category)) {
 		ss7.add(iam_data.isup_calling_partys_category, "caller_partys_category");
@@ -12471,19 +12592,31 @@ int Ss7::saveToDb(bool enableBatchIfPossible) {
 	   isset_unsigned(iam_data.mtp3_dpc)) {
 		ss7.add(isset_unsigned(iam_data.m3ua_protocol_data_dpc) ? iam_data.m3ua_protocol_data_dpc : iam_data.mtp3_dpc, "dpc");
 	}
+	extern bool opt_pii_enable;
 	if(!iam_data.e164_called_party_number_digits.empty()) {
 		string called_number = iam_data.e164_called_party_number_digits;
-		if(opt_ss7_use_sam_subsequent_number && !sam_data.isup_subsequent_number.empty()) {
-			called_number += sam_data.isup_subsequent_number;
+		if(opt_ss7_use_sam_subsequent_number && !sam_subsequent_number.empty()) {
+			called_number += sam_subsequent_number;
+		}
+		string called_number_reverse = reverseString(called_number.c_str());
+		ss7.add(getCountryByPhoneNumber(called_number.c_str(), iam_dst_ip, true), "called_number_country_code");
+		if(opt_pii_enable) {
+			called_number = pii_masking(called_number.c_str());
+			called_number_reverse = pii_masking(called_number_reverse.c_str());
 		}
 		ss7.add(sqlEscapeString_limit(called_number, 255), "called_number");
-		ss7.add(sqlEscapeString_limit(reverseString(called_number.c_str()), 255), "called_number_reverse");
-		ss7.add(getCountryByPhoneNumber(called_number.c_str(), iam_dst_ip, true), "called_number_country_code");
+		ss7.add(sqlEscapeString_limit(called_number_reverse, 255), "called_number_reverse");
 	}
 	if(!iam_data.e164_calling_party_number_digits.empty()) {
-		ss7.add(sqlEscapeString_limit(iam_data.e164_calling_party_number_digits, 255), "caller_number");
-		ss7.add(sqlEscapeString_limit(reverseString(iam_data.e164_calling_party_number_digits.c_str()), 255), "caller_number_reverse");
-		ss7.add(getCountryByPhoneNumber(iam_data.e164_calling_party_number_digits.c_str(), iam_src_ip, true), "caller_number_country_code");
+		string caller_number = iam_data.e164_calling_party_number_digits;
+		string caller_number_reverse = reverseString(caller_number.c_str());
+		ss7.add(getCountryByPhoneNumber(caller_number.c_str(), iam_src_ip, true), "caller_number_country_code");
+		if(opt_pii_enable) {
+			caller_number = pii_masking(caller_number.c_str());
+			caller_number_reverse = pii_masking(caller_number_reverse.c_str());
+		}
+		ss7.add(sqlEscapeString_limit(caller_number, 255), "caller_number");
+		ss7.add(sqlEscapeString_limit(caller_number_reverse, 255), "caller_number_reverse");
 	}
 	if(isset_unsigned(rel_cause_indicator)) {
 		ss7.add(rel_cause_indicator, "rel_cause_indicator");
@@ -12505,10 +12638,9 @@ int Ss7::saveToDb(bool enableBatchIfPossible) {
 	}
 	if(existsColumns.ss7_flags) {
 		u_int64_t flags = 0;
-		if(sonus) {
+		if(iam_data.encaps == sParseData::_encaps_sonus) {
 			flags |= SS7_FLAG_SONUS;
-		}
-		if(rudp) {
+		} else if(iam_data.encaps == sParseData::_encaps_rudp) {
 			flags |= SS7_FLAG_RUDP;
 		}
 		if(flags) {
@@ -12538,8 +12670,7 @@ void Ss7::init() {
 	last_time_us = 0;
 	rel_cause_indicator = UINT_MAX;
 	destroy_at_s = 0;
-	sonus = false;
-	rudp = false;
+	last_dump_packet = NULL;
 	last_dump_ts.tv_sec = 0;
 	last_dump_ts.tv_usec = 0;
 }
@@ -14266,6 +14397,9 @@ Calltable::add_ss7(packet_s_stack *packetS, Ss7::sParseData *data) {
 	Ss7 *newss7 = new FILE_LINE(0) Ss7(packetS->getTimeUS());
 	newss7->useHandle = get_pcap_handle(packetS->handle_index);
 	newss7->useDlt = packetS->dlt;
+	if(packetS->sensor_id_() > -1 && enable_set_sensor_id_by_client_or_sender()) {
+		newss7->useSensorId = packetS->sensor_id_();
+	}
 	newss7->processData(packetS, data);
 	string ss7_id = data->ss7_id();
 	lock_ss7_listMAP();

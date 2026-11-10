@@ -265,11 +265,21 @@ enum eCdrBitFlag {
 #define SS7_ACM 6
 #define SS7_CPG 44
 #define SS7_ANM 9
+#define SS7_CON 7
 #define SS7_REL 12
 #define SS7_RLC 16
 
+#define SS7_RETRANSMISSION_WINDOW_MS 2000
+#define SS7_OTHER_PATH_DUPLICATE_WINDOW_MS 10000
+
 #define SS7_FLAG_SONUS (1 << 0)
 #define SS7_FLAG_RUDP (1 << 1)
+
+enum eSs7Mode {
+	_ss7_mode_no,
+	_ss7_mode_ws,
+	_ss7_mode_native
+};
 
 #define NOFAX	0
 #define T38FAX	1
@@ -3882,24 +3892,41 @@ public:
 		rlc
 	};
 	struct sParseData {
+		enum eEncaps {
+			_encaps_sctp,
+			_encaps_sonus,
+			_encaps_rudp,
+			_encaps_other
+		};
+		struct sDebugField {
+			sDebugField(const char *name, string value) {
+				this->name = name;
+				this->value = value;
+			}
+			const char *name;
+			string value;
+		};
 		sParseData() {
-			isup_message_type = 0;
-			isup_cic = 0;
-			isup_satellite_indicator = 0;
-			isup_echo_control_device_indicator = 0;
-			isup_calling_partys_category = 0;
-			isup_calling_party_nature_of_address_indicator = 0;
-			isup_ni_indicator = 0;
-			isup_address_presentation_restricted_indicator = 0;
-			isup_screening_indicator = 0;
-			isup_transmission_medium_requirement = 0;
-			isup_called_party_nature_of_address_indicator = 0;
-			isup_inn_indicator = 0;
-			m3ua_protocol_data_opc = 0;
-			m3ua_protocol_data_dpc = 0;
-			mtp3_opc = 0;
-			mtp3_dpc = 0;
-			isup_cause_indicator = 0;
+			isup_message_type = UINT_MAX;
+			isup_cic = UINT_MAX;
+			isup_satellite_indicator = UINT_MAX;
+			isup_echo_control_device_indicator = UINT_MAX;
+			isup_calling_partys_category = UINT_MAX;
+			isup_calling_party_nature_of_address_indicator = UINT_MAX;
+			isup_ni_indicator = UINT_MAX;
+			isup_address_presentation_restricted_indicator = UINT_MAX;
+			isup_screening_indicator = UINT_MAX;
+			isup_transmission_medium_requirement = UINT_MAX;
+			isup_called_party_nature_of_address_indicator = UINT_MAX;
+			isup_inn_indicator = UINT_MAX;
+			m3ua_protocol_data_opc = UINT_MAX;
+			m3ua_protocol_data_dpc = UINT_MAX;
+			mtp3_opc = UINT_MAX;
+			mtp3_dpc = UINT_MAX;
+			isup_cause_indicator = UINT_MAX;
+			transport_seq = UINT_MAX;
+			transport_link = 0;
+			encaps = _encaps_other;
 		}
 		bool parse(struct packet_s_stack *packetS, const char *dissect_rslt = NULL);
 		string ss7_id() {
@@ -3921,8 +3948,11 @@ public:
 			}
 			unsigned opc = isset_unsigned(m3ua_protocol_data_opc) ? m3ua_protocol_data_opc : mtp3_opc;
 			unsigned dpc = isset_unsigned(m3ua_protocol_data_dpc) ? m3ua_protocol_data_dpc : mtp3_dpc;
-			return(intToString(isup_cic) + "-" + intToString(opc) + "-" + intToString(dpc) + "-" +
-			       e164_calling_party_number_digits + "-" + e164_called_party_number_digits);
+			extern bool opt_pii_enable;
+			return(intToString(isup_cic) + "-" + intToString(opc) + "-" + intToString(dpc) +
+			       (opt_pii_enable ?
+				 string() :
+				 "-" + e164_calling_party_number_digits + "-" + e164_called_party_number_digits));
 		}
 		bool isOk() {
 			return(isset_unsigned(isup_cic) &&
@@ -3932,6 +3962,10 @@ public:
 		bool isset_unsigned(unsigned value) {
 			return(value != UINT_MAX);
 		}
+		string debugValue(unsigned value) {
+			return(isset_unsigned(value) ? intToString(value) : "");
+		}
+		void getDebugFields(vector<sDebugField> *fields);
 		void debugOutput();
 		unsigned isup_message_type;
 		unsigned isup_cic;
@@ -3953,10 +3987,16 @@ public:
 		string e164_calling_party_number_digits;
 		string isup_subsequent_number;
 		unsigned isup_cause_indicator;
+		unsigned transport_seq;
+		u_int64_t transport_link;
+		eEncaps encaps;
 	};
 public:
 	Ss7(u_int64_t time_us);
+	bool isRetransmission(packet_s_stack *packetS, sParseData *data, bool *matched_previous_call = NULL);
 	void processData(packet_s_stack *packetS, sParseData *data);
+	void dumpPacket(packet_s_stack *packetS);
+	void takeOverProcessedMessages(Ss7 *previous);
 	void pushToQueue(string *ss7_id = NULL);
 	int saveToDb(bool enableBatchIfPossible = true);
 	string ss7_id() {
@@ -3995,13 +4035,17 @@ public:
 	bool isset_unsigned(unsigned value) {
 		return(value != UINT_MAX);
 	}
+	static bool isMtp2Dlt(int dlt) {
+		return(dlt == DLT_MTP2 || dlt == DLT_MTP2_WITH_PHDR);
+	}
+	static string packetAddressesToString(packet_s_stack *packetS);
 private:
 	void init();
 public:
 	eMessageType last_message_type;
 	// IAM (Initial Address)
 	sParseData iam_data;
-	sParseData sam_data;
+	string sam_subsequent_number;
 	vmIP iam_src_ip;
 	vmIP iam_dst_ip;
 	u_int64_t iam_time_us;
@@ -4018,11 +4062,41 @@ public:
 	u_int64_t last_time_us;
 	unsigned rel_cause_indicator;
 	u_int32_t destroy_at_s;
-	bool sonus : 1;
-	bool rudp : 1;
 	PcapDumper pcap;
 private:
+	struct sTransportInstance {
+		unsigned opc;
+		unsigned dpc;
+		vmIP saddr;
+		vmIP daddr;
+		vmPort sport;
+		vmPort dport;
+		u_int32_t sctp_vtag;
+		u_int32_t mtp2_phdr;
+		u_int64_t transport_link;
+		bool sameDirection(const sTransportInstance& other) const {
+			return(opc == other.opc && dpc == other.dpc);
+		}
+		bool samePath(const sTransportInstance& other) const {
+			return(saddr == other.saddr && daddr == other.daddr &&
+			       sport == other.sport && dport == other.dport &&
+			       sctp_vtag == other.sctp_vtag && mtp2_phdr == other.mtp2_phdr &&
+			       transport_link == other.transport_link);
+		}
+	};
+	struct sProcessedMessage {
+		sParseData::eEncaps encaps;
+		unsigned transport_seq;
+		unsigned isup_message_type;
+		string subsequent_number;
+		sTransportInstance transport_instance;
+		bool previous_call;
+		u_int64_t time_us;
+	};
+	void getTransportInstance(packet_s_stack *packetS, sParseData *data, sTransportInstance *transport_instance);
+	const u_char *last_dump_packet;
 	struct timeval last_dump_ts;
+	vector<sProcessedMessage> processed_messages;
 };
 
 

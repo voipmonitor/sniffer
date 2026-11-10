@@ -2619,7 +2619,7 @@ RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *bu
 	#else
 		if(sizeof(int *) == 8) {
 			extern int opt_enable_ss7;
-			if(opt_enable_ss7) {
+			if(opt_enable_ss7 == _ss7_mode_ws) {
 				this->_64bit_ws = true;
 			} else {
 				this->_64bit = true;
@@ -6131,6 +6131,9 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 void convertAnonymousInPacket(sHeaderPacket *header_packet, pcapProcessData *ppd,
 			pcap_pkthdr **header_new, u_char **packet_new,
 			void *_net_map, void *_domain_map) {
+	if(!ppd->header_ip) {
+		return;
+	}
 	cConfigItem_net_map::t_net_map *net_map = (cConfigItem_net_map::t_net_map*)_net_map;
 	cConfigItem_domain_map::t_domain_map *domain_map = (cConfigItem_domain_map::t_domain_map*)_domain_map;
 	unsigned headers_ip_counter = 0;
@@ -6789,7 +6792,7 @@ char * gettag_json(const char *data, const char *tag, unsigned *dest, unsigned d
 	char *content = gettag_json(data, tag, &contentlen, NULL, 0);
 	if(content) {
 		if(dest) {
-			*dest = atoi(string(content, contentlen).c_str());
+			*dest = strtoul(string(content, contentlen).c_str(), NULL, 0);
 		}
 	} else if(dest && dest_not_exists) {
 		*dest = dest_not_exists;

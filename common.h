@@ -115,6 +115,8 @@ struct sVerbose {
 	int cleanspool_disable_rm;
 	int log_profiler;
 	int dump_packets_via_wireshark;
+	int ss7;
+	int ss7_compare;
 	int force_log_sqlq;
 	int dump_call_flags;
 	int log_srtp_callid;

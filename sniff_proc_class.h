@@ -666,6 +666,7 @@ public:
 					;
 		bool ok_push = !opt_t2_boost ||
 			       need_sip_process ||
+			       pflags.other_processing() ||
 			       datalen > 2 ||
 			       blockstore_lock != 1;
 		if(!ok_push) {
@@ -1061,6 +1062,9 @@ public:
 			}
 		} else {
 			extern ParsePacket _parse_packet_global_process_packet;
+			extern int opt_enable_ss7;
+			extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
+			extern void _process_packet__cleanup_ss7(packet_s *packetS);
 			unsigned int usleepCounter = 0;
 			while(this->outThreadState) {
 				USLEEP_C(10, usleepCounter++);
@@ -1114,6 +1118,9 @@ public:
 				break;
 			case ppt_sip:
 				_parse_packet_global_process_packet.refreshIfNeed();
+				if(opt_enable_ss7 && !preProcessPacket[ppt_pp_other]->outThreadState) {
+					_process_packet__cleanup_ss7(NULL);
+				}
 				this->process_SIP(packetS);
 				break;
 			case ppt_extend:
@@ -1563,8 +1570,12 @@ private:
 		pcap_pkthdr *header = packet_data->hp.header->_getStdHeader();
 		u_char *packet = packet_data->hp.packet;
 		#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
-		vmIP saddr = ((iphdr2*)(packet + packet_data->header_ip_offset))->get_saddr();
-		vmIP daddr = ((iphdr2*)(packet + packet_data->header_ip_offset))->get_daddr();
+		vmIP saddr;
+		vmIP daddr;
+		if(packet_data->hp.header_ip_offset != 0xFFFF || !Ss7::isMtp2Dlt(packet_data->hp.dlt)) {
+			saddr = ((iphdr2*)(packet + packet_data->header_ip_offset))->get_saddr();
+			daddr = ((iphdr2*)(packet + packet_data->header_ip_offset))->get_daddr();
+		}
 		#endif
 		int blockstore_lock = packet_data->hp.block_store_locked ? 2 : 1;
 		setProtocolPflags(packet_data->pflags, packet + packet_data->data_offset, packet_data->datalen,
@@ -1630,6 +1641,7 @@ private:
 		}
 		bool ok_push = !opt_t2_boost ||
 			       need_sip_process ||
+			       packet_data->pflags.other_processing() ||
 			       (opt_t2_boost_direct_rtp ? is_rtp : packet_data->datalen > 2) ||
 			       blockstore_lock != 1;
 		if(!ok_push) {

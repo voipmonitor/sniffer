@@ -77,6 +77,7 @@
 #include "ssldata.h"
 #include "sip_tcp_data.h"
 #include "diameter.h"
+#include "ss7_parser.h"
 #include "ip_frag.h"
 #include "cleanspool.h"
 #include "regcache.h"
@@ -554,12 +555,17 @@ int opt_safe_cleanup_calls = 1;
 bool opt_destroy_calls_in_storing_cdr = false;
 int opt_preprocess_packet_stack = true;
 int opt_enable_ss7 = 0;
+int opt_ss7_mtp3_standard = cSs7Parser::_mtp3_itu;
+int opt_ss7_isup_variant = cSs7Parser::_isup_itu;
+bool opt_ss7_mtp2_extended_seq = false;
+int opt_ss7_m2pa_port = SS7_SCTP_PORT_M2PA;
 bool opt_ss7_use_sam_subsequent_number = true;
 int opt_ss7_type_callid = 1;
 int opt_ss7timeout_rlc = 10;
 int opt_ss7timeout_rel = 60;
 int opt_ss7timeout = 3600;
 vector<string> opt_ws_params;
+map<string, string> opt_ws_params_ss7;
 bool opt_enable_diameter;
 bool opt_diameter_ignore_domain;
 bool opt_diameter_ignore_prefix;
@@ -3418,12 +3424,11 @@ void bt_sighandler(int sig, siginfo_t */*info*/, void *secret)
 			write(fh, "arm", 3);
 		#else
 			if(sizeof(int *) == 8) {
-				extern int opt_enable_ss7;
-				if(opt_enable_ss7) {
+				#if HAVE_LIBWIRESHARK
 					write(fh, "x86_64_ws", 9);
-				} else {
+				#else
 					write(fh, "x86_64", 6);
-				}
+				#endif
 			} else {
 				write(fh, "i686", 4);
 			}
@@ -7828,8 +7833,29 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42361) cConfigItem_yesno("ipaccount_agregate_only_customers_on_any_side", &opt_ipacc_agregate_only_customers_on_any_side));
 	group("ss7");
 			advanced();
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ss7", &opt_enable_ss7));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ss7", &opt_enable_ss7))
+				->addValues(("ws:" + intToString(_ss7_mode_ws) +
+					     "|native:" + intToString(_ss7_mode_native)).c_str()));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ss7_mtp3_standard", &opt_ss7_mtp3_standard))
+				->disableYes()
+				->disableNo()
+				->addValues(("itu:" + intToString(cSs7Parser::_mtp3_itu) +
+					     "|ansi:" + intToString(cSs7Parser::_mtp3_ansi) +
+					     "|china:" + intToString(cSs7Parser::_mtp3_china) +
+					     "|chinese-itu:" + intToString(cSs7Parser::_mtp3_china) +
+					     "|japan:" + intToString(cSs7Parser::_mtp3_japan)).c_str()));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ss7_isup_variant", &opt_ss7_isup_variant))
+				->disableYes()
+				->disableNo()
+				->addValues(("itu:" + intToString(cSs7Parser::_isup_itu) +
+					     "|french:" + intToString(cSs7Parser::_isup_french) +
+					     "|israeli:" + intToString(cSs7Parser::_isup_israeli) +
+					     "|russian:" + intToString(cSs7Parser::_isup_russian) +
+					     "|japan:" + intToString(cSs7Parser::_isup_japan) +
+					     "|japan_ttc:" + intToString(cSs7Parser::_isup_japan_ttc)).c_str()));
 				expert();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ss7_mtp2_extended_seq", &opt_ss7_mtp2_extended_seq));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_m2pa_port", &opt_ss7_m2pa_port));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ss7_use_sam_subsequent_number", &opt_ss7_use_sam_subsequent_number));
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ss7callid", &opt_ss7_type_callid))
 					->disableNo()
@@ -8870,6 +8896,8 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "cleanspool_disable_rm")		sverb.cleanspool_disable_rm = 1;
 	else if(verbParam == "log_profiler")			sverb.log_profiler = 1;
 	else if(verbParam == "dump_packets_via_wireshark")	sverb.dump_packets_via_wireshark = 1;
+	else if(verbParam == "ss7")				sverb.ss7 = 1;
+	else if(verbParam == "ss7_compare")			sverb.ss7_compare = 1;
 	else if(verbParam == "force_log_sqlq")			sverb.force_log_sqlq = 1;
 	else if(verbParam == "dump_call_flags")			sverb.dump_call_flags = 1;
 	else if(verbParam == "log_srtp_callid")			sverb.log_srtp_callid = 1;
@@ -10464,14 +10492,20 @@ void set_context_config() {
 	if(opt_sniffer_threads_ext) {
 		sverb.sniffer_threads_ext = opt_sniffer_threads_ext;
 	}
+	#if not HAVE_LIBWIRESHARK
+	if(opt_enable_ss7 == _ss7_mode_ws) {
+		opt_enable_ss7 = _ss7_mode_native;
+	}
+	#endif
+	if(opt_enable_ss7) {
+		cSs7Parser::setOptionsFromWsParams();
+	}
 }
 
 void check_context_config() {
-	#if not HAVE_LIBWIRESHARK
-		if(opt_enable_ss7) {
-			cLogSensor::log(cLogSensor::error, "option ss7 need voipmonitor with wireshark module");
-		}
-	#endif
+	if(opt_enable_ss7) {
+		cSs7Parser::checkWsParams();
+	}
 	#if HAVE_LIBDPDK
 	if(opt_use_dpdk) {
 		dpdk_check_configuration();

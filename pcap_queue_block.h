@@ -477,7 +477,7 @@ struct pcap_block_store : public pcap_block_store_copydata {
 				}
 				return(false);
 			}
-			if(header->header_ip_offset > 1000) {
+			if(header->header_ip_offset > 1000 && header->header_ip_offset != 0xFFFF) {
 				if(error) {
 					*error = new FILE_LINE(0) string("header_ip_offset = " + intToString(header->header_ip_offset));
 				}
