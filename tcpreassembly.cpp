@@ -61,6 +61,85 @@ bool TcpReassemblyData::isFill() {
 }
 
 
+TcpReassemblyProcessData::~TcpReassemblyProcessData() {
+	for(map<vmIPportLink, sWebSocketInflateStream>::iterator iter = this->webSocketInflateStreams.begin(); iter != this->webSocketInflateStreams.end(); iter++) {
+		delete iter->second.inflate;
+	}
+}
+
+u_char *TcpReassemblyProcessData::decompressWebSocket(vmIP ip_src, vmIP ip_dst, vmPort port_src, vmPort port_dst,
+						      u_char *data, u_int32_t datalen, u_int32_t *rslt_datalen,
+						      bool skipRetransmission, u_int32_t seq) {
+	if(!check_websocket(data, datalen, cWebSocketHeader::_chdst_ge_limit, true) ||
+	   !cWebSocketHeader(data, datalen).isCompressed()) {
+		return(NULL);
+	}
+	vmIPportLink id(ip_src, port_src, ip_dst, port_dst);
+	sWebSocketInflateStream *inflateStream;
+	lock_websocket_inflate();
+	map<vmIPportLink, sWebSocketInflateStream>::iterator iter = this->webSocketInflateStreams.find(id);
+	if(iter == this->webSocketInflateStreams.end()) {
+		inflateStream = &this->webSocketInflateStreams[id];
+		inflateStream->inflate = new FILE_LINE(0) cWebSocketInflate;
+		inflateStream->next_seq = 0;
+	} else {
+		inflateStream = &iter->second;
+		if(skipRetransmission &&
+		   seq != inflateStream->next_seq &&
+		   (u_int32_t)(inflateStream->next_seq - seq) <= WEBSOCKET_INFLATE_RETRANSMISSION_MAX_DISTANCE) {
+			inflateStream = NULL;
+		}
+	}
+	unlock_websocket_inflate();
+	if(!inflateStream) {
+		return(NULL);
+	}
+	if(skipRetransmission) {
+		inflateStream->next_seq = seq + datalen;
+	}
+	return(inflateStream->inflate->decompressFrame(data, datalen, rslt_datalen));
+}
+
+bool TcpReassemblyProcessData::existsWebSocketInflateContext(vmIP ip_src, vmIP ip_dst, vmPort port_src, vmPort port_dst) {
+	if(this->webSocketInflateStreams.empty()) {
+		return(false);
+	}
+	bool rslt = false;
+	vmIPportLink id(ip_src, port_src, ip_dst, port_dst);
+	lock_websocket_inflate();
+	for(int i = 0; i < 2 && !rslt; i++) {
+		if(i) {
+			id = vmIPportLink(ip_dst, port_dst, ip_src, port_src);
+		}
+		map<vmIPportLink, sWebSocketInflateStream>::iterator iter = this->webSocketInflateStreams.find(id);
+		if(iter != this->webSocketInflateStreams.end() && iter->second.inflate->existsContext()) {
+			rslt = true;
+		}
+	}
+	unlock_websocket_inflate();
+	return(rslt);
+}
+
+void TcpReassemblyProcessData::destroyWebSocketInflate(vmIP ip_src, vmIP ip_dst, vmPort port_src, vmPort port_dst) {
+	if(this->webSocketInflateStreams.empty()) {
+		return;
+	}
+	vmIPportLink id(ip_src, port_src, ip_dst, port_dst);
+	lock_websocket_inflate();
+	for(int i = 0; i < 2; i++) {
+		if(i) {
+			id = vmIPportLink(ip_dst, port_dst, ip_src, port_src);
+		}
+		map<vmIPportLink, sWebSocketInflateStream>::iterator iter = this->webSocketInflateStreams.find(id);
+		if(iter != this->webSocketInflateStreams.end()) {
+			delete iter->second.inflate;
+			this->webSocketInflateStreams.erase(iter);
+		}
+	}
+	unlock_websocket_inflate();
+}
+
+
 void TcpReassemblyStream_packet_var::push(TcpReassemblyStream_packet packet) {
 	map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
 	iter = this->queuePackets.find(packet.next_seq);
@@ -968,6 +1047,9 @@ TcpReassemblyLink::~TcpReassemblyLink() {
 		delete [] this->ethHeader;
 	}
 	clearRemainData(TcpReassemblyDataItem::DIRECTION_NA);
+	if(reassembly->dataCallback) {
+		reassembly->dataCallback->destroyWebSocketInflate(ip_src, ip_dst, port_src, port_dst);
+	}
 	if(reassembly->getType() == TcpReassembly::ssl) {
 		if(opt_enable_ssl == 10) {
 			#if defined(HAVE_SSL_WS)
@@ -989,6 +1071,14 @@ bool TcpReassemblyLink::push_normal(
 			pcap_block_store *block_store, int block_store_index,
 			bool isSip) {
 	if(reassembly->simpleByAck) {
+		if(header_tcp.flags_bit.syn) {
+			this->skip_websocket_inflate_link_timeout_due_to_fin_rst = false;
+			if(!header_tcp.flags_bit.ack && reassembly->dataCallback) {
+				reassembly->dataCallback->destroyWebSocketInflate(ip_src, ip_dst, port_src, port_dst);
+			}
+		} else if(header_tcp.flags_bit.fin || header_tcp.flags_bit.rst) {
+			this->skip_websocket_inflate_link_timeout_due_to_fin_rst = true;
+		}
 		if(!datalen) {
 			this->last_packet_at_from_header = getTimeMS(&time);
 			return(false);
@@ -3541,13 +3631,40 @@ bool TcpReassembly::checkOkData(u_char * data, u_int32_t datalen, int8_t strict_
 		break;
 	case sip:
 		sip_offsets->clear();
-		if(check_websocket(data, datalen)) {
+		if(check_websocket(data, datalen, cWebSocketHeader::_chdst_ge_limit, true)) {
 			sip_offsets->push_back(d_u_int32_t(0, datalen));
 			if(datalen_used) {
 				*datalen_used = datalen;
 			}
 			return(true);
-		} else if(checkOkSipData(data, datalen, strict_mode, sip_offsets, datalen_used)) {
+		} else {
+			u_int32_t offset = 0;
+			while(offset < datalen) {
+				cWebSocketHeader ws(data + offset, datalen - offset);
+				if(!ws.isHeaderSizeOk() || !ws.isDataSizeOk(cWebSocketHeader::_chdst_ge_unlimited)) {
+					break;
+				}
+				bool isDataFrame = check_websocket_first_byte(data + offset, datalen - offset, true);
+				if(!isDataFrame &&
+				   !(ws.getFixHeader()->fin && !ws.getFixHeader()->res &&
+				     ws.getFixHeader()->opcode >= 0x08 && ws.getFixHeader()->opcode <= 0x0A)) {
+					break;
+				}
+				u_int32_t frameLength = ws.getHeaderLength() + ws.getDataLength();
+				if(isDataFrame) {
+					sip_offsets->push_back(d_u_int32_t(offset, frameLength));
+				}
+				offset += frameLength;
+			}
+			if(offset && datalen - offset <= 1) {
+				if(datalen_used) {
+					*datalen_used = datalen;
+				}
+				return(true);
+			}
+			sip_offsets->clear();
+		}
+		if(checkOkSipData(data, datalen, strict_mode, sip_offsets, datalen_used)) {
 			return(true);
 		}
 		break;
@@ -4017,7 +4134,12 @@ void TcpReassembly::cleanup_simple(bool all, bool lock) {
 		if(lock) lock_links();
 		for(iterLink = this->links.begin(); iterLink != this->links.end(); ) {
 			TcpReassemblyLink *link = iterLink->second;
-			if(all || act_time > link->last_packet_at_from_header + linkTimeout * 1000) {
+			u_int32_t _linkTimeout = !link->skip_websocket_inflate_link_timeout_due_to_fin_rst &&
+						 this->dataCallback &&
+						 this->dataCallback->existsWebSocketInflateContext(link->ip_src, link->ip_dst, link->port_src, link->port_dst) ?
+						  max(linkTimeout, (u_int32_t)WEBSOCKET_INFLATE_LINK_TIMEOUT) :
+						  linkTimeout;
+			if(all || act_time > link->last_packet_at_from_header + _linkTimeout * 1000) {
 				if(lock) link->lock_queue();
 				delete link;
 				this->links.erase(iterLink++);

@@ -135,7 +135,13 @@ static int ssl_decrypt_record( dssl_decoder_stack* stack, u_char* data, uint32_t
 			if( stack->sess->version == TLS1_3_VERSION )
 			{
 				while(buf_len > 0 && buf[buf_len - 1] == 0) --buf_len;
-				if(buf_len > 0) --buf_len;
+				if(buf_len == 0 || buf[buf_len - 1] != SSL3_RT_APPLICATION_DATA)
+				{
+					*out = NULL;
+					*out_len = 0;
+					return(DSSL_RC_TLS_OK);
+				}
+				--buf_len;
 			}
 			*out = buf;
 			*out_len = buf_len;

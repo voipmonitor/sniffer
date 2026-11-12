@@ -123,6 +123,13 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 				_data += 1;
 				_datalen -= 1;
 			}
+			u_int32_t ws_decompressed_datalen;
+			u_char *ws_decompressed_data = decompressWebSocket(_ip_src, _ip_dst, _port_src, _port_dst, _data, _datalen, &ws_decompressed_datalen,
+									   true, dataItem->getSeq() + (_data - dataItem->getData()));
+			if(ws_decompressed_data) {
+				_data = ws_decompressed_data;
+				_datalen = ws_decompressed_datalen;
+			}
 			if(_datalen > 0) {
 				#if DEBUG_PACKET_COUNT
 				extern void __ftcp_sip(const char *callid, const char *req, const char *stat);
@@ -243,6 +250,9 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 								false);
 					}
 				}
+			}
+			if(ws_decompressed_data) {
+				delete [] ws_decompressed_data;
 			}
 		}
 	}

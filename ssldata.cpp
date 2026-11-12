@@ -374,7 +374,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 			if(i < rslt_decrypt.size() - 1 && rslt_decrypt[i].length() == 1) {
 				dataComb = rslt_decrypt[i] + rslt_decrypt[i + 1];
 				if(check_sip20((char*)dataComb.c_str(), dataComb.length(), NULL, true) ||
-				   check_websocket((char*)dataComb.c_str(), dataComb.length(), cWebSocketHeader::_chdst_na)) {
+				   check_websocket((char*)dataComb.c_str(), dataComb.length(), cWebSocketHeader::_chdst_na, true)) {
 					dataCombUse = true;
 				}
 			} else if(i == 0 && incomplete_prev_rslt_decrypt.size()) {
@@ -383,7 +383,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 				if(iter != incomplete_prev_rslt_decrypt.end()) {
 					dataComb = iter->second + rslt_decrypt[0];
 					if(check_sip20((char*)dataComb.c_str(), dataComb.length(), NULL, true) ||
-					   check_websocket((char*)dataComb.c_str(), dataComb.length(), cWebSocketHeader::_chdst_na)) {
+					   check_websocket((char*)dataComb.c_str(), dataComb.length(), cWebSocketHeader::_chdst_na, true)) {
 						dataCombUse = 2;
 					}
 					incomplete_prev_rslt_decrypt.erase(iter);
@@ -408,10 +408,10 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 				print_websocket_check((char*)data, dataLength);
 			}
 			*/
-			if(check_websocket(data, dataLength)) {
+			if(check_websocket(data, dataLength, cWebSocketHeader::_chdst_ge_limit, true)) {
 				dataType = ReassemblyBuffer::_websocket;
-			} else if(check_websocket(data, dataLength, cWebSocketHeader::_chdst_na) || 
-				  (dataLength < websocket_header_length((char*)data, dataLength) && check_websocket_first_byte(data, dataLength))) {
+			} else if(check_websocket(data, dataLength, cWebSocketHeader::_chdst_na, true) || 
+				  (dataLength < websocket_header_length((char*)data, dataLength) && check_websocket_first_byte(data, dataLength, true))) {
 				dataType = ReassemblyBuffer::_websocket_incomplete;
 			} else if(check_sip20((char*)data, dataLength, NULL, false)) {
 				if(TcpReassemblySip::_checkSip(data, dataLength, TcpReassemblySip::_chssm_na)) {
@@ -467,6 +467,18 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 			    vmIP ip_src, vmIP ip_dst, vmPort port_src, vmPort port_dst,
 			    timeval time, u_int32_t ack, u_int32_t seq,
 			    u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid) {
+	if(dataType == ReassemblyBuffer::_websocket) {
+		u_int32_t decompressedDataLength;
+		u_char *decompressedData = decompressWebSocket(ip_src, ip_dst, port_src, port_dst, data, dataLength, &decompressedDataLength);
+		if(decompressedData) {
+			if(dataAlloc) {
+				delete [] data;
+			}
+			data = decompressedData;
+			dataLength = decompressedDataLength;
+			dataAlloc = true;
+		}
+	}
 	if(sverb.ssldecode) {
 		hexdump(data, dataLength);
 		cout << "--- begin ---" << endl;

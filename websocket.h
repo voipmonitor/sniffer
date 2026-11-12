@@ -2,6 +2,12 @@
 #define WEBSOCKET_H
 
 
+#include <zlib.h>
+
+
+#define WEBSOCKET_DECOMPRESS_MAX_LENGTH 0xFFFF
+
+
 class cWebSocketHeader {
 public:
 	enum eCheckDataSizeType {
@@ -67,6 +73,9 @@ public:
 	bool isMask() {
 		return(((sFixHeader*)header)->mask);
 	}
+	bool isCompressed() {
+		return(((sFixHeader*)header)->res & 0x04);
+	}
 	u_char *getMask() {
 		return(isMask() ?
 			header + sizeof(sFixHeader) + getExtendedLengthSize() :
@@ -106,22 +115,37 @@ public:
 };
 
 
+class cWebSocketInflate {
+public:
+	cWebSocketInflate();
+	~cWebSocketInflate();
+	u_char *decompressFrame(u_char *frame, unsigned frameLength, unsigned *rsltFrameLength);
+	bool existsContext() {
+		return(zipStream != NULL);
+	}
+private:
+	void destroyZipStream();
+private:
+	z_stream *zipStream;
+};
+
+
 bool check_websocket_header(char *data, unsigned len, cWebSocketHeader::eCheckDataSizeType checkDataSizeType = cWebSocketHeader::_chdst_ge_limit);
 unsigned websocket_header_length(char *data, unsigned len);
 void print_websocket_check(char *data, unsigned len);
 
-inline bool check_websocket_first_byte(char *data, unsigned len) {
-	return(len > 0 && (u_char)data[0] == 0x81);
+inline bool check_websocket_first_byte(char *data, unsigned len, bool enableCompressed = false) {
+	return(len > 0 && ((u_char)data[0] == 0x81 || (enableCompressed && (u_char)data[0] == 0xC1)));
 }
-inline bool check_websocket_first_byte(u_char *data, unsigned len) {
-	return(check_websocket_first_byte((char*)data, len));
+inline bool check_websocket_first_byte(u_char *data, unsigned len, bool enableCompressed = false) {
+	return(check_websocket_first_byte((char*)data, len, enableCompressed));
 }
-inline bool check_websocket(char *data, unsigned len, cWebSocketHeader::eCheckDataSizeType checkDataSizeType = cWebSocketHeader::_chdst_ge_limit) {
-	return(check_websocket_first_byte(data, len) &&
+inline bool check_websocket(char *data, unsigned len, cWebSocketHeader::eCheckDataSizeType checkDataSizeType = cWebSocketHeader::_chdst_ge_limit, bool enableCompressed = false) {
+	return(check_websocket_first_byte(data, len, enableCompressed) &&
 	       check_websocket_header(data, len, checkDataSizeType));
 }
-inline bool check_websocket(u_char *data, unsigned len, cWebSocketHeader::eCheckDataSizeType checkDataSizeType = cWebSocketHeader::_chdst_ge_limit) {
-	return(check_websocket((char*)data, len, checkDataSizeType));
+inline bool check_websocket(u_char *data, unsigned len, cWebSocketHeader::eCheckDataSizeType checkDataSizeType = cWebSocketHeader::_chdst_ge_limit, bool enableCompressed = false) {
+	return(check_websocket((char*)data, len, checkDataSizeType, enableCompressed));
 }
 
 

@@ -1815,6 +1815,9 @@ ssl_decrypt_record(SslDecryptSession *ssl, SslDecoder *decoder, guint8 ct, guint
         enable_try_seq = TRUE;
         --decoder->enable_try_seq_attempts;
     }
+    if(ssl->session.version == TLSV1DOT3_VERSION && !decoder->seq) {
+        ignore_mac_failed = FALSE;
+    }
 
     ssl_debug_printf("ssl_decrypt_record ciphertext len %d\n", inl);
     ssl_print_data("Ciphertext",in, inl);

@@ -44,6 +44,9 @@ extern int opt_tcpreassembly_thread;
 #define REMAIN_DATA_LIMIT_BYTES (2 * 1024 * 1024)
 #define REMAIN_DATA_FAIL_LIMIT 50
 
+#define WEBSOCKET_INFLATE_LINK_TIMEOUT (5 * 60)
+#define WEBSOCKET_INFLATE_RETRANSMISSION_MAX_DISTANCE (1024 * 1024)
+
 
 class TcpReassemblyDataItem {
 public: 
@@ -235,6 +238,15 @@ public:
 
 class TcpReassemblyProcessData {
 public:
+	struct sWebSocketInflateStream {
+		class cWebSocketInflate *inflate;
+		u_int32_t next_seq;
+	};
+public:
+	TcpReassemblyProcessData() {
+		this->_sync_websocket_inflate = 0;
+	}
+	virtual ~TcpReassemblyProcessData();
 	virtual void processData(vmIP ip_src, vmIP ip_dst,
 				 vmPort port_src, vmPort port_dst,
 				 TcpReassemblyData *data,
@@ -245,6 +257,22 @@ public:
 				 std::ostream *debugStream) = 0;
 	virtual void writeToDb(bool /*all*/ = false) {}
 	virtual void printContentSummary() {}
+	u_char *decompressWebSocket(vmIP ip_src, vmIP ip_dst, vmPort port_src, vmPort port_dst,
+				    u_char *data, u_int32_t datalen, u_int32_t *rslt_datalen,
+				    bool skipRetransmission = false, u_int32_t seq = 0);
+	bool existsWebSocketInflateContext(vmIP ip_src, vmIP ip_dst, vmPort port_src, vmPort port_dst);
+	void destroyWebSocketInflate(vmIP ip_src, vmIP ip_dst, vmPort port_src, vmPort port_dst);
+private:
+	void lock_websocket_inflate() {
+		extern int opt_sip_tcp_reassembly_ext_usleep;
+		__SYNC_LOCK_USLEEP(this->_sync_websocket_inflate, opt_sip_tcp_reassembly_ext_usleep);
+	}
+	void unlock_websocket_inflate() {
+		__SYNC_UNLOCK(this->_sync_websocket_inflate);
+	}
+private:
+	map<vmIPportLink, sWebSocketInflateStream> webSocketInflateStreams;
+	volatile int _sync_websocket_inflate;
 };
 
 struct TcpReassemblyLink_id {
@@ -724,6 +752,7 @@ public:
 		this->remainDataSize[1] = 0;
 		this->remainDataFailCounter[0] = 0;
 		this->remainDataFailCounter[1] = 0;
+		this->skip_websocket_inflate_link_timeout_due_to_fin_rst = false;
 	}
 	~TcpReassemblyLink();
 	bool push(TcpReassemblyStream::eDirection direction,
@@ -982,6 +1011,7 @@ private:
 	deque<sRemainDataItem> remainData[2];
 	u_int32_t remainDataSize[2];
 	u_int32_t remainDataFailCounter[2];
+	bool skip_websocket_inflate_link_timeout_due_to_fin_rst;
 	u_int32_t *check_duplicity_seq;
 	unsigned check_duplicity_seq_length;
 	list<d_u_int32_t> sip_offsets;

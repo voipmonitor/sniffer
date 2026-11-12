@@ -10262,7 +10262,7 @@ void ReassemblyBuffer::processPacket(u_char *ethHeader, unsigned ethHeaderLength
 	}
 	b_data->buffer->add(data, length);
 	if(!createStream &&
-	   ((b_data->type == _websocket && check_websocket(b_data->buffer->data(), b_data->buffer->size())) ||
+	   ((b_data->type == _websocket && check_websocket(b_data->buffer->data(), b_data->buffer->size(), cWebSocketHeader::_chdst_ge_limit, true)) ||
 	    (b_data->type == _sip && TcpReassemblySip::_checkSip(b_data->buffer->data(), b_data->buffer->size(), TcpReassemblySip::_chssm_na)))) {
 		dataRslt->push_back(complete(&id, b_data));
 		delete b_data->buffer;
@@ -12729,9 +12729,10 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 							   );
 			} else {
 				bool possibleWebSocketSip = false;
-				if(!isSip && check_websocket(packetS->data_(), packetS->datalen_(), cWebSocketHeader::_chdst_na)) {
+				if(!isSip && check_websocket(packetS->data_(), packetS->datalen_(), cWebSocketHeader::_chdst_na, true)) {
 					cWebSocketHeader ws(packetS->data_(), packetS->datalen_());
-					if(packetS->datalen_() - ws.getHeaderLength() < 11) {
+					if(ws.isCompressed() ||
+					   packetS->datalen_() - ws.getHeaderLength() < 11) {
 						possibleWebSocketSip = true;
 					}
 				}
