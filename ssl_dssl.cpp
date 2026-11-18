@@ -3,6 +3,7 @@
 
 #include "ssl_dssl.h"
 
+#include <netinet/tcp.h>
 
 #if defined(HAVE_OPENSSL101)
 
@@ -1246,17 +1247,25 @@ void cClientRandomConnection::connection_process() {
 		delete this;
 		return;
 	}
-	unsigned timeoutCounter = 0;
+	// Dead keyloggers are detected by keepalive, so idle ones need not be disconnected.
+	int on = 1, keepidle = 60, keepintvl = 10, keepcnt = 6;
+	setsockopt(socket->getHandle(), SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on));
+	setsockopt(socket->getHandle(), IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(keepidle));
+	setsockopt(socket->getHandle(), IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(keepintvl));
+	setsockopt(socket->getHandle(), IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(keepcnt));
+	extern int ssl_client_random_idle_timeout_s;
+	u_int32_t lastDataS = getTimeS();
 	while(!is_terminating() && !socket->isError()) {
 		u_char *data;
 		size_t dataLen;
 		data = socket->readBlock(&dataLen, cSocket::_te_aes, "", false, 30);
 		if(data) {
 			evData(data, dataLen);
-			timeoutCounter = 0;
+			lastDataS = getTimeS();
 		} else {
 			if(socket->getReadBlockError() == cSocketBlock::_sbe_timeout) {
-				if(++timeoutCounter >= 3) {
+				if(ssl_client_random_idle_timeout_s > 0 &&
+				   getTimeS() - lastDataS >= (u_int32_t)ssl_client_random_idle_timeout_s) {
 					break;
 				}
 			} else if(socket->getReadBlockError() != cSocketBlock::_sbe_na) {
