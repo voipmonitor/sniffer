@@ -707,6 +707,17 @@ bool cSocket::await(cSocket **clientSocket) {
 	return(clientHandle >= 0);
 }
 
+void cSocket::setKeepAlive(int idle_s, int interval_s, int count) {
+	if(!okHandle() || udp) {
+		return;
+	}
+	int on = 1;
+	setsockopt(handle, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on));
+	setsockopt(handle, IPPROTO_TCP, TCP_KEEPIDLE, &idle_s, sizeof(idle_s));
+	setsockopt(handle, IPPROTO_TCP, TCP_KEEPINTVL, &interval_s, sizeof(interval_s));
+	setsockopt(handle, IPPROTO_TCP, TCP_KEEPCNT, &count, sizeof(count));
+}
+
 bool cSocket::write(u_char *data, size_t dataLen) {
 	if(isError() || !okHandle()) {
 		setError(_se_bad_connection, "write");
@@ -781,7 +792,7 @@ bool cSocket::_write(u_char *data, size_t *dataLen) {
 		}
 	}
 	if(doWrite) {
-		ssize_t sendLen = send(handle, data, *dataLen, 0);
+		ssize_t sendLen = send(handle, data, *dataLen, MSG_NOSIGNAL);
 		if(sendLen > 0) {
 			*dataLen = sendLen;
 		} else {

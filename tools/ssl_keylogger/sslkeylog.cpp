@@ -38,6 +38,7 @@ typedef WOLFSSL_SESSION SSL_SESSION;
 #include <errno.h>
 #include <syslog.h>
 #include <pthread.h>
+#include <semaphore.h>
 #include <string>
 
 #ifdef SSLKEYLOG_TCP
@@ -52,6 +53,7 @@ typedef WOLFSSL_SESSION SSL_SESSION;
 #endif
 
 #define WRITE_THREAD 1
+#define TCP_KEY_ACK 1
 
 #define DEBUG 1
 #define DEBUG_PREFIX "\n * SSL KEYLOG : "
@@ -94,7 +96,9 @@ static void write_keylog_to_dest(const char *key);
 #ifdef SSLKEYLOG_TCP
 static char keylog_tcp_dest_host[100];
 static int keylog_tcp_dest_port = 0;
+static bool keylog_tcp_key_ack = TCP_KEY_ACK;
 static cSocketBlock *keylog_tcp_socket = NULL;
+static bool keylog_tcp_socket_ack = false;
 #endif
 
 static char keylog_ip_port[100];
@@ -104,6 +108,8 @@ static int keylog_socket_handle = -1;
 
 static char keylog_filename[200];
 static int keylog_file_fd = -1;
+
+static bool keylog_write_thread = WRITE_THREAD;
 
 static bool syslog_open = false;
 static FILE *filelog = NULL;
@@ -123,6 +129,7 @@ struct sKeyQueueItem {
 static sKeyQueueItem *key_queue_first;
 static sKeyQueueItem *key_queue_last;
 volatile int key_queue_sync;
+static sem_t key_queue_sem;
 
 struct sPerCallerOrig {
 	void resolve(void *lib_handle);
@@ -256,10 +263,13 @@ static int keylog_tcp_socket_open() {
 			keylog_tcp_socket_close();
 			return(0);
 		}
-		debug_printf("OK connect to : %s:%i / %s", keylog_tcp_dest_host, keylog_tcp_dest_port, keylog_tcp_socket->getError().c_str());
+		debug_printf("OK connect to : %s:%i", keylog_tcp_dest_host, keylog_tcp_dest_port);
 		keylog_tcp_socket->generate_rsa_keys(1024);
 		JsonExport json_rsa_key;
 		json_rsa_key.add("rsa_key", keylog_tcp_socket->get_rsa_pub_key());
+		if(keylog_write_thread && keylog_tcp_key_ack) {
+			json_rsa_key.add("ack", 1);
+		}
 		if(!keylog_tcp_socket->writeBlock(json_rsa_key.getJson())) {
 			debug_printf("FAILED send rsa key");
 			keylog_tcp_socket_close();
@@ -275,6 +285,7 @@ static int keylog_tcp_socket_open() {
 		jsonAesKeys.parse(rsltAesKeys);
 		string aes_ckey = jsonAesKeys.getValue("aes_ckey");
 		string aes_ivec = jsonAesKeys.getValue("aes_ivec");
+		keylog_tcp_socket_ack = jsonAesKeys.getValue("ack") == "1";
 		keylog_tcp_socket->set_aes_keys(aes_ckey, aes_ivec);
 		if(!keylog_tcp_socket->writeBlock("OK", cSocket::_te_aes)) {
 			debug_printf("FAILED send OK");
@@ -301,17 +312,25 @@ static void keylog_tcp_socket_write(u_char *data, size_t datalen) {
 	unsigned pass = 0;
 	unsigned max_pass = 10;
 	while(pass < max_pass) {
+		char peek;
+		if(keylog_tcp_socket && recv(keylog_tcp_socket->getHandle(), &peek, 1, MSG_PEEK | MSG_DONTWAIT) == 0) {
+			keylog_tcp_socket_close();
+		}
 		if(!keylog_tcp_socket) {
 			keylog_tcp_socket_open();
 		}
 		if(keylog_tcp_socket && keylog_tcp_socket->writeBlock(data, datalen, cSocket::_te_aes)) {
-			ok = true;
-			break;
-		} else {
-			keylog_tcp_socket_close();
-			if(pass + 1 < max_pass) {
-				usleep(100000 * pass);
+			string ack;
+			if(!keylog_tcp_socket_ack ||
+			   (keylog_tcp_socket->readBlock(&ack, cSocket::_te_aes, "", false, 5) && ack == "ack")) {
+				ok = true;
+				break;
 			}
+			debug_printf("FAILED read ack");
+		}
+		keylog_tcp_socket_close();
+		if(pass + 1 < max_pass) {
+			usleep(100000 * pass);
 		}
 		++pass;
 	}
@@ -421,6 +440,14 @@ static void keylog_file_close()	{
 	}
 }
 
+static bool getenv_yesno(const char *name, bool default_value) {
+	const char *value = getenv(name);
+	if(!value || !value[0]) {
+		return(default_value);
+	}
+	return(value[0] == 'y' || value[0] == 'Y' || value[0] == 't' || value[0] == 'T' || value[0] == '1');
+}
+
 static int init_keylog(void) {
 	if(
 	   #ifdef SSLKEYLOG_TCP
@@ -430,7 +457,9 @@ static int init_keylog(void) {
 	   keylog_filename[0]) {
 		return(2);
 	}
+	keylog_write_thread = getenv_yesno("SSLKEYLOG_WRITE_THREAD", keylog_write_thread);
 	#ifdef SSLKEYLOG_TCP
+	keylog_tcp_key_ack = getenv_yesno("SSLKEYLOG_TCP_KEY_ACK", keylog_tcp_key_ack);
 	const char *host_port = getenv("SSLKEYLOG_TCP");
 	if(host_port) {
 		char *port_separator = (char*)strchr(host_port, ':');
@@ -471,9 +500,9 @@ static int init_keylog(void) {
 	       keylog_filename[0]);
 }
 
-#if WRITE_THREAD
 static void *write_thread(void *arg) {
 	while(true) {
+		sem_wait(&key_queue_sem);
 		if(key_queue_first) {
 			sKeyQueueItem *kqi = NULL;
 			_SYNC_LOCK_USLEEP(key_queue_sync, 100);
@@ -491,8 +520,6 @@ static void *write_thread(void *arg) {
 				write_keylog_to_dest(kqi->key);
 				delete kqi;
 			}
-		} else {
-			usleep(1000);
 		}
 	}
 }
@@ -501,6 +528,7 @@ static bool write_thread_created;
 static void create_write_thread() {
 	if(!write_thread_created) {
 		write_thread_created = true;
+		sem_init(&key_queue_sem, 0, 0);
 		pthread_t thread;
 		pthread_create(&thread, NULL, write_thread, NULL);
 	}
@@ -518,8 +546,8 @@ static void write_keylog_to_queue(const char *key) {
 		key_queue_last = kqi;
 	}
 	_SYNC_UNLOCK(key_queue_sync);
+	sem_post(&key_queue_sem);
 }
-#endif
 
 static void write_keylog(const SSL *ssl, const char *key) {
 	if(!ssl || !key) {
@@ -545,14 +573,15 @@ static void write_keylog(const SSL *ssl, const char *key) {
 	if(!key_ok) {
 		return;
 	}
-	#if WRITE_THREAD
+	if(keylog_write_thread) {
 		write_keylog_to_queue(key);
-	#else
+	} else {
 		write_keylog_to_dest(key);
-	#endif
+	}
 }
 
 static void write_keylog_to_dest(const char *key) {
+	int errno_save = errno;
 	debug_printf("send key : %s (size: %i)", key, strlen(key));
 	#ifdef SSLKEYLOG_TCP
 	keylog_tcp_socket_write((u_char*)key, strlen(key));
@@ -567,6 +596,7 @@ static void write_keylog_to_dest(const char *key) {
 			write(keylog_file_fd, "\n", 1);
 		}
 	}
+	errno = errno_save;
 }
 
 static void *lookup_symbol(const char *sym, void *lib_handle) {
@@ -859,6 +889,7 @@ __attribute__((constructor)) static void setup(void) {
 cResolver resolver;
 bool opt_socket_use_poll = true;
 bool useIPv6 = true;
+int opt_server_log_suppress = 0;
 
 sCloudRouterVerbose& CR_VERBOSE() {
 	static sCloudRouterVerbose cr_verbose;

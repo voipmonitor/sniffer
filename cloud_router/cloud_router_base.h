@@ -384,6 +384,7 @@ public:
 	bool listen();
 	void close();
 	bool await(cSocket **clientSocket);
+	void setKeepAlive(int idle_s, int interval_s, int count);
 	bool write(u_char *data, size_t dataLen);
 	bool write(const char *data);
 	bool write(string &data);

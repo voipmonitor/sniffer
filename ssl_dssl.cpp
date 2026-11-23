@@ -1219,6 +1219,7 @@ cClientRandomConnection::~cClientRandomConnection() {
 
 void cClientRandomConnection::connection_process() {
 	socket->setBlockHeaderString("ssl_key_socket_block");
+	socket->setKeepAlive(60, 10, 6);
 	string rsltRsaKey;
 	if(!socket->readBlock(&rsltRsaKey) || rsltRsaKey.find("key") == string::npos) {
 		socket->setError("failed read rsa key");
@@ -1228,6 +1229,7 @@ void cClientRandomConnection::connection_process() {
 	JsonItem jsonRsaKey;
 	jsonRsaKey.parse(rsltRsaKey);
 	string rsa_key = jsonRsaKey.getValue("rsa_key");
+	bool ackKeys = jsonRsaKey.getValue("ack") == "1";
 	socket->set_rsa_pub_key(rsa_key);
 	socket->generate_aes_keys();
 	JsonExport json_keys;
@@ -1235,6 +1237,9 @@ void cClientRandomConnection::connection_process() {
 	socket->get_aes_keys(&aes_ckey, &aes_ivec);
 	json_keys.add("aes_ckey", aes_ckey);
 	json_keys.add("aes_ivec", aes_ivec);
+	if(ackKeys) {
+		json_keys.add("ack", 1);
+	}
 	if(!socket->writeBlock(json_keys.getJson(), cSocket::_te_rsa)) {
 		socket->setError("failed send aes keys");
 		delete this;
@@ -1246,17 +1251,26 @@ void cClientRandomConnection::connection_process() {
 		delete this;
 		return;
 	}
-	unsigned timeoutCounter = 0;
+	extern int ssl_client_random_tcp_idle_timeout_s;
+	int idleTimeoutRemainingS = ssl_client_random_tcp_idle_timeout_s;
 	while(!is_terminating() && !socket->isError()) {
 		u_char *data;
 		size_t dataLen;
-		data = socket->readBlock(&dataLen, cSocket::_te_aes, "", false, 30);
+		int readBlockTimeoutS = 30;
+		if(idleTimeoutRemainingS > 0 && idleTimeoutRemainingS < readBlockTimeoutS) {
+			readBlockTimeoutS = idleTimeoutRemainingS;
+		}
+		data = socket->readBlock(&dataLen, cSocket::_te_aes, "", false, readBlockTimeoutS);
 		if(data) {
 			evData(data, dataLen);
-			timeoutCounter = 0;
+			if(ackKeys && !socket->writeBlock("ack", cSocket::_te_aes)) {
+				break;
+			}
+			idleTimeoutRemainingS = ssl_client_random_tcp_idle_timeout_s;
 		} else {
 			if(socket->getReadBlockError() == cSocketBlock::_sbe_timeout) {
-				if(++timeoutCounter >= 3) {
+				if(idleTimeoutRemainingS > 0 &&
+				   (idleTimeoutRemainingS -= readBlockTimeoutS) <= 0) {
 					break;
 				}
 			} else if(socket->getReadBlockError() != cSocketBlock::_sbe_na) {
