@@ -616,6 +616,7 @@ int opt_convert_dlt_sll_to_en10 = 0;
 unsigned int opt_mysql_connect_timeout = 60;
 bool opt_mysql_reconnect = true;
 bool opt_mysql_use_init_command = true;
+bool opt_mysql_ssl_use_hostname = true;
 int opt_mysqlcompress = 1;
 char opt_mysqlcompress_type[256];
 int opt_mysql_enable_transactions = 0;
@@ -6698,6 +6699,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("mysql_connect_timeout", &opt_mysql_connect_timeout));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_reconnect", &opt_mysql_reconnect));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_use_init_command", &opt_mysql_use_init_command));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_ssl_use_hostname", &opt_mysql_ssl_use_hostname));
 					addConfigItem(new FILE_LINE(42088) cConfigItem_yesno("mysqlcompress", &opt_mysqlcompress));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("mysqlcompress_type", opt_mysqlcompress_type, sizeof(opt_mysqlcompress_type)));
 					addConfigItem(new FILE_LINE(42089) cConfigItem_yesno("sqlcallend", &opt_callend));

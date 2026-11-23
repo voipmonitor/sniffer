@@ -795,7 +795,7 @@ public:
 	bool connect(bool craeteDb = false, bool mainInit = false);
 	void disconnect();
 	bool connected();
-	void set_connect_options();
+	bool set_connect_options();
 	void check_connect_options();
 	bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL);
 	SqlDb_row fetchRow();
