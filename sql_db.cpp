@@ -10548,10 +10548,10 @@ void SqlDb_mysql::checkColumns_cdr(bool enableAlter) {
 						"price_customer_mult1000000", "BIGINT UNSIGNED", NULL_CHAR_PTR,
 						"price_customer_currency_id", "TINYINT UNSIGNED", NULL_CHAR_PTR,
 						NULL_CHAR_PTR);
-		} else if((this->existsExtPrecissionBilling() &&
-			   this->existsColumn("cdr", "price_operator_mult100") &&
-			   !this->existsColumn("cdr", "price_operator_mult1000000")) &&
-			  enableAlter) {
+		} else if(enableAlter &&
+			  this->existsColumn("cdr", "price_operator_mult100") &&
+			  !this->existsColumn("cdr", "price_operator_mult1000000") &&
+			  this->existsExtPrecissionBilling()) {
 			vector<string> alters;
 			alters.push_back(
 				"ALTER TABLE cdr "
@@ -11256,16 +11256,15 @@ bool SqlDb_mysql::existsExtPrecissionBilling() {
 	for(int i = 0; i < 2 && !existsExtPrecisionBilling; i++) {
 		string table = string("billing") + (i ? "_rule" : "");
 		if(this->existsTable(table)) {
-			this->select(table);
-			SqlDb_row row;
-			while((row = this->fetchRow())) {
-				for(int j = 0; j < 2 && !existsExtPrecisionBilling; j++) {
-					double price = atof(row[i ? (j ? "price_peak" : "price") :
-								    (j ? "default_price_peak" : "default_price")].c_str());
-					if(fabs(round(price * 100) - price * 100) >= 0.1) {
-						existsExtPrecisionBilling = true;
-					}
-				}
+			string cond;
+			for(int j = 0; j < 2; j++) {
+				string price = i ? (j ? "price_peak" : "price") :
+						   (j ? "default_price_peak" : "default_price");
+				cond += string(j ? " or " : "") + "abs(round(" + price + " * 100) - " + price + " * 100) >= 0.1";
+			}
+			if(this->query("select 1 from " + table + " where " + cond + " limit 1") &&
+			   this->fetchRow()) {
+				existsExtPrecisionBilling = true;
 			}
 		}
 	}
