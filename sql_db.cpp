@@ -1928,6 +1928,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			return(false);
 		}
 		extern bool opt_mysql_use_init_command;
+		extern bool opt_mysql_ssl_use_hostname;
 		string connect_via_str;
 		for(int connectPass = 0; connectPass < 2; connectPass++) {
 			if(connectPass) {
@@ -1951,7 +1952,11 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 					connectLocalhostPass == 0 ? this->conn_socket.c_str() : 
 					connectLocalhostPass == 1 ? (const char*)NULL : 
 								    (const char*)NULL;
-				set_connect_options();
+				bool enabledSSL = set_connect_options();
+				// with ssl pass the hostname, not the resolved ip - the client library verifies the server certificate against it (localhost attempts stay unchanged)
+				if(enabledSSL && opt_mysql_ssl_use_hostname && !isLocalhost) {
+					_host = this->conn_server.c_str();
+				}
 				this->hMysqlConn = mysql_real_connect(
 							this->hMysql,
 							_host,
@@ -2128,7 +2133,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 	return(false);
 }
 
-void SqlDb_mysql::set_connect_options() {
+bool SqlDb_mysql::set_connect_options() {
 	extern bool opt_mysql_reconnect;
 	if(opt_mysql_reconnect) {
 		bool reconnect = 1;
@@ -2195,6 +2200,7 @@ void SqlDb_mysql::set_connect_options() {
 			" group_concat_max_len = 100000000";
 		mysql_options(this->hMysql, MYSQL_INIT_COMMAND, init_command.c_str());
 	}
+	return(enabledSSL); // used in connect() for the choice of the host
 }
 
 void SqlDb_mysql::check_connect_options() {
