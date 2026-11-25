@@ -666,7 +666,9 @@ bool opt_database_backup_desc_dir = false;
 bool opt_database_backup_skip_register = false;
 bool opt_database_backup_check_src_tables = false;
 bool opt_database_backup_merge_reference_tables = false;
-int opt_database_backup_slave_record_safe_gap = 100;
+int opt_database_backup_record_safe_gap = 100;
+int opt_database_backup_record_safe_time = 60;
+bool opt_database_backup_slave_records_first = false;
 bool opt_database_backup_detect_from_to_calldate_in_slave = false;
 char opt_mos_lqo_bin[1024] = "pesq";
 char opt_mos_lqo_ref[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
@@ -2082,6 +2084,17 @@ void *database_backup(void */*dummy*/) {
 				if(!callCreateSchema) {
 					sqlDb->createSchema();
 					sqlDb->checkSchema();
+					if(opt_database_backup_slave_records_first) {
+						bool checkForeignKeyFailed;
+						bool existsForeignKey = sqlDb_mysql->existsForeignKeyToMasterTables(&checkForeignKeyFailed);
+						if(existsForeignKey || checkForeignKeyFailed) {
+							syslog(LOG_ERR, "database_backup_slave_records_first is refused - %s, the default copy order is used",
+							       checkForeignKeyFailed ?
+								"the check of foreign keys referencing table cdr or message in the destination database failed" :
+								"the destination database contains foreign keys referencing table cdr or message (tables without partitions)");
+							opt_database_backup_slave_records_first = false;
+						}
+					}
 					callCreateSchema = true;
 				}
 				
@@ -2147,7 +2160,7 @@ void *database_backup(void */*dummy*/) {
 		}
 		delete sqlDbSrc;
 		
-		while(is_terminating() < 2 && sqlStore->getAllSize()) {
+		while(is_terminating() < 2 && !sqlStore->isAllStored()) {
 			syslog(LOG_NOTICE, "flush sqlStore");
 			sleep(1);
 		}
@@ -2174,7 +2187,7 @@ void *database_backup(void */*dummy*/) {
 	log_terminating_signal();
 	manager_parse_command_disable();
 	sqlStore->setEnableTerminatingIfSqlError(0, 0, true);
-	while(is_terminating() < 2 && sqlStore->getAllSize()) {
+	while(is_terminating() < 2 && !sqlStore->isAllStored()) {
 		syslog(LOG_NOTICE, "flush sqlStore");
 		sleep(1);
 	}
@@ -6853,7 +6866,11 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_skip_register", &opt_database_backup_skip_register));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_check_src_tables", &opt_database_backup_check_src_tables));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_merge_reference_tables", &opt_database_backup_merge_reference_tables));
-					addConfigItem(new FILE_LINE(0) cConfigItem_integer("database_backup_slave_record_safe_gap", &opt_database_backup_slave_record_safe_gap));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("database_backup_record_safe_gap", &opt_database_backup_record_safe_gap))
+						->addAlias("database_backup_slave_record_safe_gap"));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("database_backup_record_safe_time", &opt_database_backup_record_safe_time))
+						->addAlias("database_backup_slave_record_safe_time"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_slave_records_first", &opt_database_backup_slave_records_first));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_detect_from_to_calldate_in_slave", &opt_database_backup_detect_from_to_calldate_in_slave));
 	group("sniffer mode");
 		// SNIFFER MODE

@@ -507,6 +507,7 @@ public:
 	virtual int64_t getInsertId() = 0;
 	string getQueryRsltStringValue(string query, int indexRslt);
 	int64_t getQueryRsltIntValue(string query, int indexRslt, int64_t failedResult);
+	bool getQueryRsltUIntValue(string query, int indexRslt, u_int64_t *rslt);
 	virtual bool existsDatabase() = 0;
 	virtual bool existsTable(const char *table) = 0;
 	bool existsTable(string table) { return(existsTable(table.c_str())); }
@@ -878,6 +879,7 @@ public:
 	string column_type_duration_ms_signed(const char *base_type = NULL, bool force = false);
 	string _column_type_duration_ms(const char *base_type, bool force, bool is_signed);
 	bool checkSourceTables();
+	bool existsForeignKeyToMasterTables(bool *checkFailed);
 	void copyFromSourceTablesReftabs(SqlDb_mysql *sqlDbSrc,
 					 cSqlDbCodebooks *cb_src = NULL, cSqlDbCodebooks *cb_dst = NULL);
 	void copyFromSourceTablesMain(SqlDb_mysql *sqlDbSrc,
@@ -889,15 +891,37 @@ public:
 				 const char *tableName, 
 				 unsigned long limit, bool descDir = false,
 				 cSqlDbCodebooks *cb_src = NULL, cSqlDbCodebooks *cb_dst = NULL);
-	void copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
-				      const char *masterTableName, const char *slaveTableName,
-				      const char *slaveIdToMasterColumn, 
-				      const char *masterCalldateColumn, const char *slaveCalldateColumn,
-				      u_int64_t minIdSrc, u_int64_t maxIdSrc,
-				      u_int64_t minIdSrc_time_limit, u_int64_t maxIdSrc_time_limit,
-				      u_int64_t useMinIdMaster, u_int64_t useMaxIdMaster,
-				      unsigned long limit, bool descDir,
-				      cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst);
+	void copyFromSourceTableMaster(SqlDb_mysql *sqlDbSrc,
+				       const char *tableName,
+				       unsigned long limit, bool descDir,
+				       u_int64_t startIdSrc, u_int64_t minIdLimit, u_int64_t maxIdLimit,
+				       u_int64_t *useMinIdInSrc, u_int64_t *useMaxIdInSrc,
+				       cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst);
+	u_int64_t copyFromSourceTableSlaves(SqlDb_mysql *sqlDbSrc,
+					    const char *masterTableName,
+					    unsigned long limit, bool descDir,
+					    u_int64_t minIdSrc, u_int64_t maxIdSrc,
+					    u_int64_t minIdSrc_time_limit, u_int64_t maxIdSrc_time_limit,
+					    u_int64_t useMinIdMaster, u_int64_t useMaxIdMaster,
+					    u_int64_t idToMasterLimit,
+					    cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst);
+	u_int64_t copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
+					   const char *masterTableName, const char *slaveTableName,
+					   const char *slaveIdToMasterColumn,
+					   const char *masterCalldateColumn, const char *slaveCalldateColumn,
+					   u_int64_t minIdSrc, u_int64_t maxIdSrc,
+					   u_int64_t minIdSrc_time_limit, u_int64_t maxIdSrc_time_limit,
+					   u_int64_t useMinIdMaster, u_int64_t useMaxIdMaster,
+					   u_int64_t idToMasterLimit,
+					   unsigned long limit, bool descDir,
+					   cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst);
+	void copyFromSourceTableInsertRows(const char *tableName, vector<SqlDb_row> *rows,
+					   unsigned int insertThreads, unsigned long *counterInsert);
+	u_int64_t getSafeMaxIdSrc(SqlDb_mysql *sqlDbSrc, const char *tableName,
+				  u_int64_t startIdSrc, unsigned long limit, u_int64_t maxIdSrc);
+	u_int64_t getBatchEndIdSrc(SqlDb_mysql *sqlDbSrc, const char *tableName,
+				   u_int64_t startIdSrc, unsigned long limit, bool descDir);
+	vector<string> getSlaveTables(const char *masterTableName, string *slaveIdToMasterColumn = NULL);
 	vector<string> getSourceTables(int typeTables = tt_all, int typeTables2 = tt2_na);
 	string getTimeColumn(string table);
 	bool getReferenceTablesMap(const char *table, map<string, cSqlDbCodebook::eTypeCodebook> *reftable_map);
@@ -947,6 +971,10 @@ public:
 	bool testCreateTable(bool memoryEngine, const char *compressType);
 	void setSelectedCompressType(bool memoryEngine, const char *type, const char *subtype = NULL);
 private:
+	struct sMaxIdSrcSeen {
+		u_int64_t maxId;
+		u_int32_t time_s;
+	};
 	string routineParamCanonical(string type);
 	string routineCharsetCanonical(string charset);
 	string routineBodyCanonical(string routine);
@@ -968,6 +996,7 @@ private:
 	static bool connect_options_ok;
 	static int configCompressTypeState;
 	static int configCompressTypeState_memoryEngine;
+	map<string, deque<sMaxIdSrcSeen> > maxIdSrcSeen;
 };
 
 class SqlDb_odbc_bindBufferItem {
@@ -1095,6 +1124,9 @@ public:
 	size_t getSize() {
 		return(this->query_buff.size());
 	}
+	bool isStoring() {
+		return(this->storing);
+	}
 	void waitForTerminate();
 	void waitForFullQueue();
 private:
@@ -1114,6 +1146,7 @@ private:
 	volatile int lock_sync;
 	SqlDb *sqlDb;
 	deque<string> query_buff;
+	volatile bool storing;
 	bool terminated;
 	bool enableTerminatingDirectly;
 	bool enableTerminatingIfEmpty;
@@ -1323,8 +1356,9 @@ public:
 	void setQueryBuffLimit(int id_main, int id_2, int queryBuffLimit);
 	MySqlStore_process *find(int id_main, int id_2, MySqlStore *store = NULL);
 	MySqlStore_process *check(int id_main, int id_2);
-	size_t getAllSize(bool lock = true, bool redirect = false);
+	size_t getAllSize(bool lock = true, bool redirect = false, bool inclStoring = false);
 	size_t getAllRedirectSize(bool lock = true);
+	bool isAllStored();
 	int getSize(int id_main, int id_2, bool lock = true);
 	int getCountActive(int id_main, bool lock = true);
 	void fillSizeMap(map<int, int> *size_map, map<int, int> *size_map_by_id_2, bool lock = true);
