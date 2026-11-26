@@ -3994,34 +3994,41 @@ struct sLocalTimeHourCacheItems {
 				    time->tm_hour * 10ull +
 				    time->tm_min / 15;
 		for(int i = 0; i < LOCALTIME_MINCACHE_LENGTH; i++) {
-			if(ymdhm15 == cacheItems[i].ymdhm15) {
+			if(ymdhm15 && ymdhm15 == cacheItems[i].ymdhm15) {
 				return(cacheItems[i].getTimestamp(time));
 			}
 		}
-		extern volatile int _tz_sync;
-		__SYNC_LOCK(_tz_sync);
-		char oldTZ[1024] = "";
-		if(timezone[0]) {
-			const char *_oldTZ = getenv("TZ");
-			if(_oldTZ) {
-				strcpy_null_term(oldTZ, _oldTZ);
-			} else {
-				oldTZ[0] = 0;
+		time_t timestamp;
+		if(gmt) {
+			timestamp = timegm(time);
+		} else {
+			extern volatile int _tz_sync;
+			__SYNC_LOCK(_tz_sync);
+			char oldTZ[1024] = "";
+			if(timezone[0]) {
+				const char *_oldTZ = getenv("TZ");
+				if(_oldTZ) {
+					strcpy_null_term(oldTZ, _oldTZ);
+				} else {
+					oldTZ[0] = 0;
+				}
+				setenv("TZ", timezone, 1);
+				tzset();
 			}
-			setenv("TZ", timezone, 1);
-			tzset();
-		}
-		time_t timestamp = mktime(time);
-		if(timezone[0]) {
-			if(oldTZ[0]) {
-				setenv("TZ", oldTZ, 1);
-			} else {
-				unsetenv("TZ");
+			timestamp = mktime(time);
+			if(timezone[0]) {
+				if(oldTZ[0]) {
+					setenv("TZ", oldTZ, 1);
+				} else {
+					unsetenv("TZ");
+				}
+				tzset();
 			}
-			tzset();
+			__SYNC_UNLOCK(_tz_sync);
 		}
-		__SYNC_UNLOCK(_tz_sync);
-		addToCache(timestamp, time);
+		if(timestamp >= 0) {
+			addToCache(timestamp, time);
+		}
 		return(timestamp);
 	}
 	void addToCache(time_t timestamp, struct tm *time) {
@@ -4177,7 +4184,10 @@ inline string time_r_str(time_t *timestamp, const char *timezone = NULL) {
 	struct tm time = time_r(timestamp, timezone);
 	char dateTimeBuffer[50];
 	strftime(dateTimeBuffer, sizeof(dateTimeBuffer), "%Y-%m-%d %H:%M:%S", &time);
-	return string(dateTimeBuffer);
+	return(string(dateTimeBuffer));
+}
+inline string time_r_str(time_t timestamp, const char *timezone = NULL) {
+	return(time_r_str(&timestamp, timezone));
 }
 inline long int mktime(tm* time, const char *timezone) {
 	if(timezone) {
@@ -4191,7 +4201,9 @@ inline long int mktime(tm* time, const char *timezone) {
 inline long int mktime(const char *str_time, const char *timezone) {
 	struct tm time;
 	memset(&time, 0, sizeof(struct tm));
-	strptime(str_time, "%Y-%m-%d %H:%M:%S", &time);
+	if(!strptime(str_time, "%Y-%m-%d %H:%M:%S", &time)) {
+		return(0);
+	}
 	time.tm_isdst = -1;
 	return(mktime(&time, timezone));
 }

@@ -352,6 +352,27 @@ string SqlDb_row::implodeFields(string separator, string border) {
 	return(rslt);
 }
 
+string SqlDb_row::implodeFieldsOnDuplicateUpdateForMultiInsert(string separator, string border, const char *rowAlias, const set<string> *skipFields) {
+	string rslt;
+	rslt.reserve(this->row.size() * 45);
+	for(size_t i = 0; i < this->row.size(); i++) {
+		if(skipFields && skipFields->find(this->row[i].fieldName) != skipFields->end()) {
+			continue;
+		}
+		if(!rslt.empty()) {
+			rslt += separator;
+		}
+		string field = border + this->row[i].fieldName + border;
+		rslt += field + " = ";
+		if(rowAlias && *rowAlias) {
+			rslt += border + rowAlias + border + "." + field;
+		} else {
+			rslt += "VALUES(" + field + ")";
+		}
+	}
+	return(rslt);
+}
+
 string SqlDb_row::implodeFieldsToCsv() {
 	return(implodeFields(",", "\""));
 }
@@ -1208,7 +1229,7 @@ string SqlDb::insertOrUpdateQuery(string table, SqlDb_row row, SqlDb_row row_on_
 	return(insertQuery(table, row, enableSqlStringInContent, escapeAll, insertIgnore, &row_on_duplicate));
 }
 
-string SqlDb::insertQuery(string table, vector<SqlDb_row> *rows, int insertParams) {
+string SqlDb::insertQuery(string table, vector<SqlDb_row> *rows, int insertParams, const set<string> *onDuplicateSkipFields) {
 	if(!rows->size()) {
 		return("");
 	}
@@ -1216,6 +1237,7 @@ string SqlDb::insertQuery(string table, vector<SqlDb_row> *rows, int insertParam
 	bool escapeAll = insertParams & _insert_param_escapeAll;
 	bool escapeAllBinary = (insertParams & _insert_param_escapeAllBinary) == _insert_param_escapeAllBinary;
 	bool insertIgnore = insertParams & _insert_param_insertIgnore;
+	bool onDuplicateUpdate = insertParams & _insert_param_onDuplicateUpdate;
 	extern bool opt_mysql_latin1_utf_bytes;
 	bool latin1Table = opt_mysql_latin1_utf_bytes && existsCharsetTable(table.c_str());
 	string values = "";
@@ -1228,6 +1250,17 @@ string SqlDb::insertQuery(string table, vector<SqlDb_row> *rows, int insertParam
 	string query = 
 		string("INSERT ") + (insertIgnore ? "IGNORE " : "") + "INTO " + escapeTableName(table) + " ( " + (*rows)[0].implodeFields(this->getFieldSeparator(), this->getFieldBorder()) +
 		" ) VALUES " + values;
+	if(onDuplicateUpdate) {
+		bool useRowAlias = this->useRowAliasInOnDuplicateUpdate();
+		string updateFields = (*rows)[0].implodeFieldsOnDuplicateUpdateForMultiInsert(this->getFieldSeparator(), this->getFieldBorder(),
+											      useRowAlias ? "_ins_val" : NULL, onDuplicateSkipFields);
+		if(!updateFields.empty()) {
+			if(useRowAlias) {
+				query += " AS " + this->getFieldBorder() + "_ins_val" + this->getFieldBorder();
+			}
+			query += " ON DUPLICATE KEY UPDATE " + updateFields;
+		}
+	}
 	return(query);
 }
 
@@ -1341,6 +1374,22 @@ string SqlDb::getQueryRsltStringValue(string query, int indexRslt) {
 		}
 	}
 	return("");
+}
+
+bool SqlDb::getQueryRsltStringValue(string query, int indexRslt, string *rslt) {
+	*rslt = "";
+	if(!this->query(query)) {
+		return(false);
+	}
+	this->clearLastError();
+	SqlDb_row row = this->fetchRow();
+	if(this->getLastError()) {
+		return(false);
+	}
+	if(row && !row.isNull(indexRslt)) {
+		*rslt = row[indexRslt];
+	}
+	return(true);
 }
 
 int64_t SqlDb::getQueryRsltIntValue(string query, int indexRslt, int64_t failedResult) {
@@ -2289,6 +2338,19 @@ int SqlDb_mysql::getDbMinorVersion(int minorLevel) {
 string SqlDb_mysql::getDbName() {
 	this->_getDbVersion();
 	return(_getDbName(this->dbVersion.c_str()));
+}
+
+bool SqlDb_mysql::useRowAliasInOnDuplicateUpdate() {
+	if(this->dbVersion.empty()) {
+		if(this->hMysqlRes) {
+			return(getDbName_static() == "mysql" && getDbVersion_static() >= 80019);
+		}
+		this->_getDbVersion();
+	}
+	return(_getDbName(this->dbVersion.c_str()) == "mysql" &&
+	       (_getDbMajorVersion(this->dbVersion.c_str()) * 10000 +
+		_getDbMinorVersion(this->dbVersion.c_str()) * 100 +
+		_getDbMinorVersion(this->dbVersion.c_str(), 1)) >= 80019);
 }
 
 int SqlDb_mysql::getDbVersion_static() {
@@ -3350,6 +3412,35 @@ bool SqlDb_mysql::existsIndex(const char *table, const char *indexColumn, int se
 		++countIndex;
 	}
 	return(countIndex > 0);
+}
+
+bool SqlDb_mysql::existsIndexWithColumns(const char *table, const vector<string> &columns, bool *queryFailed) {
+	if(queryFailed) {
+		*queryFailed = false;
+	}
+	set<string> indexes;
+	for(size_t i = 0; i < columns.size(); i++) {
+		if(!this->query(string("show index from ") + escapeTableName(table) +
+				" where Column_name='" + sqlEscapeString(columns[i]) + "'" +
+				" and seq_in_index = " + intToString(i + 1))) {
+			if(queryFailed) {
+				*queryFailed = true;
+			}
+			return(false);
+		}
+		set<string> indexesWithColumn;
+		SqlDb_row row;
+		while((row = this->fetchRow())) {
+			if(i == 0 || indexes.find(row["Key_name"]) != indexes.end()) {
+				indexesWithColumn.insert(row["Key_name"]);
+			}
+		}
+		indexes = indexesWithColumn;
+		if(indexes.empty()) {
+			return(false);
+		}
+	}
+	return(!indexes.empty());
 }
 
 int SqlDb_mysql::getPartitions(const char *datadir, const char *database, const char *table, list<sPartition> *partitions, bool useCache) {
@@ -6503,8 +6594,15 @@ bool SqlDb_mysql::createSchema(int connectId) {
 	this->multi_off();
 	this->startExistsTableCache();
 	bool existsCdrTable = false;
+	bool existsCdrSummaryTable[2] = { false, false };
 	if(connectId == 0) {
 		existsCdrTable = this->existsTable("cdr");
+		if(opt_cdr_summary) {
+			existsCdrSummaryTable[0] = this->existsTable("cdr_summary");
+			if(opt_cdr_summary_number_complete) {
+				existsCdrSummaryTable[1] = this->existsTable("cdr_summary_nc");
+			}
+		}
 	}
 
 	unsigned sniffer_version_num = 0;
@@ -6537,6 +6635,13 @@ bool SqlDb_mysql::createSchema(int connectId) {
 		      createSchema_procedures_other(connectId) &&
 		      (connectId != 0 || existsCdrTable ||
 		       createSchema_init_cdr_partitions(connectId));
+	if(connectId == 0 && result && opt_cdr_summary && opt_cdr_partition && opt_create_old_partitions > 0 && !opt_disable_partition_operations && !opt_disable_partition_operations_create) {
+		for(int si = 0; si < 2; si++) {
+			if((si == 0 || opt_cdr_summary_number_complete) && !existsCdrSummaryTable[si]) {
+				createMysqlPartitionsTable(si == 0 ? "cdr_summary" : "cdr_summary_nc", opt_cdr_summary_partition_oldver[si], true, 'd', opt_create_old_partitions);
+			}
+		}
+	}
 
 	sql_disable_next_attempt_if_error = 0;
 	this->stopExistsTableCache();
@@ -7881,40 +7986,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	}
 	
 	if(opt_cdr_summary) {
-	string cdr_summary_fields_str = cCdrSummary::db_fields();
-	for(int si = 0; si < 2; si++) {
-	if(si == 0 || opt_cdr_summary_number_complete) {
-	this->query(string(
-	"CREATE TABLE IF NOT EXISTS `") + (si == 0 ? "cdr_summary" : "cdr_summary_nc") + "` (\
-			`from_time` datetime,\
-			`sipcallerip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
-			`sipcalledip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
-			`caller` varchar(64) NOT NULL,\
-			`called` varchar(64) NOT NULL,\
-			`payload` int NOT NULL,\
-			`lastSIPresponse_id` mediumint unsigned NOT NULL,\
-			`sensor_id` int,\
-			`created_at` datetime,\
-			`updated_at` datetime,\
-			`updated_counter` smallint unsigned,\
-			" + cdr_summary_fields_str + "\
-			" + (opt_cdr_force_primary_index_in_all_tables ? "PRIMARY KEY" : "UNIQUE KEY `comb_1`") + "(`from_time`,`sipcallerip`,`sipcalledip`,`caller`,`called`,`payload`,`lastSIPresponse_id`,`sensor_id`,`created_at`),\
-			KEY `comb_2` (`from_time`,`sipcallerip`,`sensor_id`),\
-			KEY `comb_3` (`from_time`,`sipcalledip`,`sensor_id`),\
-			KEY `comb_4` (`from_time`,`caller`,`sensor_id`),\
-			KEY `comb_5` (`from_time`,`called`,`sensor_id`),\
-			KEY `comb_6` (`from_time`,`payload`,`sensor_id`),\
-			KEY `comb_7` (`from_time`,`lastSIPresponse_id`,`sensor_id`)\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
-	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ?
-			string(" PARTITION BY RANGE (to_days(from_time))(\
-				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
-			string(" PARTITION BY RANGE COLUMNS(from_time)(\
-				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
-		""));
-	}
-	}
+		for(int si = 0; si < 2; si++) {
+			if(si == 0 || opt_cdr_summary_number_complete) {
+				this->createSchema_table_cdr_summary(si == 0 ? "cdr_summary" : "cdr_summary_nc");
+			}
+		}
 	}
 	
 	this->query(string(
@@ -9098,6 +9174,49 @@ bool SqlDb_mysql::createSchema_table_webrtc(int connectId) {
 	}
 	
 	return(true);
+}
+
+bool SqlDb_mysql::createSchema_table_cdr_summary(const char *tableName, int onlyFirstIntervalMode, int oldPartitionsDays, bool indexForBackupCheck) {
+	string compress = getOptimalCompressType();
+	int useOldPartitions = oldPartitionsDays >= 0 ? oldPartitionsDays : opt_create_old_partitions;
+	string limitDay;
+	string partDayName = this->getPartDayName(&limitDay, useOldPartitions > 0 ? -useOldPartitions : 0);
+	string cdr_summary_fields_str = cCdrSummary::db_fields(NULL, onlyFirstIntervalMode);
+	bool rslt = this->query(string(
+	"CREATE TABLE IF NOT EXISTS `") + tableName + "` (\
+			`from_time` datetime,\
+			`sipcallerip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
+			`sipcalledip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
+			`caller` varchar(64) NOT NULL,\
+			`called` varchar(64) NOT NULL,\
+			`payload` int NOT NULL,\
+			`lastSIPresponse_id` mediumint unsigned NOT NULL,\
+			`sensor_id` int,\
+			`created_at` datetime,\
+			`updated_at` datetime,\
+			`updated_counter` smallint unsigned,\
+			" + cdr_summary_fields_str + "\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "PRIMARY KEY" : "UNIQUE KEY `comb_1`") + "(`from_time`,`sipcallerip`,`sipcalledip`,`caller`,`called`,`payload`,`lastSIPresponse_id`,`sensor_id`,`created_at`),\
+			KEY `comb_2` (`from_time`,`sipcallerip`,`sensor_id`),\
+			KEY `comb_3` (`from_time`,`sipcalledip`,`sensor_id`),\
+			KEY `comb_4` (`from_time`,`caller`,`sensor_id`),\
+			KEY `comb_5` (`from_time`,`called`,`sensor_id`),\
+			KEY `comb_6` (`from_time`,`payload`,`sensor_id`),\
+			KEY `comb_7` (`from_time`,`lastSIPresponse_id`,`sensor_id`)" +
+			(indexForBackupCheck ? ",KEY `backup_check` (`from_time`,`updated_counter`)" : "") + "\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(opt_cdr_partition ?
+		(opt_cdr_partition_oldver ?
+			string(" PARTITION BY RANGE (to_days(from_time))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(from_time)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
+	int si = !strcmp(tableName, "cdr_summary_nc") ? 1 : 0;
+	if(opt_cdr_partition_oldver) {
+		opt_cdr_summary_partition_oldver[si] = true;
+	}
+	return(rslt);
 }
 
 bool SqlDb_mysql::createSchema_alter_other(int connectId) {
@@ -10987,21 +11106,33 @@ void SqlDb_mysql::checkColumns_cdr_summary(bool enableAlter) {
 	if(!opt_cdr_summary || !existsTable) {
 		return;
 	}
-	vector<dstring> cdr_summary_fields;
-	cCdrSummary::db_fields(&cdr_summary_fields);
 	for(int si = 0; si < 2; si++) {
 		if(si == 0 || opt_cdr_summary_number_complete) {
-			map<string, u_int64_t> tableSize;
-			for(unsigned i = 0; i < cdr_summary_fields.size(); i++) {
-				bool existsColumn = false;
-				this->checkExistsColumn(si == 0 ? "cdr_summary" : "cdr_summary_nc", "field " + cdr_summary_fields[i].str[0], enableAlter,
-							&tableSize, &existsColumn,
-							cdr_summary_fields[i].str[0].c_str(), cdr_summary_fields[i].str[1].c_str(), NULL_CHAR_PTR,
-							NULL_CHAR_PTR);
-				if(existsColumn) {
-					cCdrSummary::exists_columns_add(cdr_summary_fields[i].str[0].c_str(), si);
-				}
-			}
+			this->checkColumns_cdr_summary(si == 0 ? "cdr_summary" : "cdr_summary_nc", si, enableAlter);
+		}
+	}
+}
+
+void SqlDb_mysql::checkColumns_cdr_summary(const char *tableName, int si, bool enableAlter, int onlyFirstIntervalMode, SqlDb_mysql *sqlDbSrc, set<string> *skipColumnsDueToFailedAlter) {
+	vector<dstring> cdr_summary_fields;
+	cCdrSummary::db_fields(&cdr_summary_fields, onlyFirstIntervalMode);
+	map<string, u_int64_t> tableSize;
+	for(unsigned i = 0; i < cdr_summary_fields.size(); i++) {
+		if(sqlDbSrc &&
+		   ((skipColumnsDueToFailedAlter && skipColumnsDueToFailedAlter->find(cdr_summary_fields[i].str[0]) != skipColumnsDueToFailedAlter->end()) ||
+		    !sqlDbSrc->existsColumn(tableName, cdr_summary_fields[i].str[0].c_str()))) {
+			continue;
+		}
+		bool existsColumn = false;
+		this->checkExistsColumn(tableName, "field " + cdr_summary_fields[i].str[0], enableAlter,
+					&tableSize, &existsColumn,
+					cdr_summary_fields[i].str[0].c_str(), cdr_summary_fields[i].str[1].c_str(), NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
+		if(!sqlDbSrc && existsColumn) {
+			cCdrSummary::exists_columns_add(cdr_summary_fields[i].str[0].c_str(), si);
+		}
+		if(sqlDbSrc && !existsColumn && skipColumnsDueToFailedAlter) {
+			skipColumnsDueToFailedAlter->insert(cdr_summary_fields[i].str[0]);
 		}
 	}
 }
@@ -11919,9 +12050,14 @@ u_int64_t SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 }
 
 void SqlDb_mysql::copyFromSourceTableInsertRows(const char *tableName, vector<SqlDb_row> *rows,
-						unsigned int insertThreads, unsigned long *counterInsert) {
+						unsigned int insertThreads, unsigned long *counterInsert,
+						bool onDuplicateUpdate, const set<string> *onDuplicateSkipFields) {
 	extern MySqlStore *sqlStore;
-	string insertQuery = this->insertQuery(tableName, rows, _insert_param_escapeAllBinary | _insert_param_insertIgnore);
+	int insertParams = _insert_param_escapeAllBinary | _insert_param_insertIgnore;
+	if(onDuplicateUpdate) {
+		insertParams |= _insert_param_onDuplicateUpdate;
+	}
+	string insertQuery = this->insertQuery(tableName, rows, insertParams, onDuplicateSkipFields);
 	sqlStore->query_lock(insertQuery.c_str(),
 			     insertThreads > 1 ? (((*counterInsert)++ % insertThreads) + 1) : 1, 0);
 	rows->clear();
@@ -12129,6 +12265,7 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 
 string SqlDb_mysql::getTimeColumn(string table) {
 	return((table == "cdr" || table == "cdr_audio_transcribe" || table == "message") ? "calldate" : 
+	       (table == "cdr_summary" || table == "cdr_summary_nc") ? "from_time" :
 	       (table == "http_jj" || table == "enum_jj") ? "timestamp" : 
 	       (table == "register_state" || table == "register_failed") ? "created_at" :
 	       (table == "sip_msg") ? "time" :
@@ -12165,6 +12302,8 @@ bool SqlDb_mysql::getReferenceTablesMap(const char *table, map<string, cSqlDbCod
 		(*reftable_map)["ua_dst_id"] = cSqlDbCodebook::_cb_ua;
 	} else if(!strcmp(table, "sip_msg_resp")) {
 		(*reftable_map)["response_id"] = cSqlDbCodebook::_cb_sip_response;
+	} else if(!strcmp(table, "cdr_summary") || !strcmp(table, "cdr_summary_nc")) {
+		(*reftable_map)["lastSIPresponse_id"] = cSqlDbCodebook::_cb_sip_response;
 	}
 	return(reftable_map->size() > 0);
 }
@@ -12331,12 +12470,24 @@ void createMysqlPartitionsCdrProblems() {
 }
 
 void createMysqlPartitionsCdrSummary() {
+	extern bool opt_database_backup;
+	extern bool opt_database_backup_cdr_summary;
 	partitionsServiceIsInProgress = 1;
-	if(opt_cdr_summary) {
+	if(opt_cdr_summary || (opt_database_backup && opt_database_backup_cdr_summary)) {
+		SqlDb *sqlDb = NULL;
+		if(opt_database_backup && opt_database_backup_cdr_summary && (!opt_cdr_summary || !opt_cdr_summary_number_complete)) {
+			sqlDb = createSqlObject();
+		}
 		for(int si = 0; si < 2; si++) {
-			if(si == 0 || opt_cdr_summary_number_complete) {
-				createMysqlPartitionsTable(si == 0 ? "cdr_summary" : "cdr_summary_nc", opt_cdr_summary_partition_oldver[si], 'd');
+			const char *tableName = si == 0 ? "cdr_summary" : "cdr_summary_nc";
+			if((opt_cdr_summary && (si == 0 || opt_cdr_summary_number_complete)) ||
+			   (opt_database_backup && opt_database_backup_cdr_summary && sqlDb && sqlDb->existsTable(tableName) &&
+			    sqlDb->getPartitions(NULL, NULL, tableName) > 0)) {
+				createMysqlPartitionsTable(tableName, opt_cdr_summary_partition_oldver[si], true, 'd');
 			}
+		}
+		if(sqlDb) {
+			delete sqlDb;
 		}
 	}
 	partitionsServiceIsInProgress = 0;
@@ -12432,7 +12583,7 @@ void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb) {
 	partitionsServiceIsInProgress = 0;
 }
 
-void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool disableHourPartitions, char type) {
+void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool disableHourPartitions, char type, int oldPartitionsDays) {
 	syslog(LOG_NOTICE, "%s", (string("create ") + table + " partitions - begin").c_str());
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->setIgnoreErrorCode(ER_SAME_NAME_PARTITION);
@@ -12453,6 +12604,13 @@ void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool d
 			sqlDb->setMaxQueryPass(maxQueryPassOld);
 		}
 	} else {
+		if(oldPartitionsDays > 1) {
+			sqlDb->setMaxQueryPass(1);
+			for(int i = oldPartitionsDays - 1; i > 0; i--) {
+				_createMysqlPartition(table, type, -i, partition_oldver, NULL, sqlDb);
+			}
+			sqlDb->setMaxQueryPass(maxQueryPassOld);
+		}
 		for(int next_day = 0; next_day < LIMIT_DAY_PARTITIONS; next_day++) {
 			if((!next_day && type == 'd') ||
 			   isCloud() || cloud_db) {
@@ -13697,9 +13855,11 @@ void cPartitions::fillTables(SqlDb *sqlDb) {
 		}
 	}
 	// CDR_SUMMARY
-	if(opt_cdr_summary) {
+	extern bool opt_database_backup;
+	extern bool opt_database_backup_cdr_summary;
+	if(opt_cdr_summary || (opt_database_backup && opt_database_backup_cdr_summary)) {
 		addTable("cdr_summary", "cdr_summary");
-		if(opt_cdr_summary_number_complete) {
+		if(opt_cdr_summary_number_complete || (opt_database_backup && opt_database_backup_cdr_summary)) {
 			addTable("cdr_summary", "cdr_summary_nc");
 		}
 	}
@@ -14360,6 +14520,584 @@ void storeRunningConfig(bool start) {
 		sqlDb->update(table_sensor_running_config, row, ("id = " + intToString(row_id)).c_str());
 	}
 	delete sqlDb;
+}
+
+
+cCdrSummaryBackup::cCdrSummaryBackup(SqlDb_mysql *sqlDbDst) {
+	this->sqlDbDst = sqlDbDst;
+	const char *_keyColumns[] = { "sipcallerip", "sipcalledip", "caller", "called", "payload", "lastSIPresponse_id", "sensor_id", "created_at" };
+	for(unsigned i = 0; i < sizeof(_keyColumns) / sizeof(_keyColumns[0]); i++) {
+		this->keyColumns.push_back(_keyColumns[i]);
+		this->onDuplicateSkipFields.insert(_keyColumns[i]);
+	}
+	this->onDuplicateSkipFields.insert("from_time");
+}
+
+void cCdrSummaryBackup::copyTables(SqlDb_mysql *sqlDbSrc,
+				   unsigned long limit,
+				   cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst) {
+	for(int si = 0; si < 2 && !is_terminating(); si++) {
+		const char *tableName = si == 0 ? "cdr_summary" : "cdr_summary_nc";
+		this->copyTable(sqlDbSrc, tableName, limit, cb_src, cb_dst);
+	}
+}
+
+void cCdrSummaryBackup::copyTable(SqlDb_mysql *sqlDbSrc,
+				  const char *tableName,
+				  unsigned long limit,
+				  cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst) {
+	sTableState *state = &this->tablesState[tableName];
+	if(!this->prepareTable(sqlDbSrc, tableName, state)) {
+		return;
+	}
+	if(!limit) {
+		limit = 10000;
+	}
+	map<string, int> columnsDest;
+	if(!this->sqlDbDst->query(string("show columns from ") + tableName)) {
+		return;
+	}
+	this->sqlDbDst->clearLastError();
+	SqlDb_row row;
+	size_t colIdx = 0;
+	while((row = this->sqlDbDst->fetchRow())) {
+		columnsDest[row["Field"]] = ++colIdx;
+	}
+	if(this->sqlDbDst->getLastError() || columnsDest.empty()) {
+		return;
+	}
+	map<string, cSqlDbCodebook::eTypeCodebook> reftable_map;
+	if(cb_src && cb_dst) {
+		this->sqlDbDst->getReferenceTablesMap(tableName, &reftable_map);
+	}
+	string maxTimeDst;
+	if(!this->sqlDbDst->getQueryRsltStringValue(string("select max(from_time) as max_time from ") + tableName, 0, &maxTimeDst)) {
+		return;
+	}
+	extern char opt_database_backup_from_date[20];
+	extern char opt_database_backup_to_date[20];
+	extern int opt_database_backup_cdr_summary_safe_time;
+	extern int opt_database_backup_insert_threads;
+	unsigned int insertThreads = opt_database_backup_insert_threads > 1 ? opt_database_backup_insert_threads : 1;
+	unsigned long counterInsert = 0;
+	extern int absolute_timeout;
+	extern int opt_cdr_summary_interval;
+	int summaryInterval_s = opt_cdr_summary_interval * 60;
+	int checkInterval = absolute_timeout + summaryInterval_s * 2;
+	string maxTimeSrc;
+	if(!sqlDbSrc->getQueryRsltStringValue(string("select max(from_time) as max_time from ") + tableName, 0, &maxTimeSrc) || maxTimeSrc.empty()) {
+		return;
+	}
+	time_t maxTimeSrc_s = mktime(maxTimeSrc.c_str(), "UTC");
+	if(maxTimeSrc_s <= 0) {
+		return;
+	}
+	time_t now = time(NULL);
+	if(state->lastMaxTimeSrc != maxTimeSrc) {
+		state->lastMaxTimeSrc = maxTimeSrc;
+		state->lastMaxTimeSrcChangedAt = now;
+	}
+	bool skipSafeTimeDueToIdleSource = now >= state->lastMaxTimeSrcChangedAt &&
+					   now - state->lastMaxTimeSrcChangedAt >= max(opt_database_backup_cdr_summary_safe_time, summaryInterval_s * 2);
+	string safeTimeLimit = opt_database_backup_cdr_summary_safe_time > 0 && !skipSafeTimeDueToIdleSource ?
+				time_r_str(maxTimeSrc_s - opt_database_backup_cdr_summary_safe_time, "UTC") :
+				"";
+	string checkFromTimeSrc = time_r_str(maxTimeSrc_s - checkInterval, "UTC");
+	string checkFromTimeMinSrc = time_r_str(maxTimeSrc_s - checkInterval * 2, "UTC");
+	vector<string> upperCond;
+	if(opt_database_backup_to_date[0]) {
+		upperCond.push_back(string("from_time < '") + sqlEscapeString(opt_database_backup_to_date) + "'");
+	}
+	if(!safeTimeLimit.empty()) {
+		upperCond.push_back(string("from_time < '") + sqlEscapeString(safeTimeLimit) + "'");
+	}
+	if(!maxTimeDst.empty()) {
+		this->checkIntervals(sqlDbSrc, tableName, state, limit, checkFromTimeSrc, checkFromTimeMinSrc, maxTimeDst, upperCond,
+				     &columnsDest, &reftable_map, cb_src, cb_dst, insertThreads, &counterInsert);
+		if(is_terminating()) {
+			return;
+		}
+	}
+	vector<string> minCond;
+	if(opt_database_backup_from_date[0]) {
+		minCond.push_back(string("from_time >= '") + sqlEscapeString(opt_database_backup_from_date) + "'");
+	}
+	if(!maxTimeDst.empty()) {
+		bool startAfterMaxDst = (state->lastCompletedFromTime == maxTimeDst);
+		minCond.push_back(string("from_time ") + (startAfterMaxDst ? "> '" : ">= '") + sqlEscapeString(maxTimeDst) + "'");
+	}
+	for(size_t i = 0; i < upperCond.size(); i++) {
+		minCond.push_back(upperCond[i]);
+	}
+	stringstream minQueryStr;
+	minQueryStr << "select min(from_time) as min_time from " << tableName;
+	if(!minCond.empty()) {
+		minQueryStr << " where " << this->joinSqlConditions(minCond);
+	}
+	string startTimeSrc;
+	if(!sqlDbSrc->getQueryRsltStringValue(minQueryStr.str(), 0, &startTimeSrc) || startTimeSrc.empty()) {
+		return;
+	}
+	vector<string> rangeCond;
+	rangeCond.push_back(string("from_time >= '") + sqlEscapeString(startTimeSrc) + "'");
+	for(size_t i = 0; i < upperCond.size(); i++) {
+		rangeCond.push_back(upperCond[i]);
+	}
+	stringstream batchEndQueryStr;
+	batchEndQueryStr << "select from_time from " << tableName
+			 << " where " << this->joinSqlConditions(rangeCond)
+			 << " order by from_time limit " << (limit > 0 ? limit - 1 : 0) << ",1";
+	string batchEndTimeSrc;
+	if(!sqlDbSrc->getQueryRsltStringValue(batchEndQueryStr.str(), 0, &batchEndTimeSrc)) {
+		return;
+	}
+	stringstream selectQueryStr;
+	selectQueryStr << "select " << tableName << ".* from " << tableName << " where ";
+	if(batchEndTimeSrc.empty()) {
+		selectQueryStr << this->joinSqlConditions(rangeCond) << " order by from_time";
+	} else if(batchEndTimeSrc == startTimeSrc) {
+		selectQueryStr << "from_time = '" << sqlEscapeString(startTimeSrc) << "'";
+	} else {
+		selectQueryStr << "from_time >= '" << sqlEscapeString(startTimeSrc)
+			       << "' and from_time < '" << sqlEscapeString(batchEndTimeSrc)
+			       << "' order by from_time";
+	}
+	unsigned long rowsInserted = 0;
+	string lastFromTime;
+	bool readComplete = this->copyQuery(sqlDbSrc, tableName, selectQueryStr.str(),
+					    &columnsDest, &reftable_map, cb_src, cb_dst,
+					    insertThreads, &counterInsert, &rowsInserted, &lastFromTime);
+	if(readComplete && !lastFromTime.empty()) {
+		state->lastCompletedFromTime = lastFromTime;
+	}
+}
+
+bool cCdrSummaryBackup::prepareTable(SqlDb_mysql *sqlDbSrc, const char *tableName, sTableState *state) {
+	if(!sqlDbSrc->existsTable(tableName)) {
+		return(false);
+	}
+	bool existsDst = this->sqlDbDst->existsTable(tableName);
+	time_t now = time(NULL);
+	time_t lastPrepareTime = state->lastPrepareTime;
+	if(existsDst && lastPrepareTime > 0 && now >= lastPrepareTime && now - lastPrepareTime < 3600) {
+		return(true);
+	}
+	if(!this->checkIndexForBackupCheck(sqlDbSrc, tableName, true, state) ||
+	   (existsDst && !this->checkIndexForBackupCheck(this->sqlDbDst, tableName, false, state))) {
+		return(false);
+	}
+	int si = !strcmp(tableName, "cdr_summary_nc") ? 1 : 0;
+	bool existsColumnMinutesAll = sqlDbSrc->existsColumn(tableName, "minutes_all");
+	bool existsColumnMinutes = sqlDbSrc->existsColumn(tableName, "minutes");
+	int onlyFirstIntervalMode = (existsColumnMinutesAll && existsColumnMinutes) ? 2 : (existsColumnMinutes && !existsColumnMinutesAll) ? 0 : 1;
+	if(!existsDst) {
+		extern char opt_database_backup_from_date[20];
+		int oldPartitionsDays = opt_create_old_partitions;
+		string minTimeQuery = string("select min(from_time) as min_time from ") + tableName;
+		if(opt_database_backup_from_date[0]) {
+			minTimeQuery += string(" where from_time >= '") + sqlEscapeString(opt_database_backup_from_date) + "'";
+		}
+		string minTimeSrc;
+		if(!sqlDbSrc->getQueryRsltStringValue(minTimeQuery, 0, &minTimeSrc)) {
+			return(false);
+		}
+		if(!minTimeSrc.empty()) {
+			int daysFromMin = getNumberOfDayToNow(minTimeSrc.c_str()) + 1;
+			if(daysFromMin > oldPartitionsDays) {
+				oldPartitionsDays = daysFromMin;
+			}
+		}
+		if(oldPartitionsDays < 0) {
+			oldPartitionsDays = 0;
+		}
+		int maxOldPartitions = this->sqlDbDst->getMaximumPartitions() - LIMIT_DAY_PARTITIONS - 10;
+		if(maxOldPartitions > 0 && oldPartitionsDays > maxOldPartitions) {
+			oldPartitionsDays = maxOldPartitions;
+		}
+		extern int opt_cleandatabase_cdr;
+		extern int opt_cleandatabase_cdr_summary;
+		int cleanDays = opt_cleandatabase_cdr_summary ? opt_cleandatabase_cdr_summary : opt_cleandatabase_cdr;
+		if(cleanDays > 0 && oldPartitionsDays > cleanDays - 1) {
+			oldPartitionsDays = cleanDays - 1;
+		}
+		if(!this->sqlDbDst->createSchema_table_cdr_summary(tableName, onlyFirstIntervalMode, oldPartitionsDays, true)) {
+			return(false);
+		}
+		if(opt_cdr_partition && !opt_disable_partition_operations && !opt_disable_partition_operations_create) {
+			createMysqlPartitionsTable(tableName, opt_cdr_summary_partition_oldver[si], true, 'd', oldPartitionsDays);
+		}
+		state->lastPrepareTime = now;
+	} else {
+		if(this->sqlDbDst->isOldVerPartition(tableName)) {
+			opt_cdr_summary_partition_oldver[si] = true;
+		}
+		this->sqlDbDst->checkColumns_cdr_summary(tableName, si, true, onlyFirstIntervalMode, sqlDbSrc, &state->skipColumnsDueToFailedAlter);
+		if(!lastPrepareTime &&
+		   opt_cdr_partition && !opt_disable_partition_operations && !opt_disable_partition_operations_create &&
+		   this->sqlDbDst->getPartitions(NULL, NULL, tableName) > 0) {
+			createMysqlPartitionsTable(tableName, opt_cdr_summary_partition_oldver[si], true, 'd');
+		}
+		state->lastPrepareTime = now;
+	}
+	return(this->sqlDbDst->existsTable(tableName));
+}
+
+bool cCdrSummaryBackup::checkIndexForBackupCheck(SqlDb_mysql *sqlDb, const char *tableName, bool isSource, sTableState *state) {
+	vector<string> indexColumns;
+	indexColumns.push_back("from_time");
+	indexColumns.push_back("updated_counter");
+	bool queryFailed = false;
+	if(sqlDb->existsIndexWithColumns(tableName, indexColumns, &queryFailed)) {
+		return(true);
+	}
+	if(queryFailed) {
+		return(false);
+	}
+	time_t *lastAlterAtPtr = isSource ? &state->lastIndexAlterTimeSrc : &state->lastIndexAlterTimeDst;
+	time_t now = time(NULL);
+	if(*lastAlterAtPtr > 0 && now >= *lastAlterAtPtr && now - *lastAlterAtPtr < 3600) {
+		return(false);
+	}
+	*lastAlterAtPtr = now;
+	string alter = string("ALTER TABLE `") + tableName + "` ADD KEY `backup_check` (`from_time`,`updated_counter`);";
+	bool okAlter = false;
+	if(isSource) {
+		extern int opt_alter_rows_limit;
+		u_int64_t tableRows = (u_int64_t)-1;
+		if(sqlDb->query(string("show table status like '") + tableName + "'")) {
+			SqlDb_row row = sqlDb->fetchRow();
+			if(row) {
+				tableRows = atoll(row["Rows"].c_str());
+			}
+		}
+		if(tableRows < (unsigned)opt_alter_rows_limit && !sverb.suppress_auto_alter) {
+			int sql_disable_next_attempt_if_error_old = sql_disable_next_attempt_if_error;
+			sql_disable_next_attempt_if_error = 1;
+			syslog(LOG_NOTICE, "run alter in the source database: %s", alter.c_str());
+			okAlter = sqlDb->query(alter);
+			sql_disable_next_attempt_if_error = sql_disable_next_attempt_if_error_old;
+		}
+	} else {
+		map<string, u_int64_t> tableSize;
+		okAlter = sqlDb->tryAlterAndLog(tableName,
+						"database_backup_cdr_summary (index on from_time, updated_counter for the check of already copied intervals)",
+						alter, &tableSize, NULL);
+	}
+	if(!okAlter) {
+		syslog(LOG_ERR, "database_backup_cdr_summary: table %s is not copied - missing index on (from_time, updated_counter) in the %s database. "
+				"The index was not created automatically (the table has more rows than alter_rows_limit or the alter failed). "
+				"Run in the %s database: %s",
+		       tableName, isSource ? "source" : "destination", isSource ? "source" : "destination", alter.c_str());
+	}
+	return(okAlter);
+}
+
+void cCdrSummaryBackup::checkIntervals(SqlDb_mysql *sqlDbSrc, const char *tableName, sTableState *state,
+				       unsigned long limit, const string &checkFromTimeSrc, const string &checkFromTimeMinSrc,
+				       const string &maxTimeDst, const vector<string> &upperCond,
+				       map<string, int> *columnsDest,
+				       map<string, cSqlDbCodebook::eTypeCodebook> *reftable_map,
+				       cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst,
+				       unsigned int insertThreads, unsigned long *counterInsert) {
+	extern char opt_database_backup_from_date[20];
+	extern int opt_database_backup_cdr_summary_check_period;
+	time_t now = time(NULL);
+	if(state->lastCheckTime > 0 && opt_database_backup_cdr_summary_check_period > 0 &&
+	   now >= state->lastCheckTime && now - state->lastCheckTime < opt_database_backup_cdr_summary_check_period) {
+		return;
+	}
+	string checkFromTime = checkFromTimeSrc;
+	if(!state->lastCheckFromTime.empty() && state->lastCheckFromTime >= checkFromTimeMinSrc && state->lastCheckFromTime < checkFromTime) {
+		checkFromTime = state->lastCheckFromTime;
+	}
+	bool includeMaxTimeDst = (state->lastCompletedFromTime == maxTimeDst);
+	if((includeMaxTimeDst && maxTimeDst < checkFromTime) ||
+	   (!includeMaxTimeDst && maxTimeDst <= checkFromTime)) {
+		return;
+	}
+	vector<string> checkCond;
+	checkCond.push_back(string("from_time >= '") + sqlEscapeString(checkFromTime) + "'");
+	checkCond.push_back(string("from_time ") + (includeMaxTimeDst ? "<= '" : "< '") + sqlEscapeString(maxTimeDst) + "'");
+	if(opt_database_backup_from_date[0]) {
+		checkCond.push_back(string("from_time >= '") + sqlEscapeString(opt_database_backup_from_date) + "'");
+	}
+	for(size_t i = 0; i < upperCond.size(); i++) {
+		checkCond.push_back(upperCond[i]);
+	}
+	string whereCond = this->joinSqlConditions(checkCond);
+	map<string, sBucketStat> srcBuckets;
+	map<string, sBucketStat> dstBuckets;
+	if(!this->loadBucketStats(sqlDbSrc, tableName, whereCond, &srcBuckets) ||
+	   !this->loadBucketStats(this->sqlDbDst, tableName, whereCond, &dstBuckets)) {
+		return;
+	}
+	unsigned long rowsSynced = 0;
+	bool checkIncompleteDueToLimit = false;
+	for(map<string, sBucketStat>::iterator iterSrc = srcBuckets.begin();
+	    iterSrc != srcBuckets.end() && !is_terminating(); iterSrc++) {
+		map<string, sBucketStat>::iterator iterDst = dstBuckets.find(iterSrc->first);
+		bool dstEmpty = (iterDst == dstBuckets.end() || iterDst->second.cnt == 0);
+		if(!dstEmpty && !(iterSrc->second != iterDst->second)) {
+			continue;
+		}
+		if(rowsSynced >= limit) {
+			syslog(LOG_NOTICE, "cdr_summary check %s: limit %lu rows reached at from_time %s (%lu rows synced) - the check continues in the next cycle",
+			       tableName, limit, iterSrc->first.c_str(), rowsSynced);
+			checkIncompleteDueToLimit = true;
+			break;
+		}
+		if(!this->syncBucket(sqlDbSrc, tableName, iterSrc->first, dstEmpty,
+				     columnsDest, reftable_map, cb_src, cb_dst,
+				     insertThreads, counterInsert, &rowsSynced)) {
+			return;
+		}
+	}
+	if(!is_terminating() && !checkIncompleteDueToLimit) {
+		state->lastCheckTime = now;
+		state->lastCheckFromTime = checkFromTimeSrc;
+	}
+}
+
+bool cCdrSummaryBackup::loadBucketStats(SqlDb_mysql *sqlDb, const char *tableName, const string &whereCond,
+					map<string, sBucketStat> *stats) {
+	stringstream queryStr;
+	queryStr << "select from_time, count(*) as cnt, count(updated_counter) as cnt_upd, sum(ifnull(updated_counter, 0)) as sum_upd"
+		 << " from " << tableName << " where " << whereCond << " group by from_time order by from_time";
+	if(!sqlDb->query(queryStr.str())) {
+		return(false);
+	}
+	sqlDb->clearLastError();
+	SqlDb_row row;
+	while(!is_terminating() && (row = sqlDb->fetchRow())) {
+		sBucketStat stat;
+		stat.cnt = strtoull(row["cnt"].c_str(), NULL, 10);
+		stat.cnt_upd = strtoull(row["cnt_upd"].c_str(), NULL, 10);
+		stat.sum_upd = strtoull(row["sum_upd"].c_str(), NULL, 10);
+		(*stats)[row["from_time"]] = stat;
+	}
+	return(!is_terminating() && !sqlDb->getLastError());
+}
+
+bool cCdrSummaryBackup::syncBucket(SqlDb_mysql *sqlDbSrc, const char *tableName,
+				   const string &fromTime, bool dstEmpty,
+				   map<string, int> *columnsDest,
+				   map<string, cSqlDbCodebook::eTypeCodebook> *reftable_map,
+				   cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst,
+				   unsigned int insertThreads, unsigned long *counterInsert,
+				   unsigned long *rowsSynced) {
+	string bucketCond = "from_time = '" + sqlEscapeString(fromTime) + "'";
+	if(dstEmpty) {
+		string queryStr = string("select ") + tableName + ".* from " + tableName + " where " + bucketCond;
+		return(this->copyQuery(sqlDbSrc, tableName, queryStr,
+				       columnsDest, reftable_map, cb_src, cb_dst,
+				       insertThreads, counterInsert, rowsSynced));
+	}
+	string keyQuery = "select " + implode(this->keyColumns, ", ") + ", updated_counter from " +
+			  tableName + " where " + bucketCond;
+	if(!this->sqlDbDst->query(keyQuery)) {
+		return(false);
+	}
+	this->sqlDbDst->clearLastError();
+	map<sRowKey, int> dstKeys;
+	SqlDb_row row;
+	while(!is_terminating() && (row = this->sqlDbDst->fetchRow())) {
+		sRowKey key;
+		this->fillRowKey(&row, &key);
+		dstKeys[key] = this->getUpdatedCounter(&row);
+	}
+	if(is_terminating() || this->sqlDbDst->getLastError()) {
+		return(false);
+	}
+	if(!sqlDbSrc->query(keyQuery)) {
+		return(false);
+	}
+	sqlDbSrc->clearLastError();
+	cSqlDbCodebook *cb_src_resp = (cb_src && cb_dst) ? cb_src->getCodebook(cSqlDbCodebook::_cb_sip_response) : NULL;
+	cSqlDbCodebook *cb_dst_resp = (cb_src && cb_dst) ? cb_dst->getCodebook(cSqlDbCodebook::_cb_sip_response) : NULL;
+	extern cUtfConverter utfConverter;
+	vector<sRowKey> changedSrcKeys;
+	bool hasNonAscii = false;
+	bool missingReference = false;
+	while(!is_terminating() && (row = sqlDbSrc->fetchRow())) {
+		if(missingReference) {
+			continue;
+		}
+		sRowKey srcKey;
+		this->fillRowKey(&row, &srcKey);
+		sRowKey dstKey = srcKey;
+		if(cb_src_resp && cb_dst_resp && srcKey.lastSIPresponse_id) {
+			u_int64_t new_id = this->sqlDbDst->convId(srcKey.lastSIPresponse_id, cb_src_resp, cb_dst_resp);
+			if(!new_id) {
+				syslog(LOG_NOTICE, "%s", "missing record in reference table - continue after next sync reference tables");
+				missingReference = true;
+				continue;
+			}
+			dstKey.lastSIPresponse_id = new_id;
+		}
+		map<sRowKey, int>::iterator iterDst = dstKeys.find(dstKey);
+		if(iterDst == dstKeys.end() || iterDst->second != this->getUpdatedCounter(&row)) {
+			if(!hasNonAscii && (!utfConverter.is_ascii(srcKey.caller.c_str()) || !utfConverter.is_ascii(srcKey.called.c_str()))) {
+				hasNonAscii = true;
+			}
+			changedSrcKeys.push_back(srcKey);
+		}
+	}
+	if(missingReference || is_terminating() || sqlDbSrc->getLastError()) {
+		return(false);
+	}
+	if(changedSrcKeys.empty()) {
+		return(true);
+	}
+	syslog(LOG_NOTICE, "cdr_summary check %s [%s]: sync %zu rows", tableName, bucketCond.c_str(), changedSrcKeys.size());
+	if(changedSrcKeys.size() <= 500 && !hasNonAscii) {
+		dstKeys.clear();
+		for(size_t offset = 0; offset < changedSrcKeys.size() && !is_terminating(); offset += 50) {
+			size_t end = min(offset + 50, changedSrcKeys.size());
+			stringstream queryStr;
+			queryStr << "select " << tableName << ".* from " << tableName << " where " << bucketCond << " and (";
+			for(size_t i = offset; i < end; i++) {
+				if(i > offset) {
+					queryStr << " or ";
+				}
+				queryStr << "(" << this->formatRowKeyCond(changedSrcKeys[i]) << ")";
+			}
+			queryStr << ")";
+			if(!this->copyQuery(sqlDbSrc, tableName, queryStr.str(),
+					    columnsDest, reftable_map, cb_src, cb_dst,
+					    insertThreads, counterInsert, rowsSynced)) {
+				return(false);
+			}
+		}
+		return(!is_terminating());
+	}
+	string queryStr = string("select ") + tableName + ".* from " + tableName + " where " + bucketCond;
+	return(this->copyQuery(sqlDbSrc, tableName, queryStr,
+			       columnsDest, reftable_map, cb_src, cb_dst,
+			       insertThreads, counterInsert, rowsSynced, NULL, &dstKeys));
+}
+
+bool cCdrSummaryBackup::copyQuery(SqlDb_mysql *sqlDbSrc, const char *tableName,
+				  const string &queryStr, map<string, int> *columnsDest,
+				  map<string, cSqlDbCodebook::eTypeCodebook> *reftable_map,
+				  cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst,
+				  unsigned int insertThreads, unsigned long *counterInsert,
+				  unsigned long *rowsInserted, string *lastFromTime,
+				  map<sRowKey, int> *skipMatchingDstKeys) {
+	syslog(LOG_NOTICE, "%s", ("select query: " + (queryStr.length() > 300 ? queryStr.substr(0, 300) + " ..." : queryStr)).c_str());
+	if(!sqlDbSrc->query(queryStr)) {
+		return(false);
+	}
+	sqlDbSrc->clearLastError();
+	extern MySqlStore *sqlStore;
+	SqlDb_row row;
+	vector<SqlDb_row> rows;
+	size_t rowsBytes = 0;
+	bool skipRowsDueToMissingReference = false;
+	while(!is_terminating() && (row = sqlDbSrc->fetchRow())) {
+		if(skipRowsDueToMissingReference) {
+			continue;
+		}
+		row.removeFieldsIfNotContainIn(columnsDest);
+		if(cb_src && cb_dst) {
+			if(!this->sqlDbDst->convId(&row, tableName, cb_src, cb_dst, reftable_map)) {
+				syslog(LOG_NOTICE, "%s", "missing record in reference table - continue after next sync reference tables");
+				skipRowsDueToMissingReference = true;
+				continue;
+			}
+		}
+		if(lastFromTime) {
+			*lastFromTime = row["from_time"];
+		}
+		if(skipMatchingDstKeys) {
+			sRowKey dstKey;
+			this->fillRowKey(&row, &dstKey);
+			map<sRowKey, int>::iterator iterDst = skipMatchingDstKeys->find(dstKey);
+			if(iterDst != skipMatchingDstKeys->end() && iterDst->second == this->getUpdatedCounter(&row)) {
+				continue;
+			}
+		}
+		rowsBytes += row.getContentLength();
+		rows.push_back(row);
+		if(rowsInserted) {
+			++(*rowsInserted);
+		}
+		if(rows.size() >= 100 || rowsBytes >= 1024 * 1024) {
+			this->sqlDbDst->copyFromSourceTableInsertRows(tableName, &rows, insertThreads, counterInsert, true, &this->onDuplicateSkipFields);
+			rowsBytes = 0;
+		}
+		while(!is_terminating() && sqlStore->getAllSize() > 1000) {
+			USLEEP(100000);
+		}
+	}
+	bool readComplete = !skipRowsDueToMissingReference && !is_terminating() && !sqlDbSrc->getLastError();
+	if(is_terminating() < 2 && rows.size()) {
+		this->sqlDbDst->copyFromSourceTableInsertRows(tableName, &rows, insertThreads, counterInsert, true, &this->onDuplicateSkipFields);
+	}
+	return(readComplete);
+}
+
+void cCdrSummaryBackup::fillRowKey(SqlDb_row *row, sRowKey *key) {
+	SqlDb_row::SqlDb_rowField *f = row->getField("sipcallerip");
+	if(f) {
+		key->sipcallerip = f->content;
+		key->sipcallerip_bin = (f->flags & 128) != 0;
+	}
+	f = row->getField("sipcalledip");
+	if(f) {
+		key->sipcalledip = f->content;
+		key->sipcalledip_bin = (f->flags & 128) != 0;
+	}
+	key->caller = (*row)["caller"];
+	key->called = (*row)["called"];
+	key->payload = atoi((*row)["payload"].c_str());
+	key->lastSIPresponse_id = atoll((*row)["lastSIPresponse_id"].c_str());
+	f = row->getField("sensor_id");
+	if(f) {
+		key->sensor_id_null = f->null;
+		key->sensor_id = f->content;
+	}
+	f = row->getField("created_at");
+	if(f) {
+		key->created_at_null = f->null;
+		key->created_at = f->content;
+	}
+}
+
+int cCdrSummaryBackup::getUpdatedCounter(SqlDb_row *row) {
+	SqlDb_row::SqlDb_rowField *f = row->getField("updated_counter");
+	return(!f || f->null ? -1 : atoi(f->content.c_str()));
+}
+
+string cCdrSummaryBackup::formatFieldCond(const char *colName, const string &val, bool isNull, bool isBinary) {
+	if(isNull) {
+		return(string(colName) + " is null");
+	}
+	if(isBinary) {
+		return(string(colName) + " = unhex('" + hexencode((unsigned char*)val.c_str(), val.length()) + "')");
+	}
+	return(string(colName) + " = '" + sqlEscapeString(val) + "'");
+}
+
+string cCdrSummaryBackup::formatRowKeyCond(const sRowKey &key) {
+	return(this->formatFieldCond("sipcallerip", key.sipcallerip, false, key.sipcallerip_bin) + " and " +
+	       this->formatFieldCond("sipcalledip", key.sipcalledip, false, key.sipcalledip_bin) + " and " +
+	       this->formatFieldCond("caller", key.caller, false, false) + " and " +
+	       this->formatFieldCond("called", key.called, false, false) + " and " +
+	       "payload = " + intToString(key.payload) + " and " +
+	       "lastSIPresponse_id = " + intToString(key.lastSIPresponse_id) + " and " +
+	       this->formatFieldCond("sensor_id", key.sensor_id, key.sensor_id_null, false) + " and " +
+	       this->formatFieldCond("created_at", key.created_at, key.created_at_null, false));
+}
+
+string cCdrSummaryBackup::joinSqlConditions(const vector<string> &conds) {
+	string rslt;
+	for(size_t i = 0; i < conds.size(); i++) {
+		if(i) {
+			rslt += " and ";
+		}
+		rslt += conds[i];
+	}
+	return(rslt);
 }
 
 

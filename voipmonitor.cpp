@@ -670,6 +670,9 @@ int opt_database_backup_record_safe_gap = 100;
 int opt_database_backup_record_safe_time = 60;
 bool opt_database_backup_slave_records_first = false;
 bool opt_database_backup_detect_from_to_calldate_in_slave = false;
+bool opt_database_backup_cdr_summary = false;
+int opt_database_backup_cdr_summary_safe_time = 120;
+int opt_database_backup_cdr_summary_check_period = 120;
 char opt_mos_lqo_bin[1024] = "pesq";
 char opt_mos_lqo_ref[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
 char opt_mos_lqo_ref16[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original_16khz.wav";
@@ -2049,6 +2052,7 @@ void *database_backup(void */*dummy*/) {
 		return NULL;
 	}
 	SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
+	cCdrSummaryBackup cdrSummaryBackup(sqlDb_mysql);
 	sqlStore = new FILE_LINE(42002) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port, mysql_socket,
 						   NULL, NULL, false, &optMySsl);
 	bool callCreateSchema = false;
@@ -2135,10 +2139,16 @@ void *database_backup(void */*dummy*/) {
 				time_t actTime = time(NULL);
 				if(actTime - createPartitionAt > 12 * 3600) {
 					createMysqlPartitionsCdr();
+					if(opt_database_backup_cdr_summary) {
+						createMysqlPartitionsCdrSummary();
+					}
 					createPartitionAt = actTime;
 				}
 				if(actTime - dropPartitionAt > 12 * 3600) {
 					dropMysqlPartitionsCdr();
+					if(opt_database_backup_cdr_summary) {
+						dropMysqlPartitionsCdrSummary();
+					}
 					dropPartitionAt = actTime;
 				}
 			 
@@ -2148,6 +2158,11 @@ void *database_backup(void */*dummy*/) {
 								      opt_database_backup_skip_register,
 								      !opt_database_backup_check_src_tables,
 								      cb_src, cb_dst);
+				if(opt_database_backup_cdr_summary && !is_terminating()) {
+					cdrSummaryBackup.copyTables(sqlDbSrc_mysql,
+								    opt_database_backup_pass_rows,
+								    cb_src, cb_dst);
+				}
 				
 				if(cb_src) {
 					delete cb_src;
@@ -6872,6 +6887,9 @@ void cConfig::addConfigItems() {
 						->addAlias("database_backup_slave_record_safe_time"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_slave_records_first", &opt_database_backup_slave_records_first));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_detect_from_to_calldate_in_slave", &opt_database_backup_detect_from_to_calldate_in_slave));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_cdr_summary", &opt_database_backup_cdr_summary));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("database_backup_cdr_summary_safe_time", &opt_database_backup_cdr_summary_safe_time));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("database_backup_cdr_summary_check_period", &opt_database_backup_cdr_summary_check_period));
 	group("sniffer mode");
 		// SNIFFER MODE
 		subgroup("main");

@@ -1038,9 +1038,9 @@ public:
 	cCdrSummary();
 	~cCdrSummary();
 	void init();
-	static vector<sMetricType> get_metric_types();
-	static void init_series(vector<cChartSeries*> *series);
-	static void init_metrics(vector<sMetrics> *metrics);
+	static vector<sMetricType> get_metric_types(int only_first_interval = -1);
+	static void init_series(vector<cChartSeries*> *series, int only_first_interval = -1);
+	static void init_metrics(vector<sMetrics> *metrics, int only_first_interval = -1);
 	void clear();
 	void add(sChartsCallData *call);
 	void store(bool forceAll = false);
@@ -1049,7 +1049,7 @@ public:
 	void unlock_intervals() { __SYNC_UNLOCK(sync_intervals); }
 	void lock_store() { __SYNC_LOCK_USLEEP(sync_store, 100); }
 	void unlock_store() { __SYNC_UNLOCK(sync_store); }
-	static string db_fields(vector<dstring> *fields = NULL);
+	static string db_fields(vector<dstring> *fields = NULL, int only_first_interval = -1);
 	static bool exists_columns_check(const char *column, bool nc);
 	static void exists_columns_clear(bool nc);
 	static void exists_columns_add(const char *column, bool nc);

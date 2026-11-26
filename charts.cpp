@@ -3910,11 +3910,14 @@ void cCdrSummary::init() {
 	init_metrics(&metrics);
 }
 
-vector<cCdrSummary::sMetricType> cCdrSummary::get_metric_types() {
+vector<cCdrSummary::sMetricType> cCdrSummary::get_metric_types(int only_first_interval) {
 	vector<sMetricType> rslt;
-	if(opt_cdr_summary_only_first_interval) {
+	bool use_only_first = only_first_interval < 0 ? opt_cdr_summary_only_first_interval : (only_first_interval == 1 || only_first_interval == 2);
+	bool use_all_intervals = only_first_interval < 0 ? !opt_cdr_summary_only_first_interval : (only_first_interval == 0 || only_first_interval == 2);
+	if(use_only_first) {
 		rslt.push_back(sMetricType(_chartType_minutes_all, NULL));
-	} else {
+	}
+	if(use_all_intervals) {
 		rslt.push_back(sMetricType(_chartType_count, "avg,min,max"));
 		rslt.push_back(sMetricType(_chartType_cps, "avg,min,max"));
 		rslt.push_back(sMetricType(_chartType_minutes, NULL));
@@ -3938,8 +3941,8 @@ vector<cCdrSummary::sMetricType> cCdrSummary::get_metric_types() {
 	return(rslt);
 }
 
-void cCdrSummary::init_series(vector<cChartSeries*> *series) {
-	vector<sMetricType> metric_types = get_metric_types();
+void cCdrSummary::init_series(vector<cChartSeries*> *series, int only_first_interval) {
+	vector<sMetricType> metric_types = get_metric_types(only_first_interval);
 	for(unsigned i = 0; i < metric_types.size(); i++) {
 		string chartStr = chartStringFromType(metric_types[i].chartType);
 		cChartSeries *_series = new FILE_LINE(0) cChartSeries(_chartTypeUse_cdrSummary, metric_types[i].chartType, chartStr.c_str(), chartStr.substr(4).c_str(), true);
@@ -3950,8 +3953,8 @@ void cCdrSummary::init_series(vector<cChartSeries*> *series) {
 	}
 }
 
-void cCdrSummary::init_metrics(vector<sMetrics> *metrics) {
-	vector<sMetricType> metric_types = get_metric_types();
+void cCdrSummary::init_metrics(vector<sMetrics> *metrics, int only_first_interval) {
+	vector<sMetricType> metric_types = get_metric_types(only_first_interval);
 	for(unsigned i = 0; i < metric_types.size(); i++) {
 		vector<eChartValueType> value_types;
 		vector<string> value_types_str = explode(metric_types[i].valueType, ',');
@@ -4161,15 +4164,15 @@ void cCdrSummary::cleanup(bool forceAll) {
 	last_cleanup_at_real = real_time;
 }
 
-string cCdrSummary::db_fields(vector<dstring> *fields) {
+string cCdrSummary::db_fields(vector<dstring> *fields, int only_first_interval) {
 	vector<dstring> _fields;
 	if(!fields) {
 		fields = &_fields;
 	}
 	vector<sMetrics> metrics;
-	init_metrics(&metrics);
+	init_metrics(&metrics, only_first_interval);
 	vector<cChartSeries*> series;
-	init_series(&series);
+	init_series(&series, only_first_interval);
 	fields->push_back(dstring("count_all", "int unsigned"));
 	fields->push_back(dstring("count_connected", "int unsigned"));
 	fields->push_back(dstring("count_exists_rtp", "int unsigned"));

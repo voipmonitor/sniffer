@@ -352,7 +352,21 @@ public:
 		}
 		return(false);
 	}
+	bool isNull(int indexField) {
+		if((unsigned)indexField < row.size()) {
+			return(row[indexField].null);
+		}
+		return(false);
+	}
+	size_t getContentLength() {
+		size_t len = 0;
+		for(size_t i = 0; i < row.size(); i++) {
+			len += row[i].content.length();
+		}
+		return(len);
+	}
 	string implodeFields(string separator = ",", string border = "");
+	string implodeFieldsOnDuplicateUpdateForMultiInsert(string separator = ",", string border = "", const char *rowAlias = NULL, const set<string> *skipFields = NULL);
 	string implodeFieldsToCsv();
 	string implodeContent(string separator = ",", string border = "'", bool enableSqlString = false, bool escapeAll = false, bool escapeAllBinary = false, const char *table = NULL);
 	string implodeFieldContent(string separator = ",", string fieldBorder = "`", string contentBorder = "'", bool enableSqlString = false, bool escapeAll = false, const char *table = NULL);
@@ -422,7 +436,8 @@ public:
 		_insert_param_enableSqlStringInContent = (1 << 0),
 		_insert_param_escapeAll = (1 << 1),
 		_insert_param_escapeAllBinary = (1 << 1) | (1 << 2),
-		_insert_param_insertIgnore = (1 << 3)
+		_insert_param_insertIgnore = (1 << 3),
+		_insert_param_onDuplicateUpdate = (1 << 4)
 	};
 	struct sPartition {
 		sPartition() {
@@ -492,7 +507,7 @@ public:
 	static bool existsCharsetTable(const char *table);
 	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false, SqlDb_row *row_on_duplicate = NULL);
 	virtual string insertOrUpdateQuery(string table, SqlDb_row row, SqlDb_row row_on_duplicate, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
-	virtual string insertQuery(string table, vector<SqlDb_row> *rows, int insertParams = 0);
+	virtual string insertQuery(string table, vector<SqlDb_row> *rows, int insertParams = 0, const set<string> *onDuplicateSkipFields = NULL);
 	virtual string insertQueryWithLimitMultiInsert(string table, vector<SqlDb_row> *rows, unsigned limitMultiInsert, const char *queriesSeparator = NULL, const char *queriesSeparatorSubst = NULL,
 						       bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string updateQuery(string table, SqlDb_row row, const char *whereCond, bool enableSqlStringInContent = false, bool escapeAll = false);
@@ -506,6 +521,7 @@ public:
 	virtual int getIdOrInsert(string table, string idField, string uniqueField, SqlDb_row row, const char *uniqueField2 = NULL);
 	virtual int64_t getInsertId() = 0;
 	string getQueryRsltStringValue(string query, int indexRslt);
+	bool getQueryRsltStringValue(string query, int indexRslt, string *rslt);
 	int64_t getQueryRsltIntValue(string query, int indexRslt, int64_t failedResult);
 	bool getQueryRsltUIntValue(string query, int indexRslt, u_int64_t *rslt);
 	virtual bool existsDatabase() = 0;
@@ -650,6 +666,9 @@ public:
 	}
 	virtual string getDbName() {
 		return("");
+	}
+	virtual bool useRowAliasInOnDuplicateUpdate() {
+		return(false);
 	}
 	virtual string getDbDatadir() {
 		return("");
@@ -815,6 +834,7 @@ public:
 	bool existsColumnInTypeCache(const char *table, const char *column);
 	static bool existsColumnInTypeCache_static(const char *table, const char *column);
 	bool existsIndex(const char *table, const char *indexColumn, int seqInIndex = 0);
+	bool existsIndexWithColumns(const char *table, const vector<string> &columns, bool *queryFailed = NULL);
 	int getPartitions(const char *datadir, const char *database, const char *table, list<sPartition> *partitions = NULL, bool useCache = true);
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table, bool viaTableStatus = false);
@@ -835,6 +855,7 @@ public:
 	bool createSchema_tables_billing_agregation();
 	bool createSchema_table_http_jj(int connectId);
 	bool createSchema_table_webrtc(int connectId);
+	bool createSchema_table_cdr_summary(const char *tableName, int onlyFirstIntervalMode = -1, int oldPartitionsDays = -1, bool indexForBackupCheck = false);
 	bool createSchema_alter_other(int connectId);
 	bool createSchema_alter_http_jj(int connectId);
 	bool createSchema_procedures_other(int connectId);
@@ -866,6 +887,7 @@ public:
 	void checkColumns_cdr_stat(bool enableAlter);
 	void checkColumns_cdr_problems(bool enableAlter);
 	void checkColumns_cdr_summary(bool enableAlter);
+	void checkColumns_cdr_summary(const char *tableName, int si, bool enableAlter, int onlyFirstIntervalMode = -1, SqlDb_mysql *sqlDbSrc = NULL, set<string> *skipColumnsDueToFailedAlter = NULL);
 	void checkColumns_ss7(bool enableAlter);
 	void checkColumns_message(bool enableAlter);
 	void checkColumns_register(bool enableAlter);
@@ -916,7 +938,8 @@ public:
 					   unsigned long limit, bool descDir,
 					   cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst);
 	void copyFromSourceTableInsertRows(const char *tableName, vector<SqlDb_row> *rows,
-					   unsigned int insertThreads, unsigned long *counterInsert);
+					   unsigned int insertThreads, unsigned long *counterInsert,
+					   bool onDuplicateUpdate = false, const set<string> *onDuplicateSkipFields = NULL);
 	u_int64_t getSafeMaxIdSrc(SqlDb_mysql *sqlDbSrc, const char *tableName,
 				  u_int64_t startIdSrc, unsigned long limit, u_int64_t maxIdSrc);
 	u_int64_t getBatchEndIdSrc(SqlDb_mysql *sqlDbSrc, const char *tableName,
@@ -943,6 +966,7 @@ public:
 	int getDbMajorVersion();
 	int getDbMinorVersion(int minorLevel  = 0);
 	string getDbName();
+	bool useRowAliasInOnDuplicateUpdate();
 	static int getDbVersion_static();
 	static int getDbMajorVersion_static();
 	static int getDbMinorVersion_static(int minorLevel  = 0);
@@ -1459,7 +1483,7 @@ void createMysqlPartitionsCdrSummary();
 void createMysqlPartitionsRtpStat();
 void createMysqlPartitionsLogSensor();
 void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb = NULL);
-void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool disableHourPartitions = false, char type = 0);
+void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool disableHourPartitions = false, char type = 0, int oldPartitionsDays = 0);
 void createMysqlPartitionsIpacc();
 void _createMysqlPartition(string table, char type, int next_day, bool old_ver, const char *database, SqlDb *sqlDb);
 void dropMysqlPartitionsCdr();
@@ -1897,6 +1921,139 @@ private:
 private:
 	list<sColumn> columns;
 	bool altered;
+};
+
+
+class cCdrSummaryBackup {
+private:
+	struct sBucketStat {
+		u_int64_t cnt;
+		u_int64_t cnt_upd;
+		u_int64_t sum_upd;
+		sBucketStat() {
+			cnt = 0;
+			cnt_upd = 0;
+			sum_upd = 0;
+		}
+		bool operator != (const sBucketStat &other) const {
+			return(cnt != other.cnt || cnt_upd != other.cnt_upd || sum_upd != other.sum_upd);
+		}
+	};
+	struct sRowKey {
+		string sipcallerip;
+		bool sipcallerip_bin;
+		string sipcalledip;
+		bool sipcalledip_bin;
+		string caller;
+		string called;
+		int payload;
+		u_int64_t lastSIPresponse_id;
+		string sensor_id;
+		bool sensor_id_null;
+		string created_at;
+		bool created_at_null;
+		sRowKey() {
+			sipcallerip_bin = false;
+			sipcalledip_bin = false;
+			payload = 0;
+			lastSIPresponse_id = 0;
+			sensor_id_null = false;
+			created_at_null = false;
+		}
+		bool operator < (const sRowKey &other) const {
+			if(sipcallerip != other.sipcallerip) {
+				return(sipcallerip < other.sipcallerip);
+			}
+			if(sipcalledip != other.sipcalledip) {
+				return(sipcalledip < other.sipcalledip);
+			}
+			if(caller != other.caller) {
+				return(caller < other.caller);
+			}
+			if(called != other.called) {
+				return(called < other.called);
+			}
+			if(payload != other.payload) {
+				return(payload < other.payload);
+			}
+			if(lastSIPresponse_id != other.lastSIPresponse_id) {
+				return(lastSIPresponse_id < other.lastSIPresponse_id);
+			}
+			if(sensor_id_null != other.sensor_id_null) {
+				return(sensor_id_null < other.sensor_id_null);
+			}
+			if(sensor_id != other.sensor_id) {
+				return(sensor_id < other.sensor_id);
+			}
+			if(created_at_null != other.created_at_null) {
+				return(created_at_null < other.created_at_null);
+			}
+			return(created_at < other.created_at);
+		}
+	};
+	struct sTableState {
+		string lastCompletedFromTime;
+		time_t lastCheckTime;
+		string lastCheckFromTime;
+		string lastMaxTimeSrc;
+		time_t lastMaxTimeSrcChangedAt;
+		time_t lastPrepareTime;
+		time_t lastIndexAlterTimeSrc;
+		time_t lastIndexAlterTimeDst;
+		set<string> skipColumnsDueToFailedAlter;
+		sTableState() {
+			lastCheckTime = 0;
+			lastMaxTimeSrcChangedAt = 0;
+			lastPrepareTime = 0;
+			lastIndexAlterTimeSrc = 0;
+			lastIndexAlterTimeDst = 0;
+		}
+	};
+public:
+	cCdrSummaryBackup(SqlDb_mysql *sqlDbDst);
+	void copyTables(SqlDb_mysql *sqlDbSrc,
+			unsigned long limit = 0,
+			cSqlDbCodebooks *cb_src = NULL, cSqlDbCodebooks *cb_dst = NULL);
+	void copyTable(SqlDb_mysql *sqlDbSrc,
+		       const char *tableName,
+		       unsigned long limit,
+		       cSqlDbCodebooks *cb_src = NULL, cSqlDbCodebooks *cb_dst = NULL);
+private:
+	bool prepareTable(SqlDb_mysql *sqlDbSrc, const char *tableName, sTableState *state);
+	bool checkIndexForBackupCheck(SqlDb_mysql *sqlDb, const char *tableName, bool isSource, sTableState *state);
+	void checkIntervals(SqlDb_mysql *sqlDbSrc, const char *tableName, sTableState *state,
+			    unsigned long limit, const string &checkFromTimeSrc, const string &checkFromTimeMinSrc,
+			    const string &maxTimeDst, const vector<string> &upperCond,
+			    map<string, int> *columnsDest,
+			    map<string, cSqlDbCodebook::eTypeCodebook> *reftable_map,
+			    cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst,
+			    unsigned int insertThreads, unsigned long *counterInsert);
+	bool loadBucketStats(SqlDb_mysql *sqlDb, const char *tableName, const string &whereCond,
+			     map<string, sBucketStat> *stats);
+	bool syncBucket(SqlDb_mysql *sqlDbSrc, const char *tableName,
+			const string &fromTime, bool dstEmpty,
+			map<string, int> *columnsDest,
+			map<string, cSqlDbCodebook::eTypeCodebook> *reftable_map,
+			cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst,
+			unsigned int insertThreads, unsigned long *counterInsert,
+			unsigned long *rowsSynced);
+	bool copyQuery(SqlDb_mysql *sqlDbSrc, const char *tableName,
+		       const string &queryStr, map<string, int> *columnsDest,
+		       map<string, cSqlDbCodebook::eTypeCodebook> *reftable_map,
+		       cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst,
+		       unsigned int insertThreads, unsigned long *counterInsert,
+		       unsigned long *rowsInserted, string *lastFromTime = NULL,
+		       map<sRowKey, int> *skipMatchingDstKeys = NULL);
+	void fillRowKey(SqlDb_row *row, sRowKey *key);
+	int getUpdatedCounter(SqlDb_row *row);
+	string formatFieldCond(const char *colName, const string &val, bool isNull, bool isBinary);
+	string formatRowKeyCond(const sRowKey &key);
+	string joinSqlConditions(const vector<string> &conds);
+private:
+	SqlDb_mysql *sqlDbDst;
+	vector<string> keyColumns;
+	set<string> onDuplicateSkipFields;
+	map<string, sTableState> tablesState;
 };
 
 
