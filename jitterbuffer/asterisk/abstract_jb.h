@@ -83,22 +83,22 @@ struct ast_jb_impl;
  */
 struct ast_jb
 {
-	/*! \brief Jitterbuffer configuration. */
-	struct ast_jb_conf conf;
-	/*! \brief Jitterbuffer implementation to be used. */
-	struct ast_jb_impl *impl;
 	/*! \brief Jitterbuffer object, passed to the implementation. */
 	void *jbobj;
+	/*! \brief Jitterbuffer implementation to be used. */
+	struct ast_jb_impl *impl;
 	/*! \brief The time the jitterbuffer was created. */
 	struct timeval timebase;
 	/*! \brief The time the next frame should be played. */
 	long next;
+	/*! \brief Jitterbuffer internal state flags. */
+	unsigned int flags;
 	/*! \brief Voice format of the last frame in. */
 	int last_format;
 	/*! \brief File for frame timestamp tracing. */
 	FILE *logfile;
-	/*! \brief Jitterbuffer internal state flags. */
-	unsigned int flags;
+	/*! \brief Jitterbuffer configuration. */
+	struct ast_jb_conf conf;
 };
 
 
@@ -208,6 +208,22 @@ void ast_jb_empty_and_reset(struct ast_channel *c0);
 void jb_fixed_flush_deliver(struct ast_channel *chan);
 
 int ast_jb_test(struct ast_channel *c0);
+
+/*!
+ * \brief Fast-path jitterbuffer simulation step for MOS-only channels (no audio payload).
+ * Combines usecheck, periodic get_and_deliver, and put without heap frame allocation.
+ */
+void ast_jb_sim_step(struct ast_channel *chan, const struct timeval *header_ts,
+		     long frame_ts, int packetization, int seqno,
+		     char marker, int last_is_voice, char ignore, int codec);
+
+/*!
+ * \brief Fused 3-simulator MOS step (fix1 + fix2 + adapt) with parallel prefetching.
+ * Any channel pointer may be NULL if disabled.
+ */
+void ast_jb_sim_step_3(struct ast_channel *ch_fix1, struct ast_channel *ch_fix2, struct ast_channel *ch_adapt,
+		       const struct timeval *header_ts, long frame_ts, int packetization, int seqno,
+		       char marker1, char marker2, char marker3, int last_is_voice, char ignore, int codec);
 
 #if defined(__cplusplus) || defined(c_plusplus)
 }

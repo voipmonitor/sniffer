@@ -572,6 +572,7 @@ public:
 	 *
 	*/
 	void jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevels, bool mos_lqo);
+	void jitterbuffer_mos_all();
 
 	void process_dtmf_rfc2833();
 

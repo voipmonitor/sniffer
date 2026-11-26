@@ -328,26 +328,21 @@ struct ast_frame *ast_frdup(const struct ast_frame *f)
 {
 	struct ast_frame *out = NULL;
 	int len, srclen = 0;
-	void *buf = NULL;
+	char *buf = NULL;
+	int need_offset = (f->datalen > 0) ? AST_FRIENDLY_OFFSET : 0;
 
 	/* Start with standard stuff */
-	len = sizeof(*out) + AST_FRIENDLY_OFFSET + f->datalen;
+	len = (int)sizeof(*out) + need_offset + f->datalen;
 	/* If we have a source, add space for it */
-	/*
-	 * XXX Watch out here - if we receive a src which is not terminated
-	 * properly, we can be easily attacked. Should limit the size we deal with.
-	 */
 	if (f->src)
 		srclen = strlen(f->src);
 	if (srclen > 0)
 		len += srclen + 1;
 
-	if (!buf) {
-		if (!(buf = ast_calloc(1, len)))
-			return NULL;
-		out = buf;
-		out->mallocd_hdr_len = len;
-	}
+	if (!(buf = (char *)ast_malloc(len)))
+		return NULL;
+	out = (struct ast_frame *)buf;
+	out->mallocd_hdr_len = len;
 
 	out->frametype = f->frametype;
 	out->lastframetype = f->lastframetype;
@@ -357,23 +352,25 @@ struct ast_frame *ast_frdup(const struct ast_frame *f)
 	out->samples = f->samples;
 	out->delivery = f->delivery;
 	out->skip = f->skip;
+	out->frame_list.next = NULL;
 	/* Set us as having malloc'd header only, so it will eventually
 	   get freed. */
 	out->mallocd = AST_MALLOCD_HDR;
-	out->offset = AST_FRIENDLY_OFFSET;
+	out->offset = need_offset;
 	if (out->datalen > 0) {
-		out->data = buf + sizeof(*out) + AST_FRIENDLY_OFFSET;
-		memcpy(out->data, f->data, out->datalen);	
+		out->data = buf + sizeof(*out) + need_offset;
+		memcpy(out->data, f->data, out->datalen);
+	} else {
+		out->data = NULL;
 	}
 	if (srclen > 0) {
-		/* This may seem a little strange, but it's to avoid a gcc (4.2.4) compiler warning */
-		char *src;
-		out->src = buf + sizeof(*out) + AST_FRIENDLY_OFFSET + f->datalen;
-		src = (char *) out->src;
-		/* Must have space since we allocated for it */
-		strcpy(src, f->src);
+		char *src = buf + sizeof(*out) + need_offset + f->datalen;
+		out->src = src;
+		memcpy(src, f->src, srclen + 1);
+	} else {
+		out->src = NULL;
 	}
-	ast_copy_flags(out, f, AST_FRFLAG_HAS_TIMING_INFO);
+	out->flags = f->flags & AST_FRFLAG_HAS_TIMING_INFO;
 	out->ts = f->ts;
 	out->len = f->len;
 	out->seqno = f->seqno;
