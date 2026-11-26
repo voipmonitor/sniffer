@@ -342,40 +342,39 @@ enum ast_channel_state {
  */
 
 struct ast_channel {
-
-	FILE *rawstream;
-	void *audiobuf;
+	/* Hot per-packet fields packed in the first cache lines */
+	struct ast_jb jb;				/*!< The jitterbuffer state  */
+	struct timeval last_ts;       /*!< The time that an in process digit began, or the last digit ended */
 	unsigned int last_seqno;
 	unsigned int last_ms;
 	int jb_reseted;
 	int packetization;
-	unsigned short int loss[128];
-	unsigned short int last_interval_loss[128];
-	int last_loss_state;
 	int last_loss_burst;
 	int jitter_impl;
 	int jitter_max;
 	int jitter_resync_threshold;
+	int resync; 	/*!< if jitterbuffer resync is allowed */
+	int codec;
+	FILE *rawstream;
+	void *audiobuf;
+	void *rtp_stream;
+	int enable_save_energylevels;
+	char audio_decode;
+	char prev_frame_is_dtmf;
+	short int stopped_due_to_high_ooo;
+
+	/* Less frequently accessed fields */
+	int last_loss_state;
 	int last_datalen;
-	struct timeval last_ts;       /*!< The time that an in process digit began, or the last digit ended */
 	char *lastbuf;
 	int lastbufsize;
 	int lastbuflen;
-	int codec;
-	int resync; 	/*!< if jitterbuffer resync is allowed */
-
-	struct ast_jb jb;				/*!< The jitterbuffer state  */
-
 	unsigned int last_received;
-	
-	char audio_decode;
-	char prev_frame_is_dtmf;
-	
-	void *rtp_stream;
-	int enable_save_energylevels;
 	int last_datalen_energylevels;
-	
-	short int stopped_due_to_high_ooo;
+
+	/* Cold statistics arrays (512 bytes) placed at the end */
+	unsigned short int loss[128];
+	unsigned short int last_interval_loss[128];
 };
 
 /*! \brief ast_channel_tech Properties */

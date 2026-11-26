@@ -829,6 +829,22 @@ void RTP::jitterbuffer_fixed_flush(struct ast_channel */*jchannel*/) {
 	#endif
 }
 
+static inline struct timeval vm_tv_add_ms(struct timeval tv, int ms) {
+	long us = tv.tv_usec + (long)ms * 1000L;
+	if(__builtin_expect(us >= 1000000L, 0)) {
+		if(__builtin_expect(us < 2000000L, 1)) {
+			tv.tv_sec += 1;
+			tv.tv_usec = us - 1000000L;
+		} else {
+			tv.tv_sec += us / 1000000L;
+			tv.tv_usec = us % 1000000L;
+		}
+	} else {
+		tv.tv_usec = us;
+	}
+	return tv;
+}
+
 /* add silence to RTP stream from last packet time to current time which is in header->ts */
 void
 RTP::jt_tail(struct pcap_pkthdr *header) {
@@ -864,8 +880,7 @@ RTP::jt_tail(struct pcap_pkthdr *header) {
 		tailedframes++;
 		ast_jb_get_and_deliver(channel_record, &channel_record->last_ts);
 		/* adding packetization time to last_ts time */ 
-		struct timeval tmp = ast_tvadd(channel_record->last_ts, ast_samp2tv(packetization, 1000));
-		memcpy(&channel_record->last_ts, &tmp, sizeof(struct timeval));
+		channel_record->last_ts = vm_tv_add_ms(channel_record->last_ts, packetization);
 		msdiff -= packetization;
 	}
 	
@@ -1073,6 +1088,26 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 		channel->rawstream = NULL;
 	}
 
+	if(!save_audio && !energylevels && !mos_lqo &&
+	   !channel->audiobuf && !channel->enable_save_energylevels &&
+	   frame->frametype == AST_FRAME_VOICE) {
+		channel->rawstream = NULL;
+		if(__builtin_expect(opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap && !frame->marker &&
+				    channel->jb_reseted && ast_jb_test(channel), 0)) {
+			struct timeval next_ts = vm_tv_add_ms(channel->last_ts, packetization);
+			int msdiff = ast_tvdiff_ms(header_ts, next_ts);
+			if(msdiff <= packetization * 10000 &&
+			   msdiff >= opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap &&
+			   frame->seqno == ROT_SEQ(last_seq + 1) &&
+			   frame->ts > _last_ts && (int)(frame->ts - _last_ts) < packetization * 2) {
+				frame->marker = 1;
+			}
+		}
+		ast_jb_sim_step(channel, &header_ts, frame->ts, packetization, frame->seqno,
+				frame->marker, frame->lastframetype == AST_FRAME_VOICE, frame->ignore, codec);
+		return;
+	}
+
 	// create jitter buffer structures 
 	ast_jb_do_usecheck(channel, &header_ts);
 	if(channel->jb.timebase.tv_sec == header_ts.tv_sec &&
@@ -1095,7 +1130,7 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 	}
 
 	/* calculate time difference between last packet and current packet + packetization time*/ 
-	int msdiff = ast_tvdiff_ms( header_ts, ast_tvadd(channel->last_ts, ast_samp2tv(packetization, 1000)) );
+	int msdiff = ast_tvdiff_ms( header_ts, vm_tv_add_ms(channel->last_ts, packetization) );
 	//printf("ms:%d\n", msdiff);
 	if(msdiff > packetization * 10000) {
 		// difference is too big, reseting last_ts to current packet. If we dont check this it could happen to run while cycle endlessly
@@ -1149,8 +1184,7 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 		}
 		ast_jb_get_and_deliver(channel, &channel->last_ts);
 		/* adding packetization time to last_ts time */ 
-		struct timeval tmp = ast_tvadd(channel->last_ts, ast_samp2tv(frame->len, 1000));
-		memcpy(&channel->last_ts, &tmp, sizeof(struct timeval));
+		channel->last_ts = vm_tv_add_ms(channel->last_ts, (int)frame->len);
 		msdiff -= packetization;
 	}
 
@@ -1161,6 +1195,140 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 	
 	#endif
 	
+}
+
+void
+RTP::jitterbuffer_mos_all() {
+	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
+	if(!opt_jitterbuffer_f1 && !opt_jitterbuffer_f2 && !opt_jitterbuffer_adapt) {
+		return;
+	}
+	if(codec == PAYLOAD_TELEVENT) return;
+
+	if(__builtin_expect(codec == PAYLOAD_G729 || codec == PAYLOAD_G723 || codec == PAYLOAD_AMR || codec == PAYLOAD_AMRWB || codec == PAYLOAD_EVS, 0)) {
+		if(opt_jitterbuffer_f1 > 0) jitterbuffer(channel_fix1, false, false, false);
+		if(opt_jitterbuffer_f2 > 0) jitterbuffer(channel_fix2, false, false, false);
+		if(opt_jitterbuffer_adapt > 0) jitterbuffer(channel_adapt, false, false, false);
+		return;
+	}
+
+	Call *owner = (Call*)call_owner;
+	if(__builtin_expect(packetization <= 1, 0)) {
+		if(pinformed == 0) {
+			if(owner) {
+				syslog(LOG_ERR, "call-id[%s] ssrc[%x]: packetization is %i in jitterbuffer function.", owner->get_fbasename_safe(), getSSRC(), packetization);
+			} else {
+				syslog(LOG_ERR, "call-id[N/A] ssrc[%x]: packetization is %i in jitterbuffer function.", getSSRC(), packetization);
+			}
+		}
+		pinformed = 1;
+		return;
+	} else {
+		pinformed = 0;
+	}
+
+	long frame_ts;
+	u_int32_t _last_ts = last_ts;
+	switch(codec) {
+		case PAYLOAD_VXOPUS12:
+		case PAYLOAD_XOPUS12:
+		case PAYLOAD_OPUS12:
+		case PAYLOAD_G722112:
+			frame_ts = getTimestamp() / 12;
+			_last_ts /= 12;
+			break;
+		case PAYLOAD_ISAC16:
+		case PAYLOAD_SILK16:
+		case PAYLOAD_VXOPUS16:
+		case PAYLOAD_XOPUS16:
+		case PAYLOAD_OPUS16:
+		case PAYLOAD_G722116:
+		case PAYLOAD_AMRWB:
+		case PAYLOAD_EVS:
+			frame_ts = getTimestamp() / 16;
+			_last_ts /= 16;
+			break;
+		case PAYLOAD_SILK24:
+		case PAYLOAD_VXOPUS24:
+		case PAYLOAD_XOPUS24:
+		case PAYLOAD_OPUS24:
+		case PAYLOAD_G722124:
+			frame_ts = getTimestamp() / 24;
+			_last_ts /= 24;
+			break;
+		case PAYLOAD_ISAC32:
+		case PAYLOAD_G722132:
+			frame_ts = getTimestamp() / 32;
+			_last_ts /= 32;
+			break;
+		case PAYLOAD_VXOPUS48:
+		case PAYLOAD_XOPUS48:
+		case PAYLOAD_OPUS48:
+			frame_ts = getTimestamp() / 48;
+			_last_ts /= 48;
+			break;
+		default:
+			frame_ts = getTimestamp() / 8;
+			_last_ts /= 8;
+			break;
+	}
+
+	char base_marker = getMarker();
+	int seqno = getSeqNum();
+	if(lastcng || lastframetype == AST_FRAME_DTMF) {
+		base_marker = 1;
+	}
+	int last_is_voice = (frame->lastframetype == AST_FRAME_VOICE);
+
+	struct ast_channel *ch1 = (opt_jitterbuffer_f1 > 0) ? channel_fix1 : NULL;
+	struct ast_channel *ch2 = (opt_jitterbuffer_f2 > 0) ? channel_fix2 : NULL;
+	struct ast_channel *ch3 = (opt_jitterbuffer_adapt > 0) ? channel_adapt : NULL;
+
+	extern int opt_jitterbuffer_adapt_ooo_limit;
+	if(__builtin_expect(ch3 && opt_jitterbuffer_adapt_ooo_limit > 0 &&
+			    ch3->jb.jbobj && ((jitterbuf*)ch3->jb.jbobj)->info.frames_ooo > 0, 0)) {
+		if(ch3->stopped_due_to_high_ooo) {
+			ch3 = NULL;
+		} else if(((jitterbuf*)ch3->jb.jbobj)->info.frames_ooo > opt_jitterbuffer_adapt_ooo_limit &&
+			  (!((jitterbuf*)ch3->jb.jbobj)->info.frames_in ||
+			   (double)((jitterbuf*)ch3->jb.jbobj)->info.frames_ooo / ((jitterbuf*)ch3->jb.jbobj)->info.frames_in > 0.5)) {
+			ch3->stopped_due_to_high_ooo = true;
+			stopped_jb_due_to_high_ooo = true;
+			if(owner) {
+				owner->stopped_jb_due_to_high_ooo = true;
+			}
+			ch3 = NULL;
+		}
+	}
+
+	if(__builtin_expect(frame->frametype != AST_FRAME_VOICE, 0)) {
+		if(ch1) jitterbuffer(ch1, false, false, false);
+		if(ch2) jitterbuffer(ch2, false, false, false);
+		if(ch3) jitterbuffer(ch3, false, false, false);
+		return;
+	}
+
+	char m1 = base_marker, m2 = base_marker, m3 = base_marker;
+	if(__builtin_expect(opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap && !base_marker, 0)) {
+		auto check_pause_marker = [&](struct ast_channel *ch, char &m) {
+			if(!ch || !ch->jb_reseted || !ast_jb_test(ch)) return;
+			struct timeval next_ts = vm_tv_add_ms(ch->last_ts, packetization);
+			int msdiff = ast_tvdiff_ms(header_ts, next_ts);
+			if(msdiff <= packetization * 10000 &&
+			   msdiff >= opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap &&
+			   seqno == ROT_SEQ(last_seq + 1) &&
+			   frame_ts > _last_ts && (int)(frame_ts - _last_ts) < packetization * 2) {
+				m = 1;
+			}
+		};
+		check_pause_marker(ch1, m1);
+		check_pause_marker(ch2, m2);
+		check_pause_marker(ch3, m3);
+	}
+
+	ast_jb_sim_step_3(ch1, ch2, ch3, &header_ts, frame_ts, packetization, seqno,
+			  m1, m2, m3, last_is_voice, ignore, codec);
+	#endif
 }
 #endif
 
@@ -2168,12 +2336,7 @@ bool RTP::read(CallBranch *c_branch,
 
 				packetization_iterator = 10; // this will cause that packetization is estimated as final
 
-				if(opt_jitterbuffer_f1 > 0)
-					jitterbuffer(channel_fix1, false, false, false);
-				if(opt_jitterbuffer_f2 > 0)
-					jitterbuffer(channel_fix2, false, false, false);
-				if(opt_jitterbuffer_adapt > 0)
-					jitterbuffer(channel_adapt, false, false, false);
+				jitterbuffer_mos_all();
 			} 
 
 		} 
@@ -2270,12 +2433,7 @@ bool RTP::read(CallBranch *c_branch,
 				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization;
 				if(verbosity > 3) printf("[%x] packetization:[%d]\n", getSSRC(), packetization);
 
-				if(opt_jitterbuffer_f1 > 0)
-					jitterbuffer(channel_fix1, false, false, false);
-				if(opt_jitterbuffer_f2 > 0)
-					jitterbuffer(channel_fix2, false, false, false);
-				if(opt_jitterbuffer_adapt > 0)
-					jitterbuffer(channel_adapt, false, false, false);
+				jitterbuffer_mos_all();
 				if(use_channel_record) {
 					if(checkDuplChannelRecordSeq(seq)) {
 						jitterbuffer(channel_record, save_audio, energylevels, mos_lqo);
@@ -2420,12 +2578,7 @@ bool RTP::read(CallBranch *c_branch,
 			channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization;
 		}
 		//printf("packetization [%d]\n", packetization);
-		if(opt_jitterbuffer_f1 > 0)
-			jitterbuffer(channel_fix1, false, false, false);
-		if(opt_jitterbuffer_f2 > 0)
-			jitterbuffer(channel_fix2, false, false, false);
-		if(opt_jitterbuffer_adapt > 0)
-			jitterbuffer(channel_adapt, false, false, false);
+		jitterbuffer_mos_all();
 		if(use_channel_record) {
 			if(checkDuplChannelRecordSeq(seq)) {
 				jitterbuffer(channel_record, save_audio, energylevels, mos_lqo);
