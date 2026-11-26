@@ -73,6 +73,7 @@ extern int opt_silencedetect;
 extern int opt_clippingdetect;
 extern int opt_fasdetect;
 extern int opt_silence_detect_after_answer;
+extern int opt_ivrdetect;
 extern SqlDb *sqlDbSaveCall;
 extern int opt_mysqlstore_max_threads_cdr;
 extern MySqlStore *sqlStore;
@@ -243,6 +244,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
  : graph(this) {
 	counter = 0;
 	DSP = NULL;
+	DSP_ivr = NULL;
 	samplerate = 8000;
 	first = true;
 	first_packet_time_us = 0;
@@ -760,6 +762,9 @@ RTP::~RTP() {
 	if(DSP) {
 		dsp_free(DSP);
 	}
+	if(DSP_ivr) {
+		dsp_free(DSP_ivr);
+	}
 	
 	if(energylevels) {
 		delete energylevels;
@@ -1219,6 +1224,10 @@ RTP::process_dtmf_rfc2833() {
 //"dead air after answer" measurement (silence_detect_after_answer);
 //the value is documented in config/voipmonitor.conf
 #define SILENCE_AFTERANSWER_MIN_NOISE_MS 40
+
+//ivrdetect: minimum voice (audible, not a call progress tone) from the called
+//party in early media; the value is documented in config/voipmonitor.conf
+#define IVRDETECT_MIN_VOICE_MS 500
 
 /* read rtp packet */
 bool RTP::read(CallBranch *c_branch,
@@ -2585,6 +2594,44 @@ bool RTP::read(CallBranch *c_branch,
 	} else if (DSP) {
 		dsp_free(DSP);
 		DSP = NULL;
+	}
+
+	// ivrdetect: voice without ringback in the called party early media (before 200 OK)
+	// own DSP instance - call progress / silence state of the shared DSP (fasdetect,
+	// silence_detect_after_answer, mosSilence) stays untouched
+	bool do_ivrdetect = opt_ivrdetect && !this->iscaller &&
+			    !owner->ivr_ringback_detected &&
+			    (!owner->connect_time_us || this->last_packet_time_us < owner->connect_time_us);
+	if(do_ivrdetect && frame->frametype == AST_FRAME_VOICE &&
+	   (codec == PAYLOAD_PCMU || codec == PAYLOAD_PCMA) && payload_len > 0) {
+		if(!DSP_ivr) {
+			DSP_ivr = dsp_new();
+			//replaces the dsp_new defaults (digit detection would need the event arguments);
+			//ringing is the only call progress event enabled - talk / busy events
+			//would make the dsp switch call progress off
+			dsp_set_features(DSP_ivr, DSP_PROGRESS_RINGING | DSP_FEATURE_SILENCE_SUPPRESS);
+		}
+		short int *sdata_ivr = new FILE_LINE(0) short int[payload_len];
+		for(int i = 0; i < payload_len; i++) {
+			sdata_ivr[i] = codec == PAYLOAD_PCMU ? ULAW((unsigned char)payload_data[i]) : ALAW((unsigned char)payload_data[i]);
+		}
+		int silence_ivr = 0;
+		int res_call_progress_ivr = 0;
+		dsp_process(DSP_ivr, sdata_ivr, payload_len, NULL, NULL, &silence_ivr, NULL, NULL, &res_call_progress_ivr, NULL);
+		delete [] sdata_ivr;
+		int tstate_ivr = dsp_get_tstate(DSP_ivr);
+		if(res_call_progress_ivr == AST_CONTROL_RINGING) {
+			owner->ivr_ringback_detected = true;
+		} else if(!silence_ivr && tstate_ivr != DSP_TONE_STATE_RINGING &&
+			  tstate_ivr != DSP_TONE_STATE_BUSY && tstate_ivr != DSP_TONE_STATE_DIALTONE) {
+			owner->ivr_voice_ms += payload_len / 8;
+			if(!owner->ivr_voice_reached_us && owner->ivr_voice_ms >= IVRDETECT_MIN_VOICE_MS) {
+				owner->ivr_voice_reached_us = this->last_packet_time_us;
+			}
+		}
+	} else if(!do_ivrdetect && DSP_ivr) {
+		dsp_free(DSP_ivr);
+		DSP_ivr = NULL;
 	}
 
 	if(getMarker()) {

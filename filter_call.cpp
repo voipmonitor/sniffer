@@ -29,6 +29,7 @@ static struct {
 	{ "duplicate_seq_in_rtp", CDR_RTP_DUPL_SEQ },
 	{ "stopped_jb_due_to_high_ooo", CDR_STOPPED_JB_DUE_TO_HIGH_OOO },
 	{ "detect_fas_silence_after_answer", CDR_SILENCE_AFTERANSWER },
+	{ "detect_ivr", CDR_IVR_DETECTED },
 	{ "next_branches", CDR_NEXT_BRANCHES }
 };
 

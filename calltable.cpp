@@ -972,6 +972,10 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	silence_afteranswer_noise_start_us = 0;
 	silence_afteranswer_rtp_seen = false;
 
+	ivr_voice_ms = 0;
+	ivr_voice_reached_us = 0;
+	ivr_ringback_detected = false;
+
 	caller_clipping_8k = 0;
 	called_clipping_8k = 0;
 	
@@ -7672,6 +7676,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr_flags |= CDR_UNCONFIRMED_BYE;
 	if (is_fas_detected)
 		cdr_flags |= CDR_FAS_DETECTED;
+	//voice reached before answer - the times are compared here because RTP can be processed
+	//before the SIP thread sets connect_time_us; onCall_18X_counter excludes calls without 18x
+	//(progress_time_us cannot be used, the 200 OK sets it too)
+	if (ivr_voice_reached_us && !ivr_ringback_detected && onCall_18X_counter &&
+	    (!connect_time_us || ivr_voice_reached_us < connect_time_us))
+		cdr_flags |= CDR_IVR_DETECTED;
 	if (is_zerossrc_detected)
 		cdr_flags |= CDR_ZEROSSRC_DETECTED;
 	if (c_branch->is_sipalg_detected)

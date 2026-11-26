@@ -545,6 +545,7 @@ public:
 	unsigned char last_interval_mosSilence;
 
 	struct dsp *DSP;
+	struct dsp *DSP_ivr;	//!< own DSP for ivrdetect (early media), the shared DSP state stays untouched
 
 	source *s;
 

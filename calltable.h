@@ -207,7 +207,8 @@ enum eCdrBitFlag {
 	_CDR_BIT_CHANGING_CODEC_IN_STREAM,
 	_CDR_BIT_RTCP_RTD_USE_WS_METHOD,
 	_CDR_BIT_SILENCE_AFTERANSWER,	// bit 37 - number is documented in config/voipmonitor.conf
-	_CDR_BIT_NEXT_BRANCHES		// bit 38 - call has rows in cdr_next_branches
+	_CDR_BIT_NEXT_BRANCHES,		// bit 38 - call has rows in cdr_next_branches
+	_CDR_BIT_IVR_DETECTED		// bit 39 - ivrdetect: voice without ringback in early media
 };
 
 #define CDR_CHANGE_SRC_PORT_CALLER		CDR_FLAG(_CDR_BIT_CHANGE_SRC_PORT_CALLER)
@@ -238,6 +239,7 @@ enum eCdrBitFlag {
 #define CDR_RTCP_RTD_USE_WS_METHOD		CDR_FLAG(_CDR_BIT_RTCP_RTD_USE_WS_METHOD)
 #define CDR_SILENCE_AFTERANSWER			CDR_FLAG(_CDR_BIT_SILENCE_AFTERANSWER)
 #define CDR_NEXT_BRANCHES			CDR_FLAG(_CDR_BIT_NEXT_BRANCHES)
+#define CDR_IVR_DETECTED			CDR_FLAG(_CDR_BIT_IVR_DETECTED)
 
 #define CDR_SAVE_FLAGS				CDR_FLAG(_CDR_BIT_SAVE_FLAGS)
 #define CDR_SAVE_SIP_PCAP			CDR_FLAG(_CDR_BIT_SAVE_SIP_PCAP)
@@ -2229,6 +2231,10 @@ public:
 
 	u_int64_t silence_afteranswer_noise_start_us;	//!< start of first confirmed noise from called party after connect (0 = not yet)
 	bool silence_afteranswer_rtp_seen;		//!< called party G711 RTP was DSP-processed after connect
+
+	u_int32_t ivr_voice_ms;			//!< ivrdetect: called party voice (audible, no call progress tone) in early media
+	u_int64_t ivr_voice_reached_us;		//!< ivrdetect: packet time when ivr_voice_ms reached the threshold (0 = not yet)
+	bool ivr_ringback_detected;		//!< ivrdetect: ringback tone detected in called party early media
 
 	unsigned int caller_clipping_8k;
 	unsigned int called_clipping_8k;

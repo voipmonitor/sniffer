@@ -848,8 +848,13 @@ static int __dsp_call_progress(struct dsp *dsp, short *s, int len)
 					newstate = DSP_TONE_STATE_RINGING;
 				} else if (pair_there(hz[HZ_350], hz[HZ_440], hz[HZ_480], hz[HZ_620], dsp->genergy)) {
 					newstate = DSP_TONE_STATE_DIALTONE;
-				} else if (pair_there(hz[HZ_400], hz[HZ_450], hz[HZ_400], hz[HZ_400], dsp->genergy)) {
+				} else if (pair_there(hz[HZ_400], hz[HZ_450], hz[HZ_350], hz[HZ_620], dsp->genergy) &&
+					   hz[HZ_400] > TONE_MIN_THRESH * TONE_THRESH &&
+					   hz[HZ_450] > TONE_MIN_THRESH * TONE_THRESH) {
 					//UK RINGING
+					//both tones must also reach the minimum level of the 425Hz branch,
+					//pair_there alone accepts 10x weaker tones and fading speech
+					//harmonics near 425Hz then complete a ringing run (false FAS)
 					newstate = DSP_TONE_STATE_RINGING;
 				} else if (hz[HZ_425] > TONE_MIN_THRESH * TONE_THRESH &&
 					   hz[HZ_425] > dsp->genergy * TONE_THRESH &&
