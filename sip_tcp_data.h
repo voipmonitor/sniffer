@@ -45,6 +45,14 @@ public:
 			 u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
 			 void *uData, void *uData2, void *uData2_last, TcpReassemblyLink *reassemblyLink,
 			 std::ostream *debugStream);
+	void dispatchSipMessage(vmIP ip_src, vmIP ip_dst,
+				vmPort port_src, vmPort port_dst,
+				u_char *msg_data, u_int32_t msg_len,
+				u_int32_t seq, u_int32_t ack, timeval ts,
+				u_char *ethHeader, u_int32_t ethHeaderLength,
+				u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
+				void *uData, void *uData2_last,
+				std::ostream *debugStream = NULL);
 	void cleanupCache(u_int64_t cache_time);
 	void printContentSummary();
 private:

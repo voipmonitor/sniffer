@@ -855,14 +855,20 @@ public:
 			return;
 		}
 		if(!buffer) {
-			buffer = new FILE_LINE(39002) u_char[dataLength + capacityReserve + 1];
-			bufferCapacity = dataLength + capacityReserve + 1;
+			u_int32_t newCap = dataLength + capacityReserve + 1;
+			buffer = new FILE_LINE(39002) u_char[newCap];
+			bufferCapacity = newCap;
 		} else if(bufferLength + dataLength + 1 > bufferCapacity) {
-			u_char *bufferNew = new FILE_LINE(39003) u_char[bufferLength + dataLength + capacityReserve + 1];
+			u_int32_t needed = bufferLength + dataLength + capacityReserve + 1;
+			u_int32_t newCap = bufferCapacity * 2;
+			if(newCap < needed) {
+				newCap = needed;
+			}
+			u_char *bufferNew = new FILE_LINE(39003) u_char[newCap];
 			memcpy(bufferNew, buffer, bufferLength);
 			delete [] buffer;
 			buffer = bufferNew;
-			bufferCapacity = bufferLength + dataLength + capacityReserve + 1;
+			bufferCapacity = newCap;
 		}
 		memcpy(buffer + bufferLength, data, dataLength);
 		bufferLength += dataLength;
