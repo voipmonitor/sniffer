@@ -22,6 +22,7 @@
 #endif //HAVE_LIBLZO
 #include <snappy-c.h>
 #include "sync.h"
+#include "sync_modern.h"
 
 #include "tar_data.h"
 
@@ -194,11 +195,15 @@ public:
 		sChunk() {
 			len = 0;
 			decompress_len = 0;
+			chunk = NULL;
+			chunk_capacity = 0;
+			from_pool = false;
 		}
 		void deleteChunk(ChunkBuffer *chunkBuffer) {
 			if(chunk) {
-				delete [] chunk;
+				cFixedBufferPool::release(chunk, chunk_capacity, from_pool);
 				chunk = NULL;
+				from_pool = false;
 				__SYNC_SUB(chunkBuffer->chunk_buffer_size, len);
 				__SYNC_SUB(ChunkBuffer::chunk_buffers_sumsize, len);
 				__SYNC_SUB(ChunkBuffer::chunk_buffers_sumcapacity, chunk_capacity);
@@ -206,6 +211,7 @@ public:
 		}
 		char *chunk;
 		u_int32_t chunk_capacity;
+		bool from_pool;
 	};
 	struct sChunkIterateCompleteBufferInfo {
 		sChunkIterateCompleteBufferInfo() {
@@ -256,6 +262,7 @@ public:
 	}
 	string dump();
 	void add(char *data, u_int32_t len, bool flush = false, u_int32_t decompress_len = 0, bool directAdd = false);
+	bool adoptPoolBuffer(char *buf, u_int32_t datalen, u_int32_t capacity);
 	void close();
 	bool isClosed() {
 		return(closed);

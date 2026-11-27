@@ -900,8 +900,8 @@ public:
 		if(!isHeader && length) {
 			existsData = true;
 		}
-		if(enableAsyncWrite && this->buffer &&
-		   this->useBufferLength + length > this->bufferLength) {
+		if(enableAsyncWrite && this->useBuffer &&
+		   (!this->buffer || this->useBufferLength + length > this->bufferLength)) {
 			extern cBuffersControl buffersControl;
 			while(!buffersControl.check__asyncwrite__add(length) && !is_terminating()) {
 				USLEEP(1000);
@@ -918,7 +918,7 @@ public:
 		#if not EXPERIMENTAL_SUPPRESS_FILEZIPHANDLER_WRITELOCK
 		lock_write();
 		#endif
-		bool rslt = this->buffer ?
+		bool rslt = this->useBuffer ?
 			     this->_writeToBuffer(data, length) :
 			     this->_writeToFile(data, length);
 		#if not EXPERIMENTAL_SUPPRESS_FILEZIPHANDLER_WRITELOCK
@@ -931,6 +931,16 @@ public:
 		lock_write();
 		#endif
 		bool rslt = _directWriteToFile(data, length, flush);
+		#if not EXPERIMENTAL_SUPPRESS_FILEZIPHANDLER_WRITELOCK
+		unlock_write();
+		#endif
+		return(rslt);
+	}
+	bool directWriteToFileAdopt(char **dataPtr, int length, int capacity, bool fromPool, bool flush = false) {
+		#if not EXPERIMENTAL_SUPPRESS_FILEZIPHANDLER_WRITELOCK
+		lock_write();
+		#endif
+		bool rslt = _directWriteToFileAdopt(dataPtr, length, capacity, fromPool, flush);
 		#if not EXPERIMENTAL_SUPPRESS_FILEZIPHANDLER_WRITELOCK
 		unlock_write();
 		#endif
@@ -981,6 +991,7 @@ private:
 	bool _writeToBuffer(char *data, int length);
 	bool _writeToFile(char *data, int length, bool force = false);
 	bool _directWriteToFile(char *data, int length, bool flush = false);
+	bool _directWriteToFileAdopt(char **dataPtr, int length, int capacity, bool fromPool, bool flush = false);
 	bool __directWriteToFile(char *data, int length);
 	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data = false);
 	virtual bool decompress_ev(char *data, u_int32_t len);
@@ -1009,6 +1020,8 @@ public:
 	string error;
 	int bufferLength;
 	char *buffer;
+	bool useBuffer;
+	bool bufferFromPool;
 	volatile int useBufferLength;
 	ChunkBuffer *tarBuffer;
 	bool tarBufferCreated;
@@ -1318,12 +1331,29 @@ public:
 			this->data = new FILE_LINE(39007) char[length];
 			memcpy(this->data, data, length);
 			this->dataLength = length;
+			this->dataCapacity = length;
+			this->ownedFromPool = false;
+		}
+		AsyncWriteItem_pcap(pcap_dumper_t *handle,
+				    char *adoptedData, int length, int capacity, bool ownedFromPool) {
+			this->handle = handle;
+			this->data = adoptedData;
+			this->dataLength = length;
+			this->dataCapacity = capacity;
+			this->ownedFromPool = ownedFromPool;
 		}
 		~AsyncWriteItem_pcap() {
-			delete [] data;
+			if(data) {
+				cFixedBufferPool::release(data, dataCapacity, ownedFromPool);
+				data = NULL;
+			}
 		}
 		void process() {
-			((FileZipHandler*)handle)->directWriteToFile(data, dataLength);
+			if(ownedFromPool) {
+				((FileZipHandler*)handle)->directWriteToFileAdopt(&data, dataLength, dataCapacity, true);
+			} else {
+				((FileZipHandler*)handle)->directWriteToFile(data, dataLength);
+			}
 		}
 		bool process_ready() {
 			return(((FileZipHandler*)handle)->_writeReady());
@@ -1334,6 +1364,8 @@ public:
 	private:
 		pcap_dumper_t *handle;
 		char *data;
+		int dataCapacity;
+		bool ownedFromPool;
 	};
 	class AsyncCloseItem_fileZipHandler  : public AsyncCloseItem{
 	public:
@@ -1380,12 +1412,29 @@ public:
 			this->data = new FILE_LINE(39008) char[length];
 			memcpy(this->data, data, length);
 			this->dataLength = length;
+			this->dataCapacity = length;
+			this->ownedFromPool = false;
+		}
+		AsyncWriteItem_fileZipHandler(FileZipHandler *handle,
+					      char *adoptedData, int length, int capacity, bool ownedFromPool) {
+			this->handle = handle;
+			this->data = adoptedData;
+			this->dataLength = length;
+			this->dataCapacity = capacity;
+			this->ownedFromPool = ownedFromPool;
 		}
 		~AsyncWriteItem_fileZipHandler() {
-			delete [] data;
+			if(data) {
+				cFixedBufferPool::release(data, dataCapacity, ownedFromPool);
+				data = NULL;
+			}
 		}
 		void process() {
-			handle->directWriteToFile(data, dataLength);
+			if(ownedFromPool) {
+				handle->directWriteToFileAdopt(&data, dataLength, dataCapacity, true);
+			} else {
+				handle->directWriteToFile(data, dataLength);
+			}
 		}
 		bool process_ready() {
 			return(handle->_writeReady());
@@ -1396,6 +1445,8 @@ public:
 	private:
 		FileZipHandler *handle;
 		char *data;
+		int dataCapacity;
+		bool ownedFromPool;
 	};
 	class AsyncFlushMarkerItem : public AsyncCloseItem {
 	public:
@@ -1602,6 +1653,50 @@ public:
 			}
 		}
 	}
+	void addWriteAdopt(FileZipHandler *handle,
+			   char *adoptedData, int length, int capacity, bool isPcapDumper) {
+		extern int opt_pcap_dump_bufflength;
+		AsyncCloseItem *item = isPcapDumper ?
+			(AsyncCloseItem*)(new FILE_LINE(39010) AsyncWriteItem_pcap((pcap_dumper_t*)handle, adoptedData, length, capacity, true)) :
+			(AsyncCloseItem*)(new FILE_LINE(39012) AsyncWriteItem_fileZipHandler(handle, adoptedData, length, capacity, true));
+		bool added = false;
+		for(int pass = 0; pass < 2; pass++) {
+			int useThreadOper = 0;
+			unsigned int useDataIdx = 0;
+			__SYNC_LOCK_USLEEP(handle->_sync_userData_lock, 10);
+			if(pass) {
+				handle->userData = 0;
+			}
+			if(!isPcapDumper || opt_pcap_dump_bufflength) {
+				if(!handle->userData) {
+					useThreadOper = 1;
+					unsigned int size;
+					unsigned int minSize = UINT_MAX;
+					int minSizeIndex = 0;
+					for(int i = 0; i < countPcapThreads; i++) {
+						if(activeThread[i]) {
+							size = q[i].size();
+							if(size < minSize) {
+								minSize = size;
+								minSizeIndex = i;
+							}
+						}
+					}
+					handle->userData = minSizeIndex + 1;
+				}
+			}
+			useDataIdx = handle->userData;
+			int targetIdx = (!isPcapDumper || opt_pcap_dump_bufflength) ? (int)(useDataIdx - 1) : 0;
+			added = add_keep_on_fail(item, targetIdx, useThreadOper);
+			__SYNC_UNLOCK(handle->_sync_userData_lock);
+			if(added) {
+				break;
+			}
+		}
+		if(!added) {
+			delete item;
+		}
+	}
 	bool addFlushMarker(FileZipHandler *handle, volatile bool *donePtr, bool forTar) {
 		__SYNC_LOCK_USLEEP(handle->_sync_userData_lock, 10);
 		unsigned int useDataIdx = handle->userData;
@@ -1613,10 +1708,9 @@ public:
 		__SYNC_UNLOCK(handle->_sync_userData_lock);
 		return(true);
 	}
-	bool add(AsyncCloseItem *item, int threadIndex, int useThreadOper = 0) {
+	bool add_keep_on_fail(AsyncCloseItem *item, int threadIndex, int useThreadOper = 0) {
 		lock(threadIndex);
 		if(!activeThread[threadIndex]) {
-			delete item;
 			unlock(threadIndex);
 			return(false);
 		}
@@ -1626,6 +1720,14 @@ public:
 		q[threadIndex].push_back(item);
 		add_sizeOfDataInMemory(item->dataLength);
 		unlock(threadIndex);
+		_wake[threadIndex].notify();
+		return(true);
+	}
+	bool add(AsyncCloseItem *item, int threadIndex, int useThreadOper = 0) {
+		if(!add_keep_on_fail(item, threadIndex, useThreadOper)) {
+			delete item;
+			return(false);
+		}
 		return(true);
 	}
 	void processTask(int threadIndex);
@@ -1644,10 +1746,10 @@ public:
 	void getQueueSize(vector<unsigned> *size, bool only_non_empty = false);
 private:
 	void lock(int threadIndex) {
-		__SYNC_LOCK_USLEEP(this->_sync[threadIndex], 10);
+		this->_sync[threadIndex].lock(10);
 	}
 	void unlock(int threadIndex) {
-		__SYNC_UNLOCK(this->_sync[threadIndex]);
+		this->_sync[threadIndex].unlock();
 	}
 	void add_sizeOfDataInMemory(size_t size) {
 		extern cBuffersControl buffersControl;
@@ -1663,7 +1765,8 @@ private:
 	volatile int countPcapThreads;
 	deque<AsyncCloseItem*> q[AsyncClose_maxPcapThreads];
 	pthread_t thread[AsyncClose_maxPcapThreads];
-	volatile int _sync[AsyncClose_maxPcapThreads];
+	cPaddedSpinLock _sync[AsyncClose_maxPcapThreads];
+	cAdaptiveWake _wake[AsyncClose_maxPcapThreads];
 	int threadId[AsyncClose_maxPcapThreads];
 	pstat_data threadPstatData[AsyncClose_maxPcapThreads][2][2];
 	StartThreadData startThreadData[AsyncClose_maxPcapThreads];

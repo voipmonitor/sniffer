@@ -419,6 +419,7 @@ public:
 		volatile int cpuPeak;
 		unsigned int counter;
 		volatile int _sync_lock;
+		cAdaptiveWake _wake;
 		size_t getLen(int forProceed = false, bool lock = true) {
 			if(lock) qlock();
 			size_t size = 0;

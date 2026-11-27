@@ -1403,9 +1403,9 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 			u_int32_t pos = 0;
 			while(pos < _len) {
 				if(!this->lastChunk ||
-				   this->lastChunk->len == this->chunk_fix_len) {
+				   this->lastChunk->len >= this->lastChunk->chunk_capacity) {
 					sChunk chunk;
-					chunk.chunk = new FILE_LINE(40016) char[this->chunk_fix_len];
+					chunk.chunk = cFixedBufferPool::alloc(this->chunk_fix_len, &chunk.from_pool);
 					chunk.chunk_capacity = this->chunk_fix_len;
 					__SYNC_ADD(ChunkBuffer::chunk_buffers_sumcapacity, this->chunk_fix_len);
 					chunk.len = 0;
@@ -1414,7 +1414,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 					__SYNC_INC(this->chunkBuffer_countItems);
 					this->lastChunk = &(*(--this->chunkBuffer.end()));
 				}
-				u_int32_t copied = min(_len - pos, this->chunk_fix_len - this->lastChunk->len);
+				u_int32_t copied = min(_len - pos, this->lastChunk->chunk_capacity - this->lastChunk->len);
 				memcpy_heapsafe(this->lastChunk->chunk + this->lastChunk->len, this->lastChunk->chunk,
 						_data + pos, i ? _data : NULL,
 						copied,
@@ -1432,16 +1432,16 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 	case add_fill_fix_len: {
 		u_int32_t copied = 0;
 		do {
-			if(!this->lastChunk || this->lastChunk->len == this->chunk_fix_len) {
+			if(!this->lastChunk || this->lastChunk->len >= this->lastChunk->chunk_capacity) {
 				sChunk chunk;
-				chunk.chunk = new FILE_LINE(40017) char[this->chunk_fix_len];
+				chunk.chunk = cFixedBufferPool::alloc(this->chunk_fix_len, &chunk.from_pool);
 				chunk.chunk_capacity = this->chunk_fix_len;
 				__SYNC_ADD(ChunkBuffer::chunk_buffers_sumcapacity, this->chunk_fix_len);
 				this->chunkBuffer.push_back(chunk);
 				__SYNC_INC(this->chunkBuffer_countItems);
 				this->lastChunk = &(*(--this->chunkBuffer.end()));
 			}
-			int whattocopy = MIN(this->chunk_fix_len - this->lastChunk->len, datalen - copied);
+			int whattocopy = MIN(this->lastChunk->chunk_capacity - this->lastChunk->len, datalen - copied);
 			memcpy_heapsafe(this->lastChunk->chunk + this->lastChunk->len, this->lastChunk->chunk,
 					data + copied, data,
 					whattocopy,
@@ -1460,6 +1460,34 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 	}
 	this->unlock_chunkBuffer();
 	this->last_add_time = getTimeS_rdtsc();
+}
+
+bool ChunkBuffer::adoptPoolBuffer(char *buf, u_int32_t datalen, u_int32_t capacity) {
+	if(!buf || !datalen || this->compressStream || this->closed || !cFixedBufferPool::supports(capacity)) {
+		return(false);
+	}
+	this->lock_chunkBuffer();
+	if(this->closed) {
+		this->unlock_chunkBuffer();
+		return(false);
+	}
+	sChunk chunk;
+	chunk.chunk = buf;
+	chunk.len = datalen;
+	chunk.chunk_capacity = capacity;
+	chunk.decompress_len = 0;
+	chunk.from_pool = true;
+	this->chunkBuffer.push_back(chunk);
+	this->lastChunk = &(*(--this->chunkBuffer.end()));
+	this->len += datalen;
+	__SYNC_ADD(this->chunk_buffer_size, datalen);
+	__SYNC_ADD(ChunkBuffer::chunk_buffers_sumsize, datalen);
+	__SYNC_ADD(ChunkBuffer::chunk_buffers_sumcapacity, capacity);
+	// Release-publish the new chunk item AFTER all chunk fields and totals are visible
+	__SYNC_INC(this->chunkBuffer_countItems);
+	this->unlock_chunkBuffer();
+	this->last_add_time = getTimeS_rdtsc();
+	return(true);
 }
 
 void ChunkBuffer::close() {
@@ -1781,7 +1809,7 @@ void ChunkBuffer::forceCreateNewEmptyChunk() {
 	if(!this->compressStream && !this->closed && this->chunk_fix_len &&
 	   this->lastChunk && this->lastChunk->len > 0) {
 		sChunk chunk;
-		chunk.chunk = new FILE_LINE(40019) char[this->chunk_fix_len];
+		chunk.chunk = cFixedBufferPool::alloc(this->chunk_fix_len, &chunk.from_pool);
 		chunk.chunk_capacity = this->chunk_fix_len;
 		__SYNC_ADD(ChunkBuffer::chunk_buffers_sumcapacity, this->chunk_fix_len);
 		this->chunkBuffer.push_back(chunk);

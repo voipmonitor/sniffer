@@ -12715,24 +12715,24 @@ Calltable::Calltable(SqlDb *sqlDb) {
 	memset(calls_hash_static, 0x0, sizeof(calls_hash_static));
 	calls_hash = calls_hash_static;
 
-	_sync_lock_calls_hash = 0;
-	_sync_lock_calls_listMAP = 0;
-	_sync_lock_calls_mergeMAP = 0;
-	_sync_lock_calls_diameter_from_sip_listMAP = 0;
-	_sync_lock_calls_diameter_to_sip_listMAP = 0;
-	_sync_lock_calls_diameter_callid_listMAP = 0;
-	_sync_lock_registers_listMAP = 0;
-	_sync_lock_calls_queue = 0;
-	_sync_lock_calls_audioqueue = 0;
-	_sync_lock_calls_charts_cache_queue = 0;
-	_sync_lock_calls_deletequeue = 0;
-	_sync_lock_registers_queue = 0;
-	_sync_lock_registers_deletequeue = 0;
-	_sync_lock_skinny_maps = 0;
-	_sync_lock_files_queue = 0;
-	_sync_lock_ss7_listMAP = 0;
-	_sync_lock_process_ss7_listmap = 0;
-	_sync_lock_process_ss7_queue = 0;
+	calls_hash_rwlock.init();
+	_sync_lock_calls_listMAP.init();
+	_sync_lock_calls_mergeMAP.init();
+	_sync_lock_calls_diameter_from_sip_listMAP.init();
+	_sync_lock_calls_diameter_to_sip_listMAP.init();
+	_sync_lock_calls_diameter_callid_listMAP.init();
+	_sync_lock_registers_listMAP.init();
+	_sync_lock_calls_queue.init();
+	_sync_lock_calls_audioqueue.init();
+	_sync_lock_calls_charts_cache_queue.init();
+	_sync_lock_calls_deletequeue.init();
+	_sync_lock_registers_queue.init();
+	_sync_lock_registers_deletequeue.init();
+	_sync_lock_skinny_maps.init();
+	_sync_lock_files_queue.init();
+	_sync_lock_ss7_listMAP.init();
+	_sync_lock_process_ss7_listmap.init();
+	_sync_lock_process_ss7_queue.init();
 	
 	extern int opt_audioqueue_threads_max;
 	audioQueueThreadsMax = min(max(2l, sysconf( _SC_NPROCESSORS_ONLN ) - 1), (long)opt_audioqueue_threads_max);
@@ -12747,7 +12747,7 @@ Calltable::Calltable(SqlDb *sqlDb) {
 	}
 
 	hash_modify_queue_begin_ms = 0;
-	_sync_lock_hash_modify_queue = 0;
+	_sync_lock_hash_modify_queue.init();
 	
 	if(useChartsCacheOrCdrStatProcessThreads()) {
 		chc_threads = new FILE_LINE(0) sChcThreadData[opt_charts_cache_max_threads];
@@ -12890,9 +12890,10 @@ void Calltable::hashRefresh(vmIP addr, vmPort port, CallBranch *c_branch, s_sdp_
 		}
 		unlock_hash_modify_queue();
 	} else {
-		lock_calls_hash();
+		u_int32_t h = tuplehash(addr.getHashNumber(), port);
+		lock_calls_hash_write(h);
 		_hashRefresh(addr, port, c_branch, sdp_flags);
-		unlock_calls_hash();
+		unlock_calls_hash_write(h);
 	}
 }
 
@@ -13048,7 +13049,7 @@ void Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, CallBranch *c_
 	node_call_rtp *node_call = NULL;
 
 	h = tuplehash(addr.getHashNumber(), port);
-	if (useLock) lock_calls_hash();
+	if (useLock) lock_calls_hash_write(h);
 	// check if there is not already call in hash 
 	for (node = calls_hash[h]; node != NULL; node = node->next) {
 		if ((node->port == port) && (node->addr == addr)) {
@@ -13106,7 +13107,7 @@ void Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, CallBranch *c_
 								lastTimeSyslog = actTime;
 							}
 						}
-						if (useLock) unlock_calls_hash();
+						if (useLock) unlock_calls_hash_write(h);
 						return;
 					}
 				 
@@ -13114,7 +13115,7 @@ void Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, CallBranch *c_
 					insert_node_call(node->calls, c_branch, iscaller, is_rtcp, &sdp_flags, type_addr);
 				}
 			}
-			if (useLock) unlock_calls_hash();
+			if (useLock) unlock_calls_hash_write(h);
 			return;
 		}
 	}
@@ -13130,7 +13131,7 @@ void Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, CallBranch *c_
 
 	insert_node_call(node->calls, c_branch, iscaller, is_rtcp, &sdp_flags, type_addr);
 	
-	if (useLock) unlock_calls_hash();
+	if (useLock) unlock_calls_hash_write(h);
 	
 }
 
@@ -13200,7 +13201,7 @@ int Calltable::_hashRemove(CallBranch *c_branch, vmIP addr, vmPort port, bool rt
 	node_call_rtp_ip_port *node = NULL, *prev_node = NULL;
 	node_call_rtp *node_call = NULL, *prev_node_call = NULL;
 	int h = tuplehash(addr.getHashNumber(), port);
-	if (use_lock) lock_calls_hash();
+	if (use_lock) lock_calls_hash_write(h);
 	for (node = calls_hash[h]; node != NULL; node = node->next) {
 		if (node->port == port && node->addr == addr) {
 			for (node_call = node->calls; node_call != NULL; node_call = node_call->next) {
@@ -13220,7 +13221,7 @@ int Calltable::_hashRemove(CallBranch *c_branch, vmIP addr, vmPort port, bool rt
 		}
 		prev_node = node;
 	}
-	if (use_lock) unlock_calls_hash();
+	if (use_lock) unlock_calls_hash_write(h);
 	return(removeCounter);
 }
 
@@ -13264,10 +13265,11 @@ int Calltable::_hashRemove(CallBranch *c_branch, bool use_lock) {
 	#else
 	if(c_branch->rtp_ip_port_counter) {
 	#endif
-		if (use_lock) lock_calls_hash();
 		node_call_rtp_ip_port *node = NULL, *prev_node = NULL;
 		node_call_rtp *node_call = NULL, *prev_node_call = NULL;
 		for(int h = 0; h < MAXNODE; h++) {
+			if(!calls_hash[h]) continue;
+			if (use_lock) lock_calls_hash_write(h);
 			prev_node = NULL;
 			for(node = calls_hash[h]; node != NULL;) {
 				prev_node_call = NULL;
@@ -13287,9 +13289,9 @@ int Calltable::_hashRemove(CallBranch *c_branch, bool use_lock) {
 					node = node->next;
 				}
 			}
+			if (use_lock) unlock_calls_hash_write(h);
 		}
 		c_branch->rtp_ip_port_counter = 0;
-		if (use_lock) unlock_calls_hash();
 	}
 	return(removeCounter);
 }
@@ -13338,7 +13340,7 @@ void Calltable::_applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash) {
 }
 
 string Calltable::getHashStats() {
-	lock_calls_hash();
+	lock_calls_hash_read_all();
 	unsigned count_use_nodes = 0;
 	unsigned max_node_size = 0;
 	unsigned sum_nodes_size = 0;
@@ -13355,7 +13357,7 @@ string Calltable::getHashStats() {
 			sum_nodes_size += node_size;
 		}
 	}
-	unlock_calls_hash();
+	unlock_calls_hash_read_all();
 	return("nodes: " + intToString(count_use_nodes) + "\n" +
 	       "max size: " + intToString(max_node_size) + "\n" +
 	       "sum size: " + intToString(sum_nodes_size) + "\n" + 

@@ -1456,6 +1456,7 @@ TarQueue::write(int qtype, data_t data) {
 	}
 	tarthreads[tar->thread_id].queue_data[tar_name]->push_back(data);
 	tarthreads[tar->thread_id].qunlock();
+	tarthreads[tar->thread_id]._wake.notify();
 	return 0;
 }
 
@@ -1730,10 +1731,17 @@ void *TarQueue::tarthreadworker(void *arg) {
 				break;
 			}
 		}
-		// quque is empty - sleep before next run
-		USLEEP(is_terminating() ? 100000 : 250000);
+		// queue is empty - wait adaptively before next run (wakes immediately on write/terminate)
 		if(terminate_pass) {
 			break;
+		}
+		{
+			uint32_t wake_tok = tarthread->_wake.prepare_sleep();
+			if(!this2->terminate && !terminated_tar_flush_queue[this2->spoolIndex]) {
+				tarthread->_wake.sleep_if_marked(wake_tok, is_terminating() ? 20000 : 250000);
+			} else {
+				tarthread->_wake.cancel_sleep();
+			}
 		}
 	}
 	tarthread->threadEnd = true;
@@ -2290,6 +2298,9 @@ void *TarQueueThread(void *_tarQueue) {
 			if(do_terminated_tar_flush_queue || 
 			   (!opt_pcap_dump_asyncwrite && is_terminating())) {
 				 terminated_tar_flush_queue[tarQueue->getSpoolIndex()] = 1;
+				 for(unsigned i = 0; i < TARQMAXTHREADS; i++) {
+					 tarQueue->tarthreads[i]._wake.notify_all();
+				 }
 				 syslog(LOG_NOTICE, "terminated - tar - flush queue");
 			}
 		}

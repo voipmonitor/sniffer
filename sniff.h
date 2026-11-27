@@ -181,6 +181,46 @@ extern bool opt_kamailio_subst;
 extern bool opt_ribbonsbc_subst;
 extern bool sip_data_subst;
 extern int opt_t2_boost_direct_rtp;
+extern int opt_pipeline_v2;
+
+// Cache-line isolated causal epoch tracker ensuring RTP never races ahead of prior SIP call setup
+// without requiring any blind time-based delay queue.
+struct sSipCausalEpoch {
+	char _pad0[VM_CACHELINE_SIZE];
+	volatile u_int64_t enqueued_seq;
+	char _pad1[VM_CACHELINE_SIZE - sizeof(u_int64_t)];
+	volatile u_int64_t completed_seq;
+	char _pad2[VM_CACHELINE_SIZE - sizeof(u_int64_t)];
+	cAdaptiveWake wake;
+	sSipCausalEpoch() : enqueued_seq(0), completed_seq(0) {}
+};
+extern sSipCausalEpoch g_sip_causal_epoch;
+
+// Coalesces consecutive pcap_block_store::unlock_packet() calls for the same 1 MB block
+// inside a batch into a single atomic subtraction per block (100x-1000x fewer L3 atomic bounces).
+struct sBatchBlockUnlock {
+	pcap_block_store *last_block;
+	int pending;
+	inline sBatchBlockUnlock() : last_block(NULL), pending(0) {}
+	inline void unlock(pcap_block_store *blk) {
+		if(__builtin_expect(blk == last_block, 1)) {
+			++pending;
+		} else {
+			if(last_block && pending) {
+				last_block->unlock_packets(pending);
+			}
+			last_block = blk;
+			pending = 1;
+		}
+	}
+	inline void flush() {
+		if(last_block && pending) {
+			last_block->unlock_packets(pending);
+			last_block = NULL;
+			pending = 0;
+		}
+	}
+};
 extern int opt_preprocess_packet_stack;
 
 
@@ -950,6 +990,7 @@ struct packet_s_process : public packet_s_process_0 {
 	bool _findCall : 1;
 	bool _createCall : 1;
 	bool _customHeadersDone : 1;
+	bool tracked_sip_epoch : 1;
 	void *child_packets;
 	int8_t child_packets_type;
 	inline packet_s_process() {
@@ -957,8 +998,25 @@ struct packet_s_process : public packet_s_process_0 {
 		init();
 		init2();
 	}
+	inline ~packet_s_process() {
+		complete_sip_epoch();
+	}
+	inline void mark_sip_epoch() {
+		if(!tracked_sip_epoch) {
+			tracked_sip_epoch = true;
+			__SYNC_INC(g_sip_causal_epoch.enqueued_seq);
+		}
+	}
+	inline void complete_sip_epoch() {
+		if(tracked_sip_epoch) {
+			tracked_sip_epoch = false;
+			__SYNC_INC(g_sip_causal_epoch.completed_seq);
+			g_sip_causal_epoch.wake.notify_all();
+		}
+	}
 	inline packet_s_process& operator = (const packet_s_process& other) {
 		memcpy((void*)this, &other, sizeof(*this));
+		this->tracked_sip_epoch = false;
 		if(other.callid_long) {
 			this->callid_long = new FILE_LINE(0) char[strlen(other.callid_long) + 1];
 			strcpy(this->callid_long, other.callid_long);
@@ -1015,10 +1073,12 @@ struct packet_s_process : public packet_s_process_0 {
 		_findCall = false;
 		_createCall = false;
 		_customHeadersDone = false;
+		tracked_sip_epoch = false;
 		child_packets = NULL;
 		child_packets_type = _tchp_none;
 	}
 	inline void term() {
+		complete_sip_epoch();
 		packet_s_process_0::term();
 		if(callid_long) {
 			delete [] callid_long;
@@ -1398,51 +1458,37 @@ public:
 			batch_packet_rtp_thread_buffer *thread_buffer = this->thread_buffer[threadIndex - 1];
 			if(thread_buffer->count == thread_buffer->max_count ||
 			   time_us > thread_buffer->limit_time_us) {
-				__SYNC_LOCK(this->push_lock_sync);
+				this->push_lock_sync.lock(0);
 				packet->blockstore_addflag(62 /*pb lock flag*/);
 
-				/* destroy threadbuffer array - debug
-				for(unsigned i = 0; i < thread_buffer->count; i++) {
-					thread_buffer->batch.pt[i].packet->blockstore_addflag(64); // pb lock flag
-					void PACKET_S_PROCESS_DESTROY(packet_s_process_0 **packet);
-					PACKET_S_PROCESS_DESTROY(&thread_buffer->batch.pt[i].packet);
-				}
-				goto end_thread_buffer_copy;
-				*/
-				
 				batch_packet_rtp *current_batch = this->qring[this->writeit];
-				extern int opt_rtp_read_thread_qring_sem_sync;
-				if(opt_rtp_read_thread_qring_sem_sync) {
-					if(sem_trywait(&this->sem_qring_free_count) == -1) {
-						sem_wait(&this->sem_qring_free_count);
+				if(ATOMIC_LOAD(current_batch->used) != 0) {
+					for(int sp = 0; sp < 16 && ATOMIC_LOAD(current_batch->used) != 0; sp++) {
+						__ASM_PAUSE;
 					}
+					while(ATOMIC_LOAD(current_batch->used) != 0 && !is_terminating()) {
+						uint32_t wake_tok = this->wake_free.prepare_sleep();
+						if(ATOMIC_LOAD(current_batch->used) != 0 && !is_terminating()) {
+							this->wake_free.sleep_if_marked(wake_tok, 1000);
+						} else {
+							this->wake_free.cancel_sleep();
+						}
+					}
+				}
+				// O(1) pointer swap instead of copying up to 64 KB under push_lock_sync!
+				if(if_likely(current_batch->max_count == thread_buffer->max_count)) {
+					rtp_packet_pcap_queue *tmp_batch = current_batch->batch;
+					current_batch->batch = thread_buffer->batch;
+					thread_buffer->batch = tmp_batch;
 				} else {
-					unsigned int usleepCounter = 0;
-					while(current_batch->used != 0) {
-						USLEEP_C(20, usleepCounter++);
-					}
+					memcpy(current_batch->batch, thread_buffer->batch, sizeof(rtp_packet_pcap_queue) * thread_buffer->count);
 				}
-				memcpy(current_batch->batch, thread_buffer->batch, sizeof(rtp_packet_pcap_queue) * thread_buffer->count);
-				#if RQUEUE_SAFE
-					__SYNC_SET_TO_LOCK(current_batch->count, thread_buffer->count, this->count_lock_sync);
-					__SYNC_SET(current_batch->used);
-					__SYNC_INCR(this->writeit, this->qring_length);
-				#else
-					__SYNC_LOCK(this->count_lock_sync);
-					current_batch->count = thread_buffer->count;
-					__SYNC_UNLOCK(this->count_lock_sync);
-					__SYNC_INC(current_batch->used);
-					if((this->writeit + 1) == this->qring_length) {
-						this->writeit = 0;
-					} else {
-						this->writeit++;
-					}
-				#endif
-				if(opt_rtp_read_thread_qring_sem_sync) {
-					sem_post(&this->sem_qring_filled_count);
-				}
+				current_batch->count = thread_buffer->count;
+				__SYNC_SET(current_batch->used);
+				__SYNC_INCR(this->writeit, this->qring_length);
+				this->wake_filled.notify();
 				thread_buffer->count = 0;
-				__SYNC_UNLOCK(this->push_lock_sync);
+				this->push_lock_sync.unlock();
 			}
 			if(thread_buffer->count == 0) {
 				extern unsigned int opt_push_batch_limit_ms;
@@ -1460,7 +1506,13 @@ public:
 			packet->blockstore_addflag(63 /*pb lock flag*/);
 			thread_buffer->count++;
 		} else {
-			__SYNC_LOCK(this->push_lock_sync);
+			// When rd is fused into rh (opt_pipeline_v2 && opt_t2_boost), rh is the sole
+			// SPSC producer for all rtp_threads — zero lock/unlock per packet!
+			extern volatile int process_rtp_packets_distribute_threads_use;
+			bool need_lock = !(opt_pipeline_v2 && opt_t2_boost && process_rtp_packets_distribute_threads_use == 0);
+			if(if_unlikely(need_lock)) {
+				this->push_lock_sync.lock(0);
+			}
 		 
 			#if DEBUG_QUEUE_RTP_THREAD
 			unsigned tid = get_unix_tid();
@@ -1474,22 +1526,25 @@ public:
 			packet->blockstore_addflag(61 /*pb lock flag*/);
 			packet->blockstore_addflag(threadNum /*pb lock flag*/);
 			
-			if(!qring_push_index) {
+			if(if_unlikely(!qring_push_index)) {
 				packet->blockstore_addflag(62 /*pb lock flag*/);
-				extern int opt_rtp_read_thread_qring_sem_sync;
-				if(opt_rtp_read_thread_qring_sem_sync) {
-					if(sem_trywait(&this->sem_qring_free_count) == -1) {
-						sem_wait(&this->sem_qring_free_count);
+				batch_packet_rtp *slot = this->qring[this->writeit];
+				if(ATOMIC_LOAD(slot->used) != 0) {
+					for(int sp = 0; sp < 16 && ATOMIC_LOAD(slot->used) != 0; sp++) {
+						__ASM_PAUSE;
 					}
-				} else {
-					unsigned int usleepCounter = 0;
-					while(this->qring[this->writeit]->used != 0) {
-						USLEEP_C(20, usleepCounter++);
+					while(ATOMIC_LOAD(slot->used) != 0 && !is_terminating()) {
+						uint32_t wake_tok = this->wake_free.prepare_sleep();
+						if(ATOMIC_LOAD(slot->used) != 0 && !is_terminating()) {
+							this->wake_free.sleep_if_marked(wake_tok, 1000);
+						} else {
+							this->wake_free.cancel_sleep();
+						}
 					}
 				}
 				qring_push_index = this->writeit + 1;
 				qring_push_index_count = 0;
-				qring_active_push_item = this->qring[qring_push_index - 1];
+				qring_active_push_item = slot;
 			}
 			rtp_packet_pcap_queue *rtpp_pq = &qring_active_push_item->batch[qring_push_index_count];
 			rtpp_pq->c_branch = c_branch;
@@ -1500,37 +1555,29 @@ public:
 			rtpp_pq->stream_in_multiple_calls = stream_in_multiple_calls;
 			rtpp_pq->sdp_flags = sdp_flags;
 			rtpp_pq->save_packet = enable_save_packet;
-			__SYNC_INC(qring_push_index_count);
+			++qring_push_index_count;
 			packet->blockstore_addflag(63 /*pb lock flag*/);
-			if(qring_push_index_count == qring_active_push_item->max_count) {
+			if(if_unlikely(qring_push_index_count == qring_active_push_item->max_count)) {
 				packet->blockstore_addflag(64 /*pb lock flag*/);
-				#if RQUEUE_SAFE
-					__SYNC_SET_TO_LOCK(qring_active_push_item->count, qring_push_index_count, this->count_lock_sync);
-					__SYNC_SET(qring_active_push_item->used);
-					__SYNC_INCR(this->writeit, this->qring_length);
-				#else
-					__SYNC_LOCK(this->count_lock_sync);
-					qring_active_push_item->count = qring_push_index_count;
-					__SYNC_UNLOCK(this->count_lock_sync);
-					qring_active_push_item->used = 1;
-					if((this->writeit + 1) == this->qring_length) {
-						this->writeit = 0;
-					} else {
-						this->writeit++;
-					}
-				#endif
-				extern int opt_rtp_read_thread_qring_sem_sync;
-				if(opt_rtp_read_thread_qring_sem_sync) {
-					sem_post(&this->sem_qring_filled_count);
-				}
+				qring_active_push_item->count = qring_push_index_count;
+				__SYNC_SET(qring_active_push_item->used);
+				__SYNC_INCR(this->writeit, this->qring_length);
+				this->wake_filled.notify();
 				qring_push_index = 0;
 				qring_push_index_count = 0;
 			}
-			__SYNC_UNLOCK(this->push_lock_sync);
+			if(if_unlikely(need_lock)) {
+				this->push_lock_sync.unlock();
+			}
 		}
 	}
 	inline void push_batch() {
-		__SYNC_LOCK(this->push_lock_sync);
+		extern int opt_t2_boost;
+		extern volatile int process_rtp_packets_distribute_threads_use;
+		bool need_lock = !(opt_pipeline_v2 && opt_t2_boost && process_rtp_packets_distribute_threads_use == 0);
+		if(if_unlikely(need_lock)) {
+			this->push_lock_sync.lock(0);
+		}
 	 
 		#if DEBUG_QUEUE_RTP_THREAD
 		unsigned tid = get_unix_tid();
@@ -1542,29 +1589,16 @@ public:
 		#endif
 			
 		if(qring_push_index_count) {
-			#if RQUEUE_SAFE
-				__SYNC_SET_TO_LOCK(qring_active_push_item->count, qring_push_index_count, this->count_lock_sync);
-				__SYNC_SET(qring_active_push_item->used);
-				__SYNC_INCR(this->writeit, this->qring_length);
-			#else
-				__SYNC_LOCK(this->count_lock_sync);
-				qring_active_push_item->count = qring_push_index_count;
-				__SYNC_UNLOCK(this->count_lock_sync);
-				qring_active_push_item->used = 1;
-				if((this->writeit + 1) == this->qring_length) {
-					this->writeit = 0;
-				} else {
-					this->writeit++;
-				}
-			#endif
-			extern int opt_rtp_read_thread_qring_sem_sync;
-			if(opt_rtp_read_thread_qring_sem_sync) {
-				sem_post(&this->sem_qring_filled_count);
-			}
+			qring_active_push_item->count = qring_push_index_count;
+			__SYNC_SET(qring_active_push_item->used);
+			__SYNC_INCR(this->writeit, this->qring_length);
+			this->wake_filled.notify();
 			qring_push_index = 0;
 			qring_push_index_count = 0;
 		}
-		__SYNC_UNLOCK(this->push_lock_sync);
+		if(if_unlikely(need_lock)) {
+			this->push_lock_sync.unlock();
+		}
 	}
 	inline void push_thread_buffer(int threadIndex) {
 	 
@@ -1584,40 +1618,34 @@ public:
 			syslog(LOG_NOTICE, "push_thread_buffer in rtp_read_thread(%i) - %i", threadNum, threadIndex);
 			#endif
 		 
-			__SYNC_LOCK(this->push_lock_sync);
+			this->push_lock_sync.lock(0);
 			batch_packet_rtp *current_batch = this->qring[this->writeit];
-			extern int opt_rtp_read_thread_qring_sem_sync;
-			if(opt_rtp_read_thread_qring_sem_sync) {
-				if(sem_trywait(&this->sem_qring_free_count) == -1) {
-					sem_wait(&this->sem_qring_free_count);
+			if(ATOMIC_LOAD(current_batch->used) != 0) {
+				for(int sp = 0; sp < 64 && ATOMIC_LOAD(current_batch->used) != 0; sp++) {
+					__ASM_PAUSE;
 				}
+				while(ATOMIC_LOAD(current_batch->used) != 0 && !is_terminating()) {
+					uint32_t wake_tok = this->wake_free.prepare_sleep();
+					if(ATOMIC_LOAD(current_batch->used) != 0 && !is_terminating()) {
+						this->wake_free.sleep_if_marked(wake_tok, 1000);
+					} else {
+						this->wake_free.cancel_sleep();
+					}
+				}
+			}
+			if(if_likely(current_batch->max_count == thread_buffer->max_count)) {
+				rtp_packet_pcap_queue *tmp_batch = current_batch->batch;
+				current_batch->batch = thread_buffer->batch;
+				thread_buffer->batch = tmp_batch;
 			} else {
-				unsigned int usleepCounter = 0;
-				while(current_batch->used != 0) {
-					USLEEP_C(20, usleepCounter++);
-				}
+				memcpy(current_batch->batch, thread_buffer->batch, sizeof(rtp_packet_pcap_queue) * thread_buffer->count);
 			}
-			memcpy(current_batch->batch, thread_buffer->batch, sizeof(rtp_packet_pcap_queue) * thread_buffer->count);
-			#if RQUEUE_SAFE
-				__SYNC_SET_TO_LOCK(current_batch->count, thread_buffer->count, this->count_lock_sync);
-				__SYNC_SET(current_batch->used);
-				__SYNC_INCR(this->writeit, this->qring_length);
-			#else
-				__SYNC_LOCK(this->count_lock_sync);
-				current_batch->count = thread_buffer->count;
-				__SYNC_UNLOCK(this->count_lock_sync);
-				current_batch->used = 1;
-				if((this->writeit + 1) == this->qring_length) {
-					this->writeit = 0;
-				} else {
-					this->writeit++;
-				}
-			#endif
-			if(opt_rtp_read_thread_qring_sem_sync) {
-				sem_post(&this->sem_qring_filled_count);
-			}
+			current_batch->count = thread_buffer->count;
+			__SYNC_SET(current_batch->used);
+			__SYNC_INCR(this->writeit, this->qring_length);
+			this->wake_filled.notify();
 			thread_buffer->count = 0;
-			__SYNC_UNLOCK(this->push_lock_sync);
+			this->push_lock_sync.unlock();
 		}
 	}
 public:
@@ -1635,15 +1663,18 @@ public:
 	batch_packet_rtp *qring_active_push_item;
 	volatile unsigned qring_push_index;
 	volatile unsigned qring_push_index_count;
+	char _pad_readit[VM_CACHELINE_SIZE];
 	volatile unsigned int readit;
+	char _pad_writeit[VM_CACHELINE_SIZE];
 	volatile unsigned int writeit;
 	pstat_data threadPstatData[2][2];
 	volatile bool remove_flag;
 	u_int32_t last_use_time_s;
 	volatile u_int32_t calls;
 	volatile double cpu;
-	volatile int push_lock_sync;
-	volatile int count_lock_sync;
+	cPaddedSpinLock push_lock_sync;
+	cAdaptiveWake wake_free;
+	cAdaptiveWake wake_filled;
 	sem_t sem_qring_free_count;
 	sem_t sem_qring_filled_count;
 };
