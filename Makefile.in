@@ -59,7 +59,7 @@ else
     SYSTEMD_SUBST_OBJ =
 endif
 
-objects = $(shell ls -1 *.cpp | sed 's/\.cpp/.o/' | tr "\n" " ") $(shell ls -1 jitterbuffer/*.c | sed 's/\.c/.o/' | tr "\n" " ") $(shell ls -1 dssl/*.c dssl/*.cpp | sed 's/\.cpp/.o/' | sed 's/\.c/.o/' | tr "\n" " ") cloud_router/cloud_router_base.o cloud_router/cloud_router_client.o $(DNS_RESOLVER_OBJ) $(SYSTEMD_SUBST_OBJ)
+objects = $(shell ls -1 *.cpp | sed 's/\.cpp/.o/' | tr "\n" " ") $(shell ls -1 jitterbuffer/*.c jitterbuffer/*.cpp 2>/dev/null | sed 's/\.cpp/.o/' | sed 's/\.c/.o/' | tr "\n" " ") $(shell ls -1 dssl/*.c dssl/*.cpp | sed 's/\.cpp/.o/' | sed 's/\.c/.o/' | tr "\n" " ") cloud_router/cloud_router_base.o cloud_router/cloud_router_client.o $(DNS_RESOLVER_OBJ) $(SYSTEMD_SUBST_OBJ)
 
 #headers = $(shell ls -1 *.h | tr "\n" " ") $(shell ls -1 jitterbuffer/*.h | tr "\n" " ") $(shell ls -1 jitterbuffer/asterisk/*.h | tr "\n" " ")
 
