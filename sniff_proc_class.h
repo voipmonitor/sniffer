@@ -604,6 +604,12 @@ public:
 		}
 		pcap_queue_packet_data *packet_data;
 		packet_data = push_packet_detach_x__get_pointer();
+		if(if_unlikely(!packet_data)) {
+			if(_lock) {
+				this->unlock_push();
+			}
+			return;
+		}
 		packet_data->header_ip_offset = header_ip_offset;
 		packet_data->header_ip_encaps_offset = header_ip_encaps_offset;
 		packet_data->data_offset = data_offset;
@@ -691,6 +697,25 @@ public:
 			_outThreadState = this->outThreadState;
 			if(_outThreadState == 2) {
 				packetS = push_packet_detach__get_pointer();
+				if(if_unlikely(!packetS)) {
+					if(_lock) {
+						this->unlock_push();
+					}
+					#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+					if(audiocodes) {
+						delete audiocodes;
+					}
+					#endif
+					if(packet_alloc_type > _t_packet_alloc_na) {
+						if(packet_alloc_type & _t_packet_alloc_header_plus) {
+							delete (pcap_pkthdr_plus*)header;
+						} else if(packet_alloc_type & _t_packet_alloc_header_std) {
+							delete (pcap_pkthdr*)header;
+						}
+						delete [] packet;
+					}
+					return;
+				}
 			} else {
 				static packet_s _packetS;
 				packetS = &_packetS;
@@ -759,30 +784,28 @@ public:
 	inline pcap_queue_packet_data *push_packet_detach_x__get_pointer() {
 		if(!qring_push_index) {
 			cThreadMonitor::sThread::buffer_push_account_all(thread_data);
-			extern int opt_preprocess_packets_qring_sem_sync;
-			if(opt_preprocess_packets_qring_sem_sync) {
-				if(sem_trywait(&this->sem_qring_free_count) == -1) {
-					u_int64_t us_start = cThreadMonitor::sThread::buffer_push_account_sem_full_begin(thread_data);
-					sem_wait(&this->sem_qring_free_count);
-					cThreadMonitor::sThread::buffer_push_account_sem_full_end(thread_data, us_start);
+			batch_pcap_queue_packet_data *slot = this->qring_detach_x[this->writeit];
+			if(ATOMIC_LOAD(slot->used) != 0) {
+				for(int sp = 0; sp < 16 && ATOMIC_LOAD(slot->used) != 0; sp++) {
+					__ASM_PAUSE;
 				}
-			} else {
-				extern unsigned int opt_preprocess_packets_qring_push_usleep;
-				unsigned int usleepCounter = 0;
-				while(this->qring_detach_x[this->writeit]->used != 0) {
-					unsigned us = 0;
-					if(opt_preprocess_packets_qring_push_usleep) {
-						us = USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
+				while(ATOMIC_LOAD(slot->used) != 0 && !is_terminating()) {
+					uint32_t wake_tok = this->wake_free.prepare_sleep();
+					if(ATOMIC_LOAD(slot->used) != 0 && !is_terminating()) {
+						u_int64_t us_start = cThreadMonitor::sThread::buffer_push_account_sem_full_begin(thread_data);
+						this->wake_free.sleep_if_marked(wake_tok, 1000);
+						cThreadMonitor::sThread::buffer_push_account_sem_full_end(thread_data, us_start);
 					} else {
-						__ASM_PAUSE;
-						++usleepCounter;
+						this->wake_free.cancel_sleep();
 					}
-					cThreadMonitor::sThread::buffer_push_account_busy_full(thread_data, us);
+				}
+				if(ATOMIC_LOAD(slot->used) != 0) {
+					return(NULL);
 				}
 			}
 			qring_push_index = this->writeit + 1;
 			qring_push_index_count = 0;
-			qring_detach_x_active_push_item = qring_detach_x[qring_push_index - 1];
+			qring_detach_x_active_push_item = slot;
 		}
 		return((pcap_queue_packet_data*)qring_detach_x_active_push_item->batch[qring_push_index_count]);
 	}
@@ -795,23 +818,10 @@ public:
 		++qring_push_index_count;
 		if(qring_push_index_count == qring_detach_x_active_push_item->max_count ||
 		   time_us > qring_detach_x_active_push_item_limit_us) {
-			#if RQUEUE_SAFE
-				__SYNC_SET_TO_LOCK(qring_detach_x_active_push_item->count, qring_push_index_count, this->_sync_count);
-				__SYNC_SET(qring_detach_x_active_push_item->used);
-				__SYNC_INCR(this->writeit, this->qring_length);
-			#else
-				qring_detach_x_active_push_item->count = qring_push_index_count;
-				qring_detach_x_active_push_item->used = 1;
-				if((this->writeit + 1) == this->qring_length) {
-					this->writeit = 0;
-				} else {
-					this->writeit++;
-				}
-			#endif
-			extern int opt_preprocess_packets_qring_sem_sync;
-			if(opt_preprocess_packets_qring_sem_sync) {
-				sem_post(&this->sem_qring_filled_count);
-			}
+			qring_detach_x_active_push_item->count = qring_push_index_count;
+			__SYNC_SET(qring_detach_x_active_push_item->used);
+			__SYNC_INCR(this->writeit, this->qring_length);
+			this->wake_filled.notify();
 			qring_push_index = 0;
 			qring_push_index_count = 0;
 		}
@@ -819,30 +829,28 @@ public:
 	inline packet_s *push_packet_detach__get_pointer() {
 		if(!qring_push_index) {
 			cThreadMonitor::sThread::buffer_push_account_all(thread_data);
-			extern int opt_preprocess_packets_qring_sem_sync;
-			if(opt_preprocess_packets_qring_sem_sync) {
-				if(sem_trywait(&this->sem_qring_free_count) == -1) {
-					u_int64_t us_start = cThreadMonitor::sThread::buffer_push_account_sem_full_begin(thread_data);
-					sem_wait(&this->sem_qring_free_count);
-					cThreadMonitor::sThread::buffer_push_account_sem_full_end(thread_data, us_start);
+			batch_packet_s *slot = this->qring_detach[this->writeit];
+			if(ATOMIC_LOAD(slot->used) != 0) {
+				for(int sp = 0; sp < 16 && ATOMIC_LOAD(slot->used) != 0; sp++) {
+					__ASM_PAUSE;
 				}
-			} else {
-				extern unsigned int opt_preprocess_packets_qring_push_usleep;
-				unsigned int usleepCounter = 0;
-				while(this->qring_detach[this->writeit]->used != 0) {
-					unsigned us = 0;
-					if(opt_preprocess_packets_qring_push_usleep) {
-						us = USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
+				while(ATOMIC_LOAD(slot->used) != 0 && !is_terminating()) {
+					uint32_t wake_tok = this->wake_free.prepare_sleep();
+					if(ATOMIC_LOAD(slot->used) != 0 && !is_terminating()) {
+						u_int64_t us_start = cThreadMonitor::sThread::buffer_push_account_sem_full_begin(thread_data);
+						this->wake_free.sleep_if_marked(wake_tok, 1000);
+						cThreadMonitor::sThread::buffer_push_account_sem_full_end(thread_data, us_start);
 					} else {
-						__ASM_PAUSE;
-						++usleepCounter;
+						this->wake_free.cancel_sleep();
 					}
-					cThreadMonitor::sThread::buffer_push_account_busy_full(thread_data, us);
+				}
+				if(ATOMIC_LOAD(slot->used) != 0) {
+					return(NULL);
 				}
 			}
 			qring_push_index = this->writeit + 1;
 			qring_push_index_count = 0;
-			qring_detach_active_push_item = qring_detach[qring_push_index - 1];
+			qring_detach_active_push_item = slot;
 		}
 		return((packet_s_plus_pointer*)qring_detach_active_push_item->batch[qring_push_index_count]);
 	}
@@ -880,23 +888,10 @@ public:
 		++qring_push_index_count;
 		if(qring_push_index_count == qring_detach_active_push_item->max_count ||
 		   time_us > qring_detach_active_push_item_limit_us) {
-			#if RQUEUE_SAFE
-				__SYNC_SET_TO_LOCK(qring_detach_active_push_item->count, qring_push_index_count, this->_sync_count);
-				__SYNC_SET(qring_detach_active_push_item->used);
-				__SYNC_INCR(this->writeit, this->qring_length);
-			#else
-				qring_detach_active_push_item->count = qring_push_index_count;
-				qring_detach_active_push_item->used = 1;
-				if((this->writeit + 1) == this->qring_length) {
-					this->writeit = 0;
-				} else {
-					this->writeit++;
-				}
-			#endif
-			extern int opt_preprocess_packets_qring_sem_sync;
-			if(opt_preprocess_packets_qring_sem_sync) {
-				sem_post(&this->sem_qring_filled_count);
-			}
+			qring_detach_active_push_item->count = qring_push_index_count;
+			__SYNC_SET(qring_detach_active_push_item->used);
+			__SYNC_INCR(this->writeit, this->qring_length);
+			this->wake_filled.notify();
 			qring_push_index = 0;
 			qring_push_index_count = 0;
 		}
@@ -904,6 +899,10 @@ public:
 	inline void push_packet_detach(packet_s *packetS) {
 		if(this->outThreadState == 2) {
 			packet_s *packetS_pointer = push_packet_detach__get_pointer();
+			if(if_unlikely(!packetS_pointer)) {
+				packetS->term();
+				return;
+			}
 			*packetS_pointer = *packetS;
 			push_packet_detach__finish(packetS_pointer);
 		} else {
@@ -914,53 +913,39 @@ public:
 			this->process_DETACH(packetS);
 		}
 	}
-	inline void push_packet_detach__active__prepare() {
+	inline bool push_packet_detach__active__prepare() {
 		if(!qring_push_index) {
 			cThreadMonitor::sThread::buffer_push_account_all(thread_data);
-			extern int opt_preprocess_packets_qring_sem_sync;
-			if(opt_preprocess_packets_qring_sem_sync) {
-				if(sem_trywait(&this->sem_qring_free_count) == -1) {
-					u_int64_t us_start = cThreadMonitor::sThread::buffer_push_account_sem_full_begin(thread_data);
-					sem_wait(&this->sem_qring_free_count);
-					cThreadMonitor::sThread::buffer_push_account_sem_full_end(thread_data, us_start);
+			batch_packet_s *slot = this->qring_detach[this->writeit];
+			if(ATOMIC_LOAD(slot->used) != 0) {
+				for(int sp = 0; sp < 16 && ATOMIC_LOAD(slot->used) != 0; sp++) {
+					__ASM_PAUSE;
 				}
-			} else {
-				extern unsigned int opt_preprocess_packets_qring_push_usleep;
-				unsigned int usleepCounter = 0;
-				while(this->qring_detach[this->writeit]->used != 0) {
-					unsigned us = 0;
-					if(opt_preprocess_packets_qring_push_usleep) {
-						us = USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
+				while(ATOMIC_LOAD(slot->used) != 0 && !is_terminating()) {
+					uint32_t wake_tok = this->wake_free.prepare_sleep();
+					if(ATOMIC_LOAD(slot->used) != 0 && !is_terminating()) {
+						u_int64_t us_start = cThreadMonitor::sThread::buffer_push_account_sem_full_begin(thread_data);
+						this->wake_free.sleep_if_marked(wake_tok, 1000);
+						cThreadMonitor::sThread::buffer_push_account_sem_full_end(thread_data, us_start);
 					} else {
-						__ASM_PAUSE;
-						++usleepCounter;
+						this->wake_free.cancel_sleep();
 					}
-					cThreadMonitor::sThread::buffer_push_account_busy_full(thread_data, us);
+				}
+				if(ATOMIC_LOAD(slot->used) != 0) {
+					return(false);
 				}
 			}
 			qring_push_index = this->writeit + 1;
 			qring_push_index_count = 0;
-			qring_detach_active_push_item = qring_detach[qring_push_index - 1];
+			qring_detach_active_push_item = slot;
 		}
+		return(true);
 	}
 	inline void push_packet_detach__active__finish(unsigned count) {
-		#if RQUEUE_SAFE
-			__SYNC_SET_TO_LOCK(qring_detach_active_push_item->count, count, this->_sync_count);
-			__SYNC_SET(qring_detach_active_push_item->used);
-			__SYNC_INCR(this->writeit, this->qring_length);
-		#else
-			qring_detach_active_push_item->count = count;
-			qring_detach_active_push_item->used = 1;
-			if((this->writeit + 1) == this->qring_length) {
-				this->writeit = 0;
-			} else {
-				this->writeit++;
-			}
-		#endif
-		extern int opt_preprocess_packets_qring_sem_sync;
-		if(opt_preprocess_packets_qring_sem_sync) {
-			sem_post(&this->sem_qring_filled_count);
-		}
+		qring_detach_active_push_item->count = count;
+		__SYNC_SET(qring_detach_active_push_item->used);
+		__SYNC_INCR(this->writeit, this->qring_length);
+		this->wake_filled.notify();
 		qring_push_index = 0;
 		qring_push_index_count = 0;
 	}
@@ -995,23 +980,12 @@ public:
 		if(this->outThreadState == 2) {
 			cThreadMonitor::sThread::buffer_push_account_all(thread_data);
 			if(!qring_push_index) {
-				extern int opt_preprocess_packets_qring_sem_sync;
-				if(opt_preprocess_packets_qring_sem_sync) {
-					if(sem_trywait(&this->sem_qring_free_count) == -1) {
-						u_int64_t us_start = cThreadMonitor::sThread::buffer_push_account_sem_full_begin(thread_data);
-						sem_wait(&this->sem_qring_free_count);
-						cThreadMonitor::sThread::buffer_push_account_sem_full_end(thread_data, us_start);
+				batch_packet_s_process *slot = this->qring[this->writeit];
+				if(ATOMIC_LOAD(slot->used) != 0) {
+					for(int sp = 0; sp < 16 && ATOMIC_LOAD(slot->used) != 0; sp++) {
+						__ASM_PAUSE;
 					}
-					if(is_terminating()) {
-						this->packetS_destroy(packetS);
-						if(_lock) {
-							unlock_push();
-						}
-						return(false);
-					}
-				} else {
-					unsigned int usleepCounter = 0;
-					while(this->qring[this->writeit]->used != 0) {
+					while(ATOMIC_LOAD(slot->used) != 0) {
 						if(is_terminating()) {
 							this->packetS_destroy(packetS);
 							if(_lock) {
@@ -1019,20 +993,19 @@ public:
 							}
 							return(false);
 						}
-						extern unsigned int opt_preprocess_packets_qring_push_usleep;
-						unsigned us = 0;
-						if(opt_preprocess_packets_qring_push_usleep) {
-							us = USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
+						uint32_t wake_tok = this->wake_free.prepare_sleep();
+						if(ATOMIC_LOAD(slot->used) != 0 && !is_terminating()) {
+							u_int64_t us_start = cThreadMonitor::sThread::buffer_push_account_sem_full_begin(thread_data);
+							this->wake_free.sleep_if_marked(wake_tok, 1000);
+							cThreadMonitor::sThread::buffer_push_account_sem_full_end(thread_data, us_start);
 						} else {
-							__ASM_PAUSE;
-							++usleepCounter;
+							this->wake_free.cancel_sleep();
 						}
-						cThreadMonitor::sThread::buffer_push_account_busy_full(thread_data, us);
 					}
 				}
 				qring_push_index = this->writeit + 1;
 				qring_push_index_count = 0;
-				qring_active_push_item = qring[qring_push_index - 1];
+				qring_active_push_item = slot;
 				extern unsigned int opt_push_batch_limit_ms;
 				qring_active_push_item_limit_us = use_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
 			}
@@ -1040,23 +1013,10 @@ public:
 			++qring_push_index_count;
 			if(qring_push_index_count == qring_active_push_item->max_count ||
 			   time_us > qring_active_push_item_limit_us) {
-			        #if RQUEUE_SAFE
-					__SYNC_SET_TO_LOCK(qring_active_push_item->count, qring_push_index_count, this->_sync_count);
-					__SYNC_SET(qring_active_push_item->used);
-					__SYNC_INCR(this->writeit, this->qring_length);
-				#else
-					qring_active_push_item->count = qring_push_index_count;
-					qring_active_push_item->used = 1;
-					if((this->writeit + 1) == this->qring_length) {
-						this->writeit = 0;
-					} else {
-						this->writeit++;
-					}
-				#endif
-				extern int opt_preprocess_packets_qring_sem_sync;
-				if(opt_preprocess_packets_qring_sem_sync) {
-					sem_post(&this->sem_qring_filled_count);
-				}
+				qring_active_push_item->count = qring_push_index_count;
+				__SYNC_SET(qring_active_push_item->used);
+				__SYNC_INCR(this->writeit, this->qring_length);
+				this->wake_filled.notify();
 				qring_push_index = 0;
 				qring_push_index_count = 0;
 			}
@@ -1178,36 +1138,18 @@ public:
 		}
 		if(this->outThreadState == 2) {
 			if(qring_push_index && qring_push_index_count) {
-				#if RQUEUE_SAFE
-					if(typePreProcessThread == ppt_detach_x) {
-						__SYNC_SET_TO_LOCK(qring_detach_x_active_push_item->count, qring_push_index_count, this->_sync_count);
-						__SYNC_SET(qring_detach_x_active_push_item->used);
-					} else if(typePreProcessThread == ppt_detach) {
-						__SYNC_SET_TO_LOCK(qring_detach_active_push_item->count, qring_push_index_count, this->_sync_count);
-						__SYNC_SET(qring_detach_active_push_item->used);
-					} else {
-						__SYNC_SET_TO_LOCK(qring_active_push_item->count, qring_push_index_count, this->_sync_count);
-						__SYNC_SET(qring_active_push_item->used);
-					}
-					__SYNC_INCR(this->writeit, this->qring_length);
-				#else
-					if(typePreProcessThread == ppt_detach) {
-						qring_detach_active_push_item->count = qring_push_index_count;
-						qring_detach_active_push_item->used = 1;
-					} else {
-						qring_active_push_item->count = qring_push_index_count;
-						qring_active_push_item->used = 1;
-					}
-					if((this->writeit + 1) == this->qring_length) {
-						this->writeit = 0;
-					} else {
-						this->writeit++;
-					}
-				#endif
-				extern int opt_preprocess_packets_qring_sem_sync;
-				if(opt_preprocess_packets_qring_sem_sync) {
-					sem_post(&this->sem_qring_filled_count);
+				if(typePreProcessThread == ppt_detach_x) {
+					qring_detach_x_active_push_item->count = qring_push_index_count;
+					__SYNC_SET(qring_detach_x_active_push_item->used);
+				} else if(typePreProcessThread == ppt_detach) {
+					qring_detach_active_push_item->count = qring_push_index_count;
+					__SYNC_SET(qring_detach_active_push_item->used);
+				} else {
+					qring_active_push_item->count = qring_push_index_count;
+					__SYNC_SET(qring_active_push_item->used);
 				}
+				__SYNC_INCR(this->writeit, this->qring_length);
+				this->wake_filled.notify();
 				qring_push_index = 0;
 				qring_push_index_count = 0;
 			}
@@ -1226,6 +1168,10 @@ public:
 	void preparePstatData(int nextThreadId, int pstatDataIndex);
 	double getCpuUsagePerc(int nextThreadId, int pstatDataIndex, bool preparePstatData = true);
 	void terminate();
+	inline void wakeAll() {
+		wake_free.notify_all();
+		wake_filled.notify_all();
+	}
 	void addNextThread();
 	void removeNextThread();
 	static void autoStartNextLevelPreProcessPacket();
@@ -1357,7 +1303,7 @@ public:
 		*packetS = NULL;
 	}
 	void _packetS_destroy(packet_s_process_0 *packetS);
-	inline void packetS_push_to_stack(packet_s_process **packetS, u_int16_t queue_index) {
+	inline void packetS_push_to_stack(packet_s_process **packetS, u_int16_t queue_index, sBatchBlockUnlock *batch_unlock = NULL) {
 		if(!opt_preprocess_packet_stack) {
 			this->packetS_destroy(packetS);
 			return;
@@ -1366,7 +1312,14 @@ public:
 			return;
 		}
 		if((*packetS)->_blockstore_lock) {
-			(*packetS)->block_store->unlock_packet((*packetS)->block_store_index);
+			#if !DEBUG_SYNC_PCAP_BLOCK_STORE
+			if(batch_unlock) {
+				batch_unlock->unlock((*packetS)->block_store);
+			} else
+			#endif
+			{
+				(*packetS)->block_store->unlock_packet((*packetS)->block_store_index);
+			}
 		}
 		if((*packetS)->_packet_alloc_type > _t_packet_alloc_na) {
 			if((*packetS)->_packet_alloc_type &_t_packet_alloc_header_plus) {
@@ -1388,7 +1341,7 @@ public:
 		}
 		*packetS = NULL;
 	}
-	inline void packetS_push_to_stack(packet_s_process_0 **packetS, u_int16_t queue_index) {
+	inline void packetS_push_to_stack(packet_s_process_0 **packetS, u_int16_t queue_index, sBatchBlockUnlock *batch_unlock = NULL) {
 		if(!opt_preprocess_packet_stack) {
 			this->packetS_destroy(packetS);
 			return;
@@ -1397,7 +1350,14 @@ public:
 			return;
 		}
 		if((*packetS)->_blockstore_lock) {
-			(*packetS)->block_store->unlock_packet((*packetS)->block_store_index);
+			#if !DEBUG_SYNC_PCAP_BLOCK_STORE
+			if(batch_unlock) {
+				batch_unlock->unlock((*packetS)->block_store);
+			} else
+			#endif
+			{
+				(*packetS)->block_store->unlock_packet((*packetS)->block_store_index);
+			}
 		}
 		if((*packetS)->_packet_alloc_type > _t_packet_alloc_na) {
 			if((*packetS)->_packet_alloc_type &_t_packet_alloc_header_plus) {
@@ -1419,13 +1379,20 @@ public:
 		}
 		*packetS = NULL;
 	}
-	inline void packetS_push_to_stack(packet_s_stack **packetS, u_int16_t queue_index) {
+	inline void packetS_push_to_stack(packet_s_stack **packetS, u_int16_t queue_index, sBatchBlockUnlock *batch_unlock = NULL) {
 		if(!opt_preprocess_packet_stack) {
 			this->packetS_destroy(packetS);
 			return;
 		}
 		if((*packetS)->_blockstore_lock) {
-			(*packetS)->block_store->unlock_packet((*packetS)->block_store_index);
+			#if !DEBUG_SYNC_PCAP_BLOCK_STORE
+			if(batch_unlock) {
+				batch_unlock->unlock((*packetS)->block_store);
+			} else
+			#endif
+			{
+				(*packetS)->block_store->unlock_packet((*packetS)->block_store_index);
+			}
 		}
 		if((*packetS)->_packet_alloc_type > _t_packet_alloc_na) {
 			if((*packetS)->_packet_alloc_type &_t_packet_alloc_header_plus) {
@@ -1456,6 +1423,12 @@ public:
 		#endif
 		}
 		return(false);
+	}
+	inline bool useRtpDelayQueue() const {
+		return(rtp_delay_queue__use);
+	}
+	inline bool hasPendingPushBatch() const {
+		return(ATOMIC_LOAD(qring_push_index) != 0 && ATOMIC_LOAD(qring_push_index_count) != 0);
 	}
 	inline eTypePreProcessThread getTypePreProcessThread() {
 		return(typePreProcessThread);
@@ -1957,10 +1930,12 @@ private:
 	u_int64_t qring_active_push_item_limit_us;
 	unsigned qring_push_index;
 	unsigned qring_push_index_count;
-	char _pad_readit[64];
+	char _pad_readit[VM_CACHELINE_SIZE];
 	volatile unsigned int readit;
-	char _pad_writeit[64];
+	char _pad_writeit[VM_CACHELINE_SIZE];
 	volatile unsigned int writeit;
+	cAdaptiveWake wake_free;
+	cAdaptiveWake wake_filled;
 	sem_t sem_qring_free_count;
 	sem_t sem_qring_filled_count;
 	int outThreadId;
@@ -2094,36 +2069,36 @@ inline void PACKET_S_PROCESS_DESTROY(packet_s_stack **packet) {
 	}
 }
 
-inline void PACKET_S_PROCESS_PUSH_TO_STACK(packet_s_process_0 **packet, u_int16_t queue_index) {
+inline void PACKET_S_PROCESS_PUSH_TO_STACK(packet_s_process_0 **packet, u_int16_t queue_index, sBatchBlockUnlock *batch_unlock = NULL) {
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 	if((*packet)->__type == _t_packet_s_process_0) {
-		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack(packet, queue_index);
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack(packet, queue_index, batch_unlock);
 	} else if((*packet)->__type == _t_packet_s_process) {
-		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack((packet_s_process**)packet, queue_index);
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack((packet_s_process**)packet, queue_index, batch_unlock);
 	} else if((*packet)->__type == _t_packet_s_stack) {
-		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack((packet_s_stack**)packet, queue_index);
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack((packet_s_stack**)packet, queue_index, batch_unlock);
 	}
 }
 
-inline void PACKET_S_PROCESS_PUSH_TO_STACK(packet_s_process **packet, u_int16_t queue_index) {
+inline void PACKET_S_PROCESS_PUSH_TO_STACK(packet_s_process **packet, u_int16_t queue_index, sBatchBlockUnlock *batch_unlock = NULL) {
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 	if((*packet)->__type == _t_packet_s_process) {
-		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack(packet, queue_index);
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack(packet, queue_index, batch_unlock);
 	} else if((*packet)->__type == _t_packet_s_process_0) {
-		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack((packet_s_process_0**)packet, queue_index);
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack((packet_s_process_0**)packet, queue_index, batch_unlock);
 	} else if((*packet)->__type == _t_packet_s_stack) {
-		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack((packet_s_stack**)packet, queue_index);
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack((packet_s_stack**)packet, queue_index, batch_unlock);
 	}
 }
 
-inline void PACKET_S_PROCESS_PUSH_TO_STACK(packet_s_stack **packet, u_int16_t queue_index) {
+inline void PACKET_S_PROCESS_PUSH_TO_STACK(packet_s_stack **packet, u_int16_t queue_index, sBatchBlockUnlock *batch_unlock = NULL) {
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 	if((*packet)->__type == _t_packet_s_stack) {
-		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack(packet, queue_index);
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack(packet, queue_index, batch_unlock);
 	} else if((*packet)->__type == _t_packet_s_process) {
-		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack((packet_s_process**)packet, queue_index);
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack((packet_s_process**)packet, queue_index, batch_unlock);
 	} else if((*packet)->__type == _t_packet_s_process_0) {
-		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack((packet_s_process_0**)packet, queue_index);
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack((packet_s_process_0**)packet, queue_index, batch_unlock);
 	}
 }
 
@@ -2139,6 +2114,7 @@ public:
 		batch_packet_s_process(unsigned max_count) {
 			count = 0;
 			used = 0;
+			required_sip_seq = 0;
 			batch = new FILE_LINE(28008) packet_s_process_0*[max_count];
 			memset(batch, 0, sizeof(packet_s_process_0*) * max_count);
 			this->max_count = max_count;
@@ -2162,6 +2138,7 @@ public:
 		packet_s_process_0 **batch;
 		volatile unsigned count;
 		volatile int used;
+		volatile u_int32_t required_sip_seq;
 		unsigned max_count;
 	};
 	struct arg_next_thread {
@@ -2291,31 +2268,20 @@ public:
 			push_thread = _tid;
 		}
 		#endif
+		if(is_terminating()) {
+			return;
+		}
 		if(qring_push_index && qring_push_index_count) {
-			#if RQUEUE_SAFE
-				__SYNC_SET_TO_LOCK(qring_active_push_item->count, qring_push_index_count, this->_sync_count);
-				__SYNC_SET(qring_active_push_item->used);
-				__SYNC_INCR(this->writeit, this->qring_length);
-			#else
-				qring_active_push_item->count = qring_push_index_count;
-				qring_active_push_item->used = 1;
-				if((this->writeit + 1) == this->qring_length) {
-					this->writeit = 0;
-				} else {
-					this->writeit++;
-				}
-			#endif
-			extern int opt_preprocess_rtp_packets_qring_sem_sync;
-			if(opt_preprocess_rtp_packets_qring_sem_sync) {
-				sem_post(&this->sem_qring_filled_count);
-			}
-			qring_push_index = 0;
-			qring_push_index_count = 0;
+			_push_packet__push_batch();
 		}
 	}
 	void preparePstatData(int nextThreadId, int pstatDataIndex);
 	double getCpuUsagePerc(int nextThreadId, int pstatDataIndex, bool preparePstatData = true);
 	void terminate();
+	inline void wakeAll() {
+		wake_free.notify_all();
+		wake_filled.notify_all();
+	}
 	static void autoStartProcessRtpPacket();
 	void addRtpRhThread();
 	void removeRtpRhThread();
@@ -2363,7 +2329,8 @@ private:
 	template<bool SemConsumeMode>
 	inline void find_hash_range(packet_s_process_0 **batch_packets, unsigned range_begin, unsigned range_end,
 				    unsigned *counters, u_int16_t stack_queue_index,
-				    bool enable_dtls_with_lock, bool enable_dtls_lockless);
+				    bool enable_dtls_with_lock, bool enable_dtls_lockless,
+				    sBatchBlockUnlock *batch_unlock);
 	void rtp_batch(batch_packet_s_process *batch, unsigned count);
 	inline void rtp_packet_distr(packet_s_process_0 *packetS, int _process_rtp_packets_distribute_threads_use);
 	inline void find_hash(packet_s_process_0 *packetS, unsigned *counters, bool lock = true);
@@ -2384,10 +2351,12 @@ private:
 	u_int64_t qring_active_push_item_limit_us;
 	unsigned qring_push_index;
 	unsigned qring_push_index_count;
-	char _pad_readit[64];
+	char _pad_readit[VM_CACHELINE_SIZE];
 	volatile unsigned int readit;
-	char _pad_writeit[64];
+	char _pad_writeit[VM_CACHELINE_SIZE];
 	volatile unsigned int writeit;
+	cAdaptiveWake wake_free;
+	cAdaptiveWake wake_filled;
 	sem_t sem_qring_free_count;
 	sem_t sem_qring_filled_count;
 	pthread_t out_thread_handle;

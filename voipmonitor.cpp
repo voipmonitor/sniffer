@@ -1251,6 +1251,7 @@ int opt_t2_boost_rtp_max_queue_length_ms = 0;
 int opt_t2_boost_direct_rtp = false;
 int opt_t2_boost_direct_rtp_delay_queue_ms = 0;
 int opt_t2_boost_direct_rtp_max_queue_length_ms = 0;
+int opt_pipeline_v2 = 1;
 int opt_t2_boost_call_find_threads = false;
 int opt_t2_boost_call_threads = 3;
 int opt_t2_boost_pb_detach_thread = 0;
@@ -5379,6 +5380,15 @@ int main_init_read() {
 		}
 		if(is_enable_packetbuffer()) {
 			for(int i = (opt_t2_boost_direct_rtp ? PreProcessPacket::ppt_detach_x : PreProcessPacket::ppt_detach); i < max(1, min(opt_enable_preprocess_packet, (int)PreProcessPacket::ppt_end_base)); i++) {
+				if(opt_pipeline_v2) {
+					// Collapse ppt_extend (inlined in ppt_sip) and ppt_pp_rtp (inlined when no delay queue)
+					if(i == PreProcessPacket::ppt_extend) {
+						continue;
+					}
+					if(i == PreProcessPacket::ppt_pp_rtp && !preProcessPacket[i]->useRtpDelayQueue()) {
+						continue;
+					}
+				}
 				if((i != PreProcessPacket::ppt_pp_register && 
 				    i != PreProcessPacket::ppt_pp_sip_other &&
 				    i != PreProcessPacket::ppt_pp_diameter) ||
@@ -5398,10 +5408,15 @@ int main_init_read() {
 		   (!opt_fork || opt_t2_boost) &&
 		   opt_enable_process_rtp_packet && enable_pcap_split &&
 		   is_enable_packetbuffer()) {
-			for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
-				processRtpPacketDistribute[i] = new FILE_LINE(42023) ProcessRtpPacket(ProcessRtpPacket::distribute, i);
+			if(opt_pipeline_v2) {
+				// Fused hash+distribute inside ProcessRtpPacket::hash (zero rd hop!)
+				process_rtp_packets_distribute_threads_use = 0;
+			} else {
+				for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
+					processRtpPacketDistribute[i] = new FILE_LINE(42023) ProcessRtpPacket(ProcessRtpPacket::distribute, i);
+				}
+				process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
 			}
-			process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
 			processRtpPacketHash = new FILE_LINE(42024) ProcessRtpPacket(ProcessRtpPacket::hash, 0);
 		}
 	}
@@ -5918,10 +5933,11 @@ void terminate_processpacket() {
 		diameterTcpData = NULL;
 	}
 	
+	// Wake any upstream producer waiting on processRtpPacketHash before draining PreProcessPacket
+	// stages, then tear down upstream PreProcessPacket threads BEFORE deleting processRtpPacketHash
+	// so ppt_detach / ppt_pp_rtp cannot push into a freed ProcessRtpPacket object.
 	if(processRtpPacketHash) {
-		processRtpPacketHash->terminate();
-		delete processRtpPacketHash;
-		processRtpPacketHash = NULL;
+		processRtpPacketHash->wakeAll();
 	}
 	
 	for(int termPass = 0; termPass < 2; termPass++) {
@@ -5973,6 +5989,12 @@ void terminate_processpacket() {
 			preProcessPacketCallX_count = 0;
 			preProcessPacketCallX_state = PreProcessPacket::callx_na;
 		}
+	}
+
+	if(processRtpPacketHash) {
+		processRtpPacketHash->terminate();
+		delete processRtpPacketHash;
+		processRtpPacketHash = NULL;
 	}
 	
 	for(int termPass = 0; termPass < 2; termPass++) {
@@ -6739,6 +6761,7 @@ void cConfig::addConfigItems() {
 					addConfigItem((new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost))
 						->addValues("high_traffic:2")
 						->addAlias("threading_expanded"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pipeline_v2", &opt_pipeline_v2));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_rtp_delay_ms"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_rtp_delay_queue_ms", &opt_t2_boost_rtp_delay_queue_ms));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_rtp_max_queue_length_ms", &opt_t2_boost_rtp_max_queue_length_ms));
@@ -9771,7 +9794,7 @@ void set_context_config() {
 	}
 	*/
 	
-	if(opt_t2_boost == 2 && !CONFIG.isSet("t2_boost_direct_rtp_delay_ms")) {
+	if(opt_t2_boost == 2 && !opt_pipeline_v2 && !CONFIG.isSet("t2_boost_direct_rtp_delay_ms")) {
 		if(!CONFIG.isSet("t2_boost_direct_rtp_delay_queue_ms")) {
 			opt_t2_boost_direct_rtp_delay_queue_ms = 2000;
 		}
@@ -9798,8 +9821,17 @@ void set_context_config() {
 	}
 	
 	if(opt_use_dpdk || opt_t2_boost > 1) {
-		opt_pcap_queue_store_queue_max_disk_size = 0;
-		opt_pcap_queue_disk_folder = "";
+		if(!CONFIG.isSet("packetbuffer_file_totalmaxsize")) {
+			opt_pcap_queue_store_queue_max_disk_size = 0;
+		}
+		if(!CONFIG.isSet("packetbuffer_file_path")) {
+			opt_pcap_queue_disk_folder = "";
+		}
+	}
+
+	if(opt_pipeline_v2 && !CONFIG.isSet("pcap_queue_suppress_t1_thread") &&
+	   (!opt_pcap_queue_store_queue_max_disk_size || opt_pcap_queue_disk_folder.empty())) {
+		opt_pcap_queue_suppress_t1_thread = 1;
 	}
 	
 	if(is_read_from_file_simple() && opt_mysql_enable_set_id) {
@@ -10137,7 +10169,7 @@ void set_context_config() {
 	}
 	
 	if(opt_t2_boost) {
-		if(opt_t2_boost == 2 && !CONFIG.isSet("t2_boost_ht_hash_queue")) {
+		if(opt_t2_boost == 2 && !opt_pipeline_v2 && !CONFIG.isSet("t2_boost_ht_hash_queue")) {
 			opt_t2_boost_ht_hash_queue = true;
 		}
 		if(!CONFIG.isSet("t2_boost_ht_cleanup_calls")) {
@@ -10196,7 +10228,7 @@ void set_context_config() {
 		}
 	}
 
-	hash_modify_queue_length_ms = opt_t2_boost == 2 && (CONFIG.isSet("hash_queue_length_ms_high_traffic") || !CONFIG.isSet("hash_queue_length_ms")) ?
+	hash_modify_queue_length_ms = opt_t2_boost == 2 && !opt_pipeline_v2 && (CONFIG.isSet("hash_queue_length_ms_high_traffic") || !CONFIG.isSet("hash_queue_length_ms")) ?
 					opt_hash_modify_queue_length_ms_high_traffic :
 					opt_hash_modify_queue_length_ms;
 	

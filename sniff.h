@@ -181,6 +181,81 @@ extern bool opt_kamailio_subst;
 extern bool opt_ribbonsbc_subst;
 extern bool sip_data_subst;
 extern int opt_t2_boost_direct_rtp;
+extern int opt_pipeline_v2;
+
+// Cache-line isolated in-order causal epoch ring ensuring RTP never races ahead of prior SIP call setup
+// even with multiple parallel SIP worker threads, without requiring any blind time-based delay queue.
+// Uses wrap-safe 32-bit epoch IDs (0 reserved as untracked/free) for tear-free loads on 32-bit i686 too.
+struct sSipCausalEpoch {
+	static const unsigned RING_SIZE = 1024;
+	static const unsigned RING_MASK = RING_SIZE - 1;
+	struct sSlot {
+		volatile u_int32_t epoch_id;
+		volatile int32_t pending;
+		char _pad[VM_CACHELINE_SIZE - sizeof(u_int32_t) - sizeof(int32_t)];
+	};
+	static inline u_int32_t next_id(u_int32_t ep) {
+		++ep;
+		return ep ? ep : 1;
+	}
+	static inline bool is_before(u_int32_t a, u_int32_t b) {
+		return (int32_t)(a - b) < 0;
+	}
+	char _pad0[VM_CACHELINE_SIZE];
+	volatile u_int32_t open_epoch;
+	volatile u_int32_t last_sealed_epoch;
+	volatile int open_has_sip;
+	char _pad1[VM_CACHELINE_SIZE - 2 * sizeof(u_int32_t) - sizeof(int)];
+	volatile u_int32_t completed_epoch;
+	char _pad2[VM_CACHELINE_SIZE - sizeof(u_int32_t)];
+	cPaddedSpinLock _seal_lock;
+	cPaddedSpinLock _advance_lock;
+	cAdaptiveWake wake;
+	sSlot slots[RING_SIZE];
+	sSipCausalEpoch();
+	u_int32_t acquire_packet() __attribute__((noinline));
+	u_int32_t seal_for_rtp_batch() __attribute__((noinline));
+	void advance_completed() __attribute__((noinline));
+	void wait_for(u_int32_t req, const volatile bool *term_flag) __attribute__((noinline, cold));
+	inline void add_ref(u_int32_t ep) {
+		sSlot *s = &slots[ep & RING_MASK];
+		__sync_add_and_fetch(&s->pending, 1);
+	}
+	inline void release_ref(u_int32_t ep) {
+		sSlot *s = &slots[ep & RING_MASK];
+		if(__sync_sub_and_fetch(&s->pending, 1) == 0) {
+			advance_completed();
+		}
+	}
+};
+extern sSipCausalEpoch g_sip_causal_epoch;
+
+// Coalesces consecutive pcap_block_store::unlock_packet() calls for the same 1 MB block
+// inside a batch into a single atomic subtraction per block (100x-1000x fewer L3 atomic bounces).
+struct sBatchBlockUnlock {
+	pcap_block_store *last_block;
+	int pending;
+	inline sBatchBlockUnlock() : last_block(NULL), pending(0) {}
+	inline ~sBatchBlockUnlock() { flush(); }
+	inline void unlock(pcap_block_store *blk) {
+		if(__builtin_expect(blk == last_block, 1)) {
+			++pending;
+		} else {
+			if(last_block && pending) {
+				last_block->unlock_packets(pending);
+			}
+			last_block = blk;
+			pending = 1;
+		}
+	}
+	inline void flush() {
+		if(last_block && pending) {
+			last_block->unlock_packets(pending);
+			last_block = NULL;
+			pending = 0;
+		}
+	}
+};
 extern int opt_preprocess_packet_stack;
 
 
@@ -702,14 +777,19 @@ struct packet_s_stack : public packet_s {
 	volatile u_int8_t reuse_counter_sync;
 	u_int8_t type_content;
 	u_int8_t next_action;
+	u_int32_t sip_epoch;
 	inline packet_s_stack() {
 		__type = _t_packet_s_stack; 
 		init();
+	}
+	inline ~packet_s_stack() {
+		complete_sip_epoch();
 	}
 	inline void init() {
 		packet_s::init();
 		p_stack = NULL;
 		use_reuse_counter = 0;
+		sip_epoch = 0;
 	}
 	inline void init_reuse() {
 		if(__type >= _t_packet_s_stack) {
@@ -718,7 +798,27 @@ struct packet_s_stack : public packet_s {
 			reuse_counter_sync = 0;
 		}
 	}
+	inline void mark_sip_epoch() {
+		if(!sip_epoch) {
+			sip_epoch = g_sip_causal_epoch.acquire_packet();
+		}
+	}
+	inline void clone_sip_epoch_from(const packet_s_stack *src) {
+		sip_epoch = 0;
+		if(if_unlikely(src && src->sip_epoch)) {
+			sip_epoch = src->sip_epoch;
+			g_sip_causal_epoch.add_ref(sip_epoch);
+		}
+	}
+	inline void complete_sip_epoch() {
+		if(if_unlikely(sip_epoch)) {
+			u_int32_t ep = sip_epoch;
+			sip_epoch = 0;
+			g_sip_causal_epoch.release_ref(ep);
+		}
+	}
 	inline void term() {
+		complete_sip_epoch();
 		packet_s::term();
 	}
 	inline bool is_use_reuse_counter() {
@@ -959,6 +1059,7 @@ struct packet_s_process : public packet_s_process_0 {
 	}
 	inline packet_s_process& operator = (const packet_s_process& other) {
 		memcpy((void*)this, &other, sizeof(*this));
+		this->sip_epoch = 0;
 		if(other.callid_long) {
 			this->callid_long = new FILE_LINE(0) char[strlen(other.callid_long) + 1];
 			strcpy(this->callid_long, other.callid_long);
@@ -1316,6 +1417,9 @@ typedef struct {
 	char save_packet;
 } rtp_packet_pcap_queue;
 
+class ProcessRtpPacket;
+extern ProcessRtpPacket *processRtpPacketHash;
+
 class rtp_read_thread {
 public:
 	#if DEBUG_QUEUE_RTP_THREAD
@@ -1372,10 +1476,11 @@ public:
 	void term_thread_buffer();
 	size_t qring_size();
 	void flush_thread_buffer_locked(batch_packet_rtp_thread_buffer *thread_buffer) __attribute__((noinline));
-	void push_direct_qring(CallBranch *c_branch, packet_s_process_0 *packet, int iscaller, bool find_by_dest, int is_rtcp, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, int enable_save_packet) __attribute__((noinline));
+	bool acquire_qring_slot_slow() __attribute__((noinline));
+	static void drop_packet_on_terminate(packet_s_process_0 *packet) __attribute__((noinline, cold));
 	inline void push(CallBranch *c_branch, packet_s_process_0 *packet, int iscaller, bool find_by_dest, int is_rtcp, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, int enable_save_packet, int threadIndex = 0) {
 		extern int opt_t2_boost;
-		if(if_likely(threadIndex && opt_t2_boost)) {
+		if(threadIndex && opt_t2_boost) {
 			#if DEBUG_QUEUE_RTP_THREAD
 			unsigned tid = get_unix_tid();
 			if(!tdd[threadIndex-1].tid) {
@@ -1413,11 +1518,70 @@ public:
 			packet->blockstore_addflag(63 /*pb lock flag*/);
 			thread_buffer->count++;
 		} else {
-			this->push_direct_qring(c_branch, packet, iscaller, find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_packet);
+			// When rd is fused into rh (processRtpPacketHash active with 0 rd threads & t2_boost),
+			// rh is the sole SPSC producer for all rtp_threads — zero lock/unlock per packet!
+			extern volatile int process_rtp_packets_distribute_threads_use;
+			bool need_lock = !(processRtpPacketHash && opt_t2_boost && process_rtp_packets_distribute_threads_use == 0);
+			if(if_unlikely(need_lock)) {
+				this->push_lock_sync.lock(0);
+			}
+		 
+			#if DEBUG_QUEUE_RTP_THREAD
+			unsigned tid = get_unix_tid();
+			if(!tdd[0].tid) {
+				tdd[0].tid = tid;
+			} else if(tdd[0].tid != tid) {
+				syslog(LOG_NOTICE, "RACE in rtp_read_thread(%i)::push - %u / %u", threadNum, tdd[0].tid, tid);
+			}
+			#endif
+		 
+			packet->blockstore_addflag(61 /*pb lock flag*/);
+			packet->blockstore_addflag(threadNum /*pb lock flag*/);
+			
+			if(if_unlikely(!qring_push_index)) {
+				packet->blockstore_addflag(62 /*pb lock flag*/);
+				if(if_unlikely(!this->acquire_qring_slot_slow())) {
+					if(if_unlikely(need_lock)) {
+						this->push_lock_sync.unlock();
+					}
+					drop_packet_on_terminate(packet);
+					return;
+				}
+				qring_active_push_first_ms = getTimeMS_rdtsc();
+			}
+			rtp_packet_pcap_queue *rtpp_pq = &qring_active_push_item->batch[qring_push_index_count];
+			rtpp_pq->c_branch = c_branch;
+			rtpp_pq->packet = packet;
+			rtpp_pq->iscaller = iscaller;
+			rtpp_pq->find_by_dest = find_by_dest;
+			rtpp_pq->is_rtcp = is_rtcp;
+			rtpp_pq->stream_in_multiple_calls = stream_in_multiple_calls;
+			rtpp_pq->sdp_flags = sdp_flags;
+			rtpp_pq->save_packet = enable_save_packet;
+			++qring_push_index_count;
+			packet->blockstore_addflag(63 /*pb lock flag*/);
+			if(if_unlikely(qring_push_index_count == qring_active_push_item->max_count)) {
+				packet->blockstore_addflag(64 /*pb lock flag*/);
+				qring_active_push_item->count = qring_push_index_count;
+				__SYNC_SET(qring_active_push_item->used);
+				__SYNC_INCR(this->writeit, this->qring_length);
+				this->wake_filled.notify();
+				qring_push_index = 0;
+				qring_push_index_count = 0;
+				qring_active_push_first_ms = 0;
+			}
+			if(if_unlikely(need_lock)) {
+				this->push_lock_sync.unlock();
+			}
 		}
 	}
 	inline void push_batch() {
-		__SYNC_LOCK(this->push_lock_sync);
+		extern int opt_t2_boost;
+		extern volatile int process_rtp_packets_distribute_threads_use;
+		bool need_lock = !(processRtpPacketHash && opt_t2_boost && process_rtp_packets_distribute_threads_use == 0);
+		if(if_unlikely(need_lock)) {
+			this->push_lock_sync.lock(0);
+		}
 	 
 		#if DEBUG_QUEUE_RTP_THREAD
 		unsigned tid = get_unix_tid();
@@ -1429,29 +1593,17 @@ public:
 		#endif
 			
 		if(qring_push_index_count) {
-			#if RQUEUE_SAFE
-				__SYNC_SET_TO_LOCK(qring_active_push_item->count, qring_push_index_count, this->count_lock_sync);
-				__SYNC_SET(qring_active_push_item->used);
-				__SYNC_INCR(this->writeit, this->qring_length);
-			#else
-				__SYNC_LOCK(this->count_lock_sync);
-				qring_active_push_item->count = qring_push_index_count;
-				__SYNC_UNLOCK(this->count_lock_sync);
-				qring_active_push_item->used = 1;
-				if((this->writeit + 1) == this->qring_length) {
-					this->writeit = 0;
-				} else {
-					this->writeit++;
-				}
-			#endif
-			extern int opt_rtp_read_thread_qring_sem_sync;
-			if(opt_rtp_read_thread_qring_sem_sync) {
-				sem_post(&this->sem_qring_filled_count);
-			}
+			qring_active_push_item->count = qring_push_index_count;
+			__SYNC_SET(qring_active_push_item->used);
+			__SYNC_INCR(this->writeit, this->qring_length);
+			this->wake_filled.notify();
 			qring_push_index = 0;
 			qring_push_index_count = 0;
+			qring_active_push_first_ms = 0;
 		}
-		__SYNC_UNLOCK(this->push_lock_sync);
+		if(if_unlikely(need_lock)) {
+			this->push_lock_sync.unlock();
+		}
 	}
 	inline void push_thread_buffer(int threadIndex) {
 	 
@@ -1485,24 +1637,25 @@ public:
 	thread_debug_data *tdd;
 	#endif
 	batch_packet_rtp *qring_active_push_item;
+	u_int64_t qring_active_push_first_ms;
 	volatile unsigned qring_push_index;
 	volatile unsigned qring_push_index_count;
-	char _pad_readit[64];
+	char _pad_readit[VM_CACHELINE_SIZE];
 	volatile unsigned int readit;
-	char _pad_writeit[64];
+	char _pad_writeit[VM_CACHELINE_SIZE];
 	volatile unsigned int writeit;
 	pstat_data threadPstatData[2][2];
 	volatile bool remove_flag;
 	u_int32_t last_use_time_s;
 	volatile u_int32_t calls;
 	volatile double cpu;
-	char _pad_push_lock[64];
-	volatile int push_lock_sync;
-	volatile int count_lock_sync;
+	cPaddedSpinLock push_lock_sync;
+	cAdaptiveWake wake_free;
+	cAdaptiveWake wake_filled;
 	sem_t sem_qring_free_count;
 	sem_t sem_qring_filled_count;
 	// Prevent false sharing between adjacent elements of rtp_threads[]
-	char _pad_end[64];
+	char _pad_end[VM_CACHELINE_SIZE];
 };
 
 #define MAXLIVEFILTERS 10
