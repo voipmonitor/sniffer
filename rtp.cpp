@@ -72,7 +72,7 @@ extern int opt_inbanddtmf;
 extern int opt_silencedetect;
 extern int opt_clippingdetect;
 extern int opt_fasdetect;
-extern int opt_silence_detect_after_answer;
+extern u_int64_t opt_silence_detect_after_answer;
 extern int opt_ivrdetect;
 extern SqlDb *sqlDbSaveCall;
 extern int opt_mysqlstore_max_threads_cdr;

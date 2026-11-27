@@ -10627,7 +10627,7 @@ void SqlDb_mysql::checkColumns_cdr(bool enableAlter) {
 					NULL_CHAR_PTR);
 	}
 	if(!opt_disable_cdr_fields_rtp) {
-		extern int opt_silence_detect_after_answer;
+		extern u_int64_t opt_silence_detect_after_answer;
 		this->checkExistsColumn("cdr", "silence after answer", opt_silence_detect_after_answer && enableAlter,
 					&tableSize, &existsColumns.cdr_silence_afteranswer,
 					"silence_afteranswer", "smallint unsigned default NULL", NULL_CHAR_PTR,
