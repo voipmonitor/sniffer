@@ -197,6 +197,10 @@ int jb_queue_put_ooo_slow(jitterbuf *jb, const jb_slot *in, long resync_ts);
 enum jb_return_code jb_get_slot_silent_slow(jitterbuf *jb, jb_slot *slotout, long now, long interpl);
 enum jb_return_code jb_getall_slot(jitterbuf *jb, jb_slot *slotout);
 
+#ifdef __cplusplus
+}
+#endif
+
 #define JB_LONGMAX_VAL 2147483647L
 
 static inline void jb_increment_losspct_inl(jitterbuf *jb)
@@ -211,13 +215,15 @@ static inline void jb_decrement_losspct_inl(jitterbuf *jb)
 	}
 }
 
-static inline __attribute__((always_inline)) void jb_hist_add_only_impl(
-	int32_t *buf, int16_t *p_len, int16_t *p_eq_out, int32_t delay, int is_max)
+#ifdef __cplusplus
+template<bool IsMax>
+static inline void jb_hist_add_only_impl(
+	int32_t *buf, int16_t *p_len, int16_t *p_eq_out, int32_t delay)
 {
 	int len = *p_len;
 	if (__builtin_expect(len < JB_HIST_TRACK_SZ, 0)) {
 		int j = len;
-		while (j > 0 && (is_max ? (buf[j - 1] < delay) : (buf[j - 1] > delay))) {
+		while (j > 0 && (IsMax ? (buf[j - 1] < delay) : (buf[j - 1] > delay))) {
 			buf[j] = buf[j - 1];
 			j--;
 		}
@@ -225,14 +231,13 @@ static inline __attribute__((always_inline)) void jb_hist_add_only_impl(
 		*p_len = (int16_t)(len + 1);
 	} else {
 		int32_t T = buf[JB_HIST_TRACK_SZ - 1];
-		int j;
-		if (is_max ? (delay < T) : (delay > T)) return;
+		if (IsMax ? (delay < T) : (delay > T)) return;
 		if (delay == T) {
 			(*p_eq_out)++;
 			return;
 		}
-		j = JB_HIST_TRACK_SZ - 1;
-		while (j > 0 && (is_max ? (buf[j - 1] < delay) : (buf[j - 1] > delay))) {
+		int j = JB_HIST_TRACK_SZ - 1;
+		while (j > 0 && (IsMax ? (buf[j - 1] < delay) : (buf[j - 1] > delay))) {
 			buf[j] = buf[j - 1];
 			j--;
 		}
@@ -247,34 +252,35 @@ static inline __attribute__((always_inline)) void jb_hist_add_only_impl(
 
 static inline void jb_hist_min_add_only(jitterbuf *jb, int32_t delay)
 {
-	jb_hist_add_only_impl(jb->hist_minbuf, &jb->hist_min_len, &jb->hist_min_eq_out, delay, 0);
+	jb_hist_add_only_impl<false>(jb->hist_minbuf, &jb->hist_min_len, &jb->hist_min_eq_out, delay);
 }
 
 static inline void jb_hist_max_add_only(jitterbuf *jb, int32_t delay)
 {
-	jb_hist_add_only_impl(jb->hist_maxbuf, &jb->hist_max_len, &jb->hist_max_eq_out, delay, 1);
+	jb_hist_add_only_impl<true>(jb->hist_maxbuf, &jb->hist_max_len, &jb->hist_max_eq_out, delay);
 }
 
-static inline __attribute__((always_inline)) void jb_hist_replace_impl(
+template<bool IsMax>
+static inline void jb_hist_replace_impl(
 	jitterbuf *jb, int32_t *buf, int16_t *p_len, int16_t *p_eq_out, uint8_t *p_valid,
-	int32_t kicked, int32_t delay, int is_max)
+	int32_t kicked, int32_t delay)
 {
 	int len = *p_len;
 	int32_t T = buf[len - 1];
 
-	if (__builtin_expect(is_max ? (kicked < T && delay < T) : (kicked > T && delay > T), 1))
+	if (__builtin_expect(IsMax ? (kicked < T && delay < T) : (kicked > T && delay > T), 1))
 		return;
 
 	jb->hist_dirty = 1;
 
-	if (is_max ? (kicked > T) : (kicked < T)) {
-		int lo = 0, hi = len - 2, j;
+	if (IsMax ? (kicked > T) : (kicked < T)) {
+		int lo = 0, hi = len - 2;
 		while (lo < hi) {
 			int mid = (lo + hi) >> 1;
-			if (is_max ? (buf[mid] > kicked) : (buf[mid] < kicked)) lo = mid + 1;
+			if (IsMax ? (buf[mid] > kicked) : (buf[mid] < kicked)) lo = mid + 1;
 			else hi = mid;
 		}
-		for (j = lo; j < len - 1; j++) {
+		for (int j = lo; j < len - 1; j++) {
 			buf[j] = buf[j + 1];
 		}
 		len--;
@@ -291,10 +297,10 @@ static inline __attribute__((always_inline)) void jb_hist_replace_impl(
 		}
 	}
 
-	if (is_max ? (delay > T) : (delay < T)) {
+	if (IsMax ? (delay > T) : (delay < T)) {
 		if (len < JB_HIST_TRACK_SZ) {
 			int j = len;
-			while (j > 0 && (is_max ? (buf[j - 1] < delay) : (buf[j - 1] > delay))) {
+			while (j > 0 && (IsMax ? (buf[j - 1] < delay) : (buf[j - 1] > delay))) {
 				buf[j] = buf[j - 1];
 				j--;
 			}
@@ -302,7 +308,7 @@ static inline __attribute__((always_inline)) void jb_hist_replace_impl(
 			len++;
 		} else {
 			int j = JB_HIST_TRACK_SZ - 1;
-			while (j > 0 && (is_max ? (buf[j - 1] < delay) : (buf[j - 1] > delay))) {
+			while (j > 0 && (IsMax ? (buf[j - 1] < delay) : (buf[j - 1] > delay))) {
 				buf[j] = buf[j - 1];
 				j--;
 			}
@@ -329,13 +335,14 @@ static inline __attribute__((always_inline)) void jb_hist_replace_impl(
 
 static inline void jb_hist_min_replace(jitterbuf *jb, int32_t kicked, int32_t delay)
 {
-	jb_hist_replace_impl(jb, jb->hist_minbuf, &jb->hist_min_len, &jb->hist_min_eq_out, &jb->hist_min_valid, kicked, delay, 0);
+	jb_hist_replace_impl<false>(jb, jb->hist_minbuf, &jb->hist_min_len, &jb->hist_min_eq_out, &jb->hist_min_valid, kicked, delay);
 }
 
 static inline void jb_hist_max_replace(jitterbuf *jb, int32_t kicked, int32_t delay)
 {
-	jb_hist_replace_impl(jb, jb->hist_maxbuf, &jb->hist_max_len, &jb->hist_max_eq_out, &jb->hist_max_valid, kicked, delay, 1);
+	jb_hist_replace_impl<true>(jb, jb->hist_maxbuf, &jb->hist_max_len, &jb->hist_max_eq_out, &jb->hist_max_valid, kicked, delay);
 }
+#endif
 
 static inline void jb_history_reset_state(jitterbuf *jb, long ts, long now)
 {
@@ -644,10 +651,6 @@ static inline enum jb_return_code jb_get_slot_inl(jitterbuf *jb, jb_slot *slotou
 		return jb_get_slot_silent_slow(jb, slotout, now, interpl);
 	}
 }
-
-#ifdef __cplusplus
-}
-#endif
 
 
 #endif

@@ -93,8 +93,8 @@ struct ast_jb_impl
 	jb_empty_and_reset_impl empty_and_reset;
 };
 
-extern void fifobuff_add(void *fifo_buff, const char *data, unsigned int datalen);
-extern void save_rtp_energylevels(void *rtp_stream, void *data, int datalen, int codec);
+extern "C" void fifobuff_add(void *fifo_buff, const char *data, unsigned int datalen);
+extern "C" void save_rtp_energylevels(void *rtp_stream, void *data, int datalen, int codec);
 
 /* Implementation functions */
 /* fixed */
@@ -118,32 +118,32 @@ static int jb_remove_adaptive(void *jb, struct ast_frame **fout);
 static void jb_force_resynch_adaptive(void *jb);
 static void jb_empty_and_reset_adaptive(void *jb);
 
-/* Available jb implementations */
+/* Available jb implementations (C++98 positional initializers for GCC 4.4.5 compatibility) */
 static struct ast_jb_impl avail_impl[] =
 {
 	{
-		.name = "fixed",
-		.create = jb_create_fixed,
-		.destroy = jb_destroy_fixed,
-		.put_first = jb_put_first_fixed,
-		.put = jb_put_fixed,
-		.get = jb_get_fixed,
-		.next = jb_next_fixed,
-		.remove = jb_remove_fixed,
-		.force_resync = jb_force_resynch_fixed,
-		.empty_and_reset = jb_empty_and_reset_fixed,
+		"fixed",
+		jb_create_fixed,
+		jb_destroy_fixed,
+		jb_put_first_fixed,
+		jb_put_fixed,
+		jb_get_fixed,
+		jb_next_fixed,
+		jb_remove_fixed,
+		jb_force_resynch_fixed,
+		jb_empty_and_reset_fixed
 	},
 	{
-		.name = "adaptive",
-		.create = jb_create_adaptive,
-		.destroy = jb_destroy_adaptive,
-		.put_first = jb_put_first_adaptive,
-		.put = jb_put_adaptive,
-		.get = jb_get_adaptive,
-		.next = jb_next_adaptive,
-		.remove = jb_remove_adaptive,
-		.force_resync = jb_force_resynch_adaptive,
-		.empty_and_reset = jb_empty_and_reset_adaptive,
+		"adaptive",
+		jb_create_adaptive,
+		jb_destroy_adaptive,
+		jb_put_first_adaptive,
+		jb_put_adaptive,
+		jb_get_adaptive,
+		jb_next_adaptive,
+		jb_remove_adaptive,
+		jb_force_resynch_adaptive,
+		jb_empty_and_reset_adaptive
 	}
 };
 
@@ -172,26 +172,25 @@ static inline long tvdiff_ms_fast(const struct timeval *end, const struct timeva
 	       (((1000000L + end->tv_usec - start->tv_usec) / 1000L) - 1000L);
 }
 
-static inline __attribute__((always_inline)) void jb_force_resync_impl(struct ast_jb *jb, int is_fixed)
-{
-	if (is_fixed) {
-		fixed_jb_set_force_resynch((struct fixed_jb *)jb->jbobj);
-	} else {
-		jb_empty_and_reset_adaptive(jb->jbobj);
+/* Compile-time traits specializing fixed vs adaptive JB with zero runtime overhead */
+template<bool IsFixed> struct JbTraits;
+
+template<> struct JbTraits<true> {
+	typedef struct fixed_jb obj_type;
+	typedef struct fixed_jb_slot slot_type;
+
+	static inline long next(obj_type *jb) {
+		return fixed_jb_next_inl(jb);
 	}
-}
-
-/* Unified zero-alloc metadata slot put (compile-time specialized on is_fixed / is_first) */
-static inline __attribute__((always_inline)) int jb_put_meta_slot_inl(
-	struct ast_channel *chan, long ts, long len, int seqno,
-	char marker, uint8_t flags, long now, int is_fixed, int is_first)
-{
-	struct ast_jb *jb = &chan->jb;
-	int rslt;
-
-	if (is_fixed) {
-		struct fixed_jb *fjb = (struct fixed_jb *)jb->jbobj;
-		struct fixed_jb_slot in;
+	static inline int get_slot(obj_type *jb, slot_type *slot, long now, long interpl) {
+		return fixed_to_abstract_code[fixed_jb_get_slot_inl(jb, slot, now, interpl)];
+	}
+	static inline void force_resync(obj_type *jb) {
+		fixed_jb_set_force_resynch(jb);
+	}
+	template<bool IsFirst>
+	static inline int put_meta(obj_type *jb, long ts, long len, int seqno, char marker, uint8_t flags, long now, int audio_decode) {
+		slot_type in;
 		in.ts = ts;
 		in.delivery = 0;
 		in.orig_ts = ts;
@@ -199,36 +198,55 @@ static inline __attribute__((always_inline)) int jb_put_meta_slot_inl(
 		in.seqno = (uint16_t)seqno;
 		in.flags = flags;
 		in.pad = 0;
-		rslt = fixed_to_abstract_code[
-			is_first ? fixed_jb_put_first_slot(fjb, &in, now, marker)
-				 : fixed_jb_put_slot_inl(fjb, &in, now, marker, chan->audio_decode)
+		return fixed_to_abstract_code[
+			IsFirst ? fixed_jb_put_first_slot(jb, &in, now, marker)
+				: fixed_jb_put_slot_inl(jb, &in, now, marker, audio_decode)
 		];
-		if (!is_first) {
-			if (__builtin_expect(chan->prev_frame_is_dtmf != 0, 0))
-				chan->prev_frame_is_dtmf = 0;
-		}
-		if (is_first || __builtin_expect(rslt == JB_IMPL_OK, 1)) {
-			jb->next = fixed_jb_next_inl(fjb);
-		}
-	} else {
-		jitterbuf *ajb = (jitterbuf *)jb->jbobj;
-		jb_slot in;
+	}
+};
+
+template<> struct JbTraits<false> {
+	typedef jitterbuf obj_type;
+	typedef jb_slot slot_type;
+
+	static inline long next(obj_type *jb) {
+		return jb_next_inl(jb);
+	}
+	static inline int get_slot(obj_type *jb, slot_type *slot, long now, long interpl) {
+		return adaptive_to_abstract_code[jb_get_slot_inl(jb, slot, now, interpl)];
+	}
+	static inline void force_resync(obj_type *jb) {
+		jb_empty_and_reset_adaptive(jb);
+	}
+	template<bool IsFirst>
+	static inline int put_meta(obj_type *jb, long ts, long len, int seqno, char /*marker*/, uint8_t flags, long now, int /*audio_decode*/) {
+		slot_type in;
 		in.ts = ts;
 		in.orig_ts = ts;
 		in.ms = (int32_t)len;
 		in.seqno = (uint16_t)seqno;
 		in.type = JB_TYPE_VOICE;
 		in.flags = flags;
-		rslt = adaptive_to_abstract_code[jb_put_slot_inl(ajb, &in, now)];
-		if (!is_first) {
-			if (__builtin_expect(chan->prev_frame_is_dtmf != 0, 0))
-				chan->prev_frame_is_dtmf = 0;
-		}
-		if (is_first || __builtin_expect(rslt == JB_IMPL_OK, 1)) {
-			jb->next = jb_next_inl(ajb);
-		}
+		return adaptive_to_abstract_code[jb_put_slot_inl(jb, &in, now)];
 	}
+};
 
+/* Unified zero-alloc metadata slot put (compile-time specialized on IsFixed / IsFirst) */
+template<bool IsFixed, bool IsFirst>
+static inline int jb_put_meta_slot(
+	struct ast_channel *chan, long ts, long len, int seqno,
+	char marker, uint8_t flags, long now)
+{
+	typedef JbTraits<IsFixed> Traits;
+	struct ast_jb *jb = &chan->jb;
+	typename Traits::obj_type *obj = (typename Traits::obj_type *)jb->jbobj;
+	int rslt = Traits::template put_meta<IsFirst>(obj, ts, len, seqno, marker, flags, now, chan->audio_decode);
+	if (!IsFirst && __builtin_expect(chan->prev_frame_is_dtmf != 0, 0)) {
+		chan->prev_frame_is_dtmf = 0;
+	}
+	if (IsFirst || __builtin_expect(rslt == JB_IMPL_OK, 1)) {
+		jb->next = Traits::next(obj);
+	}
 	return rslt;
 }
 
@@ -332,7 +350,9 @@ static int create_jb_meta(struct ast_channel *chan, long ts, long len, int seqno
 	}
 
 	now = tvdiff_ms_fast(mynow, &jb->timebase);
-	res = jb_put_meta_slot_inl(chan, ts, len, seqno, marker, flags, now, jbimpl == &avail_impl[0], 1);
+	res = (jbimpl == &avail_impl[0])
+		? jb_put_meta_slot<true, true>(chan, ts, len, seqno, marker, flags, now)
+		: jb_put_meta_slot<false, true>(chan, ts, len, seqno, marker, flags, now);
 
 	if (res != JB_IMPL_OK) {
 		if (sverb.jitter) fprintf(stdout, "Failed to put first frame in the jitterbuffer on channel\n");
@@ -373,7 +393,11 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f, struct timeval *my
 	if (__builtin_expect(chan->resync && f->marker, 0)) {
 		if (sverb.jitter) fprintf(stdout, "JB_PUT[%p] {now=%ld}: marker bit set, Force resynching jb...\n", jb, now);
 		if (ast_test_flag(jb, JB_CREATED)) {
-			jb_force_resync_impl(jb, jbimpl == &avail_impl[0]);
+			if (jbimpl == &avail_impl[0]) {
+				JbTraits<true>::force_resync((struct fixed_jb *)jbobj);
+			} else {
+				JbTraits<false>::force_resync((jitterbuf *)jbobj);
+			}
 		}
 	}
 
@@ -399,8 +423,8 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f, struct timeval *my
 
 		now = tvdiff_ms_fast(mynow, &jb->timebase);
 		rslt = (jbimpl == &avail_impl[0])
-			? jb_put_meta_slot_inl(chan, f->ts, f->len, f->seqno, f->marker, flags, now, 1, 0)
-			: jb_put_meta_slot_inl(chan, f->ts, f->len, f->seqno, f->marker, flags, now, 0, 0);
+			? jb_put_meta_slot<true, false>(chan, f->ts, f->len, f->seqno, f->marker, flags, now)
+			: jb_put_meta_slot<false, false>(chan, f->ts, f->len, f->seqno, f->marker, flags, now);
 		if (__builtin_expect(rslt != JB_IMPL_OK, 0)) {
 			if (sverb.jitter) fprintf(stdout, "JB_PUT[%p] {now=%ld}: Dropped frame with ts=%ld and len=%ld and seq=%d\n", jb, now, f->ts, f->len, f->seqno);
 			return 0;
@@ -487,7 +511,7 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
 			if (chan->rawstream)
 				fwrite(f->data, 1, f->datalen, chan->rawstream);
 			if (chan->audiobuf)
-				fifobuff_add(chan->audiobuf, f->data, f->datalen);
+				fifobuff_add(chan->audiobuf, (const char *)f->data, f->datalen);
 			if (!chan->lastbuf) {
 				chan->lastbufsize = f->datalen > 1600 ? f->datalen : 1600;
 				chan->lastbuf = (char *)ast_malloc(chan->lastbufsize);
@@ -555,7 +579,7 @@ void save_empty_frame(struct ast_channel *chan)
 			if (chan->lastbuflen && opt_disableplc == 0 &&
 			    (!opt_fix_packetization_in_create_audio ||
 			     !(chan->codec == PAYLOAD_PCMA || chan->codec == PAYLOAD_PCMU) ||
-			     chan->lastbuflen == pcm_datalen)) {
+			     (unsigned)chan->lastbuflen == pcm_datalen)) {
 				if (chan->rawstream)
 					fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
 				if (chan->audiobuf)
@@ -616,7 +640,7 @@ static void deliver_audio_frame(struct ast_channel *chan, struct ast_frame *f, l
 		if (chan->rawstream)
 			fwrite(f->data, 1, f->datalen, chan->rawstream);
 		if (chan->audiobuf) {
-			fifobuff_add(chan->audiobuf, f->data, f->datalen);
+			fifobuff_add(chan->audiobuf, (const char *)f->data, f->datalen);
 		}
 		if (opt_fix_packetization_in_create_audio &&
 		    (chan->codec == PAYLOAD_PCMA || chan->codec == PAYLOAD_PCMU)) {
@@ -651,99 +675,72 @@ static void deliver_audio_frame(struct ast_channel *chan, struct ast_frame *f, l
 	ast_frfree(f);
 }
 
-/* Unified inline get-and-deliver (compile-time specialized on is_fixed / has_audio_sink) */
-static inline __attribute__((always_inline)) void jb_get_and_deliver_now(
-	struct ast_channel *chan, long now, int has_audio_sink, int is_fixed)
+/* Unified inline get-and-deliver (compile-time specialized via template<bool, bool> + JbTraits) */
+template<bool IsFixed, bool HasAudioSink>
+static inline void jb_get_and_deliver_now(struct ast_channel *chan, long now)
 {
+	typedef JbTraits<IsFixed> Traits;
 	struct ast_jb *jb = &chan->jb;
-	long next = is_fixed ? fixed_jb_next_inl((struct fixed_jb *)jb->jbobj)
-			     : jb_next_inl((jitterbuf *)jb->jbobj);
-	int interpl;
+	typename Traits::obj_type *obj = (typename Traits::obj_type *)jb->jbobj;
+	long next = Traits::next(obj);
 
 	jb->next = next;
 
 	if (__builtin_expect(next == JB_LONGMAX, 0)) {
-		if (has_audio_sink) save_empty_frame(chan);
+		if (HasAudioSink) save_empty_frame(chan);
 		chan->last_loss_burst++;
 		return;
 	} else if (now < next) {
-		if (has_audio_sink) save_empty_frame(chan);
+		if (HasAudioSink) save_empty_frame(chan);
 		return;
 	}
 
-	interpl = chan->packetization;
+	int interpl = chan->packetization;
 	while (now >= next) {
-		int res;
-		long orig_ts = 0;
-		void *data = NULL;
-		int32_t ms = 0;
-		uint16_t seqno = 0;
-		uint8_t flags = 0;
-
-		if (is_fixed) {
-			struct fixed_jb_slot slot;
-			res = fixed_to_abstract_code[fixed_jb_get_slot_inl((struct fixed_jb *)jb->jbobj, &slot, now, interpl)];
-			if (res == JB_IMPL_OK || res == JB_IMPL_DROP) {
-				orig_ts = slot.orig_ts;
-				data = slot.data;
-				ms = slot.ms;
-				seqno = slot.seqno;
-				flags = slot.flags;
-			}
-		} else {
-			jb_slot slot;
-			res = adaptive_to_abstract_code[jb_get_slot_inl((jitterbuf *)jb->jbobj, &slot, now, interpl)];
-			if (res == JB_IMPL_OK || res == JB_IMPL_DROP) {
-				orig_ts = slot.orig_ts;
-				data = slot.data;
-				ms = slot.ms;
-				seqno = slot.seqno;
-				flags = slot.flags;
-			}
-		}
+		typename Traits::slot_type slot;
+		int res = Traits::get_slot(obj, &slot, now, interpl);
 
 		switch (res) {
 		case JB_IMPL_OK:
-			if (__builtin_expect(!(flags & JB_SLOT_FLAG_IS_AST_FRAME), 1)) {
-				if (__builtin_expect(flags & (JB_SLOT_FLAG_SKIP | JB_SLOT_FLAG_IGNORE), 0)) {
-					if ((flags & JB_SLOT_FLAG_SKIP) && has_audio_sink) save_empty_frame(chan);
+			if (__builtin_expect(!(slot.flags & JB_SLOT_FLAG_IS_AST_FRAME), 1)) {
+				if (__builtin_expect(slot.flags & (JB_SLOT_FLAG_SKIP | JB_SLOT_FLAG_IGNORE), 0)) {
+					if (HasAudioSink && (slot.flags & JB_SLOT_FLAG_SKIP)) save_empty_frame(chan);
 					break;
 				}
 				if (__builtin_expect(sverb.jitter, 0))
-					fprintf(stdout, "\tJB_GET[%p] {now=%ld}: Delivered frame with ts=%ld and len=%d and seq=%u\n", jb, now, orig_ts, ms, seqno);
-				record_loss_and_update_chan(chan, seqno, orig_ts,
-							    (flags & JB_SLOT_FLAG_MARKER) != 0,
-							    (flags & JB_SLOT_FLAG_LAST_VOICE) != 0);
+					fprintf(stdout, "\tJB_GET[%p] {now=%ld}: Delivered frame with ts=%ld and len=%d and seq=%u\n", jb, now, slot.orig_ts, slot.ms, slot.seqno);
+				record_loss_and_update_chan(chan, slot.seqno, slot.orig_ts,
+							    (slot.flags & JB_SLOT_FLAG_MARKER) != 0,
+							    (slot.flags & JB_SLOT_FLAG_LAST_VOICE) != 0);
 			} else {
-				deliver_audio_frame(chan, (struct ast_frame *)data, now, JB_IMPL_OK);
+				deliver_audio_frame(chan, (struct ast_frame *)slot.data, now, JB_IMPL_OK);
 			}
 			break;
 		case JB_IMPL_DROP:
-			if (has_audio_sink) save_empty_frame(chan);
-			if (flags & JB_SLOT_FLAG_IS_AST_FRAME) {
-				struct ast_frame *f = (struct ast_frame *)data;
+			if (HasAudioSink) save_empty_frame(chan);
+			if (slot.flags & JB_SLOT_FLAG_IS_AST_FRAME) {
+				struct ast_frame *f = (struct ast_frame *)slot.data;
 				if (sverb.jitter) fprintf(stdout, "\tJB_GET[%p] {now=%ld}: Dropped frame with ts=%ld and len=%ld seq=%d\n", jb, now, f->ts, f->len, f->seqno);
 				ast_frfree(f);
 			} else if (__builtin_expect(sverb.jitter, 0)) {
-				fprintf(stdout, "\tJB_GET[%p] {now=%ld}: Dropped frame with ts=%ld and len=%d seq=%u\n", jb, now, orig_ts, ms, seqno);
+				fprintf(stdout, "\tJB_GET[%p] {now=%ld}: Dropped frame with ts=%ld and len=%d seq=%u\n", jb, now, slot.orig_ts, slot.ms, slot.seqno);
 			}
 			chan->last_loss_burst++;
 			break;
 		case JB_IMPL_INTERP:
-			if (has_audio_sink) save_empty_frame(chan);
+			if (HasAudioSink) save_empty_frame(chan);
 			if (__builtin_expect(sverb.jitter, 0))
 				fprintf(stdout, "\tJB_GET[%p] {now=%ld}: Interpolated frame with len=%d\n", jb, now, interpl);
 			chan->last_loss_burst++;
 			break;
 		case JB_IMPL_NOFRAME:
-			if (has_audio_sink) save_empty_frame(chan);
+			if (HasAudioSink) save_empty_frame(chan);
 			chan->last_loss_burst++;
 			return;
 		case JB_IMPL_ERROR:
 			return;
 		}
-		next = is_fixed ? fixed_jb_next_inl((struct fixed_jb *)jb->jbobj)
-				: jb_next_inl((jitterbuf *)jb->jbobj);
+		next = Traits::next(obj);
 		jb->next = next;
 	}
 }
@@ -752,12 +749,14 @@ static void jb_get_and_deliver(struct ast_channel *chan, const struct timeval *m
 {
 	struct ast_jb *jb = &chan->jb;
 	long now = tvdiff_ms_fast(mynow, &jb->timebase);
-	int has_audio_sink = (chan->rawstream != NULL || chan->audiobuf != NULL || chan->enable_save_energylevels);
+	bool has_audio_sink = (chan->rawstream != NULL || chan->audiobuf != NULL || chan->enable_save_energylevels);
 
 	if (jb->impl == &avail_impl[0]) {
-		jb_get_and_deliver_now(chan, now, has_audio_sink, 1);
+		if (has_audio_sink) jb_get_and_deliver_now<true, true>(chan, now);
+		else jb_get_and_deliver_now<true, false>(chan, now);
 	} else {
-		jb_get_and_deliver_now(chan, now, has_audio_sink, 0);
+		if (has_audio_sink) jb_get_and_deliver_now<false, true>(chan, now);
+		else jb_get_and_deliver_now<false, false>(chan, now);
 	}
 }
 
@@ -767,8 +766,6 @@ static void ast_jb_sim_step_cold(struct ast_channel *chan, const struct timeval 
 				 char marker, int last_is_voice, uint8_t flags)
 {
 	struct ast_jb *jb = &chan->jb;
-	long now;
-	int is_fixed;
 
 	ast_set_flag(jb, JB_USE);
 	if (!ast_test_flag(jb, JB_TIMEBASE_INITIALIZED)) {
@@ -812,53 +809,37 @@ static void ast_jb_sim_step_cold(struct ast_channel *chan, const struct timeval 
 	ast_jb_empty_and_reset(chan);
 	chan->jb_reseted = 1;
 	chan->last_ts = *header_ts;
-	is_fixed = (jb->impl == &avail_impl[0]);
+	bool is_fixed = (jb->impl == &avail_impl[0]);
 	if (chan->resync && marker) {
-		jb_force_resync_impl(jb, is_fixed);
+		if (is_fixed) JbTraits<true>::force_resync((struct fixed_jb *)jb->jbobj);
+		else JbTraits<false>::force_resync((jitterbuf *)jb->jbobj);
 	}
 	if (packetization < 2 || frame_ts < 0)
 		return;
-	now = tvdiff_ms_fast(header_ts, &jb->timebase);
+	long now = tvdiff_ms_fast(header_ts, &jb->timebase);
 	if (is_fixed) {
-		jb_put_meta_slot_inl(chan, frame_ts, packetization, seqno, marker, flags, now, 1, 0);
+		jb_put_meta_slot<true, false>(chan, frame_ts, packetization, seqno, marker, flags, now);
 	} else {
-		jb_put_meta_slot_inl(chan, frame_ts, packetization, seqno, marker, flags, now, 0, 0);
+		jb_put_meta_slot<false, false>(chan, frame_ts, packetization, seqno, marker, flags, now);
 	}
 }
 
-/* Fused ultra-fast MOS simulation step: steady-state hot path, cold init out-of-line */
-static inline void ast_jb_sim_step_inl(struct ast_channel *chan, const struct timeval *header_ts,
-				       long frame_ts, int packetization, int seqno,
-				       char marker, int last_is_voice, char ignore, int codec)
+/* Compile-time specialized steady-state MOS simulation step */
+template<bool IsFixed>
+static inline void ast_jb_sim_step_typed(struct ast_channel *chan, const struct timeval *header_ts,
+					 long frame_ts, int packetization, int seqno,
+					 char marker, int last_is_voice, uint8_t flags)
 {
+	typedef JbTraits<IsFixed> Traits;
 	struct ast_jb *jb = &chan->jb;
-	uint8_t flags;
-	int is_fixed, msdiff;
-	struct timeval next_ts;
-	long now;
-
-	chan->codec = codec;
-	if (__builtin_expect(chan->rawstream != NULL, 0))
-		chan->rawstream = NULL;
-
-	flags = (uint8_t)((marker ? JB_SLOT_FLAG_MARKER : 0) |
-			  (last_is_voice ? JB_SLOT_FLAG_LAST_VOICE : 0) |
-			  (ignore ? JB_SLOT_FLAG_IGNORE : 0));
-
-	if (__builtin_expect((jb->flags & (JB_USE | JB_TIMEBASE_INITIALIZED | JB_CREATED)) != (JB_USE | JB_TIMEBASE_INITIALIZED | JB_CREATED) ||
-			     !chan->jb_reseted, 0)) {
-		ast_jb_sim_step_cold(chan, header_ts, frame_ts, packetization, seqno, marker, last_is_voice, flags);
-		return;
-	}
 
 	if (__builtin_expect(jb->timebase.tv_sec == header_ts->tv_sec &&
 			     jb->timebase.tv_usec == header_ts->tv_usec, 0)) {
 		chan->last_ts = *header_ts;
 	}
 
-	is_fixed = (jb->impl == &avail_impl[0]);
-	next_ts = ast_tv_add_ms_fast(chan->last_ts, packetization);
-	msdiff = (int)tvdiff_ms_fast(header_ts, &next_ts);
+	struct timeval next_ts = ast_tv_add_ms_fast(chan->last_ts, packetization);
+	int msdiff = (int)tvdiff_ms_fast(header_ts, &next_ts);
 
 	if (__builtin_expect(msdiff > packetization * 10000, 0)) {
 		chan->last_ts = *header_ts;
@@ -874,11 +855,7 @@ static inline void ast_jb_sim_step_inl(struct ast_channel *chan, const struct ti
 				chan->last_loss_burst = 0;
 			}
 			if (__builtin_expect(!bad_time, 1)) {
-				if (is_fixed) {
-					jb_get_and_deliver_now(chan, now_last, 0, 1);
-				} else {
-					jb_get_and_deliver_now(chan, now_last, 0, 0);
-				}
+				jb_get_and_deliver_now<IsFixed, false>(chan, now_last);
 			} else {
 				syslog(LOG_NOTICE, "warning - mynow < c0->jb.timebase in ast_jb_get_and_deliver - ignored");
 				chan->last_ts = ast_tv_add_ms_fast(chan->last_ts, packetization);
@@ -896,17 +873,40 @@ static inline void ast_jb_sim_step_inl(struct ast_channel *chan, const struct ti
 	}
 
 	if (__builtin_expect(chan->resync && marker, 0)) {
-		jb_force_resync_impl(jb, is_fixed);
+		Traits::force_resync((typename Traits::obj_type *)jb->jbobj);
 	}
 
 	if (__builtin_expect(packetization < 2 || frame_ts < 0, 0))
 		return;
 
-	now = tvdiff_ms_fast(header_ts, &jb->timebase);
-	if (is_fixed) {
-		jb_put_meta_slot_inl(chan, frame_ts, packetization, seqno, marker, flags, now, 1, 0);
+	long now = tvdiff_ms_fast(header_ts, &jb->timebase);
+	jb_put_meta_slot<IsFixed, false>(chan, frame_ts, packetization, seqno, marker, flags, now);
+}
+
+/* Fused ultra-fast MOS simulation step: steady-state hot path, cold init out-of-line */
+static inline void ast_jb_sim_step_inl(struct ast_channel *chan, const struct timeval *header_ts,
+				       long frame_ts, int packetization, int seqno,
+				       char marker, int last_is_voice, char ignore, int codec)
+{
+	struct ast_jb *jb = &chan->jb;
+	chan->codec = codec;
+	if (__builtin_expect(chan->rawstream != NULL, 0))
+		chan->rawstream = NULL;
+
+	uint8_t flags = (uint8_t)((marker ? JB_SLOT_FLAG_MARKER : 0) |
+				  (last_is_voice ? JB_SLOT_FLAG_LAST_VOICE : 0) |
+				  (ignore ? JB_SLOT_FLAG_IGNORE : 0));
+
+	if (__builtin_expect((jb->flags & (JB_USE | JB_TIMEBASE_INITIALIZED | JB_CREATED)) != (JB_USE | JB_TIMEBASE_INITIALIZED | JB_CREATED) ||
+			     !chan->jb_reseted, 0)) {
+		ast_jb_sim_step_cold(chan, header_ts, frame_ts, packetization, seqno, marker, last_is_voice, flags);
+		return;
+	}
+
+	if (jb->impl == &avail_impl[0]) {
+		ast_jb_sim_step_typed<true>(chan, header_ts, frame_ts, packetization, seqno, marker, last_is_voice, flags);
 	} else {
-		jb_put_meta_slot_inl(chan, frame_ts, packetization, seqno, marker, flags, now, 0, 0);
+		ast_jb_sim_step_typed<false>(chan, header_ts, frame_ts, packetization, seqno, marker, last_is_voice, flags);
 	}
 }
 

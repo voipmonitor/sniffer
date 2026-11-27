@@ -2267,7 +2267,7 @@ AsyncClose::AsyncClose() {
 	countPcapThreads = 1;
 	minPcapThreads = 1;
 	for(int i = 0; i < AsyncClose_maxPcapThreads; i++) {
-		_sync[i] = 0;
+		_sync[i].init();
 		threadId[i] = 0;
 		memset(this->threadPstatData[i], 0, sizeof(this->threadPstatData[i]));
 		useThread[i] = 0;
@@ -2354,7 +2354,17 @@ void AsyncClose::processTask(int threadIndex) {
 			}
 			unlock(threadIndex);
 		}
-		USLEEP(10000);
+		if(!terminated_storing) {
+			uint32_t wake_tok = _wake[threadIndex].prepare_sleep();
+			lock(threadIndex);
+			bool is_empty = q[threadIndex].empty();
+			unlock(threadIndex);
+			if(is_empty && !terminated_storing) {
+				_wake[threadIndex].sleep_if_marked(wake_tok, 50000);
+			} else {
+				_wake[threadIndex].cancel_sleep();
+			}
+		}
 	} while(!terminated_storing);
 }
 
@@ -2417,6 +2427,9 @@ void AsyncClose::safeTerminate() {
 	extern int terminated_storing;
 	while(!terminated_storing) {
 		USLEEP(100000);
+	}
+	for(int i = 0; i < getCountThreads(); i++) {
+		_wake[i].notify_all();
 	}
 	for(int i = 0; i < getCountThreads(); i++) {
 		pthread_join(this->thread[i], NULL);
@@ -5751,9 +5764,11 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	this->bufferLength = this->tar ?
 			      (bufferLength ? bufferLength : DEFAULT_BUFFER_LENGTH) :
 			      bufferLength;
-	if(bufferLength) {
-		this->buffer = new FILE_LINE(38015) char[bufferLength];
-		__SYNC_ADD(FileZipHandler::buffers_sumcapacity, bufferLength);
+	this->useBuffer = (bufferLength > 0);
+	this->bufferFromPool = false;
+	if(this->useBuffer) {
+		this->buffer = cFixedBufferPool::alloc(this->bufferLength, &this->bufferFromPool);
+		__SYNC_ADD(FileZipHandler::buffers_sumcapacity, this->bufferLength);
 	} else {
 		this->buffer = NULL;
 	}
@@ -5786,7 +5801,9 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 FileZipHandler::~FileZipHandler() {
 	this->close();
 	if(this->buffer) {
-		delete [] this->buffer;
+		cFixedBufferPool::release(this->buffer, this->bufferLength, this->bufferFromPool);
+		this->buffer = NULL;
+		this->bufferFromPool = false;
 		__SYNC_SUB(FileZipHandler::buffers_sumcapacity, bufferLength);
 	}
 	if(this->tarBuffer) {
@@ -5917,8 +5934,34 @@ bool FileZipHandler::_flushBuffer(bool force) {
 		call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_flushbuffer_3);
 	}
 	#endif
+	if(this->existsData && this->bufferFromPool) {
+		if(enableAsyncWrite && !force) {
+			char *detached = this->buffer;
+			int detached_len = this->useBufferLength;
+			int detached_cap = this->bufferLength;
+			VM_ATOMIC_STORE_RELEASE(this->buffer, (char*)NULL);
+			this->bufferFromPool = false;
+			VM_ATOMIC_STORE_RELAXED(this->useBufferLength, 0);
+			__SYNC_SUB(FileZipHandler::buffers_sumcapacity, detached_cap);
+			asyncClose->addWriteAdopt(this, detached, detached_len, detached_cap, dumpHandler);
+			return(true);
+		} else if(force && this->tar && this->typeCompress == compress_na && this->error.empty()) {
+			char *detached = this->buffer;
+			int detached_len = this->useBufferLength;
+			int detached_cap = this->bufferLength;
+			VM_ATOMIC_STORE_RELEASE(this->buffer, (char*)NULL);
+			this->bufferFromPool = false;
+			VM_ATOMIC_STORE_RELAXED(this->useBufferLength, 0);
+			__SYNC_SUB(FileZipHandler::buffers_sumcapacity, detached_cap);
+			bool rsltWrite = this->_directWriteToFileAdopt(&detached, detached_len, detached_cap, true, true);
+			if(detached) {
+				cFixedBufferPool::release(detached, detached_cap, true);
+			}
+			return(rsltWrite);
+		}
+	}
 	bool rsltWrite = this->_writeToFile(this->buffer, this->useBufferLength, force);
-	this->useBufferLength = 0;
+	VM_ATOMIC_STORE_RELAXED(this->useBufferLength, 0);
 	return(rsltWrite);
 }
 
@@ -5980,26 +6023,31 @@ void FileZipHandler::_flushTarBuffer() {
 }
 
 bool FileZipHandler::_writeToBuffer(char *data, int length) {
-	if(!this->buffer) {
+	if(!this->useBuffer) {
 		return(false);
 	}
-	if(this->useBufferLength + length <= this->bufferLength) {
+	if(this->buffer && this->useBufferLength + length <= this->bufferLength) {
 		memcpy_heapsafe(this->buffer + this->useBufferLength, this->buffer,
 				data, NULL,
 				length,
 				__FILE__, __LINE__);
-		this->useBufferLength += length;
+		VM_ATOMIC_STORE_RELAXED(this->useBufferLength, this->useBufferLength + length);
 		return(true);
 	} else {
-		if(this->useBufferLength) {
+		if(this->buffer && this->useBufferLength) {
 			_flushBuffer();
 		}
 		if(length <= this->bufferLength) {
+			if(!this->buffer) {
+				char *new_buf = cFixedBufferPool::alloc(this->bufferLength, &this->bufferFromPool);
+				VM_ATOMIC_STORE_RELEASE(this->buffer, new_buf);
+				__SYNC_ADD(FileZipHandler::buffers_sumcapacity, this->bufferLength);
+			}
 			memcpy_heapsafe(this->buffer, this->buffer,
 					data, NULL,
 					length,
 					__FILE__, __LINE__);
-			this->useBufferLength = length;
+			VM_ATOMIC_STORE_RELAXED(this->useBufferLength, length);
 			return(true);
 		} else {
 			return(this->_writeToFile(data, length));
@@ -6021,6 +6069,35 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool force) {
 	} else {
 		return(this->_directWriteToFile(data, length, force));
 	}
+}
+
+bool FileZipHandler::_directWriteToFileAdopt(char **dataPtr, int length, int capacity, bool fromPool, bool flush) {
+	if(!existsData) {
+		return(true);
+	}
+	if(!this->error.empty()) {
+		return(false);
+	}
+	if(fromPool && this->typeCompress == compress_na && this->tar && dataPtr && *dataPtr) {
+		if(!this->tarBuffer) {
+			this->initTarbuffer();
+		}
+		#if DEBUG_ASYNC_TAR_WRITE
+		if(call) {
+			call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_write_1);
+		}
+		#endif
+		if(this->tarBuffer && this->tarBuffer->adoptPoolBuffer(*dataPtr, (u_int32_t)length, (u_int32_t)capacity)) {
+			*dataPtr = NULL;
+			#if DEBUG_ASYNC_TAR_WRITE
+			if(call) {
+				call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_write_2);
+			}
+			#endif
+			return(true);
+		}
+	}
+	return(this->_directWriteToFile(dataPtr ? *dataPtr : NULL, length, flush));
 }
 
 bool FileZipHandler::_directWriteToFile(char *data, int length, bool flush) {

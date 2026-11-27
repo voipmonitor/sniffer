@@ -2418,7 +2418,9 @@ private:
 	u_int64_t qring_active_push_item_limit_us;
 	sem_t sem_qring_free_count;
 	sem_t sem_qring_filled_count;
+	char _pad_readit[64];
 	volatile unsigned int readit;
+	char _pad_writeit[64];
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
 	pstat_data threadPstatData[2][2];
@@ -2436,7 +2438,9 @@ private:
 	volatile int next_threads_count_mod;
 	s_next_thread next_threads[MAX_PRE_PROCESS_PACKET_NEXT_THREADS];
 	sem_t sem_items_ready;
+	char _pad_active_threads[64];
 	volatile int active_threads_for_batch;
+	char _pad_items_flag[64];
 	volatile int8_t *items_flag;
 	u_int8_t *items_index;
 	u_int8_t *items_thread_index;

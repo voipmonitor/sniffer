@@ -355,6 +355,24 @@ inline void batch_sync_wait(unsigned int timeout_us, unsigned int *counter, cons
 	}
 	++(*counter);
 }
+
+// Dynamic cache-line chunking (up to 64B) for parallel batch workers:
+// saturates to 64B under high load (eliminating false sharing on 1-byte flag arrays)
+// while balancing short/medium batches across all worker threads.
+inline unsigned batch_chunk_size(unsigned start, unsigned end, unsigned skip, unsigned min_chunk) {
+	if(skip <= 1) {
+		return(end - start);
+	}
+	unsigned per_thread = (end + skip - 1) / skip;
+	if(per_thread < min_chunk) {
+		return(min_chunk);
+	}
+	return(per_thread < 64u ? per_thread : 64u);
+}
+
+inline unsigned batch_chunk_base(unsigned start, unsigned skip, unsigned chunk_size) {
+	return(skip > 1 ? start * chunk_size : start);
+}
 #endif
 
 
