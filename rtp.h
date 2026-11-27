@@ -177,7 +177,7 @@ struct RTPMAP {
 	inline RTPMAP() {
 		clear();
 	}
-	inline bool is_set() {
+	inline bool is_set() const {
 		return(payload || codec);
 	}
 	inline void clear() {
@@ -330,7 +330,9 @@ class RTP {
 		}
 		inline void push(u_int16_t seq) {
 			circ_buffer[circ_buffer_pos] = seq;
-			circ_buffer_pos = (circ_buffer_pos + 1) % (sizeof(circ_buffer) / sizeof(circ_buffer[0]));
+			if(++circ_buffer_pos == (sizeof(circ_buffer) / sizeof(circ_buffer[0]))) {
+				circ_buffer_pos = 0;
+			}
 		}
 		inline bool check(u_int16_t seq) {
 			if(seq) {
@@ -349,82 +351,142 @@ class RTP {
 		bool exists_dupl;
 	};
 public: 
+	// ===== Hot per-packet fields packed together for L1/L2 cache locality =====
 	u_int32_t ssrc;		//!< ssrc of this RTP class
 	u_int32_t ssrc2;	//!< ssrc of this RTP class
 	vmIP saddr;	//!< last source IP adress 
 	vmIP daddr;	//!< last source IP adress 
 	vmPort sport;
 	vmPort dport;
-	bool change_src_port;
-	bool change_dst_port;
-	bool find_by_dest;
-	bool ok_other_ip_side_by_sip;
-	u_int16_t sdp_ptime;
-	float avg_ptime;
-	u_int32_t avg_ptime_count;
-	RtpGraphSaver graph;
+	void *call_owner;	//!< which Call owns us
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
-	FILE *gfileRAW;	 //!< file for storing RTP payload in RAW format
-	volatile int gfileRAW_lock;
-	bool initRAW;
-	bool needInitRawForChannelRecord;
-	char *gfileRAW_buffer;
-	char basefilename[1024];
-	int rawiterator;	//!< iterator for raw file name 
 	struct ast_channel *channel_fix1;
 	struct ast_channel *channel_fix2;
 	struct ast_channel *channel_adapt;
 	struct ast_channel *channel_record;
 	struct ast_frame *frame;
 	#endif
-	char gfilename[1024];	//!< file name of this file 
-	int lastframetype;		//!< last packet sequence number
-	char lastcng;		//!< last packet sequence number
+	unsigned char* data;    //!< pointer to UDP payload
+	iphdr2 *header_ip;
+	unsigned char* payload_data;    //!< pointer to RTP payload
+	int len;		//!< lenght of UDP payload
+	int payload_len;	//!< lenght of RTP payload
 	u_int16_t seq;		//!< current sequence number
+	u_int16_t prev_payload_len;	//!< lenght of RTP payload
 	int last_seq;		//!< last packet sequence number
-	u_int16_t channel_record_seq_ringbuffer[50];
-	u_int16_t channel_record_seq_ringbuffer_pos;
-	int packetization;	//!< packetization in millisenocds
-	int last_packetization;	//!< last packetization in millisenocds
 	u_int32_t last_ts;	//!< last timestamp 
-	bool pcap_header_ts_bad_time;
-	int packetization_iterator;	
+	int codec;
 	int prev_payload;
 	int prev_codec;
 	int payload2;
 	int first_codec;
-	int codec;
-	s_sdp_flags_base sdp_flags;
-	int frame_size;
-	int bit_rate;
-	RTPMAP rtpmap[MAX_RTPMAP];
-	RTPMAP rtpmap_other_side[MAX_RTPMAP];
-	int rtpmap_call_index;
-	int rtpmap_other_side_call_index;
-	unsigned char* data;    //!< pointer to UDP payload
-	iphdr2 *header_ip;
-	int len;		//!< lenght of UDP payload
-	unsigned char* payload_data;    //!< pointer to RTP payload
-	int payload_len;	//!< lenght of RTP payload
-	uint8_t padding_len;	//!< lenght of RTP payload
-	u_int16_t prev_payload_len;	//!< lenght of RTP payload
-	int ssrc_index;		//!< index 
-	int iscaller;		//!< flag which indicates if RTP stream is part of caller or callee
-	void *call_owner;	//!< which Call owns us
+	int packetization;	//!< packetization in millisenocds
+	int last_packetization;	//!< last packetization in millisenocds
+	int packetization_iterator;	
 	int default_packetization;
-	int sid;
-	int prev_sid;
-	int pinformed;
+	int lastframetype;		//!< last packet sequence number
+	int iscaller;		//!< flag which indicates if RTP stream is part of caller or callee
+	unsigned int samplerate;
+	uint32_t counter;
 	u_int64_t first_packet_time_us;
 	u_int64_t last_packet_time_us;
-	unsigned int last_end_timestamp;
-	char lastdtmf;
+	u_int64_t next_save_mos_graph_us;
+	timeval _last_ts;
+	timeval last_voice_frame_ts;
+	uint32_t last_voice_frame_timestamp;
+	double jitter;
+	float avg_ptime;
+	u_int32_t avg_ptime_count;
+	uint8_t padding_len;	//!< lenght of RTP payload
 	u_int8_t forcemark;
 	u_int8_t forcemark2;
+	uint8_t change_packetization_iterator;
+	uint8_t avgdelay_idx;
+	char lastcng;		//!< last packet sequence number
+	char ignore;
+	char save_mos_graph_wait;
+	bool last_markbit;
+	bool resetgraph;
+	bool had_audio;
+	bool defer_codec_change;
+	bool codecchanged;
 	bool forcemark_by_owner;
 	bool forcemark_by_owner_set;
+	bool pcap_header_ts_bad_time;
+	bool stream_in_multiple_calls;
+	bool stopped_jb_due_to_high_ooo;
+	bool changing_codec;
 	unsigned forcemark_owner_used;
-	char ignore;
+	s_sdp_flags_base sdp_flags;
+	int sid;
+	int prev_sid;
+	int16_t ttl_min;
+	int16_t ttl_max;
+	u_int64_t ttl_sum;
+	u_int32_t ttl_count;
+	struct dsp *DSP;
+	struct dsp *DSP_ivr;	//!< own DSP for ivrdetect (early media), the shared DSP state stays untouched
+
+	struct stats_t {
+		u_int32_t	d50;	//!< delay from 0 to 50
+		u_int32_t	d70;
+		u_int32_t	d90;
+		u_int32_t	d120; 
+		u_int32_t	d150; 
+		u_int32_t	d200; 
+		u_int32_t	d300;
+
+		u_int32_t	slost[11];	//!< lost counts
+		
+		u_int32_t	received;	//!< overall received packets
+		u_int32_t	lost;		//!< overall lost packets (real)
+		u_int32_t	lost_with_reinvite_gaps;
+		u_int32_t	reordered;
+		int		last_lost;	//!< last overall lost packepts
+		double 		avgjitter;
+		double 		maxjitter;
+	} stats;
+
+	typedef struct {
+		u_int16_t max_seq;		//!< highest seq. number seen 
+		int64_t cycles;			//!< shifted count of seq. number cycles
+		u_int32_t base_seq;		//!< base seq number
+		u_int32_t bad_seq;		//!< last 'bad' seq number + 1
+		u_int32_t probation;		//!< sequ. packets till source is valid
+		u_int32_t received;		//!< packets received
+		u_int32_t expected_prior;	//!< packet expected at last interval
+		u_int32_t received_prior;	//!< packet received at last interval
+		u_int32_t transit;		//!< relative trans time for prev pkt
+		u_int32_t jitter;		//!< estimated jitter
+		u_int32_t lost;			//!< lost packets
+		struct timeval lastTimeRec;	//!< last received time from pcap packet header
+		struct timeval lastTimeRecJ;	//!< last received time from pcap packet header for jitterbuffer
+		u_int32_t lastTimeStamp;	//!< last received timestamp from RTP header
+		u_int32_t lastTimeStampJ;	//!< last received timestamp from RTP header for jitterbuffer
+		int delay;
+		double fdelay;
+		double prevjitter;
+		double avgdelay;
+	} source;
+
+	source *s;
+	source s_inline;
+	float avgdelays[30];
+
+	// ===== Warm / cold fields moved below hot per-packet region =====
+	bool change_src_port;
+	bool change_dst_port;
+	bool find_by_dest;
+	bool ok_other_ip_side_by_sip;
+	u_int16_t sdp_ptime;
+	int frame_size;
+	int bit_rate;
+	int rtpmap_call_index;
+	int rtpmap_other_side_call_index;
+	int ssrc_index;		//!< index 
+	int pinformed;
+	unsigned int last_end_timestamp;
+	char lastdtmf;
 	uint8_t dscp;
 	bool skip;
 	u_int64_t last_save_mos_graph_ms;
@@ -438,33 +500,18 @@ public:
 	float	mosAD_avg;
 	float	mosSilence_avg;
 	uint64_t mos_time_ms;
-	char save_mos_graph_wait;
-	timeval _last_ts;
-	timeval last_voice_frame_ts;
-	uint32_t last_voice_frame_timestamp;
-	bool	resetgraph;
-	double	jitter;
 	uint32_t last_stat_lost;
 	uint32_t last_stat_received;
 	double last_stat_loss_perc_mult10;
-	bool codecchanged;
-	uint32_t counter;
-	bool had_audio;
-	bool defer_codec_change;
-	bool stream_in_multiple_calls;
 	uint32_t tailedframes;
-	uint8_t change_packetization_iterator;
 	bool last_was_silence;
 	uint32_t sum_silence_changes;
 	bool confirm_both_sides_by_sdp;
-	bool stopped_jb_due_to_high_ooo;
-	bool changing_codec;
-	
-	int16_t ttl_min;
-	int16_t ttl_max;
-	u_int64_t ttl_sum;
-	u_int32_t ttl_count;
-	
+	unsigned char last_interval_mosf1;
+	unsigned char last_interval_mosf2;
+	unsigned char last_interval_mosAD;
+	unsigned char last_interval_mosSilence;
+
 	/* RTCP data */
 	struct rtcp_t {
 		int loss;
@@ -492,62 +539,21 @@ public:
 		unsigned int counter_mos;
 	} rtcp_xr;
 
-	unsigned int samplerate;
-
-	struct stats_t {
-		u_int32_t	d50;	//!< delay from 0 to 50
-		u_int32_t	d70;
-		u_int32_t	d90;
-		u_int32_t	d120; 
-		u_int32_t	d150; 
-		u_int32_t	d200; 
-		u_int32_t	d300;
-
-		u_int32_t	slost[11];	//!< lost counts
-		
-		u_int32_t	received;	//!< overall received packets
-		u_int32_t	lost;		//!< overall lost packets (real)
-		u_int32_t	lost_with_reinvite_gaps;
-		u_int32_t	reordered;
-		int		last_lost;	//!< last overall lost packepts
-		long double 	avgjitter;
-		long double 	maxjitter;
-	} stats;
-
-	typedef struct {
-		u_int16_t max_seq;		//!< highest seq. number seen 
-		int64_t cycles;			//!< shifted count of seq. number cycles
-		u_int32_t base_seq;		//!< base seq number
-		u_int32_t bad_seq;		//!< last 'bad' seq number + 1
-		u_int32_t probation;		//!< sequ. packets till source is valid
-		u_int32_t received;		//!< packets received
-		u_int32_t expected_prior;	//!< packet expected at last interval
-		u_int32_t received_prior;	//!< packet received at last interval
-		u_int32_t transit;		//!< relative trans time for prev pkt
-		u_int32_t jitter;		//!< estimated jitter
-		u_int32_t lost;			//!< lost packets
-		struct timeval lastTimeRec;	//!< last received time from pcap packet header
-		struct timeval lastTimeRecJ;	//!< last received time from pcap packet header for jitterbuffer
-		u_int32_t lastTimeStamp;	//!< last received timestamp from RTP header
-		u_int32_t lastTimeStampJ;	//!< last received timestamp from RTP header for jitterbuffer
-		int delay;
-		long double fdelay;
-		double prevjitter;
-		double avgdelay;
-	} source;
-
-	float avgdelays[30];
-
-	bool last_markbit;
-	unsigned char last_interval_mosf1;
-	unsigned char last_interval_mosf2;
-	unsigned char last_interval_mosAD;
-	unsigned char last_interval_mosSilence;
-
-	struct dsp *DSP;
-	struct dsp *DSP_ivr;	//!< own DSP for ivrdetect (early media), the shared DSP state stays untouched
-
-	source *s;
+	RtpGraphSaver graph;
+	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
+	FILE *gfileRAW;	 //!< file for storing RTP payload in RAW format
+	volatile int gfileRAW_lock;
+	bool initRAW;
+	bool needInitRawForChannelRecord;
+	char *gfileRAW_buffer;
+	int rawiterator;	//!< iterator for raw file name 
+	char basefilename[1024];
+	#endif
+	char gfilename[1024];	//!< file name of this file 
+	u_int16_t channel_record_seq_ringbuffer[50];
+	u_int16_t channel_record_seq_ringbuffer_pos;
+	RTPMAP rtpmap[MAX_RTPMAP];
+	RTPMAP rtpmap_other_side[MAX_RTPMAP];
 
 	/**
 	* constructor which allocates and zeroing stats structure
@@ -705,6 +711,14 @@ public:
 	 * @return number of bytes of payload
 	*/
 	const int get_payload_len();
+	inline const int get_payload_len_fast() {
+		if(__builtin_expect(data[0] == 0x80, 1)) {
+			payload_data = data + sizeof(RTPFixedHeader);
+			payload_len = len - sizeof(RTPFixedHeader);
+			return payload_len;
+		}
+		return get_payload_len();
+	}
 
 	 /**
 

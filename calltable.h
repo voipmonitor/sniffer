@@ -989,9 +989,26 @@ public:
 		}
 		return(false);
 	}
+	inline void update_rtpmap_televent_mask(const RTPMAP *rm) {
+		for(int j = 0; j < MAX_RTPMAP; j++) {
+			if(rm[j].is_set() && rm[j].codec == PAYLOAD_TELEVENT && rm[j].payload < 128) {
+				rtpmap_televent_mask[rm[j].payload >> 6] |= (1ULL << (rm[j].payload & 63));
+			}
+		}
+	}
 public:
 
 	Call *call;
+	// Hot per-RTP-packet confirmation flags packed in the first cache line next to `call`
+	volatile bool seenbye;
+	volatile bool seenokbye;
+	volatile bool seenbye_and_ok;
+	volatile bool seencancel_and_ok;
+	volatile bool seenauthfailed;
+	volatile int end_call_rtp;
+	volatile u_int64_t ignore_rtp_after_response_time_usec;
+	u_int64_t rtpmap_televent_mask[2];
+
 	unsigned branch_id;
 	string branch_call_id;
 	string branch_fbasename;
@@ -1120,20 +1137,14 @@ public:
 	bool seeninviteok;
 	bool seenmessage;
 	bool seenmessageok;
-	volatile bool seenbye;
 	volatile u_int64_t seenbye_time_usec;
-	volatile bool seenokbye;
 	volatile u_int64_t seenokbye_time_usec;
-	volatile bool seenbye_and_ok;
 	bool seenbye_and_ok_permanent;
 	volatile u_int64_t seenbye_and_ok_time_usec;
 	volatile bool seencancel;
 	volatile u_int64_t seencancel_time_usec;
-	volatile bool seencancel_and_ok;
 	volatile u_int64_t seencancel_and_ok_time_usec;
-	volatile bool seenauthfailed;
 	volatile u_int64_t seenauthfailed_time_usec;
-	volatile u_int64_t ignore_rtp_after_response_time_usec;
 	bool unconfirmed_bye;
 	bool seenRES2XX;
 	bool seenRES2XX_no_BYE;
@@ -1148,7 +1159,6 @@ public:
 	int ipport_n;
 	bool logged_max_ip_per_call;
 
-	volatile int end_call_rtp;
 	volatile int end_call_hash_removed;
 	
 	RTPMAP rtpmap[MAX_IP_PER_CALL][MAX_RTPMAP];

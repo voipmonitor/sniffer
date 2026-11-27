@@ -667,6 +667,8 @@ CallBranch::CallBranch(Call *call, unsigned branch_id) {
 	
 	memset(rtpmap, 0, sizeof(rtpmap));
 	memset(rtpmap_used_flags, 0, sizeof(rtpmap_used_flags));
+	rtpmap_televent_mask[0] = 0;
+	rtpmap_televent_mask[1] = 0;
 	
 	rtp_ip_port_counter = 0;
 	#if CHECK_HASHTABLE_FOR_ALL_CALLS
@@ -1686,6 +1688,7 @@ int Call::add_ip_port(CallBranch *c_branch,
 	
 	if(!opt_rtpmap_by_callerd || iscaller_is_set(iscaller)) {
 		memcpy(c_branch->rtpmap[opt_rtpmap_by_callerd ? iscaller : c_branch->ipport_n], rtpmap, MAX_RTPMAP * sizeof(RTPMAP));
+		c_branch->update_rtpmap_televent_mask(rtpmap);
 	}
 	
 	c_branch->ipport_n++;
@@ -1728,8 +1731,10 @@ bool Call::refresh_data_ip_port(CallBranch *c_branch,
 							}
 						}
 					}
+					c_branch->update_rtpmap_televent_mask(rtpmap_dst);
 				} else {
 					memcpy(c_branch->rtpmap[opt_rtpmap_by_callerd ? iscaller : i], rtpmap, MAX_RTPMAP * sizeof(RTPMAP));
+					c_branch->update_rtpmap_televent_mask(rtpmap);
 				}
 			}
 			// force mark bit for reinvite for both direction
@@ -2200,25 +2205,25 @@ bool Call::read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscal
  
 	extern int opt_enable_ssl;
 	extern bool opt_srtp_rtp_dtls_decrypt;
-	if(opt_enable_ssl && opt_srtp_rtp_dtls_decrypt && packetS->isDtlsHandshake()) {
+	if(if_unlikely(opt_enable_ssl && opt_srtp_rtp_dtls_decrypt && packetS->isDtlsHandshake())) {
 		read_dtls(packetS);
 		if(enable_save_packet) {
 			save_packet(this, packetS, _t_packet_dtls, 0, 0, __FILE__, __LINE__);
 		}
 		return(true);
-	} else if(sdp_flags.is_mt_mrcp() && packetS->pflags.is_mrcp()) {
+	} else if(if_unlikely(sdp_flags.is_mt_mrcp() && packetS->pflags.is_mrcp())) {
 		if(enable_save_packet) {
 			save_packet(this, packetS, _t_packet_mrcp, 0, 0, __FILE__, __LINE__);
 		}
 		return(true);
-	} else if(sdp_flags.is_mt_bfcp() && packetS->pflags.is_bfcp()) {
+	} else if(if_unlikely(sdp_flags.is_mt_bfcp() && packetS->pflags.is_bfcp())) {
 		if(enable_save_packet) {
 			save_packet(this, packetS, _t_packet_bfcp, 0, 0, __FILE__, __LINE__);
 		}
 		return(true);
 	}
 	extern bool opt_null_rtppayload;
-	if(opt_null_rtppayload) {
+	if(if_unlikely(opt_null_rtppayload)) {
 		RTP tmprtp(0, 0);
 		tmprtp.fill_data((u_char*)packetS->data_(), packetS->datalen_());
 		int payload_len = tmprtp.get_payload_len();
@@ -2228,12 +2233,13 @@ bool Call::read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscal
 	}
 	bool record_dtmf = false;
 	bool disable_save = false;
-	unsigned datalen_orig = packetS->datalen_orig_();
+	bool may_save_rtp = enable_save_packet || sdp_flags.is_mt_image();
+	unsigned datalen_orig = may_save_rtp ? packetS->datalen_orig_() : 0;
 	bool rtp_read_rslt = _read_rtp(c_branch, packetS, iscaller, sdp_flags, find_by_dest, stream_in_multiple_calls, ifname, &record_dtmf, &disable_save);
-	if(!disable_save) {
+	if(if_unlikely(may_save_rtp && !disable_save)) {
 		_save_rtp(packetS, sdp_flags, enable_save_packet, record_dtmf, packetS->datalen_() != datalen_orig);
 	}
-	if(packetS->pid.flags & FLAG_FRAGMENTED) {
+	if(if_unlikely(packetS->pid.flags & FLAG_FRAGMENTED)) {
 		this->rtp_fragmented = true;
 	}
 	return(rtp_read_rslt);
@@ -2344,28 +2350,29 @@ bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 	*record_dtmf = false;
 	*disable_save = false;
 	
-	if(c_branch->vlanRtpReject(packetS->pid.vlan, true)) {
+	if(if_unlikely(c_branch->vlanRtpReject(packetS->pid.vlan, true))) {
 		*disable_save = true;
 		return(false);
 	}
 
-	if(first_rtp_time_us == 0) {
+	if(if_unlikely(first_rtp_time_us == 0)) {
 		first_rtp_time_us = packetS->getTimeUS();
 	}
 	
+	char *pkt_data = packetS->data_();
+	u_int32_t pkt_datalen = packetS->datalen_();
 	unsigned int curSSRC;
 	bool udptl = false;
-	if(packetS->isRtp()) {
-		void *data = packetS->data_();
-		if(RTP::getVersion(data) == 2) {
-			curSSRC = RTP::getSSRC(data);
-			if(curSSRC == 0) {
+	if(if_likely(IS_RTP(pkt_data, pkt_datalen))) {
+		if(if_likely(RTP::getVersion(pkt_data) == 2)) {
+			curSSRC = RTP::getSSRC(pkt_data);
+			if(if_unlikely(curSSRC == 0)) {
 				is_zerossrc_detected = true;
 				if(!opt_allow_zerossrc) {
 					return(false);
 				}
 			}
-			curpayload = sdp_flags.is_mt_video() ? PAYLOAD_VIDEO : RTP::getPayload(data);
+			curpayload = sdp_flags.is_mt_video() ? PAYLOAD_VIDEO : RTP::getPayload(pkt_data);
 		} else {
 			return(false);
 		}
@@ -2376,17 +2383,19 @@ bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 	} else {
 		return(false);
 	}
-	if (curpayload == 101 && !enable_save_dtmf_pcap(this)) {
-		*disable_save = true;
-	}
-	// chekc if packet is DTMF and saverfc2833 is enabled 
-	if(opt_saverfc2833 and curpayload == 101) {
-		*record_dtmf = true;
+	if(if_unlikely(curpayload == 101)) {
+		if (!enable_save_dtmf_pcap(this)) {
+			*disable_save = true;
+		}
+		// chekc if packet is DTMF and saverfc2833 is enabled 
+		if(opt_saverfc2833) {
+			*record_dtmf = true;
+		}
 	}
 	
-	if(!packetS->isRtpUdptlOkDataLen() && !opt_save_all_rtp_streams_to_db && !sverb.process_rtp_header) {
+	if(if_unlikely((udptl ? pkt_datalen <= 3 : pkt_datalen <= 12) && !opt_save_all_rtp_streams_to_db && !sverb.process_rtp_header)) {
 		//Ignoring RTP packets without data
-		if (sverb.read_rtp) syslog(LOG_DEBUG,"RTP packet skipped because of its datalen: %i", packetS->datalen_());
+		if (sverb.read_rtp) syslog(LOG_DEBUG,"RTP packet skipped because of its datalen: %i", pkt_datalen);
 		return(false);
 	}
 
@@ -2421,7 +2430,9 @@ bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 			}
 */
 
-			if (opt_saverfc2833 || !enable_save_dtmf_pcap(this)) { // DTMF in dynamic payload types (rfc4733)
+			if (if_unlikely((opt_saverfc2833 || !enable_save_dtmf_pcap(this)) &&
+					(unsigned)curpayload < 128 &&
+					((c_branch->rtpmap_televent_mask[curpayload >> 6] >> (curpayload & 63)) & 1ULL))) { // DTMF in dynamic payload types (rfc4733)
 				RTPMAP *_rtpmap = rtp_i->get_rtpmap(this, c_branch);
 				if(_rtpmap) {
 					for(int j = 0; j < MAX_RTPMAP; j++) {
@@ -2516,7 +2527,7 @@ bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 					if(rtp_i->codec == PAYLOAD_TELEVENT) {
 read:
 
-						if(exists_srtp) {
+						if(if_unlikely(exists_srtp)) {
 							_read_rtp_srtp(c_branch, packetS, rtp_i, iscaller, false);
 						}
 						
@@ -2525,31 +2536,33 @@ read:
 									   packet_saddr, packet_source, packet_daddr, packet_dest, packetS->header_pt->ts.tv_sec);
 						}
 						if(rtp_i->iscaller) {
-							if(!lastactivecallerrtp || 
-							   (lastactivecallerrtp != rtp_i && lastactivecallerrtp->last_packet_time_us + 500000 < rtp_i->last_packet_time_us)) {
+							if(if_unlikely(!lastactivecallerrtp || 
+							   (lastactivecallerrtp != rtp_i && lastactivecallerrtp->last_packet_time_us + 500000 < rtp_i->last_packet_time_us))) {
 								lastactivecallerrtp = rtp_i;
 							}
 						} else {
-							if(!lastactivecalledrtp || 
-							   (lastactivecalledrtp != rtp_i && lastactivecalledrtp->last_packet_time_us + 500000 < rtp_i->last_packet_time_us)) {
+							if(if_unlikely(!lastactivecalledrtp || 
+							   (lastactivecalledrtp != rtp_i && lastactivecalledrtp->last_packet_time_us + 500000 < rtp_i->last_packet_time_us))) {
 								lastactivecalledrtp = rtp_i;
 							}
 						}
-						u_int32_t datalen = packetS->datalen_();
+						u_int32_t datalen = pkt_datalen;
 						bool decrypt_ok = packetS->flags.s.decrypt_ok;
 						if(rtp_i->read(c_branch,
-							       (u_char*)packetS->data_(), packetS->header_ip_(), &datalen, packetS->header_pt, packet_saddr, packet_daddr, packet_source, packet_dest,
+							       (u_char*)pkt_data, packetS->header_ip_(), &datalen, packetS->header_pt, packet_saddr, packet_daddr, packet_source, packet_dest,
 							       packetS->sensor_id_(), packetS->sensor_ip, ifname, &decrypt_ok, &packetS->decrypt_sync)) {
 							rtp_read_rslt = true;
-							if(stream_in_multiple_calls) {
+							if(if_unlikely(stream_in_multiple_calls)) {
 								rtp_i->stream_in_multiple_calls = true;
 							}
 							packetS->flags.s.decrypt_ok = decrypt_ok;
 						}
-						if(rtp_stream_analysis_data) {
+						if(if_unlikely(rtp_stream_analysis_data)) {
 							rtp_i->rtp_stream_analysis_output();
 						}
-						packetS->set_datalen_(datalen);
+						if(if_unlikely(datalen != pkt_datalen)) {
+							packetS->set_datalen_(datalen);
+						}
 						if(rtp_i->iscaller) {
 							lastcallerrtp = rtp_i;
 						} else {
