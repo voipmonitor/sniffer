@@ -2890,17 +2890,7 @@ RTP::update_stats() {
 	Call *owner = (Call*)call_owner;
 	
 	if(if_likely(!is_video())) {
-		/* differences between last timestamp and current timestamp (timestamp from ip header)
-		 * frame1.time - frame0.time */
-		int64_t diff_us = (int64_t)(header_ts.tv_sec - last_voice_frame_ts.tv_sec) * 1000000LL +
-				  (int64_t)(header_ts.tv_usec - last_voice_frame_ts.tv_usec);
-		double tsdiff2 = (double)diff_us * 0.001;
 		u_int32_t cur_ts = getTimestamp();
-		double inv_sr_ms = (samplerate == 8000) ? 0.125 :
-				   ((samplerate == 16000) ? 0.0625 : (1000.0 / (double)samplerate));
-		double transit = tsdiff2 - ((double)cur_ts - (double)last_voice_frame_timestamp) * inv_sr_ms;
-
-	//	if(verbosity > 1) printf("transit rtp[%p] ssrc[%x] seq[%u] transit[%f]\n", this, getSSRC(), seq, (float)transit);
 
 		/* if payload == PAYLOAD_TELEVENT dont make delayes on this because it confuses stats */
 		if(if_unlikely(codec == PAYLOAD_TELEVENT || lastframetype == AST_FRAME_DTMF)) {
@@ -2913,7 +2903,9 @@ RTP::update_stats() {
 				}
 
 				if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
-					uint32_t diff = (uint32_t)tsdiff2;
+					int64_t diff_us = (int64_t)(header_ts.tv_sec - last_voice_frame_ts.tv_sec) * 1000000LL +
+							  (int64_t)(header_ts.tv_usec - last_voice_frame_ts.tv_usec);
+					uint32_t diff = (uint32_t)((double)diff_us * 0.001);
 					this->graph.write((char*)&graph_event, 4);
 					this->graph.write((char*)&diff, 4);
 					if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms ip[%s] DTMF\n", this, getSSRC(), seq, diff, saddr.getString().c_str());
@@ -2927,17 +2919,6 @@ RTP::update_stats() {
 				forcemark2 = 0;
 				return;
 			}
-		} else {
-			int itransit = (int)transit;
-			if(if_unlikely(abs(itransit) > 5000)) {
-				/* timestamp skew, discard delay, it is possible that timestamp changed  */
-				s->fdelay = s->avgdelay;
-				//s->fdelay = 0;
-				transit = 0;
-			} else {
-				adelay = abs(itransit);
-				s->fdelay += transit;
-			}
 		}
 
 		if(if_unlikely(last_voice_frame_ts.tv_sec == 0)) {
@@ -2946,6 +2927,27 @@ RTP::update_stats() {
 			last_voice_frame_timestamp = cur_ts;
 			forcemark2 = 0;
 			return;
+		}
+
+		/* differences between last timestamp and current timestamp (timestamp from ip header)
+		 * frame1.time - frame0.time */
+		int64_t diff_us = (int64_t)(header_ts.tv_sec - last_voice_frame_ts.tv_sec) * 1000000LL +
+				  (int64_t)(header_ts.tv_usec - last_voice_frame_ts.tv_usec);
+		double tsdiff2 = (double)diff_us * 0.001;
+		double inv_sr_ms = (samplerate == 8000) ? 0.125 :
+				   ((samplerate == 16000) ? 0.0625 : (1000.0 / (double)samplerate));
+		double transit = tsdiff2 - ((double)cur_ts - (double)last_voice_frame_timestamp) * inv_sr_ms;
+
+	//	if(verbosity > 1) printf("transit rtp[%p] ssrc[%x] seq[%u] transit[%f]\n", this, getSSRC(), seq, (float)transit);
+
+		if(if_unlikely(!(fabs(transit) < 5001.0))) {
+			/* timestamp skew, discard delay, it is possible that timestamp changed  */
+			s->fdelay = s->avgdelay;
+			//s->fdelay = 0;
+			transit = 0;
+		} else {
+			adelay = abs((int)transit);
+			s->fdelay += transit;
 		}
 
 		last_voice_frame_ts = header_ts;
