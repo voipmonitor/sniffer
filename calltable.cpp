@@ -944,8 +944,15 @@ void Call::removeFindTables(CallBranch *c_branch, bool set_end_call, bool destro
 	} else if(destroy) {
 		if(hash_modify_queue_length_ms) {
 			calltable->hashRemoveForce(c_branch);
+			if(!c_branch->end_call_hash_removed) {
+				for(int i = 0; i < c_branch->ipport_n; i++) {
+					this->evDestroyIpPortRtpStream(c_branch, i);
+				}
+				c_branch->end_call_hash_removed = 1;
+			}
+		} else {
+			this->hashRemove(c_branch);
 		}
-		this->hashRemove(c_branch);
 	} else {
 		this->hashRemove(c_branch, true);
 	}
@@ -12505,8 +12512,13 @@ Calltable::Calltable(SqlDb *sqlDb) {
 		asyncSystemCommand = NULL;
 	}
 
+	hash_modify_queue.reserve(1024);
+	hash_modify_queue_apply.reserve(1024);
 	hash_modify_queue_begin_ms = 0;
+	hash_modify_queue_pending = 0;
+	hash_modify_queue_applying = 0;
 	_sync_lock_hash_modify_queue.init();
+	_sync_lock_hash_modify_apply.init();
 	
 	if(useChartsCacheOrCdrStatProcessThreads()) {
 		chc_threads = new FILE_LINE(0) sChcThreadData[opt_charts_cache_max_threads];
@@ -12605,7 +12617,7 @@ void Calltable::hashAdd(vmIP addr, vmPort port, u_int64_t time_us, CallBranch *c
 		return;
 	}
 	
-	if(hash_modify_queue_length_ms) {
+	if(useHashModifyQueue()) {
 		sHashModifyData hmd;
 		hmd.oper = hmo_add;
 		hmd.addr = addr;
@@ -12618,13 +12630,7 @@ void Calltable::hashAdd(vmIP addr, vmPort port, u_int64_t time_us, CallBranch *c
 		hmd.sdp_flags = sdp_flags;
 		hmd.use_hash_queue_counter = true;
 		hmd.type_addr = type_addr;
-		lock_hash_modify_queue();
-		hash_modify_queue.push_back(hmd);
-		__SYNC_INC(c_branch->call->lifecycle.hash_queue_counter);
-		if(!opt_t2_boost_ht_hash_queue) {
-			_applyHashModifyQueue(true);
-		}
-		unlock_hash_modify_queue();
+		enqueueHashModify(hmd);
 	} else {
 		_hashAdd(addr, port, TIME_US_TO_S(time_us), c_branch, iscaller, is_rtcp, sdp_flags, type_addr);
 	}
@@ -12634,7 +12640,7 @@ void Calltable::hashAdd(vmIP addr, vmPort port, u_int64_t time_us, CallBranch *c
 }
  
 void Calltable::hashRefresh(vmIP addr, vmPort port, CallBranch *c_branch, s_sdp_flags sdp_flags) {
-	if(hash_modify_queue_length_ms) {
+	if(useHashModifyQueue()) {
 		sHashModifyData hmd;
 		hmd.oper = hmo_refresh;
 		hmd.addr = addr;
@@ -12642,12 +12648,7 @@ void Calltable::hashRefresh(vmIP addr, vmPort port, CallBranch *c_branch, s_sdp_
 		hmd.c_branch = c_branch;
 		hmd.sdp_flags = sdp_flags;
 		hmd.use_hash_queue_counter = false;
-		lock_hash_modify_queue();
-		hash_modify_queue.push_back(hmd);
-		if(!opt_t2_boost_ht_hash_queue) {
-			_applyHashModifyQueue(true);
-		}
-		unlock_hash_modify_queue();
+		enqueueHashModify(hmd);
 	} else {
 		u_int32_t h = tuplehash(addr.getHashNumber(), port);
 		lock_calls_hash_write(h);
@@ -12931,7 +12932,7 @@ void Calltable::hashRemove(CallBranch *c_branch, vmIP addr, vmPort port, bool rt
 	}
 	#endif
 	
-	if(hash_modify_queue_length_ms) {
+	if(useHashModifyQueue()) {
 		sHashModifyData hmd;
 		hmd.oper = hmo_remove;
 		hmd.addr = addr;
@@ -12940,15 +12941,7 @@ void Calltable::hashRemove(CallBranch *c_branch, vmIP addr, vmPort port, bool rt
 		hmd.is_rtcp = rtcp;
 		hmd.ignore_rtcp_check = ignore_rtcp_check;
 		hmd.use_hash_queue_counter = useHashQueueCounter;
-		lock_hash_modify_queue();
-		hash_modify_queue.push_back(hmd);
-		if(useHashQueueCounter) {
-			__SYNC_INC(c_branch->call->lifecycle.hash_queue_counter);
-		}
-		if(!opt_t2_boost_ht_hash_queue) {
-			_applyHashModifyQueue(true);
-		}
-		unlock_hash_modify_queue();
+		enqueueHashModify(hmd);
 	} else {
 		_hashRemove(c_branch, addr, port, rtcp, ignore_rtcp_check);
 	}
@@ -12991,20 +12984,12 @@ int Calltable::_hashRemoveExt(CallBranch *c_branch, vmIP addr, vmPort port, bool
 int
 Calltable::hashRemove(CallBranch *c_branch, bool useHashQueueCounter) {
 
-	if(hash_modify_queue_length_ms) {
+	if(useHashModifyQueue()) {
 		sHashModifyData hmd;
 		hmd.oper = hmo_remove_call;
 		hmd.c_branch = c_branch;
 		hmd.use_hash_queue_counter = useHashQueueCounter;
-		lock_hash_modify_queue();
-		hash_modify_queue.push_back(hmd);
-		if(useHashQueueCounter) {
-			__SYNC_INC(c_branch->call->lifecycle.hash_queue_counter);
-		}
-		if(!opt_t2_boost_ht_hash_queue) {
-			_applyHashModifyQueue(true);
-		}
-		unlock_hash_modify_queue();
+		enqueueHashModify(hmd);
 		return(-1);
 	} else {
 		return(_hashRemove(c_branch));
@@ -13055,43 +13040,102 @@ int Calltable::_hashRemove(CallBranch *c_branch, bool use_lock) {
 	return(removeCounter);
 }
 
-void 
-Calltable::applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash, bool force) {
-	lock_hash_modify_queue();
-	if(!hash_modify_queue.empty()) {
-		_applyHashModifyQueue(setBegin, use_lock_calls_hash, force);
-	}
-	unlock_hash_modify_queue();
+bool
+Calltable::useHashModifyQueue() const {
+	extern ProcessRtpPacket *processRtpPacketHash;
+	return(hash_modify_queue_length_ms && !is_terminating() && (!opt_t2_boost_ht_hash_queue || processRtpPacketHash != NULL));
 }
 
-void Calltable::_applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash, bool force) {
-	if(force || (hash_modify_queue_begin_ms && getTimeMS_rdtsc() >= hash_modify_queue_begin_ms + hash_modify_queue_length_ms)) {
-		if (use_lock_calls_hash) lock_calls_hash();
-		for(list<sHashModifyData>::iterator iter = hash_modify_queue.begin(); iter != hash_modify_queue.end(); iter++) {
-			switch(iter->oper) {
+void
+Calltable::enqueueHashModify(const sHashModifyData &hmd) {
+	bool need_apply = false;
+	lock_hash_modify_queue();
+	hash_modify_queue.push_back(hmd);
+	if(hmd.use_hash_queue_counter) {
+		__SYNC_INC(hmd.c_branch->call->lifecycle.hash_queue_counter);
+	}
+	u_int64_t now_ms = 0;
+	if(!hash_modify_queue_begin_ms) {
+		now_ms = getTimeMS_rdtsc();
+		hash_modify_queue_begin_ms = now_ms;
+	}
+	VM_ATOMIC_STORE_RELEASE(hash_modify_queue_pending, (unsigned int)hash_modify_queue.size());
+	if(!opt_t2_boost_ht_hash_queue) {
+		if(!now_ms) {
+			now_ms = getTimeMS_rdtsc();
+		}
+		if(now_ms >= hash_modify_queue_begin_ms + (u_int64_t)hash_modify_queue_length_ms) {
+			need_apply = true;
+		}
+	}
+	unlock_hash_modify_queue();
+	if(need_apply) {
+		applyHashModifyQueue(false);
+	}
+}
+
+void
+Calltable::applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash, bool force) {
+	// Fast lockless skip when idle: check pending BEFORE applying (paired with full fence below)
+	// so a force=true caller never skips while another thread is mid-apply.
+	if(if_likely(ATOMIC_LOAD(hash_modify_queue_pending) == 0u)) {
+		if(if_likely(ATOMIC_LOAD(hash_modify_queue_applying) == 0u)) {
+			return;
+		}
+	}
+	extern unsigned int opt_lock_calls_usleep;
+	_sync_lock_hash_modify_apply.lock(opt_lock_calls_usleep);
+	lock_hash_modify_queue();
+	bool do_apply = false;
+	if(!hash_modify_queue.empty()) {
+		if(force || (hash_modify_queue_begin_ms && getTimeMS_rdtsc() >= hash_modify_queue_begin_ms + (u_int64_t)hash_modify_queue_length_ms)) {
+			hash_modify_queue_apply.clear();
+			hash_modify_queue.swap(hash_modify_queue_apply);
+			hash_modify_queue_begin_ms = 0;
+			VM_ATOMIC_STORE_RELEASE(hash_modify_queue_applying, 1u);
+			__sync_synchronize();
+			VM_ATOMIC_STORE_RELEASE(hash_modify_queue_pending, 0u);
+			do_apply = true;
+		} else if(!hash_modify_queue_begin_ms && setBegin) {
+			hash_modify_queue_begin_ms = getTimeMS_rdtsc();
+		}
+	} else {
+		hash_modify_queue_begin_ms = 0;
+		VM_ATOMIC_STORE_RELEASE(hash_modify_queue_pending, 0u);
+	}
+	unlock_hash_modify_queue();
+	if(do_apply) {
+		if(use_lock_calls_hash) {
+			lock_calls_hash();
+		}
+		const size_t n = hash_modify_queue_apply.size();
+		for(size_t i = 0; i < n; i++) {
+			const sHashModifyData &hmd = hash_modify_queue_apply[i];
+			switch(hmd.oper) {
 			case hmo_add:
-				_hashAdd(iter->addr, iter->port, iter->time_s, iter->c_branch, iter->iscaller, iter->is_rtcp, iter->sdp_flags, iter->type_addr, false);
+				_hashAdd(hmd.addr, hmd.port, hmd.time_s, hmd.c_branch, hmd.iscaller, hmd.is_rtcp, hmd.sdp_flags, hmd.type_addr, false);
 				break;
 			case hmo_remove:
-				_hashRemove(iter->c_branch, iter->addr, iter->port, iter->is_rtcp, iter->ignore_rtcp_check, false);
+				_hashRemove(hmd.c_branch, hmd.addr, hmd.port, hmd.is_rtcp, hmd.ignore_rtcp_check, false);
 				break;
 			case hmo_remove_call:
-				_hashRemove(iter->c_branch, false);
+				_hashRemove(hmd.c_branch, false);
 				break;
 			case hmo_refresh:
-				_hashRefresh(iter->addr, iter->port, iter->c_branch, iter->sdp_flags);
+				_hashRefresh(hmd.addr, hmd.port, hmd.c_branch, hmd.sdp_flags);
 				break;
 			}
-			if(iter->use_hash_queue_counter) {
-				__SYNC_DEC(iter->c_branch->call->lifecycle.hash_queue_counter);
+			if(hmd.use_hash_queue_counter) {
+				__SYNC_DEC(hmd.c_branch->call->lifecycle.hash_queue_counter);
 			}
 		}
-		if (use_lock_calls_hash) unlock_calls_hash();
-		hash_modify_queue.clear();
-		hash_modify_queue_begin_ms = 0;
-	} else if(!hash_modify_queue_begin_ms && setBegin) {
-		hash_modify_queue_begin_ms = getTimeMS_rdtsc();
+		if(use_lock_calls_hash) {
+			unlock_calls_hash();
+		}
+		hash_modify_queue_apply.clear();
+		VM_ATOMIC_STORE_RELEASE(hash_modify_queue_applying, 0u);
 	}
+	_sync_lock_hash_modify_apply.unlock();
 }
 
 string Calltable::getHashStats() {

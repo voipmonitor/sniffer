@@ -389,6 +389,7 @@ extern int opt_rtpfromsdp_onlysip;
 extern int opt_rtpfromsdp_onlysip_skinny;
 extern int opt_t2_boost;
 extern bool opt_t2_boost_ht_hash_queue;
+extern int opt_pipeline_v2_fuse_rd;
 extern bool opt_t2_boost_ht_cleanup_calls;
 extern bool opt_t2_boost_ht_cleanup_registers;
 unsigned int glob_ssl_calls = 0;
@@ -13124,6 +13125,27 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 	}
 }
 
+static inline bool sip_packet_needs_causal_epoch(packet_s_process *packetS) {
+	if(packetS->is_register()) {
+		return false;
+	}
+	bool no_body = (packetS->parseContents.contentLength == 0) ||
+		       (packetS->parseContents.contentLength < 0 &&
+			packetS->parseContents.doubleEndLine &&
+			packetS->parseContents.doubleEndLine + packetS->parseContents.doubleEndLineSize >=
+			packetS->data_() + packetS->sipDataOffset + packetS->sipDataLen);
+	if(!no_body) {
+		return true;
+	}
+	extern u_int64_t opt_silence_detect_after_answer;
+	if(opt_ignore_rtp_after_bye || opt_ignore_rtp_after_bye_confirmed ||
+	   opt_ignore_rtp_after_cancel_confirmed || opt_ignore_rtp_after_response ||
+	   opt_ignore_rtp_before_connect || opt_silence_detect_after_answer) {
+		return true;
+	}
+	return false;
+}
+
 void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 	#if EXPERIMENTAL_T2_STOP_IN_PROCESS_SIP_EXTEND
 		PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 6);
@@ -13132,8 +13154,10 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 	if(packetS->typeContentIsSip()) {
 		packetS->blockstore_addflag(101 /*pb lock flag*/);
 		if(!packetS->is_register()) {
-			if(use_sip_causal_epoch()) {
+			if(use_sip_causal_epoch() && sip_packet_needs_causal_epoch(packetS)) {
 				packetS->mark_sip_epoch();
+			} else {
+				packetS->complete_sip_epoch();
 			}
 			preProcessPacket[ppt_pp_find_call]->push_packet(packetS);
 		} else {
@@ -14325,6 +14349,9 @@ void *ProcessRtpPacket::outThreadFunction() {
 			}
 		}
 	}
+	if(opt_t2_boost_ht_hash_queue && this->type == hash && calltable) {
+		calltable->applyHashModifyQueue(true, true, true);
+	}
 	syslog(LOG_NOTICE, "stop ProcessRtpPacket out thread %s/%i", this->getNameTypeThread().c_str(), this->outThreadId);
 	return(NULL);
 }
@@ -14497,9 +14524,11 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 			if(if_unlikely(sSipCausalEpoch::is_before(ATOMIC_LOAD(g_sip_causal_epoch.completed_epoch), req))) {
 				g_sip_causal_epoch.wait_for(req, &this->term_processRtp);
 			}
-			if(opt_t2_boost_ht_hash_queue) {
+			if(opt_t2_boost_ht_hash_queue || hash_modify_queue_length_ms) {
 				calltable->applyHashModifyQueue(true, true, true);
 			}
+		} else if(opt_t2_boost_ht_hash_queue && opt_pipeline_v2 && (!opt_t2_boost_direct_rtp || !use_sip_causal_epoch())) {
+			calltable->applyHashModifyQueue(true, true, true);
 		}
 		int _process_rtp_packets_hash_next_threads = this->process_rtp_packets_hash_next_threads;
 		int _process_rtp_packets_distribute_threads_use = process_rtp_packets_distribute_threads_use;
@@ -15016,7 +15045,7 @@ void ProcessRtpPacket::autoStartProcessRtpPacket() {
 	   !is_read_from_file_simple()) {
 		ProcessRtpPacket *_processRtpPacketHash = new FILE_LINE(26032) ProcessRtpPacket(ProcessRtpPacket::hash, 0);
 		lockAddRtpRdThread();
-		if(opt_pipeline_v2) {
+		if(opt_pipeline_v2 && opt_pipeline_v2_fuse_rd) {
 			process_rtp_packets_distribute_threads_use = 0;
 		} else {
 			for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
@@ -15047,7 +15076,7 @@ void ProcessRtpPacket::removeRtpRhThread() {
 }
 
 void ProcessRtpPacket::addRtpRdThread() {
-	if(opt_pipeline_v2) {
+	if(opt_pipeline_v2 && opt_pipeline_v2_fuse_rd) {
 		return;
 	}
 	if(process_rtp_packets_distribute_threads_use < MAX_PROCESS_RTP_PACKET_THREADS &&
