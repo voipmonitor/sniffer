@@ -598,6 +598,14 @@ inline int64_t move_file(const char *src, const char *dst, bool auto_create_dst_
 string copy_file_err_type_str(int err_type);
 
 bool get_url_file(const char *url, const char *toFile, string *error = NULL);
+
+// Runtime & compile-time CPU ISA architecture detection (x86-64 v1/v2/v3/v4, arm64, armv6k, i686)
+int get_cpu_isa_level_from_regs(uint32_t max_basic, uint32_t max_ext,
+				uint32_t ecx1, uint32_t ebx7,
+				uint32_t ecx_ext, uint32_t xcr0);
+int get_cpu_isa_level();
+const char *get_compiled_isa_str();
+const char *get_cpu_isa_str();
 //uint64_t convert_srcmac_ll(ether_header *header_eth);
 void handleInterfaceOptions(void);
 void checkSwapUsage(void);
@@ -1682,6 +1690,11 @@ private:
 
 class RestartUpgrade {
 public:
+	struct sUpgradeManifestEntry {
+		string filename;
+		string md5;
+	};
+public:
 	RestartUpgrade(bool upgrade = false, const char *version = NULL, const char *build = NULL, const char *url = NULL,
 		       const char *md5_32 = NULL, const char *md5_64 = NULL, const char *md5_arm = NULL, const char *md5_64_ws = NULL,
 		       const char *md5_arm64 = NULL, bool via_server = false);
@@ -1697,11 +1710,15 @@ public:
 	string getErrorString();
 	string getRsltString();
 	static bool deriveUpgradeUrls(const string &url, string *urlHttps, string *urlHttp);
+	static int parseRequestedIsaLevel(const char *archOpt);
+	static vector<int> getCandidateIsaLevels(int cpuIsaLevel, const char *archOpt);
+	static bool parseManifest(const string &content, map<string, sUpgradeManifestEntry> *entries);
+	static bool verifyBinaryRunnable(const string &binaryPath, bool strictExitZero, string *reason);
 private:
 	bool checkShellSafeStr(const char *str);
-	bool downloadUpgradeFile(string urlHttps, string urlHttp, string destFilepathName);
-	bool downloadUpgradeFileViaServer(string urlForServer, string destFilepathName);
-	bool getUpgradeFile(const string &urlSuffix, const string &urlHttpBase, const string &destFilepathName);
+	bool downloadUpgradeFile(string urlHttps, string urlHttp, string destFilepathName, bool optional = false);
+	bool downloadUpgradeFileViaServer(string urlForServer, string destFilepathName, bool optional = false);
+	bool getUpgradeFile(const string &urlSuffix, const string &urlHttpBase, const string &destFilepathName, bool optional = false);
 	bool getUpgradeTempFileName();
 	bool getRestartTempScriptFileName();
 	bool getSafeRunTempScriptFileName();
@@ -1734,6 +1751,7 @@ private:
 	string restartTempScriptFileName;
 	string safeRunTempScriptFileName;
 	string errorString;
+	string selectedArchStr;
 	bool _64bit;
 	bool _64bit_ws;
 	bool _arm;

@@ -1552,6 +1552,7 @@ u_int64_t rdtsc_by_250ms = 0;
 char opt_git_folder[1024];
 char opt_configure_param[1024];
 bool opt_upgrade_by_git;
+char opt_upgrade_arch[32] = "auto";
 
 bool opt_save_query_main_to_files = true;
 bool opt_save_query_charts_to_files = true;
@@ -7857,6 +7858,7 @@ void cConfig::addConfigItems() {
 		addConfigItem(new FILE_LINE(42351) cConfigItem_yesno("upgrade_by_git", &opt_upgrade_by_git));
 		addConfigItem(new FILE_LINE(42352) cConfigItem_string("git_folder", opt_git_folder, sizeof(opt_git_folder)));
 		addConfigItem(new FILE_LINE(42352) cConfigItem_string("configure_param", opt_configure_param, sizeof(opt_configure_param)));
+		addConfigItem(new FILE_LINE(0) cConfigItem_string("upgrade_arch", opt_upgrade_arch, sizeof(opt_upgrade_arch)));
 	group("locale");
 		addConfigItem(new FILE_LINE(42353) cConfigItem_string("local_country_code", opt_local_country_code, sizeof(opt_local_country_code)));
 		addConfigItem(new FILE_LINE(42354) cConfigItem_string("timezone", opt_timezone, sizeof(opt_timezone)));
@@ -9646,7 +9648,7 @@ void get_command_line_arguments() {
 				}
 				break;
 			case _param_version:
-				printf("voipmonitor version %s\n", getVersionWithBuild().c_str());
+				printf("voipmonitor version %s (%s)\n", getVersionWithBuild().c_str(), get_compiled_isa_str());
 				exit(0);
 				break;
 		}

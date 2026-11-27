@@ -748,6 +748,7 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 			}
 		} else {
 			char errorBuffer[1024];
+			errorBuffer[0] = '\0';
 			curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errorBuffer);
 			curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, _get_url_file_writer_function);
 			curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
@@ -777,6 +778,10 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 				headers = curl_slist_append(headers, ("Host: " + host).c_str());
 				curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 				for (std::size_t i = 0; i < hostIPs.size(); i++) {
+					if(i > 0) {
+						rewind(fp);
+						if(ftruncate(fileno(fp), 0) != 0) {}
+					}
 					string ipurl;
 					if (hostIPs[i].find(':') != std::string::npos) {
 						ipurl = hostProtPrefix + "[" + hostIPs[i] + "]" + path;
@@ -788,6 +793,14 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 						syslog(LOG_NOTICE, "get_url_file %s", ipurl.c_str());
 					}
 					if(curl_easy_perform(curl) == CURLE_OK) {
+						long http_code = 0;
+						curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+						if(http_code >= 400) {
+							if(error) {
+								*error = "HTTP error " + intToString(http_code);
+							}
+							break;
+						}
 						rslt = true;
 						break;
 					}
@@ -798,15 +811,26 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 					syslog(LOG_NOTICE, "get_url_file %s", url);
 				}
 				if(curl_easy_perform(curl) == CURLE_OK) {
-					rslt = true;
+					long http_code = 0;
+					curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+					if(http_code >= 400) {
+						if(error) {
+							*error = "HTTP error " + intToString(http_code);
+						}
+					} else {
+						rslt = true;
+					}
 				}
 			}
 			if (!rslt) {
-				if(error) {
+				if(error && error->empty()) {
 					*error = errorBuffer;
 				}
 			}
 			fclose(fp);
+			if(!rslt) {
+				unlink(toFile);
+			}
 		}
 		if(headers) {
 			curl_slist_free_all(headers);
@@ -2581,6 +2605,152 @@ volatile bool cSystemdService::detected = false;
 volatile bool cSystemdService::is_service = false;
 string cSystemdService::unit_name;
 
+#if defined(__x86_64__)
+static inline void vm_cpuid_x86_64(uint32_t leaf, uint32_t subleaf,
+				   uint32_t *eax, uint32_t *ebx,
+				   uint32_t *ecx, uint32_t *edx) {
+	uint32_t a = 0, c = 0, d = 0;
+	uint64_t b64 = 0;
+	// Use xchgq with rsi (never touches red-zone stack and never collides with rbx)
+	__asm__ volatile(
+		"xchgq %%rbx, %%rsi\n\t"
+		"cpuid\n\t"
+		"xchgq %%rbx, %%rsi\n\t"
+		: "=a"(a), "=&S"(b64), "=c"(c), "=d"(d)
+		: "a"(leaf), "c"(subleaf)
+		: "cc"
+	);
+	if(eax) *eax = a;
+	if(ebx) *ebx = (uint32_t)b64;
+	if(ecx) *ecx = c;
+	if(edx) *edx = d;
+}
+
+static inline uint32_t vm_xgetbv0_x86_64() {
+	uint32_t eax = 0, edx = 0;
+	// Raw opcode for xgetbv (0f 01 d0) for compatibility with older binutils/GCC 4.4.5
+	__asm__ volatile(
+		".byte 0x0f, 0x01, 0xd0"
+		: "=a"(eax), "=d"(edx)
+		: "c"(0)
+	);
+	return(eax);
+}
+#endif
+
+int get_cpu_isa_level_from_regs(uint32_t max_basic, uint32_t max_ext,
+				uint32_t ecx1, uint32_t ebx7,
+				uint32_t ecx_ext, uint32_t xcr0) {
+	// System V AMD64 psABI microarchitecture levels (v1..v4)
+	const uint32_t v2_ecx1 = (1u << 0)  | // SSE3
+				 (1u << 9)  | // SSSE3
+				 (1u << 13) | // CMPXCHG16B
+				 (1u << 19) | // SSE4.1
+				 (1u << 20) | // SSE4.2
+				 (1u << 23);  // POPCNT
+	const uint32_t v2_ecx_ext = (1u << 0); // LAHF/SAHF in 64-bit mode
+	if(max_basic < 1 || max_ext < 0x80000001u ||
+	   (ecx1 & v2_ecx1) != v2_ecx1 ||
+	   (ecx_ext & v2_ecx_ext) != v2_ecx_ext) {
+		return(1);
+	}
+
+	const uint32_t v3_ecx1 = (1u << 12) | // FMA
+				 (1u << 22) | // MOVBE
+				 (1u << 27) | // OSXSAVE
+				 (1u << 28) | // AVX
+				 (1u << 29);  // F16C
+	const uint32_t v3_ebx7 = (1u << 3)  | // BMI1
+				 (1u << 5)  | // AVX2
+				 (1u << 8);   // BMI2
+	const uint32_t v3_ecx_ext = (1u << 5); // LZCNT (ABM)
+	const uint32_t v3_xcr0 = 0x06u;        // XMM + YMM enabled by OS
+	if(max_basic < 7 ||
+	   (ecx1 & v3_ecx1) != v3_ecx1 ||
+	   (xcr0 & v3_xcr0) != v3_xcr0 ||
+	   (ebx7 & v3_ebx7) != v3_ebx7 ||
+	   (ecx_ext & v3_ecx_ext) != v3_ecx_ext) {
+		return(2);
+	}
+
+	const uint32_t v4_ebx7 = (1u << 16) | // AVX512F
+				 (1u << 17) | // AVX512DQ
+				 (1u << 28) | // AVX512CD
+				 (1u << 30) | // AVX512BW
+				 (1u << 31);  // AVX512VL
+	const uint32_t v4_xcr0 = 0xE6u;        // XMM + YMM + opmask + ZMM_Hi256 + Hi16_ZMM enabled by OS
+	if((xcr0 & v4_xcr0) != v4_xcr0 ||
+	   (ebx7 & v4_ebx7) != v4_ebx7) {
+		return(3);
+	}
+	return(4);
+}
+
+int get_cpu_isa_level() {
+	#if defined(__x86_64__)
+	static int cached_level = -1;
+	if(cached_level > 0) {
+		return(cached_level);
+	}
+	uint32_t max_basic = 0, max_ext = 0;
+	uint32_t ecx1 = 0, ebx7 = 0, ecx_ext = 0, xcr0 = 0;
+	vm_cpuid_x86_64(0, 0, &max_basic, NULL, NULL, NULL);
+	if(max_basic >= 1) {
+		vm_cpuid_x86_64(1, 0, NULL, NULL, &ecx1, NULL);
+	}
+	if(max_basic >= 7) {
+		vm_cpuid_x86_64(7, 0, NULL, &ebx7, NULL, NULL);
+	}
+	vm_cpuid_x86_64(0x80000000u, 0, &max_ext, NULL, NULL, NULL);
+	if(max_ext >= 0x80000001u) {
+		vm_cpuid_x86_64(0x80000001u, 0, NULL, NULL, &ecx_ext, NULL);
+	}
+	// Only execute XGETBV if OSXSAVE (leaf 1 ECX bit 27) is enabled
+	if(ecx1 & (1u << 27)) {
+		xcr0 = vm_xgetbv0_x86_64();
+	}
+	cached_level = get_cpu_isa_level_from_regs(max_basic, max_ext, ecx1, ebx7, ecx_ext, xcr0);
+	return(cached_level);
+	#else
+	return(0);
+	#endif
+}
+
+const char *get_compiled_isa_str() {
+	#if defined(__aarch64__)
+		return("arm64");
+	#elif defined(__arm__)
+		return("armv6k");
+	#elif defined(__x86_64__)
+		#if defined(__AVX512F__) && defined(__AVX512BW__) && defined(__AVX512CD__) && defined(__AVX512DQ__) && defined(__AVX512VL__)
+			return("x86-64-v4");
+		#elif defined(__AVX2__) && defined(__FMA__) && defined(__BMI__) && defined(__BMI2__) && defined(__F16C__)
+			return("x86-64-v3");
+		#elif defined(__SSE4_2__) && defined(__POPCNT__) && defined(__SSSE3__)
+			return("x86-64-v2");
+		#else
+			return("x86-64");
+		#endif
+	#elif defined(__i386__)
+		return("i686");
+	#else
+		return("unknown");
+	#endif
+}
+
+const char *get_cpu_isa_str() {
+	#if defined(__x86_64__)
+		switch(get_cpu_isa_level()) {
+		case 4: return("x86-64-v4");
+		case 3: return("x86-64-v3");
+		case 2: return("x86-64-v2");
+		default: return("x86-64");
+		}
+	#else
+		return(get_compiled_isa_str());
+	#endif
+}
+
 RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *build, const char *url, const char *md5_32, const char *md5_64, const char *md5_arm, const char *md5_64_ws, const char *md5_arm64, bool via_server) {
 	this->upgrade = upgrade;
 	if(version) {
@@ -2640,11 +2810,11 @@ RestartUpgrade::~RestartUpgrade() {
 	}
 }
 
-bool RestartUpgrade::getUpgradeFile(const string &urlSuffix, const string &urlHttpBase, const string &destFilepathName) {
+bool RestartUpgrade::getUpgradeFile(const string &urlSuffix, const string &urlHttpBase, const string &destFilepathName, bool optional) {
 	if(via_server) {
-		return(downloadUpgradeFileViaServer(url + urlSuffix, destFilepathName));
+		return(downloadUpgradeFileViaServer(url + urlSuffix, destFilepathName, optional));
 	}
-	return(downloadUpgradeFile(url + urlSuffix, urlHttpBase + urlSuffix, destFilepathName));
+	return(downloadUpgradeFile(url + urlSuffix, urlHttpBase + urlSuffix, destFilepathName, optional));
 }
 
 bool RestartUpgrade::deriveUpgradeUrls(const string &url, string *urlHttps, string *urlHttp) {
@@ -2660,6 +2830,11 @@ bool RestartUpgrade::deriveUpgradeUrls(const string &url, string *urlHttps, stri
 		  url.find("https://download.voipmonitor.org") == 0) {
 		https = url;
 		http = "http" + url.substr(5);
+	#ifdef VM_TEST_ALLOW_LOCALHOST_UPGRADE
+	} else if(url.find("http://127.0.0.1") == 0) {
+		https = url;
+		http = url;
+	#endif
 	} else {
 		return(false);
 	}
@@ -2668,10 +2843,277 @@ bool RestartUpgrade::deriveUpgradeUrls(const string &url, string *urlHttps, stri
 	return(true);
 }
 
+int RestartUpgrade::parseRequestedIsaLevel(const char *archOpt) {
+	if(!archOpt) {
+		return(-1);
+	}
+	string s = archOpt;
+	size_t start = 0;
+	while(start < s.length() && (s[start] == ' ' || s[start] == '\t' || s[start] == '\r' || s[start] == '\n')) {
+		start++;
+	}
+	size_t end = s.length();
+	while(end > start && (s[end - 1] == ' ' || s[end - 1] == '\t' || s[end - 1] == '\r' || s[end - 1] == '\n')) {
+		end--;
+	}
+	s = s.substr(start, end - start);
+	for(size_t i = 0; i < s.length(); i++) {
+		if(s[i] >= 'A' && s[i] <= 'Z') {
+			s[i] = (char)(s[i] - 'A' + 'a');
+		}
+	}
+	if(s.empty() || s == "auto") {
+		return(-1);
+	}
+	if(s == "v1" || s == "1" || s == "x86-64" || s == "x86_64" || s == "amd64" || s == "legacy" || s == "generic") {
+		return(1);
+	}
+	if(s == "v2" || s == "2" || s == "x86-64-v2" || s == "x86_64-v2") {
+		return(2);
+	}
+	if(s == "v3" || s == "3" || s == "x86-64-v3" || s == "x86_64-v3") {
+		return(3);
+	}
+	if(s == "v4" || s == "4" || s == "x86-64-v4" || s == "x86_64-v4") {
+		return(4);
+	}
+	syslog(LOG_WARNING, "upgrade_arch: unknown value '%s', falling back to auto", archOpt);
+	return(-1);
+}
+
+vector<int> RestartUpgrade::getCandidateIsaLevels(int cpuIsaLevel, const char *archOpt) {
+	vector<int> levels;
+	int req = parseRequestedIsaLevel(archOpt);
+	int maxLevel = (cpuIsaLevel > 0) ? cpuIsaLevel : 1;
+	if(req > 0) {
+		if(cpuIsaLevel > 0 && req > cpuIsaLevel) {
+			syslog(LOG_WARNING, "upgrade_arch requested x86-64-v%d, but host CPU supports x86-64-v%d; capping to v%d",
+			       req, cpuIsaLevel, cpuIsaLevel);
+			maxLevel = cpuIsaLevel;
+		} else {
+			maxLevel = req;
+		}
+	}
+	if(maxLevel < 1) {
+		maxLevel = 1;
+	}
+	if(maxLevel > 4) {
+		maxLevel = 4;
+	}
+	for(int lvl = maxLevel; lvl >= 1; lvl--) {
+		levels.push_back(lvl);
+	}
+	return(levels);
+}
+
+static bool isValidManifestToken(const string &s, bool forbidDotDot) {
+	if(s.empty()) {
+		return(false);
+	}
+	if(forbidDotDot && s.find("..") != string::npos) {
+		return(false);
+	}
+	for(size_t i = 0; i < s.length(); i++) {
+		char c = s[i];
+		bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			  (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-';
+		if(!ok) {
+			return(false);
+		}
+	}
+	return(true);
+}
+
+static bool normalizeMd5Hex(const string &in, string *out) {
+	if(in.length() != 32) {
+		return(false);
+	}
+	string res;
+	res.reserve(32);
+	for(size_t i = 0; i < 32; i++) {
+		char c = in[i];
+		if(c >= '0' && c <= '9') {
+			res.push_back(c);
+		} else if(c >= 'a' && c <= 'f') {
+			res.push_back(c);
+		} else if(c >= 'A' && c <= 'F') {
+			res.push_back((char)(c - 'A' + 'a'));
+		} else {
+			return(false);
+		}
+	}
+	if(out) {
+		*out = res;
+	}
+	return(true);
+}
+
+bool RestartUpgrade::parseManifest(const string &content, map<string, sUpgradeManifestEntry> *entries) {
+	if(!entries) {
+		return(false);
+	}
+	entries->clear();
+	size_t pos = 0;
+	while(pos < content.length()) {
+		size_t nl = content.find('\n', pos);
+		string line = (nl == string::npos) ? content.substr(pos) : content.substr(pos, nl - pos);
+		pos = (nl == string::npos) ? content.length() : nl + 1;
+		// Trim CR and surrounding whitespace
+		size_t s = 0;
+		while(s < line.length() && (line[s] == ' ' || line[s] == '\t' || line[s] == '\r')) {
+			s++;
+		}
+		size_t e = line.length();
+		while(e > s && (line[e - 1] == ' ' || line[e - 1] == '\t' || line[e - 1] == '\r')) {
+			e--;
+		}
+		if(s >= e || line[s] == '#') {
+			continue;
+		}
+		// Extract whitespace-separated tokens: <variant> <filename> <md5>
+		vector<string> toks;
+		size_t i = s;
+		while(i < e && toks.size() < 4) {
+			while(i < e && (line[i] == ' ' || line[i] == '\t')) {
+				i++;
+			}
+			if(i >= e) {
+				break;
+			}
+			size_t tstart = i;
+			while(i < e && line[i] != ' ' && line[i] != '\t') {
+				i++;
+			}
+			toks.push_back(line.substr(tstart, i - tstart));
+		}
+		if(toks.size() < 3) {
+			continue;
+		}
+		string md5Norm;
+		if(!isValidManifestToken(toks[0], false) ||
+		   !isValidManifestToken(toks[1], true) ||
+		   !normalizeMd5Hex(toks[2], &md5Norm)) {
+			continue;
+		}
+		sUpgradeManifestEntry entry;
+		entry.filename = toks[1];
+		entry.md5 = md5Norm;
+		(*entries)[toks[0]] = entry;
+	}
+	return(!entries->empty());
+}
+
+bool RestartUpgrade::verifyBinaryRunnable(const string &binaryPath, bool strictExitZero, string *reason) {
+	if(reason) {
+		reason->clear();
+	}
+	if(chmod(binaryPath.c_str(), 0755) != 0) {
+		if(reason) {
+			*reason = string("chmod failed: ") + strerror(errno);
+		}
+		return(false);
+	}
+	pid_t pid = fork();
+	if(pid < 0) {
+		if(reason) {
+			*reason = string("fork failed: ") + strerror(errno);
+		}
+		return(false);
+	}
+	if(pid == 0) {
+		close_all_fd();
+		int devnull = open("/dev/null", O_RDWR);
+		if(devnull >= 0) {
+			if(devnull != 0) dup2(devnull, 0);
+			if(devnull != 1) dup2(devnull, 1);
+			if(devnull != 2) dup2(devnull, 2);
+			if(devnull > 2) close(devnull);
+		}
+		execl(binaryPath.c_str(), binaryPath.c_str(), "--version", (char*)NULL);
+		_exit(127);
+	}
+	int status = 0;
+	bool exited = false;
+	for(int i = 0; i < 1000; i++) {
+		pid_t wr = waitpid(pid, &status, WNOHANG);
+		if(wr == pid) {
+			exited = true;
+			break;
+		}
+		if(wr < 0) {
+			if(errno == EINTR) {
+				continue;
+			}
+			if(reason) {
+				*reason = string("waitpid failed: ") + strerror(errno);
+			}
+			return(false);
+		}
+		usleep(10000);
+	}
+	if(!exited) {
+		kill(pid, SIGKILL);
+		waitpid(pid, &status, 0);
+		if(reason) {
+			*reason = "self-test timed out";
+		}
+		return(false);
+	}
+	if(WIFSIGNALED(status)) {
+		if(reason) {
+			*reason = "terminated by signal " + intToString(WTERMSIG(status));
+		}
+		return(false);
+	}
+	if(WIFEXITED(status)) {
+		int code = WEXITSTATUS(status);
+		if(code == 0) {
+			return(true);
+		}
+		if(code == 127) {
+			if(reason) {
+				*reason = "failed to exec binary";
+			}
+			return(false);
+		}
+		if(strictExitZero) {
+			if(reason) {
+				*reason = "self-test exited with code " + intToString(code);
+			}
+			return(false);
+		}
+		return(true);
+	}
+	if(reason) {
+		*reason = "unexpected child status";
+	}
+	return(false);
+}
+
+static const char *isaLevelLabel(int isaLevel) {
+	switch(isaLevel) {
+	case 4: return("x86-64-v4");
+	case 3: return("x86-64-v3");
+	case 2: return("x86-64-v2");
+	default: return("x86-64");
+	}
+}
+
+struct sReleaseUpgradeAttempt {
+	int isaLevel;
+	string archTag;
+	string label;
+	string urlSuffix;
+	string expectedMd5;
+};
+
 bool RestartUpgrade::runUpgrade() {
+	extern char opt_upgrade_arch[32];
 	if(verbosity > 0) {
-		syslog(LOG_NOTICE, "start upgrade from: '%s'%s", url.c_str(),
-		       via_server ? " (via server)" : "");
+		syslog(LOG_NOTICE, "start upgrade from: '%s'%s (compiled: %s, cpu: %s, upgrade_arch: %s)",
+		       url.c_str(), via_server ? " (via server)" : "",
+		       get_compiled_isa_str(), get_cpu_isa_str(),
+		       opt_upgrade_arch[0] ? opt_upgrade_arch : "auto");
 	}
 	string urlHttp;
 	if(via_server) {
@@ -2695,107 +3137,282 @@ bool RestartUpgrade::runUpgrade() {
 		syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
 		return(false);
 	}
-	string binaryFilepathName;
+	string binaryFilepathName = this->upgradeTempFileName + "/" + appname;
 	if(build.empty()) {
-		binaryFilepathName = this->upgradeTempFileName + "/" + appname;
-		string binaryGzFilepathName = this->upgradeTempFileName + "/" + appname + ".gz";
-		string urlSuffix = "/voipmonitor" +
-				   (this->_64bit_ws ?
-					string("-wireshark.gz.64") :
-					(string(".gz.") + (this->_arm64 ? "arm64" :
-							   this->_arm ? "armv6k" :
-							   this->_64bit ? "64" : "32")));
-		if(!this->getUpgradeFile(urlSuffix, urlHttp, binaryGzFilepathName)) {
-			return(false);
-		}
-		if(verbosity > 0) {
-			syslog(LOG_NOTICE, "try unzip");
-		}
-		string unzip_rslt = _gunzip_s(binaryGzFilepathName.c_str(), binaryFilepathName.c_str());
-		if(unzip_rslt.empty()) {
-			if(verbosity > 0) {
-				syslog(LOG_NOTICE, "unzip finished");
-			}
-		} else {
-			this->errorString = unzip_rslt;
-			if(verbosity > 1) {
-				FILE *f = fopen(binaryGzFilepathName.c_str(), "rt");
-				if(f) {
-					char buff[10000];
-					while(fgets(buff, sizeof(buff), f)) {
-						cout << buff << endl;
+		vector<sReleaseUpgradeAttempt> attempts;
+		if(this->_64bit && !this->_64bit_ws && !this->_arm && !this->_arm64) {
+			vector<int> isaCandidates = getCandidateIsaLevels(get_cpu_isa_level(), opt_upgrade_arch);
+			if(!isaCandidates.empty() && isaCandidates[0] > 1) {
+				string manifestPath = this->upgradeTempFileName + "/manifest.txt";
+				this->selectedArchStr = "manifest";
+				if(this->getUpgradeFile("/manifest.txt", urlHttp, manifestPath, true)) {
+					FILE *mf = fopen(manifestPath.c_str(), "rb");
+					string manifestContent;
+					if(mf) {
+						char buf[4096];
+						size_t n;
+						while((n = fread(buf, 1, sizeof(buf), mf)) > 0) {
+							manifestContent.append(buf, n);
+							if(manifestContent.size() > 65536) {
+								break;
+							}
+						}
+						fclose(mf);
 					}
-					fclose(f);
+					unlink(manifestPath.c_str());
+					map<string, sUpgradeManifestEntry> manifestEntries;
+					if(parseManifest(manifestContent, &manifestEntries)) {
+						for(size_t i = 0; i < isaCandidates.size(); i++) {
+							int lvl = isaCandidates[i];
+							if(lvl <= 1) {
+								continue;
+							}
+							string variantKey = "64-v" + intToString(lvl);
+							map<string, sUpgradeManifestEntry>::const_iterator it = manifestEntries.find(variantKey);
+							if(it != manifestEntries.end()) {
+								sReleaseUpgradeAttempt att;
+								att.isaLevel = lvl;
+								att.archTag = variantKey;
+								att.label = isaLevelLabel(lvl);
+								att.urlSuffix = "/" + it->second.filename;
+								att.expectedMd5 = it->second.md5;
+								attempts.push_back(att);
+							}
+						}
+					} else if(verbosity > 0) {
+						syslog(LOG_NOTICE, "upgrade: manifest.txt contained no valid entries, falling back to legacy x86-64");
+					}
+				} else if(verbosity > 0) {
+					syslog(LOG_NOTICE, "upgrade: manifest.txt not available (%s), falling back to legacy x86-64",
+					       this->errorString.c_str());
+				}
+				this->errorString.clear();
+			}
+			// Always append legacy x86-64 (v1) as guaranteed final fallback
+			sReleaseUpgradeAttempt legacyAtt;
+			legacyAtt.isaLevel = 1;
+			legacyAtt.archTag = "64";
+			legacyAtt.label = "x86-64";
+			legacyAtt.urlSuffix = "/voipmonitor.gz.64";
+			legacyAtt.expectedMd5 = this->md5_64;
+			attempts.push_back(legacyAtt);
+		} else {
+			sReleaseUpgradeAttempt att;
+			att.isaLevel = 0;
+			att.archTag = this->getArchStr();
+			att.label = this->getArchStr();
+			att.urlSuffix = "/voipmonitor" +
+					(this->_64bit_ws ?
+						string("-wireshark.gz.64") :
+						(string(".gz.") + (this->_arm64 ? "arm64" :
+								   this->_arm ? "armv6k" :
+								   this->_64bit ? "64" : "32")));
+			att.expectedMd5 = this->getMD5();
+			attempts.push_back(att);
+		}
+
+		string binaryGzFilepathName = this->upgradeTempFileName + "/" + appname + ".gz";
+		bool attemptOk = false;
+		for(size_t aIdx = 0; aIdx < attempts.size(); aIdx++) {
+			const sReleaseUpgradeAttempt &att = attempts[aIdx];
+			bool isLast = (aIdx + 1 == attempts.size());
+			this->errorString.clear();
+			this->selectedArchStr = att.archTag;
+			unlink(binaryGzFilepathName.c_str());
+			unlink(binaryFilepathName.c_str());
+
+			if(!this->getUpgradeFile(att.urlSuffix, urlHttp, binaryGzFilepathName, !isLast)) {
+				if(!isLast) {
+					syslog(LOG_WARNING, "upgrade candidate %s (%s) download failed (%s), falling back",
+					       att.label.c_str(), att.urlSuffix.c_str(), this->errorString.c_str());
+					continue;
+				}
+				return(false);
+			}
+			if(verbosity > 0) {
+				syslog(LOG_NOTICE, "try unzip (%s)", att.label.c_str());
+			}
+			string unzip_rslt = _gunzip_s(binaryGzFilepathName.c_str(), binaryFilepathName.c_str());
+			if(unzip_rslt.empty()) {
+				if(verbosity > 0) {
+					syslog(LOG_NOTICE, "unzip finished");
+				}
+			} else {
+				this->errorString = unzip_rslt;
+				if(!isLast) {
+					syslog(LOG_WARNING, "upgrade candidate %s unzip failed (%s), falling back",
+					       att.label.c_str(), this->errorString.c_str());
+					unlink(binaryGzFilepathName.c_str());
+					unlink(binaryFilepathName.c_str());
+					continue;
+				}
+				if(verbosity > 1) {
+					FILE *f = fopen(binaryGzFilepathName.c_str(), "rt");
+					if(f) {
+						char buff[10000];
+						while(fgets(buff, sizeof(buff), f)) {
+							cout << buff << endl;
+						}
+						fclose(f);
+					}
+				}
+				if(verbosity < 2) {
+					rmdir_r(this->upgradeTempFileName.c_str());
+				}
+				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+				return(false);
+			}
+			if(!att.expectedMd5.empty()) {
+				string md5 = GetFileMD5(binaryFilepathName);
+				if(att.expectedMd5 != md5) {
+					this->errorString = "failed download - bad md5: " + md5 + " <> " + att.expectedMd5;
+					if(!isLast) {
+						syslog(LOG_WARNING, "upgrade candidate %s failed md5 check (%s), falling back",
+						       att.label.c_str(), this->errorString.c_str());
+						unlink(binaryGzFilepathName.c_str());
+						unlink(binaryFilepathName.c_str());
+						continue;
+					}
+					rmdir_r(this->upgradeTempFileName.c_str());
+					syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+					return(false);
 				}
 			}
-			if(verbosity < 2) {
-				rmdir_r(this->upgradeTempFileName.c_str());
-			}
-			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-			return(false);
-		}
-		if(!this->getMD5().empty()) {
-			string md5 = GetFileMD5(binaryFilepathName);
-			if(this->getMD5() != md5) {
-				this->errorString = "failed download - bad md5: " + md5 + " <> " + this->getMD5();
+			string verifyReason;
+			if(!verifyBinaryRunnable(binaryFilepathName, att.isaLevel > 1, &verifyReason)) {
+				this->errorString = "binary self-test failed (" + att.label + "): " + verifyReason;
+				if(!isLast) {
+					syslog(LOG_WARNING, "upgrade candidate %s failed self-test (%s), falling back to lower ISA",
+					       att.label.c_str(), verifyReason.c_str());
+					unlink(binaryGzFilepathName.c_str());
+					unlink(binaryFilepathName.c_str());
+					continue;
+				}
 				rmdir_r(this->upgradeTempFileName.c_str());
 				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
 				return(false);
 			}
+			syslog(LOG_NOTICE, "upgrade: verified %s binary (%s)", att.label.c_str(), att.urlSuffix.c_str());
+			this->errorString.clear();
+			attemptOk = true;
+			break;
+		}
+		if(!attemptOk) {
+			rmdir_r(this->upgradeTempFileName.c_str());
+			return(false);
 		}
 	} else {
-		string tarFileName = appname + "-" +
-				     (this->_64bit_ws ? "wireshark-" : "") +
-				     (this->_arm64 ? "arm64" : this->_arm ? "armv6k" : (this->_64bit || this->_64bit_ws ? "amd64" : "i686")) + "-" +
-				     version + "-" +
-				     "static.tar.gz";
-		string tarFilepathName = this->upgradeTempFileName + "/" + tarFileName;
-		string tarBinaryFilepathName = appname + "-" +
-					       (this->_64bit_ws ? "wireshark-" : "") +
-					       (this->_arm64 ? "arm64" : this->_arm ? "armv6k" : (this->_64bit || this->_64bit_ws ? "amd64" : "i686")) + "-" +
-					       version + "-" +
-					       "static" + "/usr/local/sbin/voipmonitor";
-		binaryFilepathName = this->upgradeTempFileName + "/" + appname;
-		string urlSuffix = "build-" + build + "/tarballdevel/" + tarFileName;
-		if(!this->getUpgradeFile(urlSuffix, urlHttp, tarFilepathName)) {
-			return(false);
-		}
-		if(verbosity > 0) {
-			syslog(LOG_NOTICE, "try untar");
-		}
-		FILE *outputFileHandle = fopen(binaryFilepathName.c_str(), "wb");
-		if(!outputFileHandle) {
-			this->errorString = "open output file failed";
-			rmdir_r(this->upgradeTempFileName.c_str());
-			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-			return(false);
-		}
-		Tar tar;
-		tar.tar_read_save_parameters(outputFileHandle);
-		tar.tar_open(tarFilepathName, O_RDONLY);
-		tar.tar_read(tarBinaryFilepathName.c_str());
-		fclose(outputFileHandle);
-		if(!tar.isReadError()) {
-			if(verbosity > 0) {
-				syslog(LOG_NOTICE, "untar finished");
-			}
+		vector<int> isaAttempts;
+		if(this->_64bit && !this->_64bit_ws && !this->_arm && !this->_arm64) {
+			isaAttempts = getCandidateIsaLevels(get_cpu_isa_level(), opt_upgrade_arch);
 		} else {
-			this->errorString = "untar failed";
-			rmdir_r(this->upgradeTempFileName.c_str());
-			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-			return(false);
+			isaAttempts.push_back(0);
 		}
-		if(!file_exists(binaryFilepathName)) {
-			this->errorString = "untar failed - missing destination file";
-			rmdir_r(this->upgradeTempFileName.c_str());
-			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-			return(false);
+		bool attemptOk = false;
+		for(size_t aIdx = 0; aIdx < isaAttempts.size(); aIdx++) {
+			int lvl = isaAttempts[aIdx];
+			bool isLast = (aIdx + 1 == isaAttempts.size());
+			this->errorString.clear();
+			string isaSuffix = (lvl > 1) ? ("-v" + intToString(lvl)) : "";
+			string label = (lvl > 0) ? string(isaLevelLabel(lvl)) : this->getArchStr();
+			this->selectedArchStr = (lvl > 1) ? ("64-v" + intToString(lvl)) : this->getArchStr();
+			string tarBaseName = appname + "-" +
+					     (this->_64bit_ws ? "wireshark-" : "") +
+					     (this->_arm64 ? "arm64" : this->_arm ? "armv6k" : (this->_64bit || this->_64bit_ws ? "amd64" : "i686")) + "-" +
+					     version + isaSuffix + "-static";
+			string tarFileName = tarBaseName + ".tar.gz";
+			string tarFilepathName = this->upgradeTempFileName + "/" + tarFileName;
+			string tarBinaryFilepathName = tarBaseName + "/usr/local/sbin/voipmonitor";
+			string urlSuffix = "build-" + build + "/tarballdevel/" + tarFileName;
+			unlink(tarFilepathName.c_str());
+			unlink(binaryFilepathName.c_str());
+
+			if(!this->getUpgradeFile(urlSuffix, urlHttp, tarFilepathName, !isLast)) {
+				if(!isLast) {
+					if(verbosity > 0) {
+						syslog(LOG_NOTICE, "upgrade devel candidate %s (%s) not available (%s), trying lower ISA",
+						       label.c_str(), tarFileName.c_str(), this->errorString.c_str());
+					}
+					continue;
+				}
+				return(false);
+			}
+			if(verbosity > 0) {
+				syslog(LOG_NOTICE, "try untar (%s)", label.c_str());
+			}
+			FILE *outputFileHandle = fopen(binaryFilepathName.c_str(), "wb");
+			if(!outputFileHandle) {
+				this->errorString = "open output file failed";
+				rmdir_r(this->upgradeTempFileName.c_str());
+				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+				return(false);
+			}
+			Tar tar;
+			tar.tar_read_save_parameters(outputFileHandle);
+			tar.tar_open(tarFilepathName, O_RDONLY);
+			tar.tar_read(tarBinaryFilepathName.c_str());
+			fclose(outputFileHandle);
+			if(!tar.isReadError()) {
+				if(verbosity > 0) {
+					syslog(LOG_NOTICE, "untar finished");
+				}
+			} else {
+				this->errorString = "untar failed";
+				if(!isLast) {
+					syslog(LOG_WARNING, "upgrade devel candidate %s untar failed, trying lower ISA", label.c_str());
+					unlink(tarFilepathName.c_str());
+					unlink(binaryFilepathName.c_str());
+					continue;
+				}
+				rmdir_r(this->upgradeTempFileName.c_str());
+				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+				return(false);
+			}
+			if(!file_exists(binaryFilepathName)) {
+				this->errorString = "untar failed - missing destination file";
+				if(!isLast) {
+					syslog(LOG_WARNING, "upgrade devel candidate %s missing binary in tarball, trying lower ISA", label.c_str());
+					unlink(tarFilepathName.c_str());
+					continue;
+				}
+				rmdir_r(this->upgradeTempFileName.c_str());
+				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+				return(false);
+			}
+			long long binaryFileSize = GetFileSize(binaryFilepathName.c_str());
+			if(!binaryFileSize) {
+				this->errorString = "untar failed - zero size of destination file";
+				if(!isLast) {
+					syslog(LOG_WARNING, "upgrade devel candidate %s zero-size binary, trying lower ISA", label.c_str());
+					unlink(tarFilepathName.c_str());
+					unlink(binaryFilepathName.c_str());
+					continue;
+				}
+				rmdir_r(this->upgradeTempFileName.c_str());
+				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+				return(false);
+			}
+			string verifyReason;
+			if(!verifyBinaryRunnable(binaryFilepathName, lvl > 1, &verifyReason)) {
+				this->errorString = "binary self-test failed (" + label + "): " + verifyReason;
+				if(!isLast) {
+					syslog(LOG_WARNING, "upgrade devel candidate %s failed self-test (%s), falling back to lower ISA",
+					       label.c_str(), verifyReason.c_str());
+					unlink(tarFilepathName.c_str());
+					unlink(binaryFilepathName.c_str());
+					continue;
+				}
+				rmdir_r(this->upgradeTempFileName.c_str());
+				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+				return(false);
+			}
+			syslog(LOG_NOTICE, "upgrade: verified devel %s binary (%s)", label.c_str(), tarFileName.c_str());
+			this->errorString.clear();
+			attemptOk = true;
+			break;
 		}
-		long long binaryFileSize = GetFileSize(binaryFilepathName.c_str());
-		if(!binaryFileSize) {
-			this->errorString = "untar failed - zero size of destination file";
+		if(!attemptOk) {
 			rmdir_r(this->upgradeTempFileName.c_str());
-			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
 			return(false);
 		}
 	}
@@ -3155,7 +3772,7 @@ bool RestartUpgrade::checkShellSafeStr(const char *str) {
 	return(true);
 }
 
-bool RestartUpgrade::downloadUpgradeFile(string urlHttps, string urlHttp, string destFilepathName) {
+bool RestartUpgrade::downloadUpgradeFile(string urlHttps, string urlHttp, string destFilepathName, bool optional) {
 	extern int opt_upgrade_try_http_if_https_fail;
 	for(int pass = 0; pass < (opt_upgrade_try_http_if_https_fail ? 2 : 1); pass++) {
 		string error;
@@ -3204,29 +3821,39 @@ bool RestartUpgrade::downloadUpgradeFile(string urlHttps, string urlHttp, string
 				this->errorString += ": " + error;
 			}
 			if(pass || !opt_upgrade_try_http_if_https_fail) {
-				rmdir_r(this->upgradeTempFileName.c_str());
-				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+				unlink(destFilepathName.c_str());
+				if(!optional) {
+					rmdir_r(this->upgradeTempFileName.c_str());
+					syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+				} else if(verbosity > 0) {
+					syslog(LOG_NOTICE, "optional upgrade file not downloaded (%s) - %s", _url.c_str(), this->errorString.c_str());
+				}
 				return(false);
 			}
 		}
 	}
 	if(!file_exists(destFilepathName)) {
 		this->errorString = "failed download - missing destination file";
-		rmdir_r(this->upgradeTempFileName.c_str());
-		syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		if(!optional) {
+			rmdir_r(this->upgradeTempFileName.c_str());
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	long long destFileSize = GetFileSize(destFilepathName.c_str());
 	if(!destFileSize) {
 		this->errorString = "failed download - zero size of destination file";
-		rmdir_r(this->upgradeTempFileName.c_str());
-		syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		unlink(destFilepathName.c_str());
+		if(!optional) {
+			rmdir_r(this->upgradeTempFileName.c_str());
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
 		return(false);
 	}
 	return(true);
 }
 
-bool RestartUpgrade::downloadUpgradeFileViaServer(string urlForServer, string destFilepathName) {
+bool RestartUpgrade::downloadUpgradeFileViaServer(string urlForServer, string destFilepathName, bool optional) {
 	extern sSnifferClientOptions snifferClientOptions;
 	extern sSnifferServerClientOptions snifferServerClientOptions;
 	cSocketBlock *sock = NULL;
@@ -3280,7 +3907,7 @@ bool RestartUpgrade::downloadUpgradeFileViaServer(string urlForServer, string de
 		JsonExport reqExp;
 		reqExp.add("version", this->version);
 		reqExp.add("build", this->build);
-		reqExp.add("arch", this->getArchStr());
+		reqExp.add("arch", this->selectedArchStr.empty() ? this->getArchStr() : this->selectedArchStr);
 		reqExp.add("url", urlForServer);
 		if(!sock->writeBlock(reqExp.getJson(), cSocket::_te_aes)) {
 			this->errorString = "failed send upgrade request";
@@ -3350,8 +3977,12 @@ cleanup:
 		if(destWritten) {
 			unlink(destFilepathName.c_str());
 		}
-		rmdir_r(this->upgradeTempFileName.c_str());
-		syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		if(!optional) {
+			rmdir_r(this->upgradeTempFileName.c_str());
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		} else if(verbosity > 0) {
+			syslog(LOG_NOTICE, "optional upgrade file via server not downloaded (%s) - %s", urlForServer.c_str(), this->errorString.c_str());
+		}
 		return(false);
 	}
 	if(verbosity > 0) {
