@@ -249,11 +249,13 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	first = true;
 	first_packet_time_us = 0;
 	last_packet_time_us = 0;
+	next_save_mos_graph_us = 0;
+	avgdelay_idx = 0;
 	memset((void*)rtpmap, 0, sizeof(rtpmap));
 	memset((void*)rtpmap_other_side, 0, sizeof(rtpmap_other_side));
 	rtpmap_call_index = -1;
 	rtpmap_other_side_call_index = -1;
-	s = new FILE_LINE(24001) source;
+	s = &s_inline;
 	memset(s, 0, sizeof(source));
 	memset(&stats, 0, sizeof(stats));
 	memset(&rtcp, 0, sizeof(rtcp));
@@ -741,7 +743,7 @@ RTP::~RTP() {
 	}
 	#endif
 
-	delete s;
+	// s points to embedded s_inline; no separate heap free needed
 	
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 	ast_jb_destroy(channel_fix1);
@@ -1403,7 +1405,7 @@ bool RTP::read(CallBranch *c_branch,
 	       unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkthdr *header, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport,
 	       int sensor_id, vmIP sensor_ip, char *ifname, bool *decrypt_ok, volatile int8_t *decrypt_sync) {
  
-	if(this->stopReadProcessing) {
+	if(if_unlikely(this->stopReadProcessing)) {
 		return(false);
 	}
  
@@ -1418,24 +1420,24 @@ bool RTP::read(CallBranch *c_branch,
 	this->ignore = 0;
 	resetgraph = 0;
 	
-	if(codec != -1 and codec != 13 and codec != 19 and codec != PAYLOAD_TELEVENT and !is_video()) {
+	if(if_likely(codec != -1 && codec != 13 && codec != 19 && codec != PAYLOAD_TELEVENT && !is_video())) {
 		had_audio = true;
 	}
 
-	if(sverb.ssrc and getSSRC() != sverb.ssrc) return(false);
+	if(if_unlikely(sverb.ssrc && getSSRC() != sverb.ssrc)) return(false);
 	
 	u_int8_t ttl = header_ip->get_ttl();
-	if(ttl_min < 0 || ttl < ttl_min) {
+	if(if_unlikely(ttl_min < 0 || ttl < ttl_min)) {
 		ttl_min = ttl;
 	}
-	if(ttl_max < 0 || ttl > ttl_max) {
+	if(if_unlikely(ttl_max < 0 || ttl > ttl_max)) {
 		ttl_max = ttl;
 	}
 	ttl_sum += ttl;
 	++ttl_count;
 	
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
-	if(sverb.read_rtp) {
+	if(if_unlikely(sverb.read_rtp)) {
 		++read_rtp_counter;
 		cout << "RTP - read [" << this << "]-" 
 		     << " ssrc: " << hex << this->ssrc << dec << " "
@@ -1454,8 +1456,8 @@ bool RTP::read(CallBranch *c_branch,
 
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 	extern bool opt_receiver_check_id_sensor;
-	if(opt_receiver_check_id_sensor && ((this->sensor_id >= 0 && this->sensor_id != sensor_id) ||
-	   (this->sensor_ip.isSet() && this->sensor_ip != sensor_ip))) {
+	if(if_unlikely(opt_receiver_check_id_sensor && ((this->sensor_id >= 0 && this->sensor_id != sensor_id) ||
+	   (this->sensor_ip.isSet() && this->sensor_ip != sensor_ip)))) {
 		if(!owner || !owner->rtp_from_multiple_sensors) {
 			extern bool opt_disable_rtp_warning;
 			if(!opt_disable_rtp_warning) {
@@ -1478,7 +1480,7 @@ bool RTP::read(CallBranch *c_branch,
 	
 	u_int64_t pcap_header_us = getTimeUS(header->ts);
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
-	if(this->last_packet_time_us && pcap_header_us < (this->last_packet_time_us - 50000)) {
+	if(if_unlikely(this->last_packet_time_us && pcap_header_us < (this->last_packet_time_us - 50000))) {
 		if(!this->pcap_header_ts_bad_time) {
 			if(pcap_header_us < (this->last_packet_time_us - 200000)) {
 				extern bool opt_disable_rtp_warning;
@@ -1498,21 +1500,22 @@ bool RTP::read(CallBranch *c_branch,
 	}
 	#endif
 
-	if(this->first_packet_time_us == 0) {
+	if(if_unlikely(this->first_packet_time_us == 0)) {
 		this->first_packet_time_us = pcap_header_us;
+		this->next_save_mos_graph_us = (TIME_US_TO_MS(pcap_header_us) + 10001ULL) * 1000ULL;
 	}
 	this->last_packet_time_us = pcap_header_us;
 
 	extern bool opt_ignore_rtp_after_bye_confirmed;
 	if(owner && !is_read_from_file_simple() && opt_ignore_rtp_after_bye_confirmed) {
 		u_int64_t seenbye_and_ok_time_usec = owner->getSeenByeAndOkTimeUS(c_branch);
-		if(seenbye_and_ok_time_usec && getTimeUS(header) > seenbye_and_ok_time_usec) {
+		if(if_unlikely(seenbye_and_ok_time_usec && pcap_header_us > seenbye_and_ok_time_usec)) {
 			return(false);
 		}
 	}
 
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
-	if(owner && owner->forcemark_time_size > forcemark_owner_used) {
+	if(if_unlikely(owner && owner->forcemark_time_size > forcemark_owner_used)) {
 		owner->forcemark_lock();
 		bool checkNextForcemark = false;
 		do {
@@ -1520,7 +1523,7 @@ bool RTP::read(CallBranch *c_branch,
 			size_t _forcemark_size = owner->forcemark_time.size();
 			if(_forcemark_size > forcemark_owner_used) {
 				u_int64_t _forcemark_time = owner->forcemark_time[forcemark_owner_used];
-				u_int64_t _header_time = getTimeUS(header);
+				u_int64_t _header_time = pcap_header_us;
 				if(_forcemark_time < _header_time) {
 					if(_forcemark_time > first_packet_time_us) {
 						if(sverb.forcemark) {
@@ -1544,8 +1547,8 @@ bool RTP::read(CallBranch *c_branch,
 	}
 	#endif
 
-	payload_len = get_payload_len();
-	if(payload_len < 0) {
+	payload_len = get_payload_len_fast();
+	if(if_unlikely(payload_len < 0)) {
 		if(owner) {
 			if(!owner->error_negative_payload_length) {
 				syslog(LOG_NOTICE, "warning - negative payload_len in call %s", owner->fbasename);
@@ -1580,7 +1583,7 @@ bool RTP::read(CallBranch *c_branch,
 		mos_lqo;
 	#endif
 	
-	if(srtp_decrypt) {
+	if(if_unlikely(srtp_decrypt)) {
 		if(!decrypt_rtp_attempt[0]) {
 			if(sverb.dtls && ssl_sessionkey_enable()) {
 				string log_str;
@@ -1674,19 +1677,20 @@ bool RTP::read(CallBranch *c_branch,
 		}
 	}
 
-	if(is_srtp && srtp_auth_tag_size && payload_len > (int)srtp_auth_tag_size && !probably_unencrypted_payload &&
-	   (!srtp_decrypt || srtp_decrypt->isVerifyOnly())) {
+	if(if_unlikely(is_srtp && srtp_auth_tag_size && payload_len > (int)srtp_auth_tag_size && !probably_unencrypted_payload &&
+	   (!srtp_decrypt || srtp_decrypt->isVerifyOnly()))) {
 		payload_len -= srtp_auth_tag_size;
 		this->len -= srtp_auth_tag_size;
 	}
 
-	if(getVersion() != 2) {
+	RTPFixedHeader *hdr = getHeader();
+	if(if_unlikely(hdr->version != 2)) {
 		return(false);
 	}
 
-	seq = getSeqNum();
-	if((!dupl_check_seq.exists_dupl || opt_rtp_seq_dupl_skip_ext) && 
-	   last_seq != -1 && seq != ROT_SEQ(last_seq + 1) && dupl_check_seq.check(seq)) {
+	seq = ntohs(hdr->sequence);
+	if(if_unlikely((!dupl_check_seq.exists_dupl || opt_rtp_seq_dupl_skip_ext) && 
+	   last_seq != -1 && seq != ROT_SEQ(last_seq + 1) && dupl_check_seq.check(seq))) {
 		dupl_check_seq.exists_dupl = true;
 		if(opt_rtp_seq_dupl_skip_ext) {
 			return(false);
@@ -1694,15 +1698,16 @@ bool RTP::read(CallBranch *c_branch,
 	}
 	dupl_check_seq.push(seq);
 
-	if(seq == last_seq && !(last_markbit == 0 && getMarker() == 1) && !opt_disable_rtp_seq_check) {
+	bool hdr_marker = hdr->marker != 0;
+	if(if_unlikely(seq == last_seq && !(last_markbit == 0 && (hdr_marker || forcemark)) && !opt_disable_rtp_seq_check)) {
 		// ignore duplicated RTP packets unless the second packet has mark bit set but the previous not
 		return(false);
 	}
 
-	last_markbit = getMarker();
+	last_markbit = hdr_marker || forcemark;
 
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
-	if(opt_rtp_check_timestamp) {
+	if(if_unlikely(opt_rtp_check_timestamp)) {
 		if(this->_last_ts.tv_sec &&
 		   (header->ts.tv_sec < this->_last_ts.tv_sec ||
 		    (header->ts.tv_sec == this->_last_ts.tv_sec &&
@@ -2239,7 +2244,7 @@ bool RTP::read(CallBranch *c_branch,
 	}
 	frame->lastframetype = (enum ast_frame_type)(lastframetype);
 
-	if(packetization_iterator == 0 || packetization_iterator == 1) {
+	if(if_unlikely(packetization_iterator == 0 || packetization_iterator == 1)) {
 		// we dont know packetization yet. Behave differently n G723 codec 
 		if(curpayload == PAYLOAD_G723) {
 			default_packetization = 30;
@@ -2486,12 +2491,18 @@ bool RTP::read(CallBranch *c_branch,
 			}
 		}
 	} else {
-		if(last_ts != 0 and seq == ROT_SEQ(last_seq + 1) and codec != PAYLOAD_TELEVENT and !getMarker() and 
-		   (prev_payload_len > 8 or (sverb.process_rtp_header and prev_payload_len == 0))) {
+		if(if_likely(last_ts != 0 && seq == ROT_SEQ(last_seq + 1) && codec != PAYLOAD_TELEVENT && !(hdr_marker || forcemark) && 
+		   (prev_payload_len > 8 || (sverb.process_rtp_header && prev_payload_len == 0)))) {
 			// packetization can change over time
 			int curpacketization = 0;
 
-			if(curpayload == PAYLOAD_G729) {
+			if(if_likely(curpayload == PAYLOAD_PCMU || curpayload == PAYLOAD_PCMA || curpayload == PAYLOAD_G722)) {
+				int p = payload_len >> 3;
+				if(if_likely(p >= 20)) {
+					// do not change packetization to 10ms frames. Case g711_20_10_sync.pcap
+					curpacketization = p;
+				}
+			} else if(curpayload == PAYLOAD_G729) {
 				// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
 				if(payload_len == 60) {
 					curpacketization = 60;	
@@ -2526,11 +2537,6 @@ bool RTP::read(CallBranch *c_branch,
 					//it is sid data - do not change packetization
 					curpacketization = last_packetization;
 				}
-			} else if(curpayload == PAYLOAD_PCMU or curpayload == PAYLOAD_PCMA or curpayload == PAYLOAD_G722) {
-				if((payload_len / 8) >= 20) {
-					// do not change packetization to 10ms frames. Case g711_20_10_sync.pcap
-					curpacketization = payload_len / 8;
-				}
 			} else if(curpayload == PAYLOAD_GSM) {
 				curpacketization = payload_len / 33 * 20;
 			} else if(codec == PAYLOAD_AMR || codec == PAYLOAD_AMRWB || codec == PAYLOAD_EVS) {
@@ -2544,31 +2550,30 @@ bool RTP::read(CallBranch *c_branch,
 				curpacketization = (getTimestamp() - last_ts) / (samplerate / 1000);
 			}
 
-			if(curpacketization < 10) {
+			if(if_unlikely(curpacketization < 10)) {
 				// it cannot be, reset it to 20
 				curpacketization = default_packetization;
 			}
 
-			if(verbosity > 3) printf("curpacketization[%u] = (getTimestamp()[%u] - last_ts[%u]) / (samplerate[%u] / 1000) pl[%u] curpayload[%u] seq[%u]\n", curpacketization, getTimestamp(), last_ts, samplerate, payload_len, curpayload, seq);
+			if(if_unlikely(verbosity > 3)) printf("curpacketization[%u] = (getTimestamp()[%u] - last_ts[%u]) / (samplerate[%u] / 1000) pl[%u] curpayload[%u] seq[%u]\n", curpacketization, getTimestamp(), last_ts, samplerate, payload_len, curpayload, seq);
 
-			if(curpacketization != packetization and curpacketization % 10 == 0 and curpacketization >= 10 and curpacketization <= 120) {
+			if(if_unlikely(curpacketization != packetization && curpacketization % 10 == 0 && curpacketization >= 10 && curpacketization <= 120)) {
 				// packetization changed, check if next packet is the same packetization
 				change_packetization_iterator++;
+				if(change_packetization_iterator > 1) { 
+					//packetization changed for two last packets
+					if(verbosity > 3) printf("[%x] changing packetization:[%d]->[%d]\n", getSSRC(), packetization, curpacketization);
+					channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization = curpacketization;
+					last_packetization = curpacketization;
+					change_packetization_iterator = 0;
+				}
 			} else {
 				// packetization changed back, reset the iterator
 				change_packetization_iterator = 0;
 			}
-
-			if(change_packetization_iterator > 1) { 
-				//packetization changed for two last packets
-				if(verbosity > 3) printf("[%x] changing packetization:[%d]->[%d]\n", getSSRC(), packetization, curpacketization);
-				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization = curpacketization;
-				last_packetization = curpacketization;
-				change_packetization_iterator = 0;
-			}
 			
 		}
-		if(curpayload == PAYLOAD_G723) {
+		if(if_unlikely(curpayload == PAYLOAD_G723)) {
 			if(payload_len == 24) {
 				packetization = 30;	
 			} else if(payload_len == 24*2) {
@@ -2580,7 +2585,7 @@ bool RTP::read(CallBranch *c_branch,
 		}
 		//printf("packetization [%d]\n", packetization);
 		jitterbuffer_mos_all();
-		if(use_channel_record) {
+		if(if_unlikely(use_channel_record)) {
 			if(checkDuplChannelRecordSeq(seq)) {
 				jitterbuffer(channel_record, save_audio, energylevels, mos_lqo);
 			}
@@ -2788,43 +2793,54 @@ bool RTP::read(CallBranch *c_branch,
 		DSP_ivr = NULL;
 	}
 
-	if(getMarker()) {
+	if(if_unlikely(hdr_marker || forcemark)) {
 		// if RTP packet is Marked, we have to reset last_ts to 0 so in next cycle it will count packetization from ground
 		last_ts = 0;
 	} else {
-		last_ts = getTimestamp();
+		last_ts = ntohl(hdr->timestamp);
 	}
 
-	if(update_seq(seq)) {
+	if(if_likely(update_seq(seq))) {
 		update_stats();
 	}
 	lastframetype = frame->frametype;
 	last_seq = seq;
 	lastcng = 0;
 
-	if(packetization > 0) {
+	if(if_likely(packetization > 0)) {
 		avg_ptime_count++;
-		avg_ptime = (avg_ptime * (avg_ptime_count - 1) + packetization) / avg_ptime_count;
+		float p = (float)packetization;
+		if(if_unlikely(avg_ptime_count == 1)) {
+			avg_ptime = p;
+		} else if(if_unlikely(avg_ptime != p)) {
+			avg_ptime = (avg_ptime * (avg_ptime_count - 1) + p) / avg_ptime_count;
+		}
 	}
 
 	// write MOS to .graph every 10 seconds and reset jitter last mos interval
-	if((last_save_mos_graph_ms ? last_save_mos_graph_ms : TIME_US_TO_MS(first_packet_time_us)) + 10000 < TIME_US_TO_MS(last_packet_time_us) || 
-	   save_mos_graph_wait > 0) {
-		if(!save_mos_graph_wait) {
-			save_mos_graph_wait = 20; // After a packet loss, it may happen that the mos discovery period hits the first packets after the loss and the jitterbuffer is not yet aware of the mos degradation due to the loss. Therefore there is a pause of 20 packets.
-			last_save_mos_graph_ms = TIME_US_TO_MS(last_packet_time_us);
-		} else {
-			save_mos_graph_wait--;
+	if(if_unlikely(last_packet_time_us >= next_save_mos_graph_us || save_mos_graph_wait > 0)) {
+		if(if_unlikely(next_save_mos_graph_us == 0)) {
+			u_int64_t base_ms = last_save_mos_graph_ms ? last_save_mos_graph_ms : TIME_US_TO_MS(first_packet_time_us);
+			next_save_mos_graph_us = (base_ms + 10001ULL) * 1000ULL;
+		}
+		if(last_packet_time_us >= next_save_mos_graph_us || save_mos_graph_wait > 0) {
 			if(!save_mos_graph_wait) {
-				save_mos_graph(false);
-				last_call_save_mos_graph_ms = TIME_US_TO_MS(last_packet_time_us);
+				save_mos_graph_wait = 20; // After a packet loss, it may happen that the mos discovery period hits the first packets after the loss and the jitterbuffer is not yet aware of the mos degradation due to the loss. Therefore there is a pause of 20 packets.
+				last_save_mos_graph_ms = TIME_US_TO_MS(last_packet_time_us);
+				next_save_mos_graph_us = (last_save_mos_graph_ms + 10001ULL) * 1000ULL;
+			} else {
+				save_mos_graph_wait--;
+				if(!save_mos_graph_wait) {
+					save_mos_graph(false);
+					last_call_save_mos_graph_ms = TIME_US_TO_MS(last_packet_time_us);
+				}
 			}
 		}
 	}
 
 	resetgraph = false;
 
-	if(forcemark_by_owner_set) {
+	if(if_unlikely(forcemark_by_owner_set)) {
 		forcemark_by_owner_set = false;
 		forcemark2 = 1; // set this flag and keep it until next update_stats call
 	}
@@ -2873,44 +2889,37 @@ RTP::update_stats() {
 	int adelay = 0;
 	Call *owner = (Call*)call_owner;
 	
-	if(!is_video()) {
-		struct timeval tsdiff;	
-		double tsdiff2;
-
-		//printf("seq[%d] lseq[%d] lost[%d], ((s->cycles[%d] + s->max_seq[%d] - (s->base_seq[%d] + 1)) - s->received[%d]);\n", seq, last_seq, lost, s->cycles, s->max_seq, s->base_seq, s->received);
-
+	if(if_likely(!is_video())) {
 		/* differences between last timestamp and current timestamp (timestamp from ip header)
 		 * frame1.time - frame0.time */
-		tsdiff2 = timeval_subtract(&tsdiff, header_ts, last_voice_frame_ts) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
-
-		long double transit = tsdiff2 - ((double)getTimestamp() - last_voice_frame_timestamp)/((double)samplerate/1000.0);
+		int64_t diff_us = (int64_t)(header_ts.tv_sec - last_voice_frame_ts.tv_sec) * 1000000LL +
+				  (int64_t)(header_ts.tv_usec - last_voice_frame_ts.tv_usec);
+		double tsdiff2 = (double)diff_us * 0.001;
+		u_int32_t cur_ts = getTimestamp();
+		double inv_sr_ms = (samplerate == 8000) ? 0.125 :
+				   ((samplerate == 16000) ? 0.0625 : (1000.0 / (double)samplerate));
+		double transit = tsdiff2 - ((double)cur_ts - (double)last_voice_frame_timestamp) * inv_sr_ms;
 
 	//	if(verbosity > 1) printf("transit rtp[%p] ssrc[%x] seq[%u] transit[%f]\n", this, getSSRC(), seq, (float)transit);
 
 		/* if payload == PAYLOAD_TELEVENT dont make delayes on this because it confuses stats */
-		if(codec == PAYLOAD_TELEVENT or lastframetype == AST_FRAME_DTMF) {
+		if(if_unlikely(codec == PAYLOAD_TELEVENT || lastframetype == AST_FRAME_DTMF)) {
 			if(codec != PAYLOAD_TELEVENT) {
 				if(last_voice_frame_ts.tv_sec == 0) {
 					// it is not EVENT frame and it is first voice packet 
 					last_voice_frame_ts = header_ts;
-					last_voice_frame_timestamp = getTimestamp();
+					last_voice_frame_timestamp = cur_ts;
 					return;
 				}
 
 				if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
-					uint32_t diff = timeval_subtract(&tsdiff, header_ts, last_voice_frame_ts) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
+					uint32_t diff = (uint32_t)tsdiff2;
 					this->graph.write((char*)&graph_event, 4);
 					this->graph.write((char*)&diff, 4);
 					if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms ip[%s] DTMF\n", this, getSSRC(), seq, diff, saddr.getString().c_str());
 					owner->save_rtp_graph = true;
 				}
 
-				//s->fdelay = s->avgdelay;
-	/*
-				s->lastTimeStamp = getTimestamp() - samplerate / 1000 * packetization;
-				struct timeval tmp = ast_tvadd(header->ts, ast_samp2tv(packetization, 1000));
-				memcpy(&s->lastTimeRec, &tmp, sizeof(struct timeval));
-	*/
 				forcemark2 = 0;
 
 				return;
@@ -2919,41 +2928,41 @@ RTP::update_stats() {
 				return;
 			}
 		} else {
-			
-			if(abs((int)transit) > 5000) {
+			int itransit = (int)transit;
+			if(if_unlikely(abs(itransit) > 5000)) {
 				/* timestamp skew, discard delay, it is possible that timestamp changed  */
 				s->fdelay = s->avgdelay;
 				//s->fdelay = 0;
 				transit = 0;
 			} else {
-				adelay = abs(int(transit));
+				adelay = abs(itransit);
 				s->fdelay += transit;
 			}
 		}
 
-		if(last_voice_frame_ts.tv_sec == 0) {
+		if(if_unlikely(last_voice_frame_ts.tv_sec == 0)) {
 			// it is not EVENT frame and it is first voice packet - ignore stats for first voice packet
 			last_voice_frame_ts = header_ts;
-			last_voice_frame_timestamp = getTimestamp();
+			last_voice_frame_timestamp = cur_ts;
 			forcemark2 = 0;
 			return;
 		}
 
 		last_voice_frame_ts = header_ts;
-		last_voice_frame_timestamp = getTimestamp();
+		last_voice_frame_timestamp = cur_ts;
 	//	printf("rtp[%p] transit[%f]\t[%f]\tseq[%u]\tavgdelay[%f]\n", this, (float)transit, (float)s->fdelay, seq, float(s->avgdelay));
 
 		//printf("seq[%u] adelay[%u]\n", seq, adelay);
 
 
 		// store mark bit in graph file
-		if(getMarker() or ((codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB  or codec == PAYLOAD_EVS) and (payload_len <= 7))) {
+		if(if_unlikely(getMarker() || ((codec == PAYLOAD_AMR || codec == PAYLOAD_AMRWB || codec == PAYLOAD_EVS) && (payload_len <= 7)))) {
 
 			if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
 				uint32_t diff = (uint32_t)tsdiff2;
 				this->graph.write((char*)&graph_mark, 4);
 				this->graph.write((char*)&diff, 4);
-				if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms transit[%Lf] avgdelay[%f] mark\n", this, getSSRC(), seq, diff, transit, s->avgdelay);
+				if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms transit[%f] avgdelay[%f] mark\n", this, getSSRC(), seq, diff, transit, s->avgdelay);
 				owner->save_rtp_graph = true;
 			}
 
@@ -2961,7 +2970,7 @@ RTP::update_stats() {
 			//s->fdelay -= transit;
 			s->fdelay = s->avgdelay;
 			adelay = 0;
-		} else if(resetgraph) {
+		} else if(if_unlikely(resetgraph)) {
 			if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
 				uint32_t diff = (uint32_t)tsdiff2;
 				this->graph.write((char*)&graph_silence, 4);
@@ -2977,29 +2986,31 @@ RTP::update_stats() {
 		}
 
 		// keep average only for last 30 packets
-		uint32_t lastpackets = 30;
-		if(counter > lastpackets) {
-			s->avgdelay = (lastpackets * s->avgdelay - avgdelays[counter % lastpackets] + s->fdelay) / lastpackets;
+		static const uint32_t lastpackets = 30;
+		static const double inv_lastpackets = 1.0 / 30.0;
+		if(if_likely(counter > lastpackets)) {
+			s->avgdelay = (30.0 * s->avgdelay - avgdelays[avgdelay_idx] + s->fdelay) * inv_lastpackets;
 		} else {
-			s->avgdelay = ((s->avgdelay * (double)(counter)) + s->fdelay ) / (double)(counter + 1);
+			s->avgdelay = ((s->avgdelay * (double)(counter)) + s->fdelay) / (double)(counter + 1);
 		}
-		avgdelays[counter % lastpackets] = s->fdelay;
-		//s->avgdelay = ((s->avgdelay * (long double)(counter)) + s->fdelay ) / (double)(counter + 1);
+		avgdelays[avgdelay_idx] = (float)s->fdelay;
+		if(++avgdelay_idx == lastpackets) {
+			avgdelay_idx = 0;
+		}
 
-		
 		/* Jitterbuffer calculation
 		 * J(1) = J(0) + (|D(0,1)| - J(0))/16 */
-		jitter = s->prevjitter + (double)(((transit < 0) ? -transit : transit) - s->prevjitter)/16. ;
+		jitter = s->prevjitter + (((transit < 0) ? -transit : transit) - s->prevjitter) * 0.0625;
 		s->prevjitter = jitter;
 
 		counter++;
-		stats.avgjitter = ((stats.avgjitter * ( stats.received - 1 )  + jitter )) / (double)stats.received;
-		//printf("jitter[%f] avg[%llf] [%u] [%u]\n", jitter, stats.avgjitter, stats.received, s->received);
+		stats.avgjitter = ((stats.avgjitter * (stats.received - 1) + jitter)) / (double)stats.received;
+		//printf("jitter[%f] avg[%f] [%u] [%u]\n", jitter, stats.avgjitter, stats.received, s->received);
 		if(stats.maxjitter < jitter) stats.maxjitter = jitter;
 		s->lastTimeRec = header_ts;
 		s->lastTimeRecJ = header_ts;
-		s->lastTimeStamp = getTimestamp();
-		s->lastTimeStampJ = getTimestamp();
+		s->lastTimeStamp = cur_ts;
+		s->lastTimeStampJ = cur_ts;
 	}
 
 	if(forcemark2) {
@@ -3104,24 +3115,22 @@ RTP::init_seq(u_int16_t seq) {
 int
 RTP::update_seq(u_int16_t seq) {
 
-	struct timeval tsdiff;	
-	double tsdiff2;
-	tsdiff2 = timeval_subtract(&tsdiff, header_ts, s->lastTimeRecJ) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
-
 	int lost = int((s->cycles + seq - (s->base_seq + 1)) - s->received);
-//	printf("seq[%u] lost[%u] tsdiff2[%f] tsdiff-sec[%d] tsdiff-miscro[%d] header->ts[%u.%u] s->lastTimeRecJ[%u.%u]\n", seq, lost, tsdiff2, tsdiff.tv_sec, tsdiff.tv_usec, header->ts.tv_sec, header->ts.tv_usec, s->lastTimeRecJ.tv_sec, s->lastTimeRecJ.tv_usec);
-	if((lost - stats.last_lost) > 200 and (abs((int)tsdiff2) < 1000)) {
-		// it cannot be loss because difference is < 1000ms and loss is too big. It is probably sequence reset without mark bit 
-		//printf("lost[%d] last_lost[%d] tsdiff2[%f] seq[%u] rec[%lu] max_seq[%u] base_seq[%u] cyc[%u] nlost[%d]\n", lost, stats.last_lost, tsdiff2, seq, s->received, s->max_seq, s->base_seq, s->cycles, int((s->cycles + s->max_seq - (s->base_seq + 1)) - s->received));
-		s->cycles = s->cycles - s->base_seq + s->max_seq;
-		s->base_seq = seq;
-		s->max_seq = seq;
-		if(sverb.rtp_set_base_seq) {
-			cout << "RTP - packet_lost - set base_seq #1" 
-			     << " ssrc: " << hex << this->ssrc << dec << " "
-			     << " src: " << saddr.getString() << " : " << sport
-			     << " dst: " << daddr.getString() << " : " << dport
-			     << endl;
+	if(if_unlikely((lost - stats.last_lost) > 200)) {
+		int64_t diff_us = (int64_t)(header_ts.tv_sec - s->lastTimeRecJ.tv_sec) * 1000000LL +
+				  (int64_t)(header_ts.tv_usec - s->lastTimeRecJ.tv_usec);
+		if(llabs(diff_us) < 1000000LL) {
+			// it cannot be loss because difference is < 1000ms and loss is too big. It is probably sequence reset without mark bit 
+			s->cycles = s->cycles - s->base_seq + s->max_seq;
+			s->base_seq = seq;
+			s->max_seq = seq;
+			if(sverb.rtp_set_base_seq) {
+				cout << "RTP - packet_lost - set base_seq #1" 
+				     << " ssrc: " << hex << this->ssrc << dec << " "
+				     << " src: " << saddr.getString() << " : " << sport
+				     << " dst: " << daddr.getString() << " : " << dport
+				     << endl;
+			}
 		}
 	}
 
