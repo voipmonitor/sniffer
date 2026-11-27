@@ -773,7 +773,7 @@ unsigned cRecordFilterItem_CallStream::rtpStreamsSize(void *rec, sRtpStreamColum
 		return(columns->rows);
 	}
 	Call *call = recCall(rec);
-	return(call->saved_data ? call->saved_data->rtp_streams.size() : call->rtp_streams_size());
+	return(call->cdr_result.saved_data ? call->cdr_result.saved_data->rtp_streams.size() : call->rtp_streams_size());
 }
 
 bool cRecordFilterItem_CallStream::rtpStream(void *rec, sRtpStreamColumns *columns, unsigned index, Call::sSavedData::sRtpStream *stream) {
@@ -800,7 +800,7 @@ bool cRecordFilterItem_CallStream::rtpStream(void *rec, sRtpStreamColumns *colum
 		return(true);
 	}
 	Call *call = recCall(rec);
-	Call::sSavedData *saved_data = call->saved_data;
+	Call::sSavedData *saved_data = call->cdr_result.saved_data;
 	if(saved_data) {
 		if(index >= saved_data->rtp_streams.size()) {
 			return(false);
@@ -817,7 +817,7 @@ unsigned cRecordFilterItem_CallStream::sdpRowsSize(void *rec, sSdpRowColumns *co
 		return(columns->rows);
 	}
 	Call *call = recCall(rec);
-	return(call->saved_data ? call->saved_data->sdp_streams.size() : call->sdp_rows_size());
+	return(call->cdr_result.saved_data ? call->cdr_result.saved_data->sdp_streams.size() : call->sdp_rows_size());
 }
 
 bool cRecordFilterItem_CallStream::sdpRow(void *rec, sSdpRowColumns *columns, unsigned index, s_sdp_store_data *sdp_row) {
@@ -833,7 +833,7 @@ bool cRecordFilterItem_CallStream::sdpRow(void *rec, sSdpRowColumns *columns, un
 		return(true);
 	}
 	Call *call = recCall(rec);
-	Call::sSavedData *saved_data = call->saved_data;
+	Call::sSavedData *saved_data = call->cdr_result.saved_data;
 	if(saved_data) {
 		if(index >= saved_data->sdp_streams.size()) {
 			return(false);
@@ -1178,11 +1178,11 @@ static bool dtmfSequences_rec(void *rec, map<cRecordFilterItem_Dtmf::sStream, st
 	if(!(call->flags & FLAG_SAVEDTMFDB)) {
 		return(false);
 	}
-	__SYNC_LOCK_USLEEP(call->dtmf_sync, 50);
-	for(std::deque<s_dtmf>::iterator iter = call->dtmf_history.begin(); iter != call->dtmf_history.end(); iter++) {
+	__SYNC_LOCK_USLEEP(call->dtmf.sync, 50);
+	for(std::deque<s_dtmf>::iterator iter = call->dtmf.history.begin(); iter != call->dtmf.history.end(); iter++) {
 		(*sequences)[cRecordFilterItem_Dtmf::sStream(iter->saddr, iter->daddr)] += iter->dtmf;
 	}
-	__SYNC_UNLOCK(call->dtmf_sync);
+	__SYNC_UNLOCK(call->dtmf.sync);
 	return(true);
 }
 
@@ -1407,12 +1407,12 @@ void cRecordFilterItem_Call::getSaddrExists(void *rec, bool *a_saddr, bool *b_sa
 		return;
 	}
 	Call *call = recCall(rec);
-	if(call->saved_data) {
-		*a_saddr = call->saved_data->saddr_exists[0];
-		*b_saddr = call->saved_data->saddr_exists[1];
+	if(call->cdr_result.saved_data) {
+		*a_saddr = call->cdr_result.saved_data->saddr_exists[0];
+		*b_saddr = call->cdr_result.saved_data->saddr_exists[1];
 	} else {
-		*a_saddr = call->lastactivecallerrtp != NULL;
-		*b_saddr = call->lastactivecalledrtp != NULL;
+		*a_saddr = call->rtp.last_active_caller != NULL;
+		*b_saddr = call->rtp.last_active_called != NULL;
 	}
 }
 
@@ -1430,7 +1430,7 @@ static u_int64_t getCdrFlags_rec(void *rec) {
 		static unsigned slot = cdrColumnSlot("flags");
 		return((u_int64_t)getCdrValue_int(recTablesContent(rec), slot, "flags"));
 	}
-	return(recCall(rec)->rslt_save_cdr_flags);
+	return(recCall(rec)->cdr_result.rslt_flags);
 }
 
 static unsigned getCdrBye_rec(void *rec) {
@@ -1438,7 +1438,7 @@ static unsigned getCdrBye_rec(void *rec) {
 		static unsigned slot = cdrColumnSlot("bye");
 		return(getCdrValue_int(recTablesContent(rec), slot, "bye"));
 	}
-	return(recCall(rec)->rslt_save_cdr_bye);
+	return(recCall(rec)->cdr_result.rslt_bye);
 }
 
 static bool countriesSet_rec(void *rec) {
@@ -1446,7 +1446,7 @@ static bool countriesSet_rec(void *rec) {
 		return(recTablesContent(rec)->getCountRows(_t_cdr_country_code) > 0);
 	}
 	Call *call = recCall(rec);
-	return(!call->saved_data || call->saved_data->countries_set);
+	return(!call->cdr_result.saved_data || call->cdr_result.saved_data->countries_set);
 }
 
 static bool isConnected_rec(void *rec) {
@@ -1456,7 +1456,7 @@ static bool isConnected_rec(void *rec) {
 		getCdrValue_int(recTablesContent(rec), slot, "connect_duration", &connect_duration_null);
 		return(!connect_duration_null);
 	}
-	return(recCall(rec)->connect_time_us != 0);
+	return(recCall(rec)->timing.connect_time_us != 0);
 }
 
 static long long getCdrReceived_rec(void *rec, int side, bool *null) {
@@ -1464,7 +1464,7 @@ static long long getCdrReceived_rec(void *rec, int side, bool *null) {
 		static sReceivedColumnSlots slots;
 		return(getCdrValue_int(recTablesContent(rec), slots.received_ab[side], side == 0 ? "a_received" : "b_received", null));
 	}
-	RTP *rtp = recCall(rec)->rtpab[side];
+	RTP *rtp = recCall(rec)->rtp.ab[side];
 	if(!rtp) {
 		return(0);
 	}
@@ -1501,22 +1501,22 @@ void cRecordFilterItem_Call::getCodecData(void *rec, sCodecData *codecData) {
 		return;
 	}
 	Call *call = recCall(rec);
-	if(call->saved_data) {
+	if(call->cdr_result.saved_data) {
 		for(int i = 0; i < 2; i++) {
-			codecData->payload_ab[i] = call->saved_data->payload_ab[i];
-			codecData->mos_f2_ab[i] = call->saved_data->mos_f2_ab[i];
+			codecData->payload_ab[i] = call->cdr_result.saved_data->payload_ab[i];
+			codecData->mos_f2_ab[i] = call->cdr_result.saved_data->mos_f2_ab[i];
 		}
-		codecData->payload = call->saved_data->payload;
-		codecData->payload_null = call->saved_data->payload_null;
+		codecData->payload = call->cdr_result.saved_data->payload;
+		codecData->payload_null = call->cdr_result.saved_data->payload_null;
 		if(codec_all_streams) {
-			for(set<int>::iterator iter = call->saved_data->rtp_rows_payloads.begin(); iter != call->saved_data->rtp_rows_payloads.end() && !codecData->rtp_rows_match; iter++) {
+			for(set<int>::iterator iter = call->cdr_result.saved_data->rtp_rows_payloads.begin(); iter != call->cdr_result.saved_data->rtp_rows_payloads.end() && !codecData->rtp_rows_match; iter++) {
 				codecData->rtp_rows_match = codecMatch(*iter);
 			}
 		}
 	} else if(call->isClosed()) {
 		for(int i = 0; i < 2; i++) {
-			codecData->payload_ab[i] = call->rtpab[i] ? call->rtpab[i]->first_codec_() : -1;
-			codecData->mos_f2_ab[i] = rtpMosF2Mult10(call->rtpab[i]);
+			codecData->payload_ab[i] = call->rtp.ab[i] ? call->rtp.ab[i]->first_codec_() : -1;
+			codecData->mos_f2_ab[i] = rtpMosF2Mult10(call->rtp.ab[i]);
 		}
 		codecData->payload = call->get_payload_rslt();
 		codecData->payload_null = false;
@@ -1529,10 +1529,10 @@ void cRecordFilterItem_Call::getCodecData(void *rec, sCodecData *codecData) {
 			}
 		}
 	} else {
-		codecData->payload_ab[0] = call->last_callercodec;
-		codecData->payload_ab[1] = call->last_calledcodec;
-		codecData->mos_f2_ab[0] = rtpMosF2Mult10(call->lastactivecallerrtp);
-		codecData->mos_f2_ab[1] = rtpMosF2Mult10(call->lastactivecalledrtp);
+		codecData->payload_ab[0] = call->media.last_caller_codec;
+		codecData->payload_ab[1] = call->media.last_called_codec;
+		codecData->mos_f2_ab[0] = rtpMosF2Mult10(call->rtp.last_active_caller);
+		codecData->mos_f2_ab[1] = rtpMosF2Mult10(call->rtp.last_active_called);
 		codecData->payload = -1;
 		codecData->payload_null = true;
 	}
@@ -2998,15 +2998,15 @@ double cCallFilter::getField_float(void *rec, unsigned registerFieldIndex, bool 
 		rslt = durationValue(call->isClosed() ? call->duration_us() : call->duration_active_us(), existsColumns.cdr_duration_ms);
 		break;
 	case cf_connect_duration:
-		if(call->connect_time_us) {
+		if(call->timing.connect_time_us) {
 			rslt = durationValue(call->isClosed() ? call->connect_duration_us() : call->connect_duration_active_us(), existsColumns.cdr_connect_duration_ms);
 		} else {
 			_null = true;
 		}
 		break;
 	case cf_progress_time:
-		if(call->progress_time_us) {
-			rslt = durationValue(call->progress_time_us - call->first_packet_time_us, existsColumns.cdr_progress_time_ms);
+		if(call->timing.progress_time_us) {
+			rslt = durationValue(call->timing.progress_time_us - call->first_packet_time_us, existsColumns.cdr_progress_time_ms);
 		} else {
 			_null = true;
 		}
@@ -3046,16 +3046,16 @@ double cCallFilter::getField_float(void *rec, unsigned registerFieldIndex, bool 
 		}
 		break;
 	case cf_response_time_100:
-		if(call->saved_data) {
-			if(call->saved_data->response_time_100_null) {
+		if(call->cdr_result.saved_data) {
+			if(call->cdr_result.saved_data->response_time_100_null) {
 				_null = true;
 			} else {
-				rslt = call->saved_data->response_time_100;
+				rslt = call->cdr_result.saved_data->response_time_100;
 			}
-		} else if(call->first_invite_time_us && call->first_response_100_time_us) {
+		} else if(call->timing.first_invite_time_us && call->timing.first_response_100_time_us) {
 			extern bool opt_response_time_from_first_invite;
 			int64_t response_time_100_us = opt_response_time_from_first_invite ?
-							(int64_t)(call->first_response_100_time_us - call->first_invite_time_us) :
+							(int64_t)(call->timing.first_response_100_time_us - call->timing.first_invite_time_us) :
 							call->branch_main()->get_min_response_100_time_us();
 			if(response_time_100_us >= 0) {
 				rslt = min(65535., round(response_time_100_us / 1000.));
@@ -3069,10 +3069,10 @@ double cCallFilter::getField_float(void *rec, unsigned registerFieldIndex, bool 
 	case cf_ttl_min:
 	case cf_ttl_max:
 	case cf_ttl_avg:
-		if(call->ttl_count > 0) {
-			rslt = registerFieldIndex == cf_ttl_min ? call->ttl_min :
-			       registerFieldIndex == cf_ttl_max ? call->ttl_max :
-			       round((double)call->ttl_sum / call->ttl_count * 10);
+		if(call->ttl.count > 0) {
+			rslt = registerFieldIndex == cf_ttl_min ? call->ttl.min :
+			       registerFieldIndex == cf_ttl_max ? call->ttl.max :
+			       round((double)call->ttl.sum / call->ttl.count * 10);
 		} else {
 			_null = true;
 		}
@@ -3086,14 +3086,14 @@ double cCallFilter::getField_float(void *rec, unsigned registerFieldIndex, bool 
 		if(!opt_dscp || !existsColumns.cdr_dscp) {
 			_null = true;
 		} else if(registerFieldIndex == cf_dscp_caller_sip) {
-			rslt = call->caller_sipdscp;
+			rslt = call->sip.caller_dscp;
 		} else if(registerFieldIndex == cf_dscp_called_sip) {
-			rslt = call->called_sipdscp;
-		} else if(call->saved_data) {
-			rslt = call->saved_data->dscp_rtp[registerFieldIndex == cf_dscp_caller_rtp ? 0 : 1];
+			rslt = call->sip.called_dscp;
+		} else if(call->cdr_result.saved_data) {
+			rslt = call->cdr_result.saved_data->dscp_rtp[registerFieldIndex == cf_dscp_caller_rtp ? 0 : 1];
 		} else {
 			#if not EXPERIMENTAL_LITE_RTP_MOD
-			RTP *rtp = registerFieldIndex == cf_dscp_caller_rtp ? call->lastactivecallerrtp : call->lastactivecalledrtp;
+			RTP *rtp = registerFieldIndex == cf_dscp_caller_rtp ? call->rtp.last_active_caller : call->rtp.last_active_called;
 			if(rtp) {
 				rslt = rtp->sdp.dscp;
 			}
@@ -3103,8 +3103,8 @@ double cCallFilter::getField_float(void *rec, unsigned registerFieldIndex, bool 
 		break;
 	case cf_max_retransmission_invite:
 		{
-		unsigned max_retrans = call->saved_data ?
-					call->saved_data->max_retransmission_invite :
+		unsigned max_retrans = call->cdr_result.saved_data ?
+					call->cdr_result.saved_data->max_retransmission_invite :
 					call->getMaxRetransmissionInvite(call->branch_main());
 		if(max_retrans > 0) {
 			rslt = max_retrans;

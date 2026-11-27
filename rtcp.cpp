@@ -563,7 +563,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_br
 					     << endl;
 				}
 			} else {
-				c_branch->call->rtcpData.add_rtcp_sr_rr(c_branch->branch_id, vmIPport(ip_dst, port_dst), vmIPport(ip_src, port_src), reportblock.ssrc,
+				c_branch->call->qos.rtcp.add_rtcp_sr_rr(c_branch->branch_id, vmIPport(ip_dst, port_dst), vmIPport(ip_src, port_src), reportblock.ssrc,
 									*ts,
 									true, loss,
 									opt_ignoreRTCPjitter == 0 || reportblock.jitter < opt_ignoreRTCPjitter, reportblock.jitter,
@@ -693,7 +693,7 @@ char *dump_rtcp_rr(char *data, int datalen, int count, CallBranch *c_branch, str
 					     << endl;
 				}
 			} else {
-				c_branch->call->rtcpData.add_rtcp_sr_rr(c_branch->branch_id, vmIPport(ip_dst, port_dst), vmIPport(ip_src, port_src), reportblock.ssrc,
+				c_branch->call->qos.rtcp.add_rtcp_sr_rr(c_branch->branch_id, vmIPport(ip_dst, port_dst), vmIPport(ip_src, port_src), reportblock.ssrc,
 									*ts,
 									true, loss,
 									opt_ignoreRTCPjitter == 0 || reportblock.jitter < opt_ignoreRTCPjitter, reportblock.jitter,
@@ -904,7 +904,7 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int all_block_size, CallBran
 		}
 		#endif
 		if(!count_use_rtp) {
-			c_branch->call->rtcpData.add_rtcp_xr(c_branch->branch_id, vmIPport(ip_dst, port_dst), vmIPport(ip_src, port_src), ntohl(xr->ssrc), 
+			c_branch->call->qos.rtcp.add_rtcp_xr(c_branch->branch_id, vmIPport(ip_dst, port_dst), vmIPport(ip_src, port_src), ntohl(xr->ssrc), 
 							     *ts,
 							     xr->mos_lq != 0x7F, xr->mos_lq,
 							     true, xr->loss_rate);

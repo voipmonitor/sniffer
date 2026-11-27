@@ -376,7 +376,7 @@ void SendCallInfo::getSciFromCall(sSciInfo *sci, CallBranch *c_branch,
 				  eTypeSci typeSci, u_int64_t at,
 				  u_int16_t counter, sSciPacketInfo *packet_info) {
 	Call *call = c_branch->call;
-	sci->callid = call->call_id;
+	sci->callid = call->id.call_id;
 	sci->caller_number = c_branch->caller;
 	sci->called_number_to = call->get_called_to(c_branch);
 	sci->called_number_uri = call->get_called_uri(c_branch);

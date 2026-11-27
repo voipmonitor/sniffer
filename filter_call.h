@@ -158,8 +158,8 @@ private:
 			return;
 		}
 		Call *call = recCall(rec);
-		if(call->saved_data) {
-			*proxies = call->saved_data->proxies;
+		if(call->cdr_result.saved_data) {
+			*proxies = call->cdr_result.saved_data->proxies;
 		} else {
 			call->getProxies(call->branch_main(), proxies);
 		}
@@ -998,13 +998,13 @@ public:
 		case cf_rtp_src:
 		case cf_rtp_dst: {
 			int side = registerFieldIndex == cf_rtp_src ? 0 : 1;
-			if(call->saved_data) {
-				if(call->saved_data->saddr_exists[side]) {
-					return(call->saved_data->saddr[side]);
+			if(call->cdr_result.saved_data) {
+				if(call->cdr_result.saved_data->saddr_exists[side]) {
+					return(call->cdr_result.saved_data->saddr[side]);
 				}
 				return(0);
 			}
-			RTP *rtp = side == 0 ? call->lastactivecallerrtp : call->lastactivecalledrtp;
+			RTP *rtp = side == 0 ? call->rtp.last_active_caller : call->rtp.last_active_called;
 			if(rtp) {
 				return(rtp->id.saddr);
 			}
@@ -1021,32 +1021,32 @@ public:
 		Call *call = recCall(rec);
 		switch(registerFieldIndex) {
 		case cf_caller:
-			return(call->saved_data ?
-				call->saved_data->caller :
+			return(call->cdr_result.saved_data ?
+				call->cdr_result.saved_data->caller :
 				call->branch_main()->caller);
 		case cf_called:
-			return(call->saved_data ?
-				call->saved_data->called :
+			return(call->cdr_result.saved_data ?
+				call->cdr_result.saved_data->called :
 				call->get_called(call->branch_main()));
 		case cf_callerdomain:
 			return(call->branch_main()->caller_domain);
 		case cf_calleddomain:
-			return(call->saved_data ?
-				call->saved_data->called_domain :
+			return(call->cdr_result.saved_data ?
+				call->cdr_result.saved_data->called_domain :
 				call->get_called_domain(call->branch_main()));
 		case cf_calleragent:
-			return(call->saved_data ?
-				call->saved_data->a_ua :
+			return(call->cdr_result.saved_data ?
+				call->cdr_result.saved_data->a_ua :
 				call->get_a_ua(call->branch_main()));
 		case cf_calledagent:
-			return(call->saved_data ?
-				call->saved_data->b_ua :
+			return(call->cdr_result.saved_data ?
+				call->cdr_result.saved_data->b_ua :
 				call->get_b_ua(call->branch_main()));
 		case cf_callid:
 			return(call->fbasename);
 		case cf_callername:
-			return(call->saved_data ?
-				call->saved_data->callername :
+			return(call->cdr_result.saved_data ?
+				call->cdr_result.saved_data->callername :
 				call->branch_main()->callername);
 		case cf_digest_username:
 			return(call->branch_main()->digest_username);
@@ -1055,13 +1055,13 @@ public:
 		case cf_caller_country:
 		case cf_callerip_country:
 			{
-			if(call->saved_data) {
-				if(!call->saved_data->countries_set) {
+			if(call->cdr_result.saved_data) {
+				if(!call->cdr_result.saved_data->countries_set) {
 					return("");
 				}
 				return(registerFieldIndex == cf_caller_country ?
-					call->saved_data->caller_country :
-					call->saved_data->callerip_country);
+					call->cdr_result.saved_data->caller_country :
+					call->cdr_result.saved_data->callerip_country);
 			}
 			vmIP ip = call->isClosed() ?
 				  call->getSipcallerip(call->branch_main()) :
@@ -1073,13 +1073,13 @@ public:
 		case cf_called_country:
 		case cf_calledip_country:
 			{
-			if(call->saved_data) {
-				if(!call->saved_data->countries_set) {
+			if(call->cdr_result.saved_data) {
+				if(!call->cdr_result.saved_data->countries_set) {
 					return("");
 				}
 				return(registerFieldIndex == cf_called_country ?
-					call->saved_data->called_country :
-					call->saved_data->calledip_country);
+					call->cdr_result.saved_data->called_country :
+					call->cdr_result.saved_data->calledip_country);
 			}
 			vmIP ip = getField_ip(rec, cf_calledip);
 			return(registerFieldIndex == cf_called_country ?

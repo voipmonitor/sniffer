@@ -144,7 +144,7 @@ bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys, Call *call,
 			     bool enable_handshake_safe, bool use_handshake_safe) {
 	string log_str;
 	if(sverb.dtls && ssl_sessionkey_enable()) {
-		log_str += string("find srtp key for call: ") + (call ? call->call_id : "unknown");
+		log_str += string("find srtp key for call: ") + (call ? call->id.call_id : "unknown");
 		if(use_handshake_safe) {
 			log_str += " (use safe handshake)";
 		}
@@ -507,7 +507,7 @@ bool cDtls::findSrtpKeys(vmIP src_ip, vmPort src_port,
 	}
 	if(sverb.dtls && ssl_sessionkey_enable()) {
 		string log_str;
-		log_str += string("failed findSrtpKeys for call: ") + (call ? call->call_id : "unknown");
+		log_str += string("failed findSrtpKeys for call: ") + (call ? call->id.call_id : "unknown");
 		log_str += "; stream: " + src_ip.getString() + ":" + src_port.getString() + " -> " + dst_ip.getString() + ":" + dst_port.getString() +
 			   "; exists_link: " + (existsLink ? "Y" : "N");
 		ssl_sessionkey_log(log_str);

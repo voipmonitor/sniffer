@@ -2662,20 +2662,20 @@ void *storing_cdr( void */*dummy*/ ) {
 			size_t calls_queue_remove_count = 0;
 			for(; calls_queue_position < calls_queue_size; calls_queue_position++) {
 				Call *call = calls_queue_snapshot[calls_queue_position];
-				if(!call->pcaps_graphs_closed) {
+				if(!call->lifecycle.pcaps_graphs_closed) {
 					if(call->closePcaps() || call->closeGraphs()) {
 						continue;
 					}
-					call->pcaps_graphs_closed = true;
+					call->lifecycle.pcaps_graphs_closed = true;
 				}
 				if(maximum_cdr_per_iteration_reached || !call->isEmptyChunkBuffersCount()) {
 					continue;
 				}
 				if(call->isReadyForWriteCdr()) {
-					if(call->push_call_to_storing_cdr_queue) {
-						syslog(LOG_WARNING,"try to duplicity push call %s / %i to storing cdr queue", call->call_id.c_str(), call->getTypeBase());
+					if(call->lifecycle.push_call_to_storing_cdr_queue) {
+						syslog(LOG_WARNING,"try to duplicity push call %s / %i to storing cdr queue", call->id.call_id.c_str(), call->getTypeBase());
 					} else {
-						call->push_call_to_storing_cdr_queue = true;
+						call->lifecycle.push_call_to_storing_cdr_queue = true;
 						if(storing_cdr_next_threads_count) {
 							int mod = _calls_for_store_counter % (storing_cdr_next_threads_count + 1);
 							if(!mod) {
@@ -2695,7 +2695,7 @@ void *storing_cdr( void */*dummy*/ ) {
 						maximum_cdr_per_iteration_reached = true;
 					}
 				} else {
-					call->pcaps_graphs_closed = false;
+					call->lifecycle.pcaps_graphs_closed = false;
 				}
 			}
 			if(calls_queue_remove_count) {

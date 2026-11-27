@@ -116,7 +116,7 @@ void cSeparateProcessing::sendCloseCall(const char *call_id, u_int64_t call_firs
 
 void cSeparateProcessing::sendRtpStreams(Call *call) {
 	cSeparateProcessing::sDataRtpStream *streams = NULL;
-	unsigned count_streams = call->ssrc_n;
+	unsigned count_streams = call->rtp.ssrc_n;
 	if(count_streams) {
 		streams = new FILE_LINE(0) cSeparateProcessing::sDataRtpStream[count_streams];
 		for(unsigned i = 0; i < count_streams; i++) {
@@ -144,7 +144,7 @@ void cSeparateProcessing::sendRtpStreams(Call *call) {
 			}
 		}
 	}
-	sendRtpStreams(call->call_id.c_str(), count_streams, streams, count_tar_pos, tar_pos);
+	sendRtpStreams(call->id.call_id.c_str(), count_streams, streams, count_tar_pos, tar_pos);
 	if(streams) {
 		delete [] streams;
 	}
@@ -195,7 +195,7 @@ void cSeparateProcessing::sendRtpStreams(const char *call_id,
 }
 
 void cSeparateProcessing::sendRtpExists(Call *call) {
-	sendRtpExists(call->call_id.c_str(), call->ssrc_n, call->first_rtp_time_us);
+	sendRtpExists(call->id.call_id.c_str(), call->rtp.ssrc_n, call->timing.first_rtp_time_us);
 }
 
 void cSeparateProcessing::sendRtpExists(const char *call_id, u_int32_t count_streams, u_int64_t first_rtp_time_us) {
@@ -474,7 +474,7 @@ void cSeparateProcessing::processRtpIpPort(sProcessRtpIpPortData *data) {
 		} else {
 			call = new FILE_LINE(0) Call(INVITE, (char*)iter->call_id.c_str(), iter->call_id.length(), NULL, iter->callData->first_packet_time_us);
 			call->flags = iter->callData->call_flags;
-			strcpy_null_term(call->fbasename, call->call_id.c_str());
+			strcpy_null_term(call->fbasename, call->id.call_id.c_str());
 			calltable->calls_listMAP[iter->call_id] = call;
 		}
 		callid_map[iter->call_id] = call;
@@ -486,7 +486,7 @@ void cSeparateProcessing::processRtpIpPort(sProcessRtpIpPortData *data) {
 		calltable->lock_calls_hash();
 	}
 	for(list<sDataRtpIpPort_comb>::iterator iter = data->data.begin(); iter != data->data.end(); iter++) {
-		if(iter->call && !iter->call->stopProcessing && !iter->call->sp_stop_rtp_processing_at) {
+		if(iter->call && !iter->call->proc.stopProcessing && !iter->call->lifecycle.sp_stop_rtp_processing_at) {
 			if(iter->rtpIpPort->add) {
 				if(directModifyHash) {
 					calltable->_hashAddExt(iter->rtpIpPort->ip, iter->rtpIpPort->port, iter->callData->time_us, iter->call,
@@ -495,7 +495,7 @@ void cSeparateProcessing::processRtpIpPort(sProcessRtpIpPortData *data) {
 					calltable->hashAdd(iter->rtpIpPort->ip, iter->rtpIpPort->port, iter->callData->time_us, iter->call,
 							   iter->rtpIpPort->is_caller, iter->rtpIpPort->is_rtcp, iter->rtpIpPort->sdp_flags);
 				}
-				iter->call->sp_rtp_ipport.insert(vmIPport(iter->rtpIpPort->ip, iter->rtpIpPort->port));
+				iter->call->lifecycle.sp_rtp_ipport.insert(vmIPport(iter->rtpIpPort->ip, iter->rtpIpPort->port));
 			} else {
 				if(directModifyHash) {
 					calltable->_hashRemoveExt(iter->call, iter->rtpIpPort->ip, iter->rtpIpPort->port, 
@@ -548,16 +548,16 @@ void cSeparateProcessing::processCloseCall(const char *call_id, sDataCloseCall *
 		calltable->calls_listMAP[call_id] = call;
 	}
 	if(dataCloseCall->type == _destroy_call_if_not_exists_rtp &&
-	   (call->ssrc_n || call->first_rtp_time_us)) {
+	   (call->rtp.ssrc_n || call->timing.first_rtp_time_us)) {
 		calltable->unlock_calls_listMAP();
 		sendExistsRtp(call);
 		return;
 	}
-	call->sp_stop_rtp_processing_at = getTimeS_rdtsc();
+	call->lifecycle.sp_stop_rtp_processing_at = getTimeS_rdtsc();
 	calltable->unlock_calls_listMAP();
 	call->removeFindTables(true);
 	if(dataCloseCall->type == _destroy_call || dataCloseCall->type == _destroy_call_if_not_exists_rtp) {
-		call->sp_do_destroy_call_at = getTimeS_rdtsc();
+		call->lifecycle.sp_do_destroy_call_at = getTimeS_rdtsc();
 	}
 }
 
@@ -651,7 +651,7 @@ void cSeparateProcessing::processRtpStreams(const char *call_id, u_int32_t count
 				call->tarPosRtp.push_back(tar_pos[i].tar_pos);
 			}
 		}
-		call->sp_arrived_rtp_streams = true;
+		call->lifecycle.sp_arrived_rtp_streams = true;
 	}
 }
 
@@ -690,13 +690,13 @@ void cSeparateProcessing::processRtpExists(const char *call_id, u_int32_t count_
 			calltable->unlock_calls_listMAP_X(i);
 		}
 	}
-	if(call && !call->sp_do_destroy_call_at) {
-		call->sp_sent_close_call = false;
-		call->sipwithoutrtp_timeout_exceeded = false;
-		call->zombie_timeout_exceeded = false;
-		call->attemptsClose = 0;
-		call->first_rtp_time_us = first_rtp_time_us ? first_rtp_time_us : (getTimeMS_rdtsc() * 1000);
-		call->ssrc_n = count_streams;
+	if(call && !call->lifecycle.sp_do_destroy_call_at) {
+		call->lifecycle.sp_sent_close_call = false;
+		call->lifecycle.sipwithoutrtp_timeout_exceeded = false;
+		call->lifecycle.zombie_timeout_exceeded = false;
+		call->lifecycle.attemptsClose = 0;
+		call->timing.first_rtp_time_us = first_rtp_time_us ? first_rtp_time_us : (getTimeMS_rdtsc() * 1000);
+		call->rtp.ssrc_n = count_streams;
 	}
 }
 

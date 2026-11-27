@@ -544,7 +544,7 @@ Register::Register(Call *call) {
 	vlan = c_branch->vlan_first;
 	rrd_sum = 0;
 	rrd_count = 0;
-	reg_call_id = call->call_id;
+	reg_call_id = call->id.call_id;
 	flags = call->flags;
 	if(call->reg.reg_tcp_seq) {
 		reg_tcp_seq = *call->reg.reg_tcp_seq;
@@ -622,7 +622,7 @@ void Register::update(Call *call, eRegisterState state) {
 	sipcallerport = c_branch->sipcallerport[0];
 	sipcalledport = c_branch->sipcalledport[0];
 	vlan = c_branch->vlan_first;
-	reg_call_id = call->call_id;
+	reg_call_id = call->id.call_id;
 	flags = call->flags;
 	if(call->reg.reg_tcp_seq) {
 		reg_tcp_seq = *call->reg.reg_tcp_seq;
@@ -1439,7 +1439,7 @@ bool Registers::existsDuplTcpSeqInRegOK(Call *call, u_int32_t seq) {
 	if(iter != registers.end()) {
 		Register *existsReg = iter->second;
 		if(existsReg->stateIsOK() &&
-		   existsReg->reg_call_id == call->call_id &&
+		   existsReg->reg_call_id == call->id.call_id &&
 		   existsReg->reg_tcp_seq.size() &&
 		   std::find(existsReg->reg_tcp_seq.begin(), existsReg->reg_tcp_seq.end(), seq) != existsReg->reg_tcp_seq.end()) {
 			rslt = true;

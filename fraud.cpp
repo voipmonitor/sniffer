@@ -3258,7 +3258,7 @@ void FraudAlerts::completeCallInfo(sFraudCallInfo *callInfo, Call *call,
 	CallBranch *c_branch = call->branch_main();
 	callInfo->typeCallInfo = typeCallInfo;
 	callInfo->call_type = call->typeIs(INVITE) ? INVITE : call->getTypeBase();
-	callInfo->callid = call->call_id;
+	callInfo->callid = call->id.call_id;
 	callInfo->caller_number = c_branch->caller;
 	callInfo->called_number = call->get_called(c_branch);
 	callInfo->caller_ip = c_branch->sipcallerip[0];
@@ -3298,7 +3298,7 @@ void FraudAlerts::completeRtpStreamInfo(sFraudRtpStreamInfo *rtpStreamInfo, Call
 	CallBranch *c_branch = call->branch_main();
 	rtpStreamInfo->caller_number = c_branch->caller;
 	rtpStreamInfo->called_number = call->get_called(c_branch);
-	rtpStreamInfo->callid = call->call_id;
+	rtpStreamInfo->callid = call->id.call_id;
 }
 
 void FraudAlerts::completeNumberInfo_country_code(sFraudNumberInfo *numberInfo, vmIP ip, CheckInternational *checkInternational) {

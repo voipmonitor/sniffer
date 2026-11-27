@@ -1511,8 +1511,8 @@ Call *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 		switch(state) {
 		case SKINNY_OFFHOOK:
 			c_branch->lastSIPresponse = "OFF HOOK";
-			if(call->destroy_call_at) {
-				call->destroy_call_at = 0;
+			if(call->timing.destroy_call_at) {
+				call->timing.destroy_call_at = 0;
 			}
 			break;
 		case SKINNY_ONHOOK:
@@ -1542,11 +1542,11 @@ Call *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 		case SKINNY_CONNECTED:
 			c_branch->lastSIPresponse = "CONNECTED";
 			c_branch->lastSIPresponseNum = 200;
-			if(!call->connect_time_us) {
-				call->connect_time_us = getTimeUS(header);
+			if(!call->timing.connect_time_us) {
+				call->timing.connect_time_us = getTimeUS(header);
 			}
-			if(call->destroy_call_at) {
-				call->destroy_call_at = 0;
+			if(call->timing.destroy_call_at) {
+				call->timing.destroy_call_at = 0;
 			}
 			if(!c_branch->sipcallerdip_reverse &&
 			   saddr == c_branch->sipcallerip[0] &&
@@ -1589,7 +1589,7 @@ Call *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 		if(state != SKINNY_ONHOOK &&
 		   state != SKINNY_OFFHOOK &&
 		   state != SKINNY_CONNECTED &&
-		   call->destroy_call_at) {
+		   call->timing.destroy_call_at) {
 			call->set_destroy_call_at(header->ts.tv_sec, 5);
 		}
 		calltable->set_skinny_last_callstate(call, saddr, daddr, state);
@@ -1627,11 +1627,11 @@ Call *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 
 			u_int64_t _forcemark_time = getTimeUS(header);
 			call->forcemark_lock();
-			call->forcemark_time.push_back(_forcemark_time);
-			__SYNC_INC(call->forcemark_time_size);
+			call->forcemark.time.push_back(_forcemark_time);
+			__SYNC_INC(call->forcemark.time_size);
 			if(sverb.forcemark) {
 				cout << "add forcemark (skinny): " << _forcemark_time 
-				     << " forcemarks size: " << call->forcemark_time.size()
+				     << " forcemarks size: " << call->forcemark.time.size()
 				     << endl;
 			}
 			call->forcemark_unlock();
@@ -1798,7 +1798,7 @@ Call *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 			calltable->lock_skinny_maps();
 			calltable->skinny_partyID[pid] = call;
 			calltable->unlock_skinny_maps();
-			call->skinny_partyid = pid;
+			call->skinny.partyid = pid;
 		}
 		}
 		break;

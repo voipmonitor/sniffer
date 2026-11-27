@@ -1479,22 +1479,25 @@ public:
 		return(closed);
 	}
 public:
-	volatile uint8_t alloc_flag;
-	int type_base;
-	int type_next;
+	// Hot read-mostly fields packed in CL 0 (offsets 0..63 alongside vptr and useHandle)
+	volatile unsigned long int flags;
 	u_int64_t first_packet_time_us;
 	int64_t time_shift_ms;
-	char fbasename[MAX_FNAME];
-	char fbasename_safe[MAX_FNAME];
-	u_int64_t fname_register;
+	int type_base;
+	int type_next;
 	int useSensorId;
 	int useDlt;
+	volatile uint8_t alloc_flag;
+
+	// Cold Call_abstract metadata & filename buffers
 	pcap_t *useHandle;
-	string force_spool_path;
-	volatile unsigned long int flags;
 	struct sNatAliases *nat_aliases;
 	void *user_data;
+	u_int64_t fname_register;
 	int user_data_type;
+	string force_spool_path;
+	char fbasename[MAX_FNAME];
+	char fbasename_safe[MAX_FNAME];
 protected:
 	list<u_int64_t> tarPosSip;
 	list<u_int64_t> tarPosRtp;
@@ -1952,44 +1955,758 @@ public:
 		vector<int> streams;
 		int final_leg;
 	};
+	struct sSavedData {
+		struct sRtpStream {
+			vmIPport src;
+			vmIPport dst;
+			int received;
+			u_int16_t rtp_ptime;
+			u_int16_t sdp_ptime;
+			bool is_caller;
+			bool in_multiple_calls;
+			bool flags_null;
+		};
+		sSavedData() {
+			max_retransmission_invite = 0;
+			dscp_rtp[0] = 0;
+			dscp_rtp[1] = 0;
+			saddr_exists[0] = false;
+			saddr_exists[1] = false;
+			countries_set = false;
+			response_time_100 = 0;
+			response_time_100_null = true;
+			payload_ab[0] = -1;
+			payload_ab[1] = -1;
+			mos_f2_ab[0] = -1;
+			mos_f2_ab[1] = -1;
+			payload = -1;
+			payload_null = true;
+		}
+		unsigned max_retransmission_invite;
+		u_int8_t dscp_rtp[2];
+		bool saddr_exists[2];
+		vmIP saddr[2];
+		set<vmIP> proxies;
+		string a_ua;
+		string b_ua;
+		string caller;
+		string called;
+		string called_domain;
+		string callername;
+		bool countries_set;
+		string caller_country;
+		string called_country;
+		string callerip_country;
+		string calledip_country;
+		double response_time_100;
+		bool response_time_100_null;
+		int payload_ab[2];
+		int mos_f2_ab[2];
+		int payload;
+		bool payload_null;
+		set<int> rtp_rows_payloads;
+		vector<sRtpStream> rtp_streams;
+		vector<s_sdp_store_data> sdp_streams;
+		struct sCdrFieldValue {
+			sCdrFieldValue() {
+				value = 0;
+				set = false;
+				exists = false;
+			}
+			double value;
+			bool set;
+			bool exists;
+		};
+		vector<sCdrFieldValue> cdr_field_values;
+		vector<unsigned> cdr_field_values_filled;
+	};
 public:
-	bool is_ssl;			//!< call was decrypted
-	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-	bool is_audiocodes;
-	#endif
-	#if EXPERIMENTAL_LITE_RTP_MOD
-	RTP rtp_fix[MAX_SSRC_PER_CALL_FIX];	//!< array of RTP streams
-	#else
-	RTP *rtp_fix[MAX_SSRC_PER_CALL_FIX];	//!< array of RTP streams
-	#if CALL_RTP_DYNAMIC_ARRAY
-	vector<RTP*> *rtp_dynamic;
-	#endif
-	#endif
-	int ssrc_n;				//!< last index of rtp array
-	bool rtcp_exists;
-	list<RTP*> *rtp_canceled;
-	volatile bool rtp_remove_flag;
-	bool rtp_remove_all;
-	set<CallBranch*> rtp_remove_branches;
-	volatile int _rtp_remove_sync;
+	// =========================================================================
+	// ZONE 1A: HOT read-mostly pipeline routing & control (MESI Shared, 1 CL)
+	// =========================================================================
+
+	/* Worker thread assignment and read-mostly processing flags (aligned 64B) */
+	struct s_proc {
+		void init() {
+			thread_num = 0;
+			thread_num_rd = 0;
+			stopProcessing = false;
+			suppress_rtp_read = false;
+			suppress_rtp_proc = false;
+			is_ssl = false;
+			#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+			is_audiocodes = false;
+			#endif
+			stopped_jb_due_to_high_ooo = false;
+			changing_codec_in_stream = false;
+			error_negative_payload_length = false;
+			rtp_from_multiple_sensors = false;
+			sip_fragmented = false;
+			rtp_fragmented = false;
+			#if CALL_DEBUG_RTP
+			debug_rtp = false;
+			#endif
+		}
+		int thread_num;
+		int thread_num_rd;
+		volatile bool stopProcessing;
+		bool suppress_rtp_read;
+		bool suppress_rtp_proc;
+		bool is_ssl;			//!< call was decrypted
+		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+		bool is_audiocodes;
+		#endif
+		bool stopped_jb_due_to_high_ooo;
+		bool changing_codec_in_stream;
+		bool error_negative_payload_length;
+		bool rtp_from_multiple_sensors;
+		bool sip_fragmented;
+		bool rtp_fragmented;
+		#if CALL_DEBUG_RTP
+		volatile int8_t debug_rtp;
+		#endif
+	} proc __attribute__((aligned(64)));
+
+	// =========================================================================
+	// ZONE 1B: Cross-thread atomic queue counters (isolated 64B cache lines)
+	// =========================================================================
+
+	/* Producer / consumer / preprocess queue counters (each on its own CL) */
+	struct s_queue {
+		void init() {
+			rtp_in = 0;
+			rtp_out = 0;
+			#if not PROCESS_PACKETS_INDIC_MOD_1
+			in_preprocess = 0;
+			in_preprocess_at[0] = 0;
+			in_preprocess_at[1] = 0;
+			#endif
+		}
+		volatile u_int64_t rtp_in __attribute__((aligned(64)));
+		volatile u_int64_t rtp_out __attribute__((aligned(64)));
+		#if not PROCESS_PACKETS_INDIC_MOD_1
+		volatile int in_preprocess __attribute__((aligned(64)));
+		volatile u_int32_t in_preprocess_at[2];
+		#endif
+	} queue;
+
+	// =========================================================================
+	// ZONE 1C: HOT per-RTP-packet worker substructures (single worker per Call)
+	// =========================================================================
+
+	/* Call timestamps & teardown deadlines (128B = CL 0 hot RTP, CL 1 cold SIP) */
+	struct s_timing {
+		void init(u_int64_t time_us) {
+			memset(this, 0, sizeof(*this));
+			last_signal_packet_time_us = time_us;
+		}
+		// Hot CL 0 (64B — touched per RTP packet)
+		u_int64_t first_rtp_time_us;	//!< time in u_seconds of first RTP packet
+		u_int64_t connect_time_us;	//!< time in u_seconds of 200 OK
+		u_int64_t last_rtp_packet_time_us;
+		u_int64_t last_rtp_a_packet_time_us;
+		u_int64_t last_rtp_b_packet_time_us;
+		time_t destroy_call_at;
+		time_t destroy_call_at_bye;
+		time_t destroy_call_at_bye_confirmed;
+		// Cold CL 1 (64B — SIP / RTCP signaling timestamps)
+		u_int64_t progress_time_us;	//!< time in u_seconds of 18X response
+		u_int64_t last_signal_packet_time_us;
+		u_int64_t last_rtcp_packet_time_us;
+		u_int64_t first_invite_time_us;
+		u_int64_t first_response_100_time_us;
+		u_int64_t first_response_xxx_time_us;
+		u_int64_t first_message_time_us;
+		u_int64_t first_response_200_time_us;
+	} timing __attribute__((aligned(64)));
+
+	/* Codecs, recording state, MOS LQO, hold & FAS flags (44B, packed on hot CL 18) */
+	struct s_media {
+		void init() {
+			first_codec = -1;
+			codec_caller = -1;
+			codec_called = -1;
+			last_caller_codec = -1;
+			last_called_codec = -1;
+			silencerecording = 0;
+			recordingpausedby182 = 0;
+			recordstopped = 0;
+			a_mos_lqo = -1;
+			b_mos_lqo = -1;
+			save_energylevels = false;
+			is_fas_detected = false;
+			hold_status = false;
+		}
+		int first_codec;
+		int codec_caller;
+		int codec_called;
+		int last_caller_codec;		//!< Last caller codec
+		int last_called_codec;		//!< Last called codec
+		int silencerecording;
+		int recordingpausedby182;
+		int recordstopped;		//!< flag holding if call was stopped to avoid double free
+		float a_mos_lqo;
+		float b_mos_lqo;
+		bool save_energylevels;
+		bool is_fas_detected;		//!< detected FAS (False Answer Supervision)
+		bool hold_status;		//!< hold status var
+	} media __attribute__((aligned(64)));
+
+	/* PCAP / graph save bitfields (1B, rtp_graph written per RTP packet) */
+	struct s_save_flags {
+		void init() {
+			sip_pcap = false;
+			rtp_pcap = false;
+			rtp_payload_pcap = false;
+			rtcp_pcap = false;
+			rtp_graph = false;
+		}
+		bool sip_pcap : 1;
+		bool rtp_pcap : 1;
+		bool rtp_payload_pcap : 1;
+		bool rtcp_pcap : 1;
+		bool rtp_graph : 1;
+	} save_flags;
+
+	/* Fax / UDPTL detection flags (8B, checked in _read_rtp) */
+	struct s_fax {
+		void init() {
+			isfax = NOFAX;
+			seenudptl = 0;
+			seen_sdp_mt_image = 0;
+			exists_udptl_data = false;
+			not_acceptable = false;
+		}
+		int isfax;
+		char seenudptl;
+		volatile char seen_sdp_mt_image;
+		bool exists_udptl_data;
+		bool not_acceptable;
+	} fax;
+
+private:
+	/* SRTP presence & SDP confirmation flags (6B, exists checked per RTP packet) */
+	struct s_srtp {
+		void init() {
+			exists = false;
+			exists_crypto_config = false;
+			exists_fingerprint = false;
+			log_callid = false;
+			confirm_by_both_sides_sdp[0] = 0;
+			confirm_by_both_sides_sdp[1] = 0;
+		}
+		bool exists;
+		bool exists_crypto_config;
+		bool exists_fingerprint;
+		bool log_callid;
+		volatile int8_t confirm_by_both_sides_sdp[2];
+	} srtp;
+
+public:
+	/* Forced marker timestamps (32B, time_size checked per RTP packet) */
+	struct s_forcemark {
+		void init() {
+			time_size = 0;
+			lock_sync = 0;
+		}
+		volatile u_int32_t time_size;
+		volatile int lock_sync;
+		vector<u_int64_t> time;
+	} forcemark;
+
+	/* DTLS context & SRTP key queue (48B, ctx checked per RTP packet) */
+	struct s_dtls {
+		void init() {
+			ctx = NULL;
+			exists = false;
+			queue_move = 0;
+			queue_sync = 0;
+			keys_sync = 0;
+		}
+		cDtls *ctx;
+		bool exists;
+		volatile unsigned queue_move;
+		volatile int queue_sync;
+		volatile int keys_sync;
+		vector<cDtlsLink::sSrtpKeys*> keys;
+	} dtls;
+
+	/* RTP streams array, active cursors and per-packet counters (aligned 64B) */
+	struct s_rtp {
+		void init() {
+			last_caller = NULL;
+			last_called = NULL;
+			last_active_caller = NULL;
+			last_active_called = NULL;
+			lastraw[0] = NULL;
+			lastraw[1] = NULL;
+			iscaller_consecutive[0] = 0;
+			iscaller_consecutive[1] = 0;
+			ssrc_n = 0;
+			remove_flag = false;
+			rtcp_exists = false;
+			remove_all = false;
+			is_zerossrc_detected = false;
+			process_counter = 0;
+			remove_sync = 0;
+			#if not EXPERIMENTAL_LITE_RTP_MOD
+			#if CALL_RTP_DYNAMIC_ARRAY
+			dynamic = NULL;
+			#endif
+			for(int i = 0; i < MAX_SSRC_PER_CALL_FIX; i++) {
+				fix[i] = NULL;
+			}
+			#endif
+			ab[0] = NULL;
+			ab[1] = NULL;
+			cur[0] = NULL;
+			cur[1] = NULL;
+			prev[0] = NULL;
+			prev[1] = NULL;
+			canceled = NULL;
+			lock_sync = 0;
+			last_caller_ssrc = 0;
+			last_called_ssrc = 0;
+			zeropackets_stored = false;
+		}
+		// Hot CL 0 (64B — active RTP cursors, raw tracking & flags)
+		RTP *last_caller;		//!< last RTP stream from caller
+		RTP *last_called;		//!< last RTP stream from called
+		RTP *last_active_caller;
+		RTP *last_active_called;
+		RTP *lastraw[2];
+		u_int32_t iscaller_consecutive[2];
+		int ssrc_n;			//!< last index of rtp array
+		volatile bool remove_flag;
+		bool rtcp_exists;
+		bool remove_all;
+		bool is_zerossrc_detected;	//!< detected zero SSRC
+		// Hot CL 1 (64B — process_counter, dynamic ptr & first 6 stream pointers)
+		unsigned process_counter;
+		volatile int remove_sync;
+		#if EXPERIMENTAL_LITE_RTP_MOD
+		RTP fix[MAX_SSRC_PER_CALL_FIX];	//!< array of RTP streams
+		#else
+		#if CALL_RTP_DYNAMIC_ARRAY
+		vector<RTP*> *dynamic;
+		#endif
+		RTP *fix[MAX_SSRC_PER_CALL_FIX];//!< array of RTP streams
+		#endif
+		// Warm/Cold tail of s_rtp
+		RTP *ab[2];
+		void *cur[2];			//!< last RTP structure in direction 0 and 1 (iscaller = 1)
+		void *prev[2];			//!< previouse RTP structure in direction 0 and 1 (iscaller = 1)
+		list<RTP*> *canceled;
+		set<CallBranch*> remove_branches;
+		volatile int lock_sync;
+		unsigned int last_caller_ssrc;
+		unsigned int last_called_ssrc;
+		bool zeropackets_stored;
+	} rtp __attribute__((aligned(64)));
+
+	/* SIP call branches (placed right after rtp at aligned 64B so CallBranch CL 0 stays on Page 0 and ip_port[0..1] stays inside Page 1 without straddling 4 KiB boundary) */
+	struct s_branches {
+		s_branches(Call *call) :
+		 first(call, 0) {
+			main_id = 0;
+			max_reached = false;
+			lock_sync = 0;
+		}
+		CallBranch first __attribute__((aligned(64)));
+		vector<CallBranch*> next;
+		map<string, int> to_map;
+		map<string, int> tag_map;
+		volatile unsigned main_id;
+		bool max_reached;
+		volatile int lock_sync;
+	} branches;
+
+	// =========================================================================
+	// ZONE 2: COLD substructures (SIP / Audio / DTMF / Lifecycle / CDR)
+	// =========================================================================
+
+	/* Call-ID identity, alternative IDs and monotonic call counter */
+	struct s_id {
+		void init() {
+			call_id_len = 0;
+			call_id_alternative = NULL;
+			call_id_alternative_lock = 0;
+			counter = 0;
+		}
+		unsigned long call_id_len;	//!< length of call-id
+		string call_id;			//!< call-id from SIP session
+		map<string, bool> *call_id_alternative;
+		volatile int call_id_alternative_lock;
+		u_int64_t counter;
+	} id;
+	static u_int64_t counter_s;
+
+	/* SIP transport, DSCP, message payload, packet counters & SDP summary flags */
+	struct s_sip {
+		void init() {
+			contenttype = NULL;
+			message = NULL;
+			message_info = NULL;
+			content_length = 0;
+			dcs = 0;
+			voicemail = voicemail_na;
+			packets_counter = 0;
+			invite_packets_counter = 0;
+			max_length_data = 0;
+			max_length_packet = 0;
+			onInvite_counter = 0;
+			onCall_2XX_counter = 0;
+			onCall_18X_counter = 0;
+			onHangup_counter = 0;
+			caller_dscp = 0;
+			called_dscp = 0;
+			protocol_is_tcp = false;
+			protocol_is_udp = false;
+			use_rtcp_mux = false;
+			use_sdp_sendonly = false;
+			sdp_exists_audio = false;
+			sdp_exists_image = false;
+			sdp_exists_video = false;
+			sdp_exists_application = false;
+			siprec = false;
+			syslog_sdp_multiplication = false;
+			televent_exists_request = false;
+			televent_exists_response = false;
+		}
+		char *contenttype;
+		char *message;
+		char *message_info;
+		string hold_times;		//!< used for record hold times
+		string geoposition;
+		list<vmPort> sdp_ip0_ports[2];
+		int content_length;
+		unsigned int dcs;
+		eVoicemail voicemail;
+		unsigned packets_counter;
+		unsigned invite_packets_counter;
+		unsigned max_length_data;
+		unsigned max_length_packet;
+		u_int16_t onInvite_counter;
+		u_int16_t onCall_2XX_counter;
+		u_int16_t onCall_18X_counter;
+		u_int16_t onHangup_counter;
+		uint8_t caller_dscp;
+		uint8_t called_dscp;
+		bool protocol_is_tcp;
+		bool protocol_is_udp;
+		bool use_rtcp_mux;
+		bool use_sdp_sendonly;
+		bool sdp_exists_audio;
+		bool sdp_exists_image;
+		bool sdp_exists_video;
+		bool sdp_exists_application;
+		bool siprec;
+		bool syslog_sdp_multiplication;
+		bool televent_exists_request;
+		bool televent_exists_response;
+	} sip;
+
+	/* Audio listening buffers and DSP silence/noise/clipping/IVR detection */
+	struct s_audio {
+		void init() {
+			listening_worker_run = NULL;
+			listening_worker_args = NULL;
+			silence_afteranswer_noise_start_us = 0;
+			ivr_voice_reached_us = 0;
+			caller_silence = 0;
+			called_silence = 0;
+			caller_noise = 0;
+			called_noise = 0;
+			caller_lastsilence = 0;
+			called_lastsilence = 0;
+			ivr_voice_ms = 0;
+			caller_clipping_8k = 0;
+			called_clipping_8k = 0;
+			silence_afteranswer_rtp_seen = false;
+			ivr_ringback_detected = false;
+		}
+		sAudioBufferData buffer_data[2];
+		int *listening_worker_run;
+		pthread_mutex_t listening_worker_run_lock;
+		void *listening_worker_args;
+		u_int64_t silence_afteranswer_noise_start_us;	//!< start of first confirmed noise from called party after connect (0 = not yet)
+		u_int64_t ivr_voice_reached_us;			//!< ivrdetect: packet time when ivr_voice_ms reached the threshold (0 = not yet)
+		unsigned int caller_silence;
+		unsigned int called_silence;
+		unsigned int caller_noise;
+		unsigned int called_noise;
+		unsigned int caller_lastsilence;
+		unsigned int called_lastsilence;
+		u_int32_t ivr_voice_ms;				//!< ivrdetect: called party voice (audible, no call progress tone) in early media
+		unsigned int caller_clipping_8k;
+		unsigned int called_clipping_8k;
+		bool silence_afteranswer_rtp_seen;		//!< called party G711 RTP was DSP-processed after connect
+		bool ivr_ringback_detected;			//!< ivrdetect: ringback tone detected in called party early media
+	} audio;
+
+	/* DTMF state & event history */
+	struct s_dtmf_call {
+		void init() {
+			last_time = 0;
+			flag = 0;
+			flag2[0] = 0;
+			flag2[1] = 0;
+			sync = 0;
+		}
+		double last_time;		//!< used for holding time of last dtmf
+		std::deque <s_dtmf> history;
+		int flag;			//!< used for holding dtmf states
+		unsigned int flag2[2];		//!< used for holding dtmf states
+		volatile int sync;
+	} dtmf;
+
+	/* Aggregated call IP TTL statistics */
+	struct s_ttl {
+		void init() {
+			sum = 0;
+			count = 0;
+			min = -1;
+			max = -1;
+		}
+		u_int64_t sum;
+		u_int32_t count;
+		int16_t min;
+		int16_t max;
+	} ttl;
+
+	/* Call lifecycle, close queues, timeout flags & drop counters */
+	struct s_lifecycle {
+		void init() {
+			push_call_to_calls_queue = 0;
+			push_register_to_registers_engine = 0;
+			push_register_to_registers_queue = 0;
+			push_call_to_storing_cdr_queue = 0;
+			hash_queue_counter = 0;
+			attemptsClose = 0;
+			useInListCalls = 0;
+			stopProcessingAt_s = 0;
+			ps_drop = 0;
+			ps_ifdrop = 0;
+			sighup = false;
+			pcaps_graphs_closed = false;
+			force_close = false;
+			exclude_from_active_calls = false;
+			bad_flags_warning[0] = false;
+			bad_flags_warning[1] = false;
+			bad_flags_warning[2] = false;
+			absolute_timeout_exceeded = 0;
+			zombie_timeout_exceeded = 0;
+			bye_timeout_exceeded = 0;
+			rtp_timeout_exceeded = 0;
+			sipwithoutrtp_timeout_exceeded = 0;
+			oneway_timeout_exceeded = 0;
+			max_sip_packets_exceeded = 0;
+			max_invite_packets_exceeded = 0;
+			force_terminate = 0;
+			pcap_drop = 0;
+			#if EXPERIMENTAL_SEPARATE_PROCESSSING
+			sp_sent_close_call = false;
+			sp_arrived_rtp_streams = false;
+			sp_stop_rtp_processing_at = 0;
+			sp_do_destroy_call_at = 0;
+			#endif
+		}
+		volatile int push_call_to_calls_queue;
+		volatile int push_register_to_registers_engine;
+		volatile int push_register_to_registers_queue;
+		volatile int push_call_to_storing_cdr_queue;
+		volatile int hash_queue_counter;
+		volatile int attemptsClose;
+		volatile int useInListCalls;
+		u_int32_t stopProcessingAt_s;
+		unsigned int ps_drop;
+		unsigned int ps_ifdrop;
+		bool sighup;			//!< true if call is saving during sighup
+		bool pcaps_graphs_closed;
+		bool force_close;
+		bool exclude_from_active_calls;
+		bool bad_flags_warning[3];
+		char absolute_timeout_exceeded;
+		char zombie_timeout_exceeded;
+		char bye_timeout_exceeded;
+		char rtp_timeout_exceeded;
+		char sipwithoutrtp_timeout_exceeded;
+		char oneway_timeout_exceeded;
+		char max_sip_packets_exceeded;
+		char max_invite_packets_exceeded;
+		char force_terminate;
+		char pcap_drop;
+		#if EXPERIMENTAL_SEPARATE_PROCESSSING
+		volatile bool sp_sent_close_call;
+		volatile bool sp_arrived_rtp_streams;
+		volatile u_int32_t sp_stop_rtp_processing_at;
+		volatile u_int32_t sp_do_destroy_call_at;
+		set<vmIPport> sp_rtp_ipport;
+		#endif
+	} lifecycle;
+
+	sReg reg;
+
+	/* RTCP / IPFIX QoS and UDPTL sequence tracking */
+	struct s_qos {
+		sRtcpData rtcp;
+		sIPFixStreamData ipfix;
+		map<d_item<vmIPport>, unsigned> last_udptl_seq;
+	} qos;
+
+	/* Call merging, conference legs & SRVCC state */
+	struct s_merge {
+		void init() {
+			lock_sync = 0;
+			conference_referred_by_ok_time = 0;
+			conference_legs_sync = 0;
+			srvcc_flag = _srvcc_na;
+			has_second_merged_leg = false;
+			conference_is_main_leg = false;
+			conference_is_leg = false;
+		}
+		map<string, sMergeLegInfo> calls;
+		map<sConferenceLegId, sConferenceLegs*> conference_legs;
+		string conference_referred_by;
+		string srvcc_call_id;
+		sCseq conference_referred_by_cseq;
+		u_int64_t conference_referred_by_ok_time;
+		volatile int lock_sync;
+		volatile int conference_legs_sync;
+		eSrvccFlag srvcc_flag;
+		bool has_second_merged_leg;
+		bool conference_is_main_leg;
+		bool conference_is_leg;
+	} merge;
+
+	/* MGCP protocol state */
+	struct s_mgcp {
+		void init() {
+			last_connect_packet_time_us = 0;
+		}
+		string callid;
+		list<u_int32_t> transactions;
+		map<u_int32_t, sMgcpRequest> requests;
+		map<u_int32_t, sMgcpResponse> responses;
+		u_int64_t last_connect_packet_time_us;
+	} mgcp;
+
+	/* Skinny / SCCP protocol state */
+	struct s_skinny {
+		void init() {
+			partyid = 0;
+		}
+		unsigned int partyid;
+		map<d_item<vmIP>, int> last_callstate_by_ip;
+	} skinny;
+
+	/* Auxiliary SDP XML & HEP text log items */
+	struct s_txt_store {
+		void init() {
+			lock_sync = 0;
+		}
+		list<sTxt> list_txt;
+	private:
+		list<sTextDataItem*> data;
+	public:
+		volatile int lock_sync;
+	friend class Call;
+	} txt_store;
+
+	/* Saved CDR result summary & charts cache snapshot */
+	struct s_cdr_result {
+		void init() {
+			rslt_flags = 0;
+			saved_data = NULL;
+			rslt_bye = 0;
+		}
+		u_int64_t rslt_flags;
+		sSavedData *saved_data;
+		unsigned rslt_bye;
+	} cdr_result;
+
+private:
+	/* PCAP and UDPTL dumpers */
+	struct s_pcap_dump {
+		s_pcap_dump(Call *call) :
+		 all(PcapDumper::na, call),
+		 sip(PcapDumper::sip, call),
+		 rtp(PcapDumper::rtp, call),
+		 error(0) {
+		}
+		PcapDumper all;
+		PcapDumper sip;
+		PcapDumper rtp;
+		int error;
+		map<sStreamId, sUdptlDumper*> udptl;
+	} pcap_dump;
+
+	/* Diameter correlation tables */
+	struct s_diameter {
+		map<string, bool> from_sip;
+		map<string, bool> to_sip;
+		map<string, bool> callid;
+	} diameter;
+
+	/* Premature SIP responses, hash-add lock and media legs */
+	struct s_sip_aux {
+		void init() {
+			premature_responses = NULL;
+			premature_responses_by_from_tag = NULL;
+			hash_add_lock = 0;
+			media_legs_classified = false;
+		}
+		list<sPrematureResponse> *premature_responses;
+		list<sPrematureResponseByFromTag> *premature_responses_by_from_tag;
+		vector<sMediaLeg> media_legs;
+		volatile int hash_add_lock;
+		bool media_legs_classified;
+	} sip_aux;
+
+	/* SQL CDR row buffers, RTP/SDP row mapping & billing prices */
+	struct s_cdr_store {
+		void init() {
+			cdr.setIgnoreCheckExistsField();
+			cdr_next.setIgnoreCheckExistsField();
+			for(int i = 0; i < CDR_NEXT_MAX; i++) {
+				cdr_next_ch[i].setIgnoreCheckExistsField();
+			}
+			cdr_country_code.setIgnoreCheckExistsField();
+			#if not CALL_RTP_DYNAMIC_ARRAY
+			memset(rtp_rows_indexes, 0, sizeof(rtp_rows_indexes));
+			#endif
+			rtp_rows_count = 0;
+			payload_rslt = -1;
+			set_call_counter = false;
+			set_register_counter = false;
+			price_customer = 0;
+			price_operator = 0;
+		}
+		SqlDb_row cdr;
+		SqlDb_row cdr_next;
+		SqlDb_row cdr_next_ch[CDR_NEXT_MAX];
+		SqlDb_row cdr_country_code;
+		#if CALL_RTP_DYNAMIC_ARRAY
+		map<unsigned, unsigned> rtp_rows_indexes;
+		#else
+		unsigned rtp_rows_indexes[MAX_SSRC_PER_CALL_FIX];
+		#endif
+		vector<s_sdp_store_data> sdp_rows_list;
+		double price_customer;
+		double price_operator;
+		unsigned rtp_rows_count;
+		int payload_rslt;
+		bool set_call_counter;
+		bool set_register_counter;
+	} cdr_store;
+
+public:
 	void rtp_remove_lock() {
-		__SYNC_LOCK(this->_rtp_remove_sync);
+		__SYNC_LOCK(this->rtp.remove_sync);
 	}
 	void rtp_remove_unlock() {
-		__SYNC_UNLOCK(this->_rtp_remove_sync);
+		__SYNC_UNLOCK(this->rtp.remove_sync);
 	}
-	RTP *rtpab[2];
-	cDtls *dtls;
-	bool dtls_exists;
-	volatile unsigned dtls_queue_move;
-	volatile int dtls_queue_sync;
-	vector<cDtlsLink::sSrtpKeys*> dtls_keys;
-	volatile int dtls_keys_sync;
-	volatile int rtplock_sync;
-	unsigned long call_id_len;	//!< length of call-id 	
-	string call_id;	//!< call-id from SIP session
-	map<string, bool> *call_id_alternative;
-	volatile int _call_id_alternative_lock;
 	
 	inline const char *get_called(CallBranch *c_branch) {
 		extern int opt_destination_number_mode;
@@ -2091,212 +2808,13 @@ public:
 	}
 	
 	inline bool is_fax() {
-		return(isfax || (seenudptl && exists_udptl_data));
+		return(fax.isfax || (fax.seenudptl && fax.exists_udptl_data));
 	}
 	inline bool is_fax_packet(struct packet_s_process_0 *packetS);
 	
 	inline bool isRtpPacketsInQueue() {
-		return(rtppacketsinqueue_in > rtppacketsinqueue_out);
+		return(queue.rtp_in > queue.rtp_out);
 	}
-	
-	bool sighup;			//!< true if call is saving during sighup
-	
-	RTP *lastcallerrtp;		//!< last RTP stream from caller
-	RTP *lastcalledrtp;		//!< last RTP stream from called
-	RTP *lastactivecallerrtp;
-	RTP *lastactivecalledrtp;
-	
-	int recordstopped;		//!< flag holding if call was stopped to avoid double free
-	int dtmfflag;			//!< used for holding dtmf states 
-	unsigned int dtmfflag2[2];	//!< used for holding dtmf states 
-	double lastdtmf_time;		//!< used for holding time of last dtmf
-
-	string hold_times;		//!< used for record hold times
-	bool hold_status;		//!< hold status var
-	bool is_fas_detected;		//!< detected FAS (False Answer Supervision)
-	bool is_zerossrc_detected;	//!< detected zero SSRC
-
-	bool protocol_is_tcp;
-	bool protocol_is_udp;
-	
-	int silencerecording;
-	int recordingpausedby182;
-	bool save_energylevels;
-	
-	sReg reg;
-	
-	volatile u_int64_t rtppacketsinqueue_in __attribute__((aligned(64)));
-	volatile u_int64_t rtppacketsinqueue_out __attribute__((aligned(64)));
-
-	volatile int push_call_to_calls_queue;
-	volatile int push_register_to_registers_engine;
-	volatile int push_register_to_registers_queue;
-	volatile int push_call_to_storing_cdr_queue;
-	bool pcaps_graphs_closed;
-	unsigned int ps_drop;
-	unsigned int ps_ifdrop;
-	vector<u_int64_t> forcemark_time;
-	volatile u_int32_t forcemark_time_size;
-	volatile int _forcemark_lock;
-	int first_codec;
-	bool	has_second_merged_leg;
-
-	float a_mos_lqo;
-	float b_mos_lqo;
-
-	u_int64_t progress_time_us;	//!< time in u_seconds of 18X response
-	u_int64_t first_rtp_time_us;	//!< time in u_seconds of first RTP packet
-	u_int64_t connect_time_us;	//!< time in u_seconds of 200 OK
-	u_int64_t last_signal_packet_time_us;
-	u_int64_t last_rtp_packet_time_us;
-	u_int64_t last_rtcp_packet_time_us;
-	u_int64_t last_rtp_a_packet_time_us;
-	u_int64_t last_rtp_b_packet_time_us;
-	time_t destroy_call_at;
-	time_t destroy_call_at_bye;
-	time_t destroy_call_at_bye_confirmed;
-	
-	std::deque <s_dtmf> dtmf_history;
-	volatile int dtmf_sync;
-	
-	u_int64_t first_invite_time_us;
-	u_int64_t first_response_100_time_us;
-	u_int64_t first_response_xxx_time_us;
-	u_int64_t first_message_time_us;
-	u_int64_t first_response_200_time_us;
-
-	uint8_t	caller_sipdscp;
-	uint8_t	called_sipdscp;
-
-	int isfax;
-	char seenudptl;
-	volatile char seen_sdp_mt_image;
-	bool exists_udptl_data;
-	bool not_acceptable;
-	
-	bool sip_fragmented;
-	bool rtp_fragmented;
-
-	void *rtp_cur[2];		//!< last RTP structure in direction 0 and 1 (iscaller = 1)
-	void *rtp_prev[2];		//!< previouse RTP structure in direction 0 and 1 (iscaller = 1)
-
-	char *contenttype;
-	char *message;
-	char *message_info;
-	int content_length;
-	
-	unsigned int dcs;
-	eVoicemail voicemail;
-
-	int last_callercodec;		//!< Last caller codec 
-	int last_calledcodec;		//!< Last called codec 
-
-	int codec_caller;
-	int codec_called;
-	
-	unsigned max_length_sip_data;
-	unsigned max_length_sip_packet;
-
-	sAudioBufferData audioBufferData[2];
-
-	unsigned int skinny_partyid;
-	map<d_item<vmIP>, int> skinny_last_callstate_by_ip;
-
-	int *listening_worker_run;
-	pthread_mutex_t listening_worker_run_lock;
-
-	int thread_num;
-	int thread_num_rd;
-
-	char absolute_timeout_exceeded;
-	char zombie_timeout_exceeded;
-	char bye_timeout_exceeded;
-	char rtp_timeout_exceeded;
-	char sipwithoutrtp_timeout_exceeded;
-	char oneway_timeout_exceeded;
-	char max_sip_packets_exceeded;
-	char max_invite_packets_exceeded;
-	char force_terminate;
-	char pcap_drop;
-	
-	void *listening_worker_args;
-	
-	RTP *lastraw[2];
-
-	string geoposition;
-
-	u_int16_t onInvite_counter;
-	u_int16_t onCall_2XX_counter;
-	u_int16_t onCall_18X_counter;
-	u_int16_t onHangup_counter;
-	
-	bool force_close;
-
-	unsigned int caller_silence;
-	unsigned int called_silence;
-	unsigned int caller_noise;
-	unsigned int called_noise;
-	unsigned int caller_lastsilence;
-	unsigned int called_lastsilence;
-
-	u_int64_t silence_afteranswer_noise_start_us;	//!< start of first confirmed noise from called party after connect (0 = not yet)
-	bool silence_afteranswer_rtp_seen;		//!< called party G711 RTP was DSP-processed after connect
-
-	u_int32_t ivr_voice_ms;			//!< ivrdetect: called party voice (audible, no call progress tone) in early media
-	u_int64_t ivr_voice_reached_us;		//!< ivrdetect: packet time when ivr_voice_ms reached the threshold (0 = not yet)
-	bool ivr_ringback_detected;		//!< ivrdetect: ringback tone detected in called party early media
-
-	unsigned int caller_clipping_8k;
-	unsigned int called_clipping_8k;
-	
-	unsigned int lastcallerssrc;
-	unsigned int lastcalledssrc;
-
-	map<string, sMergeLegInfo> mergecalls;
-	volatile int _mergecalls_lock;
-
-	bool rtp_zeropackets_stored;
-	
-	sRtcpData rtcpData;
-	sIPFixStreamData ipfixData;
-	
-	map<d_item<vmIPport>, unsigned> last_udptl_seq;
-
-	u_int32_t iscaller_consecutive[2];
-	
-	string mgcp_callid;
-	list<u_int32_t> mgcp_transactions;
-	map<u_int32_t, sMgcpRequest> mgcp_requests;
-	map<u_int32_t, sMgcpResponse> mgcp_responses;
-	u_int64_t last_mgcp_connect_packet_time_us;
-	
-	u_int64_t counter;
-	static u_int64_t counter_s;
-	
-	bool syslog_sdp_multiplication;
-	
-	list<sTxt> txt;
-	volatile int _txt_lock;
-	
-	bool televent_exists_request;
-	bool televent_exists_response;
-	
-	bool exclude_from_active_calls;
-	
-	bool conference_is_main_leg;
-	bool conference_is_leg;
-	string conference_referred_by;
-	sCseq conference_referred_by_cseq;
-	u_int64_t conference_referred_by_ok_time;
-	map<sConferenceLegId, sConferenceLegs*> conference_legs;
-	volatile int conference_legs_sync;
-	eSrvccFlag srvcc_flag;
-	string srvcc_call_id;
-	
-	int16_t ttl_min;
-	int16_t ttl_max;
-	u_int64_t ttl_sum;
-	u_int32_t ttl_count;
 	
 	/**
 	 * constructor
@@ -2406,16 +2924,16 @@ public:
 	 *
 	 * @return pointer to PcapDumper
 	*/
-	PcapDumper *getPcap() { return(&this->pcap); }
-	PcapDumper *getPcapSip() { return(&this->pcapSip); }
-	PcapDumper *getPcapRtp() { return(&this->pcapRtp); }
+	PcapDumper *getPcap() { return(&this->pcap_dump.all); }
+	PcapDumper *getPcapSip() { return(&this->pcap_dump.sip); }
+	PcapDumper *getPcapRtp() { return(&this->pcap_dump.rtp); }
 	
 	/**
 	 * @brief get time of the last seen packet which belongs to this call
 	 *
 	 * @return time of the last packet in seconds from UNIX epoch
 	*/
-	u_int64_t get_last_packet_time_us() { return max(last_signal_packet_time_us, max(last_rtp_packet_time_us, last_rtcp_packet_time_us)); };
+	u_int64_t get_last_packet_time_us() { return max(timing.last_signal_packet_time_us, max(timing.last_rtp_packet_time_us, timing.last_rtcp_packet_time_us)); };
 	u_int32_t get_last_packet_time_s() { return TIME_US_TO_S(get_last_packet_time_us()); };
 
 	/**
@@ -2423,7 +2941,7 @@ public:
 	 *
 	 * @return time of the last rtp packet in seconds from UNIX epoch
 	*/
-	u_int64_t get_last_rtp_packet_time_us() { return max(last_rtp_a_packet_time_us, last_rtp_b_packet_time_us); };
+	u_int64_t get_last_rtp_packet_time_us() { return max(timing.last_rtp_a_packet_time_us, timing.last_rtp_b_packet_time_us); };
 
 	/**
 	 * @brief set time of the last seen packet which belongs to this call
@@ -2431,10 +2949,10 @@ public:
 	 * this time is used for calculating lenght of the call
 	 *
 	*/
-	void set_last_signal_packet_time_us(u_int64_t time_us) { if(time_us > last_signal_packet_time_us) last_signal_packet_time_us = time_us; };
-	void set_last_rtp_packet_time_us(u_int64_t time_us) { if(time_us > last_rtp_packet_time_us) last_rtp_packet_time_us = time_us; };
-	void set_last_rtcp_packet_time_us(u_int64_t time_us) { if(time_us > last_rtcp_packet_time_us) last_rtcp_packet_time_us = time_us; };
-	void set_last_mgcp_connect_packet_time_us(u_int64_t time_us) { if(time_us > last_mgcp_connect_packet_time_us) last_mgcp_connect_packet_time_us = time_us; };
+	void set_last_signal_packet_time_us(u_int64_t time_us) { if(time_us > timing.last_signal_packet_time_us) timing.last_signal_packet_time_us = time_us; };
+	void set_last_rtp_packet_time_us(u_int64_t time_us) { if(time_us > timing.last_rtp_packet_time_us) timing.last_rtp_packet_time_us = time_us; };
+	void set_last_rtcp_packet_time_us(u_int64_t time_us) { if(time_us > timing.last_rtcp_packet_time_us) timing.last_rtcp_packet_time_us = time_us; };
+	void set_last_mgcp_connect_packet_time_us(u_int64_t time_us) { if(time_us > mgcp.last_connect_packet_time_us) mgcp.last_connect_packet_time_us = time_us; };
 
 	/**
 	 * @brief get first time of the the packet which belongs to this call
@@ -2453,7 +2971,7 @@ public:
 
 	u_int64_t get_last_time_us() {
 		if(typeIs(MGCP)) {
-			return(last_mgcp_connect_packet_time_us);
+			return(mgcp.last_connect_packet_time_us);
 		} else {
 			extern bool opt_ignore_duration_after_bye_confirmed;
 			if(opt_ignore_duration_after_bye_confirmed) {
@@ -2516,7 +3034,7 @@ public:
 	};
 	double duration_sf() { return(TIME_US_TO_SF(duration_us())); };
 	u_int32_t duration_s() { return(TIME_US_TO_S(duration_us())); };
-	u_int64_t connect_duration_us() { return(connect_time_us ? duration_us() - (connect_time_us - first_packet_time_us) : 0); };
+	u_int64_t connect_duration_us() { return(timing.connect_time_us ? duration_us() - (timing.connect_time_us - first_packet_time_us) : 0); };
 	u_int32_t connect_duration_s() { return(TIME_US_TO_S(connect_duration_us())); };
 	double connect_duration_sf() { return(TIME_US_TO_SF(connect_duration_us())); };
 	u_int64_t callend_us() { return calltime_us() + duration_us(); };
@@ -2524,7 +3042,7 @@ public:
 	
 	u_int64_t duration_active_us() { return(unshiftSystemTime_ms(getTimeMS_rdtsc()) * 1000 - first_packet_time_us); };
 	u_int32_t duration_active_s() { return(TIME_US_TO_S(duration_active_us())); };
-	u_int64_t connect_duration_active_us() { return(connect_time_us ? duration_active_us() - (connect_time_us - first_packet_time_us) : 0); };
+	u_int64_t connect_duration_active_us() { return(timing.connect_time_us ? duration_active_us() - (timing.connect_time_us - first_packet_time_us) : 0); };
 	u_int32_t connect_duration_active_s() { return(TIME_US_TO_S(connect_duration_active_us())); };
 	
 	/**
@@ -2545,7 +3063,7 @@ public:
 	*/
 	void setFlagForRemoveRTP(CallBranch *c_branch = NULL);
 	inline void removeRTP_ifSetFlag() {
-		if(rtp_remove_flag) {
+		if(rtp.remove_flag) {
 			_removeRTP_branch();
 		}
 	}
@@ -2695,9 +3213,9 @@ public:
 	void atFinish();
 	
 	bool isPcapsClose() {
-		return(pcap.isClose() &&
-		       pcapSip.isClose() &&
-		       pcapRtp.isClose());
+		return(pcap_dump.all.isClose() &&
+		       pcap_dump.sip.isClose() &&
+		       pcap_dump.rtp.isClose());
 	}
 	bool isGraphsClose() {
 		#if not EXPERIMENTAL_LITE_RTP_MOD
@@ -2711,16 +3229,16 @@ public:
 	}
 	bool closePcaps() {
 		bool callClose = false;
-		if(!pcap.isClose()) {
-			pcap.close();
+		if(!pcap_dump.all.isClose()) {
+			pcap_dump.all.close();
 			callClose = true;
 		}
-		if(!pcapSip.isClose()) {
-			pcapSip.close();
+		if(!pcap_dump.sip.isClose()) {
+			pcap_dump.sip.close();
 			callClose = true;
 		}
-		if(!pcapRtp.isClose()) {
-			pcapRtp.close();
+		if(!pcap_dump.rtp.isClose()) {
+			pcap_dump.rtp.close();
 			callClose = true;
 		}
 		return(callClose);
@@ -2745,45 +3263,45 @@ public:
 	u_int32_t getAllReceivedRtpPackets();
 	
 	void call_id_alternative_lock() {
-		__SYNC_LOCK(this->_call_id_alternative_lock);
+		__SYNC_LOCK(this->id.call_id_alternative_lock);
 	}
 	void call_id_alternative_unlock() {
-		__SYNC_UNLOCK(this->_call_id_alternative_lock);
+		__SYNC_UNLOCK(this->id.call_id_alternative_lock);
 	}
 	
 	void forcemark_lock() {
-		__SYNC_LOCK(this->_forcemark_lock);
+		__SYNC_LOCK(this->forcemark.lock_sync);
 	}
 	void forcemark_unlock() {
-		__SYNC_UNLOCK(this->_forcemark_lock);
+		__SYNC_UNLOCK(this->forcemark.lock_sync);
 	}
 
 	bool is_enable_set_destroy_call_at_for_call(CallBranch *c_branch, sCseq *cseq, int merged) {
 		extern bool opt_call_branches;
 		extern bool opt_callidmerge_force_separate_branches;
 		return((!cseq || !c_branch->invitecseq_in_dialog.size() || find(c_branch->invitecseq_in_dialog.begin(),c_branch->invitecseq_in_dialog.end(), *cseq) == c_branch->invitecseq_in_dialog.end()) &&
-		       (!this->has_second_merged_leg || (this->has_second_merged_leg && merged) ||
+		       (!this->merge.has_second_merged_leg || (this->merge.has_second_merged_leg && merged) ||
 			(opt_call_branches && opt_callidmerge_force_separate_branches)));
 	}
 	bool is_enable_set_destroy_call_at_for_failed_call(CallBranch *c_branch, sCseq *cseq, int merged) {
 		extern bool opt_call_branches;
 		extern bool opt_callidmerge_force_separate_branches;
 		return((!cseq || !c_branch->invitecseq_in_dialog.size() || find(c_branch->invitecseq_in_dialog.begin(),c_branch->invitecseq_in_dialog.end(), *cseq) == c_branch->invitecseq_in_dialog.end()) &&
-		       (!this->has_second_merged_leg || (this->has_second_merged_leg && merged) ||
+		       (!this->merge.has_second_merged_leg || (this->merge.has_second_merged_leg && merged) ||
 			(opt_call_branches &&
 			 (opt_callidmerge_force_separate_branches ||
 			  (is_multibranch() && !c_branch->has_merged_leg)))));
 	}
 	
 	bool seenRES18X_or_2XX_in_branches() {
-		if(first_branch.seenRES18X || first_branch.seenRES2XX) {
+		if(branches.first.seenRES18X || branches.first.seenRES2XX) {
 			return(true);
 		}
 		bool rslt = false;
-		if(next_branches.size()) {
+		if(branches.next.size()) {
 			branches_lock();
-			for(unsigned i = 0; i < next_branches.size(); i++) {
-				if(next_branches[i]->seenRES18X || next_branches[i]->seenRES2XX) {
+			for(unsigned i = 0; i < branches.next.size(); i++) {
+				if(branches.next[i]->seenRES18X || branches.next[i]->seenRES2XX) {
 					rslt = true;
 					break;
 				}
@@ -2794,14 +3312,14 @@ public:
 	}
 	
 	bool oneway_in_branches() {
-		if(!first_branch.oneway) {
+		if(!branches.first.oneway) {
 			return(false);
 		}
 		bool rslt = true;
-		if(next_branches.size()) {
+		if(branches.next.size()) {
 			branches_lock();
-			for(unsigned i = 0; i < next_branches.size(); i++) {
-				if(!next_branches[i]->oneway) {
+			for(unsigned i = 0; i < branches.next.size(); i++) {
+				if(!branches.next[i]->oneway) {
 					rslt = false;
 					break;
 				}
@@ -2813,15 +3331,15 @@ public:
 	
 	bool is_closed_other_branches(CallBranch *c_branch) {
 		if(is_multibranch()) {
-			if(first_branch.branch_id != c_branch->branch_id &&
-			   !first_branch.is_closed()) {
+			if(branches.first.branch_id != c_branch->branch_id &&
+			   !branches.first.is_closed()) {
 				return(false);
 			}
 			bool ok = true;
 			branches_lock();
-			for(unsigned i = 0; i < next_branches.size(); i++) {
-				if(next_branches[i]->branch_id != c_branch->branch_id &&
-				   !next_branches[i]->is_closed()) {
+			for(unsigned i = 0; i < branches.next.size(); i++) {
+				if(branches.next[i]->branch_id != c_branch->branch_id &&
+				   !branches.next[i]->is_closed()) {
 					ok = false;
 					break;
 				}
@@ -2853,11 +3371,11 @@ public:
 				}
 			}
 		}
-		this->destroy_call_at = time_s + shift_s;
+		this->timing.destroy_call_at = time_s + shift_s;
 	}
 	void shift_destroy_call_at(CallBranch *c_branch, u_int32_t time_s, int lastSIPresponseNum = 0) {
 		extern int opt_quick_save_cdr;
-		if(this->destroy_call_at > 0) {
+		if(this->timing.destroy_call_at > 0) {
 			extern int opt_register_timeout;
 			time_t new_destroy_call_at = 
 				typeIs(REGISTER) ?
@@ -2868,8 +3386,8 @@ public:
 					 c_branch->seenbye ?
 						time_s + 60 :
 						time_s + (lastSIPresponseNum == 487 || c_branch->lastSIPresponseNum == 487 ? 15 : 5));
-			if(new_destroy_call_at > this->destroy_call_at) {
-				this->destroy_call_at = new_destroy_call_at;
+			if(new_destroy_call_at > this->timing.destroy_call_at) {
+				this->timing.destroy_call_at = new_destroy_call_at;
 			}
 		}
 	}
@@ -2888,14 +3406,14 @@ public:
 	
 	bool checkKnownIP_inSipCallerdIP(CallBranch *c_branch, vmIP ip) {
 		if(!c_branch) {
-			if(checkKnownIP_inSipCallerdIP(&first_branch, ip)) {
+			if(checkKnownIP_inSipCallerdIP(&branches.first, ip)) {
 				return(true);
 			}
 			bool rslt = false;
-			if(next_branches.size()) {
+			if(branches.next.size()) {
 				branches_lock();
-				for(unsigned i = 0; i < next_branches.size(); i++) {
-					if(checkKnownIP_inSipCallerdIP(next_branches[i], ip)) {
+				for(unsigned i = 0; i < branches.next.size(); i++) {
+					if(checkKnownIP_inSipCallerdIP(branches.next[i], ip)) {
 						rslt = true;
 						break;
 					}
@@ -2967,7 +3485,7 @@ public:
 		if(typeIs(INVITE) || typeIs(INVITE_RESPONSE_PREMATURE) ||
 		   typeIs(MESSAGE) || typeIs(MGCP) || typeIs(SKINNY_NEW)) {
 			__SYNC_INC(calls_counter);
-			set_call_counter = true;
+			cdr_store.set_call_counter = true;
 		}
 	}
 	void calls_counter_dec() {
@@ -2975,18 +3493,18 @@ public:
 		if(typeIs(INVITE) || typeIs(INVITE_RESPONSE_PREMATURE) ||
 		   typeIs(MESSAGE) || typeIs(MGCP) || typeIs(SKINNY_NEW)) {
 			__SYNC_DEC(calls_counter);
-			set_call_counter = false;
+			cdr_store.set_call_counter = false;
 		}
 	}
 	void registers_counter_inc() {
 		extern volatile int registers_counter;
 		__SYNC_INC(registers_counter);
-		set_register_counter = true;
+		cdr_store.set_register_counter = true;
 	}
 	void registers_counter_dec() {
 		extern volatile int registers_counter;
 		__SYNC_DEC(registers_counter);
-		set_register_counter = false;
+		cdr_store.set_register_counter = false;
 	}
 	
 	bool selectRtpStreams();
@@ -3011,10 +3529,10 @@ public:
 	void removeCallIdMap();
 	void removeMergeCalls();
 	void mergecalls_lock() {
-		__SYNC_LOCK(this->_mergecalls_lock);
+		__SYNC_LOCK(this->merge.lock_sync);
 	}
 	void mergecalls_unlock() {
-		__SYNC_UNLOCK(this->_mergecalls_lock);
+		__SYNC_UNLOCK(this->merge.lock_sync);
 	}
 	
 	inline void setSipcallerip(CallBranch *c_branch, vmIP ip, vmIP ip_encaps, u_int8_t ip_encaps_prot, vmPort port, const char *call_id = NULL) {
@@ -3251,10 +3769,10 @@ public:
 		if(isSetCallidMergeHeader(true) &&
 		   call_id && *call_id) {
 			mergecalls_lock();
-			if(mergecalls.find(call_id) != mergecalls.end()) {
-				mergecalls[call_id].seenbye = seenbye;
-				if(!mergecalls[call_id].seenbye_time_usec || (!seenbye && !seenbye_time_usec)) {
-					mergecalls[call_id].seenbye_time_usec = seenbye_time_usec;
+			if(merge.calls.find(call_id) != merge.calls.end()) {
+				merge.calls[call_id].seenbye = seenbye;
+				if(!merge.calls[call_id].seenbye_time_usec || (!seenbye && !seenbye_time_usec)) {
+					merge.calls[call_id].seenbye_time_usec = seenbye_time_usec;
 				}
 			}
 			mergecalls_unlock();
@@ -3268,10 +3786,10 @@ public:
 		if(isSetCallidMergeHeader(true) &&
 		   call_id && *call_id) {
 			mergecalls_lock();
-			if(mergecalls.find(call_id) != mergecalls.end()) {
-				mergecalls[call_id].seenokbye = seenokbye;
-				if(!mergecalls[call_id].seenokbye_time_usec || (!seenokbye && !seenokbye_time_usec)) {
-					mergecalls[call_id].seenokbye_time_usec = seenokbye_time_usec;
+			if(merge.calls.find(call_id) != merge.calls.end()) {
+				merge.calls[call_id].seenokbye = seenokbye;
+				if(!merge.calls[call_id].seenokbye_time_usec || (!seenokbye && !seenokbye_time_usec)) {
+					merge.calls[call_id].seenokbye_time_usec = seenokbye_time_usec;
 				}
 			}
 			mergecalls_unlock();
@@ -3288,10 +3806,10 @@ public:
 		if(isSetCallidMergeHeader(true) &&
 		   call_id && *call_id) {
 			mergecalls_lock();
-			if(mergecalls.find(call_id) != mergecalls.end()) {
-				mergecalls[call_id].seenbye_and_ok = seenbye_and_ok;
-				if(!mergecalls[call_id].seenbye_and_ok_time_usec || (!seenbye_and_ok && !seenbye_and_ok_time_usec)) {
-					mergecalls[call_id].seenbye_and_ok_time_usec = seenbye_and_ok_time_usec;
+			if(merge.calls.find(call_id) != merge.calls.end()) {
+				merge.calls[call_id].seenbye_and_ok = seenbye_and_ok;
+				if(!merge.calls[call_id].seenbye_and_ok_time_usec || (!seenbye_and_ok && !seenbye_and_ok_time_usec)) {
+					merge.calls[call_id].seenbye_and_ok_time_usec = seenbye_and_ok_time_usec;
 				}
 			}
 			mergecalls_unlock();
@@ -3305,10 +3823,10 @@ public:
 		if(isSetCallidMergeHeader(true) &&
 		   call_id && *call_id) {
 			mergecalls_lock();
-			if(mergecalls.find(call_id) != mergecalls.end()) {
-				mergecalls[call_id].seencancel = seencancel;
-				if(!mergecalls[call_id].seencancel_time_usec || (!seencancel && !seencancel_time_usec)) {
-					mergecalls[call_id].seencancel_time_usec = seencancel_time_usec;
+			if(merge.calls.find(call_id) != merge.calls.end()) {
+				merge.calls[call_id].seencancel = seencancel;
+				if(!merge.calls[call_id].seencancel_time_usec || (!seencancel && !seencancel_time_usec)) {
+					merge.calls[call_id].seencancel_time_usec = seencancel_time_usec;
 				}
 			}
 			mergecalls_unlock();
@@ -3322,10 +3840,10 @@ public:
 		if(isSetCallidMergeHeader(true) &&
 		   call_id && *call_id) {
 			mergecalls_lock();
-			if(mergecalls.find(call_id) != mergecalls.end()) {
-				mergecalls[call_id].seencancel_and_ok = seencancel_and_ok;
-				if(!mergecalls[call_id].seencancel_and_ok_time_usec || (!seencancel_and_ok && !seencancel_and_ok_time_usec)) {
-					mergecalls[call_id].seencancel_and_ok_time_usec = seencancel_and_ok_time_usec;
+			if(merge.calls.find(call_id) != merge.calls.end()) {
+				merge.calls[call_id].seencancel_and_ok = seencancel_and_ok;
+				if(!merge.calls[call_id].seencancel_and_ok_time_usec || (!seencancel_and_ok && !seencancel_and_ok_time_usec)) {
+					merge.calls[call_id].seencancel_and_ok_time_usec = seencancel_and_ok_time_usec;
 				}
 			}
 			mergecalls_unlock();
@@ -3340,10 +3858,10 @@ public:
 		if(isSetCallidMergeHeader(true) &&
 		   call_id && *call_id) {
 			mergecalls_lock();
-			if(mergecalls.find(call_id) != mergecalls.end()) {
-				mergecalls[call_id].seenauthfailed = seenauthfailed;
-				if(!mergecalls[call_id].seenauthfailed_time_usec || (!seenauthfailed && !seenauthfailed_time_usec)) {
-					mergecalls[call_id].seenauthfailed_time_usec = seenauthfailed_time_usec;
+			if(merge.calls.find(call_id) != merge.calls.end()) {
+				merge.calls[call_id].seenauthfailed = seenauthfailed;
+				if(!merge.calls[call_id].seenauthfailed_time_usec || (!seenauthfailed && !seenauthfailed_time_usec)) {
+					merge.calls[call_id].seenauthfailed_time_usec = seenauthfailed_time_usec;
 				}
 			}
 			mergecalls_unlock();
@@ -3353,7 +3871,7 @@ public:
 		if(isSetCallidMergeHeader(true)) {
 			u_int64_t seenbye_time_usec = 0;
 			mergecalls_lock();
-			for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
+			for(map<string, sMergeLegInfo>::iterator it = merge.calls.begin(); it != merge.calls.end(); ++it) {
 				if(!it->second.seenbye || !it->second.seenbye_time_usec) {
 					mergecalls_unlock();
 					return(0);
@@ -3371,7 +3889,7 @@ public:
 		if(isSetCallidMergeHeader(true)) {
 			u_int64_t seenbye_and_ok_time_usec = 0;
 			mergecalls_lock();
-			for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
+			for(map<string, sMergeLegInfo>::iterator it = merge.calls.begin(); it != merge.calls.end(); ++it) {
 				if(!it->second.seenbye_and_ok || !it->second.seenbye_and_ok_time_usec) {
 					mergecalls_unlock();
 					return(0);
@@ -3389,7 +3907,7 @@ public:
 		if(isSetCallidMergeHeader(true)) {
 			u_int64_t seencancel_time_usec = 0;
 			mergecalls_lock();
-			for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
+			for(map<string, sMergeLegInfo>::iterator it = merge.calls.begin(); it != merge.calls.end(); ++it) {
 				if(!it->second.seencancel || !it->second.seencancel_time_usec) {
 					mergecalls_unlock();
 					return(0);
@@ -3407,7 +3925,7 @@ public:
 		if(isSetCallidMergeHeader(true)) {
 			u_int64_t seencancel_and_ok_time_usec = 0;
 			mergecalls_lock();
-			for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
+			for(map<string, sMergeLegInfo>::iterator it = merge.calls.begin(); it != merge.calls.end(); ++it) {
 				if(!it->second.seencancel_and_ok || !it->second.seencancel_and_ok_time_usec) {
 					mergecalls_unlock();
 					return(0);
@@ -3425,7 +3943,7 @@ public:
 		if(isSetCallidMergeHeader(true)) {
 			u_int64_t seenauthfailed_time_usec = 0;
 			mergecalls_lock();
-			for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
+			for(map<string, sMergeLegInfo>::iterator it = merge.calls.begin(); it != merge.calls.end(); ++it) {
 				if(!it->second.seenauthfailed || !it->second.seenauthfailed_time_usec) {
 					mergecalls_unlock();
 					return(0);
@@ -3475,19 +3993,19 @@ public:
 	void setRtpThreadNum();
 	
 	void hash_add_lock() {
-		__SYNC_LOCK(this->_hash_add_lock);
+		__SYNC_LOCK(this->sip_aux.hash_add_lock);
 	}
 	void hash_add_unlock() {
-		__SYNC_UNLOCK(this->_hash_add_lock);
+		__SYNC_UNLOCK(this->sip_aux.hash_add_lock);
 	}
 	
 	void add_txt(u_int64_t time, eTxtType type, const char *txt, unsigned txt_length);
 	int detectCallerdByLabelInXml(const char *label);
 	void txt_lock() {
-		__SYNC_LOCK(this->_txt_lock);
+		__SYNC_LOCK(this->txt_store.lock_sync);
 	}
 	void txt_unlock() {
-		__SYNC_UNLOCK(this->_txt_lock);
+		__SYNC_UNLOCK(this->txt_store.lock_sync);
 	}
 	
 	void getChartCacheValue(int type, double *value, string *value_str, bool *null, class cCharts *chartsCache);
@@ -3501,34 +4019,34 @@ public:
 	int sqlChildTableSize(string *child_table, void *callData);
 	
 	bool isEmptyCdrRow() {
-		return(cdr.isEmpty());
+		return(cdr_store.cdr.isEmpty());
 	}
 	bool getCdrFieldValue(unsigned slot, const char *fieldName, double *value) {
-		if(!saved_data) {
+		if(!cdr_result.saved_data) {
 			return(getCdrFieldValue(fieldName, value));
 		}
-		if(saved_data->cdr_field_values.size() <= slot) {
-			saved_data->cdr_field_values.resize(slot + 1);
+		if(cdr_result.saved_data->cdr_field_values.size() <= slot) {
+			cdr_result.saved_data->cdr_field_values.resize(slot + 1);
 		}
-		sSavedData::sCdrFieldValue *cache = &saved_data->cdr_field_values[slot];
+		sSavedData::sCdrFieldValue *cache = &cdr_result.saved_data->cdr_field_values[slot];
 		if(!cache->set) {
 			cache->exists = getCdrFieldValue(fieldName, &cache->value);
 			cache->set = true;
-			saved_data->cdr_field_values_filled.push_back(slot);
+			cdr_result.saved_data->cdr_field_values_filled.push_back(slot);
 		}
 		*value = cache->value;
 		return(cache->exists);
 	}
 	void clearCdrFieldValues() {
-		if(saved_data) {
-			for(unsigned i = 0; i < saved_data->cdr_field_values_filled.size(); i++) {
-				saved_data->cdr_field_values[saved_data->cdr_field_values_filled[i]].set = false;
+		if(cdr_result.saved_data) {
+			for(unsigned i = 0; i < cdr_result.saved_data->cdr_field_values_filled.size(); i++) {
+				cdr_result.saved_data->cdr_field_values[cdr_result.saved_data->cdr_field_values_filled[i]].set = false;
 			}
-			saved_data->cdr_field_values_filled.clear();
+			cdr_result.saved_data->cdr_field_values_filled.clear();
 		}
 	}
 	bool getCdrFieldValue(const char *fieldName, double *value) {
-		SqlDb_row::SqlDb_rowField *field = cdr.getField(fieldName);
+		SqlDb_row::SqlDb_rowField *field = cdr_store.cdr.getField(fieldName);
 		if(!field || field->null) {
 			return(false);
 		}
@@ -3566,65 +4084,65 @@ public:
 	#if not EXPERIMENTAL_LITE_RTP_MOD
 	inline void add_rtp_stream(RTP *rtp) {
 		#if CALL_RTP_DYNAMIC_ARRAY
-		if(ssrc_n < MAX_SSRC_PER_CALL_FIX) {
-			rtp_fix[ssrc_n] = rtp;
+		if(this->rtp.ssrc_n < MAX_SSRC_PER_CALL_FIX) {
+			this->rtp.fix[this->rtp.ssrc_n] = rtp;
 		} else {
-			if(!rtp_dynamic) {
-				rtp_dynamic = new FILE_LINE(0) CALL_RTP_DYNAMIC_ARRAY_TYPE;
+			if(!this->rtp.dynamic) {
+				this->rtp.dynamic = new FILE_LINE(0) CALL_RTP_DYNAMIC_ARRAY_TYPE;
 			}
-			rtp_dynamic->push_back(rtp);
+			this->rtp.dynamic->push_back(rtp);
 		}
 		#else
-		rtp_fix[ssrc_n] = rtp;
+		this->rtp.fix[this->rtp.ssrc_n] = rtp;
 		#endif
-		++ssrc_n;
+		++this->rtp.ssrc_n;
 	}
 	#endif
 	inline unsigned rtp_rows_size() {
-		return(rtp_rows_count);
+		return(cdr_store.rtp_rows_count);
 	}
 	inline RTP *rtp_rows_stream_by_index(unsigned index) {
-		if(index >= rtp_rows_count) {
+		if(index >= cdr_store.rtp_rows_count) {
 			return(NULL);
 		}
 		#if CALL_RTP_DYNAMIC_ARRAY
-		map<unsigned, unsigned>::iterator iter = rtp_rows_indexes.find(index);
-		if(iter == rtp_rows_indexes.end()) {
+		map<unsigned, unsigned>::iterator iter = cdr_store.rtp_rows_indexes.find(index);
+		if(iter == cdr_store.rtp_rows_indexes.end()) {
 			return(NULL);
 		}
 		return(rtp_stream_by_index(iter->second));
 		#else
-		return(rtp_stream_by_index(rtp_rows_indexes[index]));
+		return(rtp_stream_by_index(cdr_store.rtp_rows_indexes[index]));
 		#endif
 	}
 	inline RTP *rtp_stream_by_index(unsigned index) {
 		#if not EXPERIMENTAL_LITE_RTP_MOD
 		#if CALL_RTP_DYNAMIC_ARRAY
 		if(index < MAX_SSRC_PER_CALL_FIX) {
-			return(rtp_fix[index]);
+			return(rtp.fix[index]);
 		} else {
-			return((*rtp_dynamic)[index - MAX_SSRC_PER_CALL_FIX]);
+			return((*rtp.dynamic)[index - MAX_SSRC_PER_CALL_FIX]);
 		}
 		#else
-		return(rtp_fix[index]);
+		return(rtp.fix[index]);
 		#endif
 		#else
-		return(&rtp_fix[index]);
+		return(&rtp.fix[index]);
 		#endif
 	}
 	inline int rtp_size() {
-		return(ssrc_n);
+		return(rtp.ssrc_n);
 	}
 	string get_rtp_streams_info_json();
 	
 	inline bool existsSrtp() {
-		return(exists_srtp);
+		return(srtp.exists);
 	}
 	inline bool existsSrtpCryptoConfig() {
-		return(exists_srtp_crypto_config);
+		return(srtp.exists_crypto_config);
 	}
 	inline bool existsSrtpFingerprint() {
-		return(exists_srtp_fingerprint);
+		return(srtp.exists_fingerprint);
 	}
 	inline bool isSrtpInIpPort(CallBranch *c_branch, int indexIpPort) {
 		return(c_branch->ip_port[indexIpPort].srtp);
@@ -3637,42 +4155,35 @@ public:
 	void dtls_keys_lock();
 	void dtls_keys_unlock();
 
-public:	
-	CallBranch first_branch;
-	vector<CallBranch*> next_branches;
-	map<string, int> branches_to_map;
-	map<string, int> branches_tag_map;
-	volatile unsigned branch_main_id;
-	bool branches_max_reached;
-	volatile int _branches_lock;
+public:
 	inline bool is_multibranch() {
-		return(next_branches.size() > 0);
+		return(branches.next.size() > 0);
 	}
 	inline CallBranch *branch_main() {
-		return(branch(branch_main_id));
+		return(branch(branches.main_id));
 	}
 	inline CallBranch *branch(unsigned branch_id) {
 		if(branch_id == 0) {
-			return(&first_branch);
+			return(&branches.first);
 		} else {
 			CallBranch *branch;
 			branches_lock();
-			branch = branch_id - 1 < next_branches.size() ? next_branches[branch_id - 1] : &first_branch;
+			branch = branch_id - 1 < branches.next.size() ? branches.next[branch_id - 1] : &branches.first;
 			branches_unlock();
 			return(branch);
 		}
 	}
 	void branches_lock() {
-		__SYNC_LOCK(_branches_lock);
+		__SYNC_LOCK(branches.lock_sync);
 	}
 	void branches_unlock() {
-		__SYNC_UNLOCK(_branches_lock);
+		__SYNC_UNLOCK(branches.lock_sync);
 	}
 	void dtls_queue_lock() {
-		__SYNC_LOCK(dtls_queue_sync);
+		__SYNC_LOCK(dtls.queue_sync);
 	}
 	void dtls_queue_unlock() {
-		__SYNC_UNLOCK(dtls_queue_sync);
+		__SYNC_UNLOCK(dtls.queue_sync);
 	}
 	void setDiameterFromSip(const char *from_sip);
 	void setDiameterToSip(const char *to_sip);
@@ -3685,16 +4196,16 @@ public:
 	void clearDiameterCallid();
 	void moveDiameterPacketsToPcap(bool enableSave = true);
 	void set_pcap_dump_error(int pcap_dump_error) {
-		this->pcap_dump_error |= pcap_dump_error;
+		this->pcap_dump.error |= pcap_dump_error;
 	}
 	inline void set_callerd_confirm_rtp_by_both_sides_sdp(int8_t iscaller) {
-		__SYNC_SET(callerd_confirm_rtp_by_both_sides_sdp[iscaller]);
+		__SYNC_SET(srtp.confirm_by_both_sides_sdp[iscaller]);
 	}
 	inline int8_t get_callerd_confirm_rtp_by_both_sides_sdp(int8_t iscaller) {
-		return(ATOMIC_LOAD(callerd_confirm_rtp_by_both_sides_sdp[iscaller]) > 0);
+		return(ATOMIC_LOAD(srtp.confirm_by_both_sides_sdp[iscaller]) > 0);
 	}
 	inline int get_payload_rslt() {
-		return(payload_rslt);
+		return(cdr_store.payload_rslt);
 	}
 	
 	void addPrematureResponse(packet_s_process *packetS, sCseq cseq);
@@ -3703,170 +4214,21 @@ public:
 	bool addPrematureResponseByFromTag(packet_s_process *packetS, const char *from_tag);
 	void processPrematureResponsesByFromTag(bool batch_process, const char *from_tag);
 	inline bool existsPrematureResponsesByFromTag() {
-		return(prematureResponsesByFromTag != NULL);
+		return(sip_aux.premature_responses_by_from_tag != NULL);
 	}
 	void clearPrematureResponses();
 	
 	void addTextData(eTextDataType type, u_int64_t time, vmIP ip_src, vmIP ip_dst, vmPort port_src, vmPort port_dst, const char *log);
-	
-private:
-	
-	volatile int8_t callerd_confirm_rtp_by_both_sides_sdp[2];
-	bool exists_srtp;
-	bool exists_srtp_crypto_config;
-	bool exists_srtp_fingerprint;
-	bool log_srtp_callid;
-	PcapDumper pcap;
-	PcapDumper pcapSip;
-	PcapDumper pcapRtp;
-	int pcap_dump_error;
-	map<sStreamId, sUdptlDumper*> udptlDumpers;
-	volatile int _hash_add_lock;
-	int payload_rslt;
-	map<string, bool> diameter_from_sip;
-	map<string, bool> diameter_to_sip;
-	map<string, bool> diameter_callid;
-	list<sTextDataItem*> text_data;
-	list<sPrematureResponse> *prematureResponses;
-	list<sPrematureResponseByFromTag> *prematureResponsesByFromTag;
-	vector<sMediaLeg> media_legs;
-	bool media_legs_classified;
-public:
-	list<vmPort> sdp_ip0_ports[2];
-	bool error_negative_payload_length;
-	volatile int hash_queue_counter;
-	volatile int attemptsClose;
-	volatile bool stopProcessing;
-	u_int32_t stopProcessingAt_s;
-	bool bad_flags_warning[3];
-	volatile int useInListCalls;
-	bool use_rtcp_mux;
-	bool use_sdp_sendonly;
-	bool rtp_from_multiple_sensors;
-	bool sdp_exists_media_type_audio;
-	bool sdp_exists_media_type_image;
-	bool sdp_exists_media_type_video;
-	bool sdp_exists_media_type_application;
-	bool siprec;
-	#if not PROCESS_PACKETS_INDIC_MOD_1
-	volatile int in_preprocess_queue_before_process_packet;
-	volatile u_int32_t in_preprocess_queue_before_process_packet_at[2];
-	#endif
-	bool suppress_rtp_read_due_to_insufficient_hw_performance;
-	bool suppress_rtp_proc_due_to_insufficient_hw_performance;
-	bool stopped_jb_due_to_high_ooo;
-	bool changing_codec_in_stream;
-	#if EXPERIMENTAL_SEPARATE_PROCESSSING
-	volatile bool sp_sent_close_call;
-	volatile bool sp_arrived_rtp_streams;
-	volatile u_int32_t sp_stop_rtp_processing_at;
-	volatile u_int32_t sp_do_destroy_call_at;
-	set<vmIPport> sp_rtp_ipport;
-	#endif
-	unsigned sip_packets_counter;
-	unsigned invite_packets_counter;
-	unsigned process_rtp_counter;
-	#if CALL_DEBUG_RTP
-	volatile int8_t debug_rtp;
-	#endif
-	bool save_sip_pcap : 1;
-	bool save_rtp_pcap : 1;
-	bool save_rtp_payload_pcap : 1;
-	bool save_rtcp_pcap : 1;
-	bool save_rtp_graph : 1;
-	unsigned rslt_save_cdr_bye;
-	u_int64_t rslt_save_cdr_flags;
-	struct sSavedData {
-		struct sRtpStream {
-			vmIPport src;
-			vmIPport dst;
-			int received;
-			u_int16_t rtp_ptime;
-			u_int16_t sdp_ptime;
-			bool is_caller;
-			bool in_multiple_calls;
-			bool flags_null;
-		};
-		sSavedData() {
-			max_retransmission_invite = 0;
-			dscp_rtp[0] = 0;
-			dscp_rtp[1] = 0;
-			saddr_exists[0] = false;
-			saddr_exists[1] = false;
-			countries_set = false;
-			response_time_100 = 0;
-			response_time_100_null = true;
-			payload_ab[0] = -1;
-			payload_ab[1] = -1;
-			mos_f2_ab[0] = -1;
-			mos_f2_ab[1] = -1;
-			payload = -1;
-			payload_null = true;
-		}
-		unsigned max_retransmission_invite;
-		u_int8_t dscp_rtp[2];
-		bool saddr_exists[2];
-		vmIP saddr[2];
-		set<vmIP> proxies;
-		string a_ua;
-		string b_ua;
-		string caller;
-		string called;
-		string called_domain;
-		string callername;
-		bool countries_set;
-		string caller_country;
-		string called_country;
-		string callerip_country;
-		string calledip_country;
-		double response_time_100;
-		bool response_time_100_null;
-		int payload_ab[2];
-		int mos_f2_ab[2];
-		int payload;
-		bool payload_null;
-		set<int> rtp_rows_payloads;
-		vector<sRtpStream> rtp_streams;
-		vector<s_sdp_store_data> sdp_streams;
-		struct sCdrFieldValue {
-			sCdrFieldValue() {
-				value = 0;
-				set = false;
-				exists = false;
-			}
-			double value;
-			bool set;
-			bool exists;
-		};
-		vector<sCdrFieldValue> cdr_field_values;
-		vector<unsigned> cdr_field_values_filled;
-	};
-	sSavedData *saved_data;
+
 	unsigned rtp_streams_size();
 	bool getRtpStreamData(unsigned index, sSavedData::sRtpStream *stream);
 	unsigned sdp_rows_size();
 	s_sdp_store_data *sdp_row_by_index(unsigned index) {
-		if(index >= sdp_rows_list.size()) {
+		if(index >= cdr_store.sdp_rows_list.size()) {
 			return(NULL);
 		}
-		return(&sdp_rows_list[index]);
+		return(&cdr_store.sdp_rows_list[index]);
 	}
-private:
-	SqlDb_row cdr;
-	SqlDb_row cdr_next;
-	SqlDb_row cdr_next_ch[CDR_NEXT_MAX];
-	SqlDb_row cdr_country_code;
-	#if CALL_RTP_DYNAMIC_ARRAY
-	map<unsigned, unsigned> rtp_rows_indexes;
-	#else
-	unsigned rtp_rows_indexes[MAX_SSRC_PER_CALL_FIX];
-	#endif
-	unsigned rtp_rows_count;
-	vector<s_sdp_store_data> sdp_rows_list;
-	bool set_call_counter;
-	bool set_register_counter;
-	double price_customer;
-	double price_operator;
 friend class RTP;
 friend class RTPsecure;
 };
@@ -4572,30 +4934,30 @@ public:
 			rslt_call = callMAPIT->second;
 			if(opt_call_id_alternative[0]) {
 				rslt_call->call_id_alternative_lock();
-				if(call_idS != rslt_call->call_id) {
+				if(call_idS != rslt_call->id.call_id) {
 					calls_listMAP[call_idS] = rslt_call;
-					(*rslt_call->call_id_alternative)[call_idS] = true;
+					(*rslt_call->id.call_id_alternative)[call_idS] = true;
 				}
 				if(call_id_alternative) {
 					for(unsigned i = 0; i < call_id_alternative->size(); i++) {
-						if((*call_id_alternative)[i] != rslt_call->call_id) {
+						if((*call_id_alternative)[i] != rslt_call->id.call_id) {
 							calls_listMAP[(*call_id_alternative)[i]] = rslt_call;
-							(*rslt_call->call_id_alternative)[(*call_id_alternative)[i]] = true;
+							(*rslt_call->id.call_id_alternative)[(*call_id_alternative)[i]] = true;
 						}
 					}
 				}
 				rslt_call->call_id_alternative_unlock();
 			}
 			#if not PROCESS_PACKETS_INDIC_MOD_1
-			if(time && !rslt_call->stopProcessing) {
-				__SYNC_INC(rslt_call->in_preprocess_queue_before_process_packet);
+			if(time && !rslt_call->proc.stopProcessing) {
+				__SYNC_INC(rslt_call->queue.in_preprocess);
 				#if DEBUG_PREPROCESS_QUEUE
 					cout << " *** ++ in_preprocess_queue_before_process_packet (1) : "
-					     << rslt_call->call_id << " : "
-					     << rslt_call->in_preprocess_queue_before_process_packet << endl;
+					     << rslt_call->id.call_id << " : "
+					     << rslt_call->queue.in_preprocess << endl;
 				#endif
-				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
-				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
+				rslt_call->queue.in_preprocess_at[0] = time;
+				rslt_call->queue.in_preprocess_at[1] = getTimeMS_rdtsc() / 1000;
 			}
 			#endif
 		}
@@ -4609,15 +4971,15 @@ public:
 		if(callMAPIT != calls_listMAP.end()) {
 			rslt_call = callMAPIT->second;
 			#if not PROCESS_PACKETS_INDIC_MOD_1
-			if(time && !rslt_call->stopProcessing) {
-				__SYNC_INC(rslt_call->in_preprocess_queue_before_process_packet);
+			if(time && !rslt_call->proc.stopProcessing) {
+				__SYNC_INC(rslt_call->queue.in_preprocess);
 				#if DEBUG_PREPROCESS_QUEUE
 					cout << " *** ++ in_preprocess_queue_before_process_packet (1) : "
-					     << rslt_call->call_id << " : "
-					     << rslt_call->in_preprocess_queue_before_process_packet << endl;
+					     << rslt_call->id.call_id << " : "
+					     << rslt_call->queue.in_preprocess << endl;
 				#endif
-				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
-				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
+				rslt_call->queue.in_preprocess_at[0] = time;
+				rslt_call->queue.in_preprocess_at[1] = getTimeMS_rdtsc() / 1000;
 			}
 			#endif
 		}
@@ -4630,15 +4992,15 @@ public:
 		if(callMAPIT != map_calls->end()) {
 			rslt_call = callMAPIT->second;
 			#if not PROCESS_PACKETS_INDIC_MOD_1
-			if(time && !rslt_call->stopProcessing) {
-				__SYNC_INC(rslt_call->in_preprocess_queue_before_process_packet);
+			if(time && !rslt_call->proc.stopProcessing) {
+				__SYNC_INC(rslt_call->queue.in_preprocess);
 				#if DEBUG_PREPROCESS_QUEUE
 					cout << " *** ++ in_preprocess_queue_before_process_packet (1) : "
-					     << rslt_call->call_id << " : "
-					     << rslt_call->in_preprocess_queue_before_process_packet << endl;
+					     << rslt_call->id.call_id << " : "
+					     << rslt_call->queue.in_preprocess << endl;
 				#endif
-				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
-				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
+				rslt_call->queue.in_preprocess_at[0] = time;
+				rslt_call->queue.in_preprocess_at[1] = getTimeMS_rdtsc() / 1000;
 			}
 			#endif
 		}
@@ -4684,14 +5046,14 @@ public:
 			rslt_call = mergeMAPIT->second;
 			#if not PROCESS_PACKETS_INDIC_MOD_1
 			if(time) {
-				__SYNC_INC(rslt_call->in_preprocess_queue_before_process_packet);
+				__SYNC_INC(rslt_call->queue.in_preprocess);
 				#if DEBUG_PREPROCESS_QUEUE
 					cout << " *** ++ in_preprocess_queue_before_process_packet (3) : "
-					     << rslt_call->call_id << " : "
-					     << rslt_call->in_preprocess_queue_before_process_packet << endl;
+					     << rslt_call->id.call_id << " : "
+					     << rslt_call->queue.in_preprocess << endl;
 				#endif
-				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
-				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
+				rslt_call->queue.in_preprocess_at[0] = time;
+				rslt_call->queue.in_preprocess_at[1] = getTimeMS_rdtsc() / 1000;
 			}
 			#endif
 		}
@@ -4770,7 +5132,7 @@ public:
 		ip2.items[0] = min(saddr, daddr);
 		ip2.items[1] = max(saddr, daddr);
 		lock_skinny_maps();
-		call->skinny_last_callstate_by_ip[ip2] = state;
+		call->skinny.last_callstate_by_ip[ip2] = state;
 		unlock_skinny_maps();
 	}
 	int get_skinny_last_callstate(Call *call, vmIP saddr, vmIP daddr) {
@@ -4779,8 +5141,8 @@ public:
 		ip2.items[1] = max(saddr, daddr);
 		int state = 0;
 		lock_skinny_maps();
-		map<d_item<vmIP>, int>::iterator it = call->skinny_last_callstate_by_ip.find(ip2);
-		if(it != call->skinny_last_callstate_by_ip.end()) {
+		map<d_item<vmIP>, int>::iterator it = call->skinny.last_callstate_by_ip.find(ip2);
+		if(it != call->skinny.last_callstate_by_ip.end()) {
 			state = it->second;
 		}
 		unlock_skinny_maps();
@@ -4789,7 +5151,7 @@ public:
 	bool any_skinny_callstate_active(Call *call) {
 		bool active = false;
 		lock_skinny_maps();
-		for(map<d_item<vmIP>, int>::iterator it = call->skinny_last_callstate_by_ip.begin(); it != call->skinny_last_callstate_by_ip.end(); ++it) {
+		for(map<d_item<vmIP>, int>::iterator it = call->skinny.last_callstate_by_ip.begin(); it != call->skinny.last_callstate_by_ip.end(); ++it) {
 			if(it->second == SKINNY_OFFHOOK || it->second == SKINNY_CONNECTED) {
 				active = true;
 				break;
@@ -4801,7 +5163,7 @@ public:
 	bool all_skinny_callstate_onhook(Call *call) {
 		bool all_onhook = true;
 		lock_skinny_maps();
-		for(map<d_item<vmIP>, int>::iterator it = call->skinny_last_callstate_by_ip.begin(); it != call->skinny_last_callstate_by_ip.end(); ++it) {
+		for(map<d_item<vmIP>, int>::iterator it = call->skinny.last_callstate_by_ip.begin(); it != call->skinny.last_callstate_by_ip.end(); ++it) {
 			if(it->second != SKINNY_ONHOOK) {
 				all_onhook = false;
 				break;

@@ -348,7 +348,7 @@ RTP::save_mos_graph(bool delimiter) {
 
 	if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
 		this->graph.write((char*)&graph_mos, 4);
-		owner->save_rtp_graph = true;
+		owner->save_flags.rtp_graph = true;
 	}
 
 	u_int64_t new_mos_time_ms = TIME_US_TO_MS(timing.last_packet_time_us - timing.first_packet_time_us);
@@ -834,13 +834,13 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 			channel->stopped_due_to_high_ooo = true;
 			media.stopped_jb_due_to_high_ooo = true;
 			if(owner) {
-				owner->stopped_jb_due_to_high_ooo = true;
+				owner->proc.stopped_jb_due_to_high_ooo = true;
 			}
 			return;
 		}
 	}
  
-	if((save_audio || energylevels) && owner && owner->silencerecording) {
+	if((save_audio || energylevels) && owner && owner->media.silencerecording) {
 		// skip recording 
 		jb.frame->skip = 1;
 	} else {
@@ -939,11 +939,11 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 	if(save_audio || energylevels || mos_lqo) {
 		channel->rawstream = raw.gfile;
 		if(id.iscaller) {
-			owner->codec_caller = media.codec;
-			owner->audioBufferData[0].set(&channel->audiobuf, jb.frame->seqno, id.ssrc, &pkt.header_ts);
+			owner->media.codec_caller = media.codec;
+			owner->audio.buffer_data[0].set(&channel->audiobuf, jb.frame->seqno, id.ssrc, &pkt.header_ts);
 		} else {
-			owner->codec_called = media.codec;
-			owner->audioBufferData[1].set(&channel->audiobuf, jb.frame->seqno, id.ssrc, &pkt.header_ts);
+			owner->media.codec_called = media.codec;
+			owner->audio.buffer_data[1].set(&channel->audiobuf, jb.frame->seqno, id.ssrc, &pkt.header_ts);
 		}
 		if(pkt.payload_len > 0) {
 			channel->last_datalen = jb.frame->datalen;
@@ -1102,7 +1102,7 @@ RTP::jitterbuffer_mos_all() {
 			ch3->stopped_due_to_high_ooo = true;
 			media.stopped_jb_due_to_high_ooo = true;
 			if(owner) {
-				owner->stopped_jb_due_to_high_ooo = true;
+				owner->proc.stopped_jb_due_to_high_ooo = true;
 			}
 			ch3 = NULL;
 		}
@@ -1252,7 +1252,7 @@ bool RTP::read(CallBranch *c_branch,
 	extern bool opt_receiver_check_id_sensor;
 	if(if_unlikely(opt_receiver_check_id_sensor && ((diag.sensor_id >= 0 && diag.sensor_id != sensor_id) ||
 	   (diag.sensor_ip.isSet() && diag.sensor_ip != sensor_ip)))) {
-		if(!owner || !owner->rtp_from_multiple_sensors) {
+		if(!owner || !owner->proc.rtp_from_multiple_sensors) {
 			extern bool opt_disable_rtp_warning;
 			if(!opt_disable_rtp_warning) {
 				u_int64_t actTime = getTimeMS();
@@ -1265,7 +1265,7 @@ bool RTP::read(CallBranch *c_branch,
 				}
 			}
 			if(owner) {
-				owner->rtp_from_multiple_sensors = true;
+				owner->proc.rtp_from_multiple_sensors = true;
 			}
 		}
 		return(false);
@@ -1309,14 +1309,14 @@ bool RTP::read(CallBranch *c_branch,
 	}
 
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
-	if(if_unlikely(owner && owner->forcemark_time_size > forcemark.owner_used)) {
+	if(if_unlikely(owner && owner->forcemark.time_size > forcemark.owner_used)) {
 		owner->forcemark_lock();
 		bool checkNextForcemark = false;
 		do {
 			checkNextForcemark = false;
-			size_t _forcemark_size = owner->forcemark_time.size();
+			size_t _forcemark_size = owner->forcemark.time.size();
 			if(_forcemark_size > forcemark.owner_used) {
-				u_int64_t _forcemark_time = owner->forcemark_time[forcemark.owner_used];
+				u_int64_t _forcemark_time = owner->forcemark.time[forcemark.owner_used];
 				u_int64_t _header_time = pcap_header_us;
 				if(_forcemark_time < _header_time) {
 					if(_forcemark_time > timing.first_packet_time_us) {
@@ -1344,9 +1344,9 @@ bool RTP::read(CallBranch *c_branch,
 	pkt.payload_len = get_payload_len_fast();
 	if(if_unlikely(pkt.payload_len < 0)) {
 		if(owner) {
-			if(!owner->error_negative_payload_length) {
+			if(!owner->proc.error_negative_payload_length) {
 				syslog(LOG_NOTICE, "warning - negative payload_len in call %s", owner->fbasename);
-				owner->error_negative_payload_length = true;
+				owner->proc.error_negative_payload_length = true;
 			}
 		} else {
 			u_int64_t actTime = getTimeMS();
@@ -1363,17 +1363,17 @@ bool RTP::read(CallBranch *c_branch,
 		opt_saveRAW || opt_savewav_force || 
 		(owner && 
 		 (enable_audio_any(owner) ||
-		  owner->audioBufferData[0].audiobuffer || owner->audioBufferData[1].audiobuffer));
+		  owner->audio.buffer_data[0].audiobuffer || owner->audio.buffer_data[1].audiobuffer));
 	bool energylevels = 
-		opt_save_energylevels && (!opt_energylevelheader[0] || (owner && owner->save_energylevels));
+		opt_save_energylevels && (!opt_energylevelheader[0] || (owner && owner->media.save_energylevels));
 	bool mos_lqo = 
 		owner &&
 		((owner->flags & FLAG_RUNAMOSLQO) || (owner->flags & FLAG_RUNBMOSLQO)) &&
-		(owner->connect_time_us && getTimeUS(header) > owner->connect_time_us);
+		(owner->timing.connect_time_us && getTimeUS(header) > owner->timing.connect_time_us);
 	bool use_channel_record =
 		((save_audio || energylevels) &&
 		 (!opt_saveaudio_answeronly ||
-		  (owner && owner->connect_time_us && getTimeUS(header) > owner->connect_time_us))) ||
+		  (owner && owner->timing.connect_time_us && getTimeUS(header) > owner->timing.connect_time_us))) ||
 		mos_lqo;
 	#endif
 	
@@ -1381,7 +1381,7 @@ bool RTP::read(CallBranch *c_branch,
 		if(!srtp.decrypt_rtp_attempt[0]) {
 			if(sverb.dtls && ssl_sessionkey_enable()) {
 				string log_str;
-				log_str += string("try call decrypt_rtp for call: ") + (owner ? owner->call_id : "unknown");
+				log_str += string("try call decrypt_rtp for call: ") + (owner ? owner->id.call_id : "unknown");
 				log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + " ssrc_index " + intToString(sdp.ssrc_index);
 				ssl_sessionkey_log(log_str);
 			}
@@ -1420,7 +1420,7 @@ bool RTP::read(CallBranch *c_branch,
 			if(!srtp.decrypt_rtp_attempt[1]) {
 				if(sverb.dtls && ssl_sessionkey_enable()) {
 					string log_str;
-					log_str += string("call decrypt_rtp for call: ") + (owner ? owner->call_id : "unknown");
+					log_str += string("call decrypt_rtp for call: ") + (owner ? owner->id.call_id : "unknown");
 					log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + " ssrc_index " + intToString(sdp.ssrc_index);
 					ssl_sessionkey_log(log_str);
 				}
@@ -1459,14 +1459,14 @@ bool RTP::read(CallBranch *c_branch,
 		   stats.received <= (unsigned)opt_srtp_rtp_verify_tag_max_attempts && is_unencrypted_payload(pkt.payload_data, pkt.payload_len)) {
 			srtp.probably_unencrypted_payload = true;
 		}
-		if(owner && owner->dtls &&
+		if(owner && owner->dtls.ctx &&
 		   sverb.dtls && ssl_sessionkey_enable()) {
-			if(!owner->dtls->debug_flags[0]) {
+			if(!owner->dtls.ctx->debug_flags[0]) {
 				string log_str;
-				log_str += string("error (potentialy missing srtp_decrypt instance) decrypt_rtp for call: ") + (owner ? owner->call_id : "unknown");
+				log_str += string("error (potentialy missing srtp_decrypt instance) decrypt_rtp for call: ") + (owner ? owner->id.call_id : "unknown");
 				log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + " ssrc_index " + intToString(sdp.ssrc_index);
 				ssl_sessionkey_log(log_str);
-				++owner->dtls->debug_flags[0];
+				++owner->dtls.ctx->debug_flags[0];
 			}
 		}
 	}
@@ -1650,14 +1650,14 @@ bool RTP::read(CallBranch *c_branch,
 	#endif
 	if(owner) {
 		lastssrc = id.iscaller ?
-			(owner->lastcallerrtp ? &owner->lastcallerrtp->id.ssrc : NULL) :
-			(owner->lastcalledrtp ? &owner->lastcalledrtp->id.ssrc : NULL);
+			(owner->rtp.last_caller ? &owner->rtp.last_caller->id.ssrc : NULL) :
+			(owner->rtp.last_called ? &owner->rtp.last_called->id.ssrc : NULL);
 		lastrtp = id.iscaller ?
-			owner->lastcallerrtp :
-			owner->lastcalledrtp;
+			owner->rtp.last_caller :
+			owner->rtp.last_called;
 		lastactivertp = id.iscaller ?
-			owner->lastactivecallerrtp :
-			owner->lastactivecalledrtp;
+			owner->rtp.last_active_caller :
+			owner->rtp.last_active_called;
 		#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 		if(opt_check_diff_ssrc_on_same_ip_port) {
 			diffSsrcInEqAddrPort = lastssrc and *lastssrc != id.ssrc and 
@@ -1669,10 +1669,10 @@ bool RTP::read(CallBranch *c_branch,
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 	extern cProcessingLimitations processing_limitations;
 	if(processing_limitations.suppressRtpRead() && owner) {
-		owner->suppress_rtp_read_due_to_insufficient_hw_performance = true;
+		owner->proc.suppress_rtp_read = true;
 	}
 	if(is_video() || 
-	   (owner && owner->suppress_rtp_read_due_to_insufficient_hw_performance)) {
+	   (owner && owner->proc.suppress_rtp_read)) {
 	#endif
 		pkt.last_seq = pkt.seq;
 		if(update_seq(pkt.seq)) {
@@ -1859,11 +1859,11 @@ bool RTP::read(CallBranch *c_branch,
 	}
 	
 	// codec changed 
-	RTP *laststream = id.iscaller ? owner->lastcallerrtp : owner->lastcalledrtp;
+	RTP *laststream = id.iscaller ? owner->rtp.last_caller : owner->rtp.last_called;
 
 	bool doInitRaw = false;
 	if(media.defer_codec_change or 
-	    (owner->iscaller_consecutive[id.iscaller] >= 5 and owner->lastraw[id.iscaller] != this and (lastssrc and *lastssrc != id.ssrc and (laststream and laststream->id.daddr == id.daddr))) or
+	    (owner->rtp.iscaller_consecutive[id.iscaller] >= 5 and owner->rtp.lastraw[id.iscaller] != this and (lastssrc and *lastssrc != id.ssrc and (laststream and laststream->id.daddr == id.daddr))) or
 	   (curpayload != media.prev_payload and 
 	    media.codec != PAYLOAD_TELEVENT and 
 	    (media.prev_codec != PAYLOAD_TELEVENT or !media.codecchanged) and 
@@ -1917,9 +1917,9 @@ bool RTP::read(CallBranch *c_branch,
 			}
 
 			if(id.iscaller) {
-				owner->last_callercodec = media.codec;
+				owner->media.last_caller_codec = media.codec;
 			} else {
-				owner->last_calledcodec = media.codec;
+				owner->media.last_called_codec = media.codec;
 			}
 
 			doInitRaw = true;
@@ -1947,7 +1947,7 @@ bool RTP::read(CallBranch *c_branch,
 			 * which fills potentionally gap between this and previouse RTP so it will stay in sync with
 			 * the other direction of call 
 			 */
-			RTP *prevrtp = (RTP*)(owner->rtp_prev[id.iscaller]);
+			RTP *prevrtp = (RTP*)(owner->rtp.prev[id.iscaller]);
 			if(prevrtp && prevrtp != this) {
 				prevrtp->pkt.ignore = 1; 
 				prevrtp->pkt.data = data; 
@@ -1999,7 +1999,7 @@ bool RTP::read(CallBranch *c_branch,
 			/* write file info to "playlist" */
 			char rawinfo_filename[1024 + 100];
 			snprintf(rawinfo_filename, sizeof(rawinfo_filename), "%s.rawInfo", files.basefilename);
-			owner->iscaller_consecutive[id.iscaller] = 0;
+			owner->rtp.iscaller_consecutive[id.iscaller] = 0;
 			bool gfileRAWInfo_exists = file_exists(rawinfo_filename);
 			FILE *gfileRAWInfo = fopen(rawinfo_filename, "a");
 			if(gfileRAWInfo) {
@@ -2015,19 +2015,19 @@ bool RTP::read(CallBranch *c_branch,
 		raw.init_done = true;
 	}
 
-	if(owner->lastraw[id.iscaller] != this) {
-		owner->iscaller_consecutive[id.iscaller] = 0;
+	if(owner->rtp.lastraw[id.iscaller] != this) {
+		owner->rtp.iscaller_consecutive[id.iscaller] = 0;
 	} else {
-		owner->iscaller_consecutive[id.iscaller]++;
+		owner->rtp.iscaller_consecutive[id.iscaller]++;
 	}
-	owner->lastraw[id.iscaller] = this;
+	owner->rtp.lastraw[id.iscaller] = this;
 
 
 	if(media.first_codec < 0 && media.codec != PAYLOAD_TELEVENT && media.codec != 13 && media.codec != 19) {
 		/* save payload to statistics based on first payload. TODO: what if payload is dynamically changing? */
 		media.first_codec = media.codec;
-		if(owner->first_codec < 0) {
-			owner->first_codec = media.codec;
+		if(owner->media.first_codec < 0) {
+			owner->media.first_codec = media.codec;
 		}
 	}
 
@@ -2392,16 +2392,16 @@ bool RTP::read(CallBranch *c_branch,
 	media.prev_sid = media.sid;
 
 	// DSP processing
-	bool do_fasdetect = opt_fasdetect && !id.iscaller &&  owner->connect_time_us && 
-			    (pkt.header_ts.tv_sec - TIME_US_TO_S(owner->connect_time_us) < 10) &&
-			    getTimeUS(pkt.header_ts) > owner->connect_time_us;
-	bool do_energylevels = opt_save_energylevels && (!opt_energylevelheader[0] || (owner && owner->save_energylevels)) &&
+	bool do_fasdetect = opt_fasdetect && !id.iscaller &&  owner->timing.connect_time_us && 
+			    (pkt.header_ts.tv_sec - TIME_US_TO_S(owner->timing.connect_time_us) < 10) &&
+			    getTimeUS(pkt.header_ts) > owner->timing.connect_time_us;
+	bool do_energylevels = opt_save_energylevels && (!opt_energylevelheader[0] || (owner && owner->media.save_energylevels)) &&
 			       !energy.via_jb;
 	bool do_silencedetect = opt_silencedetect && this == lastactivertp;
 	bool do_silence_afteranswer = opt_silence_detect_after_answer && !id.iscaller &&
-				      owner && owner->connect_time_us &&
-				      !owner->silence_afteranswer_noise_start_us &&
-				      timing.last_packet_time_us > owner->connect_time_us;
+				      owner && owner->timing.connect_time_us &&
+				      !owner->audio.silence_afteranswer_noise_start_us &&
+				      timing.last_packet_time_us > owner->timing.connect_time_us;
 	if(owner and (opt_inbanddtmf or opt_faxt30detect or do_silencedetect or opt_clippingdetect or do_fasdetect or do_silence_afteranswer or do_energylevels)
 	   and jb.frame->frametype == AST_FRAME_VOICE and (media.codec == 0 or media.codec == 8) and pkt.payload_len > 0) {
 
@@ -2453,9 +2453,9 @@ bool RTP::read(CallBranch *c_branch,
 				sdata[i] = ULAW((unsigned char)pkt.payload_data[i]);
 				if(opt_clippingdetect && this == lastactivertp && ((abs(sdata[i])) >= 32124)) {
 					if(id.iscaller) {
-						owner->caller_clipping_8k++;
+						owner->audio.caller_clipping_8k++;
 					} else {
-						owner->called_clipping_8k++;
+						owner->audio.called_clipping_8k++;
 					}
 				}
 			}
@@ -2464,9 +2464,9 @@ bool RTP::read(CallBranch *c_branch,
 				sdata[i] = ALAW((unsigned char)pkt.payload_data[i]);
 				if(opt_clippingdetect && this == lastactivertp && ((abs(sdata[i])) >= 32256)) {
 					if(id.iscaller) {
-						owner->caller_clipping_8k++;
+						owner->audio.caller_clipping_8k++;
 					} else {
-						owner->called_clipping_8k++;
+						owner->audio.called_clipping_8k++;
 					}
 				}
 			}
@@ -2485,28 +2485,28 @@ bool RTP::read(CallBranch *c_branch,
 						silence.sum_changes++;
 					}
 					if(id.iscaller) {
-						owner->caller_lastsilence += pkt.payload_len / 8;
-						owner->caller_silence += pkt.payload_len / 8;
+						owner->audio.caller_lastsilence += pkt.payload_len / 8;
+						owner->audio.caller_silence += pkt.payload_len / 8;
 					} else {
-						owner->called_lastsilence += pkt.payload_len / 8;
-						owner->called_silence += pkt.payload_len / 8;
+						owner->audio.called_lastsilence += pkt.payload_len / 8;
+						owner->audio.called_silence += pkt.payload_len / 8;
 					}
 					silence.last_was_silence = true;
 				} else {
 					if(id.iscaller) {
-						owner->caller_lastsilence = 0;
-						owner->caller_noise += pkt.payload_len / 8;
+						owner->audio.caller_lastsilence = 0;
+						owner->audio.caller_noise += pkt.payload_len / 8;
 					} else {
-						owner->called_lastsilence = 0;
-						owner->called_noise += pkt.payload_len / 8;
+						owner->audio.called_lastsilence = 0;
+						owner->audio.called_noise += pkt.payload_len / 8;
 					}
 					silence.last_was_silence = false;
 				}
 			}
 			if(do_silence_afteranswer) {
-				if(!owner->silence_afteranswer_rtp_seen) {
+				if(!owner->audio.silence_afteranswer_rtp_seen) {
 					//guarded to avoid a per-packet store into the shared Call
-					owner->silence_afteranswer_rtp_seen = true;
+					owner->audio.silence_afteranswer_rtp_seen = true;
 				}
 				if(!silence0 && totalnoise >= SILENCE_AFTERANSWER_MIN_NOISE_MS) {
 					//dead air from the called party ended; backdate to the
@@ -2515,18 +2515,18 @@ bool RTP::read(CallBranch *c_branch,
 								  TIME_MS_TO_US(totalnoise - pkt.payload_len / 8) : 0;
 					u_int64_t noise_start_us = timing.last_packet_time_us > prev_noise_us ?
 								   timing.last_packet_time_us - prev_noise_us : timing.last_packet_time_us;
-					if(noise_start_us <= owner->connect_time_us) {
+					if(noise_start_us <= owner->timing.connect_time_us) {
 						//noise run already in progress at connect - dead air is zero
 						//(+1 keeps the latch distinguishable from the unset 0)
-						noise_start_us = owner->connect_time_us + 1;
+						noise_start_us = owner->timing.connect_time_us + 1;
 					}
-					owner->silence_afteranswer_noise_start_us = noise_start_us;
+					owner->audio.silence_afteranswer_noise_start_us = noise_start_us;
 				}
 			}
 			if(res) {
 				if(opt_faxt30detect and (event_digit == 'f' or event_digit == 'e')) {
 					//printf("dsp_process: digit[%c] len[%u]\n", event_digit, event_len);
-					owner->isfax = T30FAX;
+					owner->fax.isfax = T30FAX;
 				} else if(opt_inbanddtmf and (res & DSP_PROCESS_RES_DTMF) and event_digit >= 20 and event_digit <= 127) {
 					owner->handle_dtmf(event_digit, ts2double(header->ts.tv_sec, header->ts.tv_usec), saddr, daddr, s_dtmf::inband);
 				}
@@ -2535,7 +2535,7 @@ bool RTP::read(CallBranch *c_branch,
 					//(silencedetect, inbanddtmf, faxdetect) set res on ordinary
 					//packets and would wipe the flag after the last ring burst
 					//syslog(LOG_ERR, "fas detected");
-					owner->is_fas_detected = (res_call_progress == AST_CONTROL_RINGING) ? true : false;
+					owner->media.is_fas_detected = (res_call_progress == AST_CONTROL_RINGING) ? true : false;
 				}
 			}
 			if(do_energylevels) {
@@ -2553,8 +2553,8 @@ bool RTP::read(CallBranch *c_branch,
 	// own DSP instance - call progress / silence state of the shared DSP (fasdetect,
 	// silence_detect_after_answer, mosSilence) stays untouched
 	bool do_ivrdetect = opt_ivrdetect && !id.iscaller &&
-			    !owner->ivr_ringback_detected &&
-			    (!owner->connect_time_us || timing.last_packet_time_us < owner->connect_time_us);
+			    !owner->audio.ivr_ringback_detected &&
+			    (!owner->timing.connect_time_us || timing.last_packet_time_us < owner->timing.connect_time_us);
 	if(do_ivrdetect && jb.frame->frametype == AST_FRAME_VOICE &&
 	   (media.codec == PAYLOAD_PCMU || media.codec == PAYLOAD_PCMA) && pkt.payload_len > 0) {
 		if(!jb.DSP_ivr) {
@@ -2574,12 +2574,12 @@ bool RTP::read(CallBranch *c_branch,
 		delete [] sdata_ivr;
 		int tstate_ivr = dsp_get_tstate(jb.DSP_ivr);
 		if(res_call_progress_ivr == AST_CONTROL_RINGING) {
-			owner->ivr_ringback_detected = true;
+			owner->audio.ivr_ringback_detected = true;
 		} else if(!silence_ivr && tstate_ivr != DSP_TONE_STATE_RINGING &&
 			  tstate_ivr != DSP_TONE_STATE_BUSY && tstate_ivr != DSP_TONE_STATE_DIALTONE) {
-			owner->ivr_voice_ms += pkt.payload_len / 8;
-			if(!owner->ivr_voice_reached_us && owner->ivr_voice_ms >= IVRDETECT_MIN_VOICE_MS) {
-				owner->ivr_voice_reached_us = timing.last_packet_time_us;
+			owner->audio.ivr_voice_ms += pkt.payload_len / 8;
+			if(!owner->audio.ivr_voice_reached_us && owner->audio.ivr_voice_ms >= IVRDETECT_MIN_VOICE_MS) {
+				owner->audio.ivr_voice_reached_us = timing.last_packet_time_us;
 			}
 		}
 	} else if(!do_ivrdetect && jb.DSP_ivr) {
@@ -2703,7 +2703,7 @@ RTP::update_stats() {
 					this->graph.write((char*)&graph_event, 4);
 					this->graph.write((char*)&diff, 4);
 					if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms ip[%s] DTMF\n", this, getSSRC(), pkt.seq, diff, id.saddr.getString().c_str());
-					owner->save_rtp_graph = true;
+					owner->save_flags.rtp_graph = true;
 				}
 
 				forcemark.mark2 = 0;
@@ -2759,7 +2759,7 @@ RTP::update_stats() {
 				this->graph.write((char*)&graph_mark, 4);
 				this->graph.write((char*)&diff, 4);
 				if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms transit[%f] avgdelay[%f] mark\n", this, getSSRC(), pkt.seq, diff, transit, s.avgdelay);
-				owner->save_rtp_graph = true;
+				owner->save_flags.rtp_graph = true;
 			}
 
 			//s.fdelay = 0;
@@ -2772,7 +2772,7 @@ RTP::update_stats() {
 				this->graph.write((char*)&graph_silence, 4);
 				this->graph.write((char*)&diff, 4);
 				if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms avgdelay[%f]\n", this, getSSRC(), pkt.seq, diff, s.avgdelay);
-				owner->save_rtp_graph = true;
+				owner->save_flags.rtp_graph = true;
 			}
 
 			//s.fdelay = 0;
@@ -3351,7 +3351,7 @@ void RTP::addEnergyLevel(u_int16_t energyLevel, u_int16_t seq) {
 }
 
 void RTP::addEnergyLevel(void *data, int datalen, int codec) {
-	if(!((!opt_energylevelheader[0] || (id.call_owner && ((Call*)id.call_owner)->save_energylevels)) &&
+	if(!((!opt_energylevelheader[0] || (id.call_owner && ((Call*)id.call_owner)->media.save_energylevels)) &&
 	     (codec == PAYLOAD_PCMU || codec == PAYLOAD_PCMA))) {
 		return;
 	}
@@ -3532,11 +3532,11 @@ RTP::dump() {
 
 void RTP::clearAudioBuff(Call *call, ast_channel *channel) {
 	if(id.iscaller) {
-		if(call->audioBufferData[0].audiobuffer) {
+		if(call->audio.buffer_data[0].audiobuffer) {
 			channel->audiobuf = NULL;
 		}
 	} else {
-		if(call->audioBufferData[1].audiobuffer) {
+		if(call->audio.buffer_data[1].audiobuffer) {
 			channel->audiobuf = NULL;
 		}
 	}
@@ -3632,7 +3632,7 @@ int calculate_mos_fromdsp(RTP *rtp, struct dsp *DSP) {
 	} else {
 		lossr = 0;
 	}
-	mos = (int)round(calculate_mos(lossr, burstr, rtp->first_codec_(), rtp->received_(), rtp->id.call_owner && ((Call*)rtp->id.call_owner)->connect_time_us) * 10);
+	mos = (int)round(calculate_mos(lossr, burstr, rtp->first_codec_(), rtp->received_(), rtp->id.call_owner && ((Call*)rtp->id.call_owner)->timing.connect_time_us) * 10);
 	if(0) printf("[%p] SilenceMOS - burstr: %f lossr: %f lost[%d]/received[%d] mos[%u]\n", rtp, burstr, lossr, lost, DSP->received, mos);
 	return mos;
 }
@@ -3663,7 +3663,7 @@ int calculate_mos_fromrtp(RTP *rtp, int jittertype, int lastinterval) {
 		}
 		break;  
 	}       
-	int mos = (int)round(calculate_mos(lossr, burstr, rtp->media.first_codec, rtp->stats.received, rtp->id.call_owner && ((Call*)rtp->id.call_owner)->connect_time_us) * 10);
+	int mos = (int)round(calculate_mos(lossr, burstr, rtp->media.first_codec, rtp->stats.received, rtp->id.call_owner && ((Call*)rtp->id.call_owner)->timing.connect_time_us) * 10);
 	return mos;
 	#else
 	return 45;

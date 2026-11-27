@@ -247,7 +247,7 @@ void *handle_mgcp(packet_s_process *packetS, bool batch_process) {
 				calltable->lock_calls_listMAP();
 				CallBranch *c_branch = call->branch_main();
 				calltable->calls_by_stream_id2_listMAP[sStreamId2(c_branch->saddr, c_branch->sport, c_branch->daddr, c_branch->dport, request.transaction_id, true)] = call;
-				call->mgcp_transactions.push_back(request.transaction_id);
+				call->mgcp.transactions.push_back(request.transaction_id);
 				calltable->unlock_calls_listMAP();
 			}
 		} else {
@@ -256,7 +256,7 @@ void *handle_mgcp(packet_s_process *packetS, bool batch_process) {
 				calltable->lock_calls_listMAP();
 				CallBranch *c_branch = call->branch_main();
 				calltable->calls_by_stream_id2_listMAP[sStreamId2(c_branch->saddr, c_branch->sport, c_branch->daddr, c_branch->dport, request.transaction_id, true)] = call;
-				call->mgcp_transactions.push_back(request.transaction_id);
+				call->mgcp.transactions.push_back(request.transaction_id);
 				calltable->unlock_calls_listMAP();
 			}
 		}
@@ -272,12 +272,12 @@ void *handle_mgcp(packet_s_process *packetS, bool batch_process) {
 	}
 	if(call) {
 		if(is_request) {
-			call->mgcp_requests[request.transaction_id] = request;
+			call->mgcp.requests[request.transaction_id] = request;
 		}
 		if(is_response) {
-			call->mgcp_responses[response.transaction_id] = response;
-			if(call->mgcp_requests.find(response.transaction_id) != call->mgcp_requests.end()) {
-				request = call->mgcp_requests[response.transaction_id];
+			call->mgcp.responses[response.transaction_id] = response;
+			if(call->mgcp.requests.find(response.transaction_id) != call->mgcp.requests.end()) {
+				request = call->mgcp.requests[response.transaction_id];
 			}
 		}
 		if(is_request && request_type == _mgcp_DLCX) {
@@ -309,14 +309,14 @@ void *handle_mgcp(packet_s_process *packetS, bool batch_process) {
 			detect_domain_to_extern(packetS, domain, sizeof(domain), NULL);
 			detect_branch_extern(packetS, branch, sizeof(branch), NULL);
 			process_sdp(call, call->branch_main(), packetS, iscaller, (char*)(sdp + sdp_separator_length), 0,
-				    (char*)call->call_id.c_str(), to, NULL, domain, NULL, branch,
+				    (char*)call->id.call_id.c_str(), to, NULL, domain, NULL, branch,
 				    false,
 				    batch_process);
 		}
-		if(!call->connect_time_us && is_request) {
+		if(!call->timing.connect_time_us && is_request) {
 			if((request_type == _mgcp_CRCX && request.parameters.connection_mode == "SENDRECV") ||
 			   (request_type == _mgcp_RQNT && request.parameters.requested_events == "L/HF(N),L/HU(N)")) {
-				call->connect_time_us = packetS->getTimeUS();
+				call->timing.connect_time_us = packetS->getTimeUS();
 			}
 		}
 		save_packet(call, packetS, _t_packet_mgcp);

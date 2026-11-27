@@ -820,7 +820,7 @@ public:
 	struct s_worker {
 		s_worker(Call *call) {
 			this->call = call;
-			spybuffer = new FILE_LINE(13002) FifoBuffer((string("spybuffer for call ") + call->call_id).c_str());
+			spybuffer = new FILE_LINE(13002) FifoBuffer((string("spybuffer for call ") + call->id.call_id).c_str());
 			spybuffer->setMinItemBufferLength(1000);
 			spybuffer->setMaxSize(10000000);
 			thread = 0;
@@ -946,8 +946,8 @@ void* c_listening_workers::worker_thread_function(void *arguments) {
 
 	// if call is hanged hup it will set listening_worker_run in its destructor to 0
 	int listening_worker_run = 1;
-	call->listening_worker_run = &listening_worker_run;
-	pthread_mutex_lock(&call->listening_worker_run_lock);
+	call->audio.listening_worker_run = &listening_worker_run;
+	pthread_mutex_lock(&call->audio.listening_worker_run_lock);
 
 	FILE *out = NULL;
 	if(sverb.call_listening) {
@@ -992,13 +992,13 @@ void* c_listening_workers::worker_thread_function(void *arguments) {
 
 		begin_time_us = getTimeUS();
 		
-		len1 = call->audioBufferData[0].audiobuffer->size_get();
-		len2 = call->audioBufferData[1].audiobuffer->size_get();
+		len1 = call->audio.buffer_data[0].audiobuffer->size_get();
+		len2 = call->audio.buffer_data[1].audiobuffer->size_get();
 
 		/*
 		printf("codec_caller[%d] codec_called[%d] len1[%d] len2[%d]\n", 
-		       worker->call->codec_caller, 
-		       worker->call->codec_called,
+		       worker->call->media.codec_caller, 
+		       worker->call->media.codec_called,
 		       len1, len2);
 		*/
 		
@@ -1006,10 +1006,10 @@ void* c_listening_workers::worker_thread_function(void *arguments) {
 			if(len1 >= period_samples && len2 >= period_samples) {
 				len1 = period_samples;
 				len2 = period_samples;
-				unsigned char *read1 = call->audioBufferData[0].audiobuffer->pop(&len1);
-				unsigned char *read2 = call->audioBufferData[1].audiobuffer->pop(&len2);
+				unsigned char *read1 = call->audio.buffer_data[0].audiobuffer->pop(&len1);
+				unsigned char *read2 = call->audio.buffer_data[1].audiobuffer->pop(&len2);
 				for(unsigned int i = 0; i < len1; i++) {
-					switch(call->codec_caller) {
+					switch(call->media.codec_caller) {
 					case 0:
 						r1 = ULAW(read1[i]);
 						break;
@@ -1017,7 +1017,7 @@ void* c_listening_workers::worker_thread_function(void *arguments) {
 						r1 = ALAW(read1[i]);
 						break;
 					}
-					switch(call->codec_caller) {
+					switch(call->media.codec_caller) {
 					case 0:
 						r2 = ULAW(read2[i]);
 						break;
@@ -1037,9 +1037,9 @@ void* c_listening_workers::worker_thread_function(void *arguments) {
 				delete [] read2;
 			} else if(len2 >= period_samples) {
 				len2 = period_samples;
-				unsigned char *read2 = call->audioBufferData[1].audiobuffer->pop(&len2);
+				unsigned char *read2 = call->audio.buffer_data[1].audiobuffer->pop(&len2);
 				for(unsigned int i = 0; i < len2; i++) {
-					switch(call->codec_caller) {
+					switch(call->media.codec_caller) {
 					case 0:
 						r2 = ULAW(read2[i]);
 						break;
@@ -1057,9 +1057,9 @@ void* c_listening_workers::worker_thread_function(void *arguments) {
 				delete [] read2;
 			} else if(len1 >= period_samples) {
 				len1 = period_samples;
-				unsigned char *read1 = call->audioBufferData[0].audiobuffer->pop(&len1);
+				unsigned char *read1 = call->audio.buffer_data[0].audiobuffer->pop(&len1);
 				for(unsigned int i = 0; i < len1; i++) {
-					switch(call->codec_caller) {
+					switch(call->media.codec_caller) {
 					case 0:
 						r1 = ULAW(read1[i]);
 						break;
@@ -1100,8 +1100,8 @@ void* c_listening_workers::worker_thread_function(void *arguments) {
 	delete [] spybufferchunk;
 
 	// reset pointer to NULL as we are leaving the stack here
-	call->listening_worker_run = NULL;
-	pthread_mutex_unlock(&call->listening_worker_run_lock);
+	call->audio.listening_worker_run = NULL;
+	pthread_mutex_unlock(&call->audio.listening_worker_run_lock);
 	
 	worker->running = false;
 	
@@ -1246,7 +1246,7 @@ int Handle_pause_call(long long callref, int val ) {
 		Call *call = calltable->find_by_reference(callref, false);
 
 		if (call)
-			call->silencerecording = val;
+			call->media.silencerecording = val;
 		else
 			retval = -1;
 
@@ -2115,7 +2115,7 @@ void updateLivesnifferfilters() {
 }
 
 bool cmpCallBy_destroy_call_at(Call* a, Call* b) {
-	return(a->destroy_call_at < b->destroy_call_at);   
+	return(a->timing.destroy_call_at < b->timing.destroy_call_at);   
 }
 bool cmpCallBy_first_packet_time(Call* a, Call* b) {
 	return(a->first_packet_time_us < b->first_packet_time_us);
@@ -3003,7 +3003,7 @@ int Mgmt_d_lc_for_destroy(Mgmt_params *params) {
 		calltable->lock_calls_queue();
 		for(size_t i = 0; i < calltable->calls_queue.size(); ++i) {
 			call = calltable->calls_queue[i];
-			if(call->typeIsNot(REGISTER) && call->destroy_call_at) {
+			if(call->typeIsNot(REGISTER) && call->timing.destroy_call_at) {
 				vectCall.push_back(call);
 			}
 		}
@@ -3016,7 +3016,7 @@ int Mgmt_d_lc_for_destroy(Mgmt_params *params) {
 				       << setw(20) << left << call->get_called(c_branch) << "  "
 				       << sqlDateTimeString(call->calltime_s()) << "  "
 				       << setw(7) << right << call->duration_s() << "s  "
-				       << (call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at) : "    -  -     :  :  ")  << "  "
+				       << (call->timing.destroy_call_at ? sqlDateTimeString(call->timing.destroy_call_at) : "    -  -     :  :  ")  << "  "
 				       << setw(3) << right << c_branch->lastSIPresponseNum << "  "
 				       << call->fbasename
 				       << endl;
@@ -3067,7 +3067,7 @@ int Mgmt_d_lc_bye(Mgmt_params *params) {
 			       << setw(20) << left << call->get_called(c_branch) << "  "
 			       << sqlDateTimeString(call->calltime_s()) << "  "
 			       << setw(7) << right << call->duration_s() << "s  "
-			       << (call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at) : "    -  -     :  :  ")  << "  "
+			       << (call->timing.destroy_call_at ? sqlDateTimeString(call->timing.destroy_call_at) : "    -  -     :  :  ")  << "  "
 			       << setw(3) << right << c_branch->lastSIPresponseNum << "  "
 			       << call->fbasename
 			       << endl;
@@ -3125,11 +3125,11 @@ int Mgmt_d_lc_all(Mgmt_params *params) {
 			call = vectCall[i];
 			CallBranch *c_branch = call->branch_main();
 			branches.clear();
-			branches.push_back(&call->first_branch);
+			branches.push_back(&call->branches.first);
 			if(call->is_multibranch()) {
 				call->branches_lock();
-				for(size_t j = 0; j < call->next_branches.size(); j++) {
-					branches.push_back(call->next_branches[j]);
+				for(size_t j = 0; j < call->branches.next.size(); j++) {
+					branches.push_back(call->branches.next[j]);
 				}
 				call->branches_unlock();
 			}
@@ -3137,24 +3137,24 @@ int Mgmt_d_lc_all(Mgmt_params *params) {
 			       << setw(20) << left << call->get_called(c_branch) << "  "
 			       << sqlDateTimeString(call->calltime_s()) << "  "
 			       << setw(7) << right << call->duration_s() << "s  "
-			       << (call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at) : "    -  -     :  :  ")  << "  "
+			       << (call->timing.destroy_call_at ? sqlDateTimeString(call->timing.destroy_call_at) : "    -  -     :  :  ")  << "  "
 			       << setw(3) << right << c_branch->lastSIPresponseNum << "  "
 			       << call->fbasename << "  "
-			       << "hash_queue_counter: " << call->hash_queue_counter << ", "
-			       << "rtppacketsinqueue: " << (int64_t)(call->rtppacketsinqueue_in - call->rtppacketsinqueue_out) << ", "
-			       << "useInListCalls: " << call->useInListCalls << ", "
-			       << "last_sip: " << (call->last_signal_packet_time_us >= call->first_packet_time_us ?
-						    intToString(TIME_US_TO_S(call->last_signal_packet_time_us - call->first_packet_time_us)) + "s" :
+			       << "hash_queue_counter: " << call->lifecycle.hash_queue_counter << ", "
+			       << "rtppacketsinqueue: " << (int64_t)(call->queue.rtp_in - call->queue.rtp_out) << ", "
+			       << "useInListCalls: " << call->lifecycle.useInListCalls << ", "
+			       << "last_sip: " << (call->timing.last_signal_packet_time_us >= call->first_packet_time_us ?
+						    intToString(TIME_US_TO_S(call->timing.last_signal_packet_time_us - call->first_packet_time_us)) + "s" :
 						    "-") << ", "
-			       << "last_rtp: " << (call->first_rtp_time_us && call->last_rtp_packet_time_us >= call->first_packet_time_us ?
-						    intToString(TIME_US_TO_S(call->last_rtp_packet_time_us - call->first_packet_time_us)) + "s" :
+			       << "last_rtp: " << (call->timing.first_rtp_time_us && call->timing.last_rtp_packet_time_us >= call->first_packet_time_us ?
+						    intToString(TIME_US_TO_S(call->timing.last_rtp_packet_time_us - call->first_packet_time_us)) + "s" :
 						    "-") << ", "
-			       << "connect: " << (call->connect_time_us ? 1 : 0) << ", "
+			       << "connect: " << (call->timing.connect_time_us ? 1 : 0) << ", "
 			       << "branches: " << branches.size();
 			for(size_t j = 0; j < branches.size(); j++) {
 				CallBranch *branch = branches[j];
 				bool multiple_to_branch = call->is_multiple_to_branch(branch);
-				outStr << " [" << branch->branch_id << (branch->branch_id == call->branch_main_id ? "*" : "") << ": "
+				outStr << " [" << branch->branch_id << (branch->branch_id == call->branches.main_id ? "*" : "") << ": "
 				       << branch->lastSIPresponseNum << " "
 				       << (branch->is_closed() ? "closed" : "open")
 				       << (branch->seeninviteok ? " inviteok" : "")
@@ -3222,7 +3222,7 @@ int Mgmt_d_close_call(Mgmt_params *params) {
 	if(opt_call_id_alternative[0]) {
 		for(list<Call*>::iterator callIT = calltable->calls_list.begin(); callIT != calltable->calls_list.end(); ++callIT) {
 			if(!strcmp((*callIT)->fbasename, fbasename)) {
-				(*callIT)->force_close = true;
+				(*callIT)->lifecycle.force_close = true;
 				rslt = fbasename + string(" close");
 				break;
 			}
@@ -3230,7 +3230,7 @@ int Mgmt_d_close_call(Mgmt_params *params) {
 	} else {
 		for(map<string, Call*>::iterator callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
 			if(!strcmp((callMAPIT->second)->fbasename, fbasename)) {
-				(callMAPIT->second)->force_close = true;
+				(callMAPIT->second)->lifecycle.force_close = true;
 				rslt = fbasename + string(" close");
 				break;
 			}
