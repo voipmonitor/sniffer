@@ -1242,67 +1242,67 @@ public:
 		packet_s_stack *packetS = new FILE_LINE(0) packet_s_stack;
 		return(packetS);
 	}
-	inline packet_s_process *packetS_sip_pop_from_stack(u_int16_t pop_queue_index) {
+	inline packet_s_process *packetS_sip_pop_from_stack(u_int16_t pop_queue_index, int alloc_slot = 0) {
 		packet_s_process *packetS;
 		if(opt_preprocess_packet_stack == 1) {
 			if(opt_t2_boost_direct_rtp ?
 			    this->stackSipBasic->pop((void**)&packetS, pop_queue_index) :
 			    this->stackSipBasic->popq((void**)&packetS)) {
-				++allocStackCounter[0];
+				++allocCountersPerThread[alloc_slot].alloc_stack;
 				return(packetS);
 			}
 		#if ENABLE_MOODY_CAMEL
 		} else if(opt_preprocess_packet_stack == 2) {
 			if(this->stackSipMoodyCamel->pop((void**)&packetS)) {
-				++allocStackCounter[0];
+				++allocCountersPerThread[alloc_slot].alloc_stack;
 				return(packetS);
 			}
 		#endif
 		}
 		packetS = new FILE_LINE(28006) packet_s_process;
-		++allocCounter[0];
+		++allocCountersPerThread[alloc_slot].alloc;
 		return(packetS);
 	}
-	inline packet_s_process_0 *packetS_rtp_pop_from_stack(u_int16_t pop_queue_index) {
+	inline packet_s_process_0 *packetS_rtp_pop_from_stack(u_int16_t pop_queue_index, int alloc_slot = 0) {
 		packet_s_process_0 *packetS;
 		if(opt_preprocess_packet_stack == 1) {
 			if(opt_t2_boost_direct_rtp ?
 			    this->stackRtpBasic->pop((void**)&packetS, pop_queue_index) :
 			    this->stackRtpBasic->popq((void**)&packetS)) {
-				++allocStackCounter[0];
+				++allocCountersPerThread[alloc_slot].alloc_stack;
 				return(packetS);
 			}
 		#if ENABLE_MOODY_CAMEL
 		} else if(opt_preprocess_packet_stack == 2) {
 			if(this->stackRtpMoodyCamel->pop((void**)&packetS)) {
-				++allocStackCounter[0];
+				++allocCountersPerThread[alloc_slot].alloc_stack;
 				return(packetS);
 			}
 		#endif
 		}
 		packetS = packet_s_process_0::create();
-		++allocCounter[0];
+		++allocCountersPerThread[alloc_slot].alloc;
 		return(packetS);
 	}
-	inline packet_s_stack *packetS_other_pop_from_stack(u_int16_t pop_queue_index) {
+	inline packet_s_stack *packetS_other_pop_from_stack(u_int16_t pop_queue_index, int alloc_slot = 0) {
 		packet_s_stack *packetS;
 		if(opt_preprocess_packet_stack == 1) {
 			if(opt_t2_boost_direct_rtp ?
 			    this->stackOtherBasic->pop((void**)&packetS, pop_queue_index) :
 			    this->stackOtherBasic->popq((void**)&packetS)) {
-				++allocStackCounter[0];
+				++allocCountersPerThread[alloc_slot].alloc_stack;
 				return(packetS);
 			}
 		#if ENABLE_MOODY_CAMEL
 		} else if(opt_preprocess_packet_stack == 2) {
 			if(this->stackOtherMoodyCamel->pop((void**)&packetS)) {
-				++allocStackCounter[0];
+				++allocCountersPerThread[alloc_slot].alloc_stack;
 				return(packetS);
 			}
 		#endif
 		}
 		packetS = new FILE_LINE(0) packet_s_stack;
-		++allocCounter[0];
+		++allocCountersPerThread[alloc_slot].alloc;
 		return(packetS);
 	}
 	inline bool check_enable_destroy(packet_s_process_0 *packetS) {
@@ -1470,9 +1470,23 @@ public:
 		return(outThreadState == 2);
 	}
 	inline unsigned long getAllocCounter(int index) {
+		if(index == 0) {
+			unsigned long sum = allocCounter[0];
+			for(int i = 0; i <= MAX_PRE_PROCESS_PACKET_NEXT_THREADS; i++) {
+				sum += allocCountersPerThread[i].alloc;
+			}
+			return(sum);
+		}
 		return(allocCounter[index]);
 	}
 	inline unsigned long getAllocStackCounter(int index) {
+		if(index == 0) {
+			unsigned long sum = allocStackCounter[0];
+			for(int i = 0; i <= MAX_PRE_PROCESS_PACKET_NEXT_THREADS; i++) {
+				sum += allocCountersPerThread[i].alloc_stack;
+			}
+			return(sum);
+		}
 		return(allocStackCounter[index]);
 	}
 	inline void setAllocCounter(unsigned long c, int index) {
@@ -1698,7 +1712,7 @@ private:
 			packetS_detach->blockstore_setlock();
 		}
 	}
-	inline void process_DETACH_X_2(packet_s_plus_pointer *packetS_detach) {
+	inline void process_DETACH_X_2(packet_s_plus_pointer *packetS_detach, int alloc_slot = 0) {
 		if(packetS_detach->skip) {
 			packetS_detach->p_pointer[0] = NULL;
 			packetS_detach->p_pointer[1] = NULL;
@@ -1706,21 +1720,21 @@ private:
 		}
 		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 		if(packetS_detach->need_sip_process) {
-			packetS_detach->p_pointer[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack(this->typePreProcessThread);
+			packetS_detach->p_pointer[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack(this->typePreProcessThread, alloc_slot);
 			packetS_detach->p_pointer[1] = opt_preprocess_packet_stack == 1 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackSipBasic :
 						       #if ENABLE_MOODY_CAMEL
 						       opt_preprocess_packet_stack == 2 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackSipMoodyCamel :
 						       #endif
 						       NULL;
 		} else if(!packetS_detach->pflags.other_processing()) {
-			packetS_detach->p_pointer[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack(this->typePreProcessThread);
+			packetS_detach->p_pointer[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack(this->typePreProcessThread, alloc_slot);
 			packetS_detach->p_pointer[1] = opt_preprocess_packet_stack == 1 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackRtpBasic :
 						       #if ENABLE_MOODY_CAMEL
 						       opt_preprocess_packet_stack == 2 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackRtpMoodyCamel :
 						       #endif
 						       NULL;
 		} else {
-			packetS_detach->p_pointer[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_other_pop_from_stack(this->typePreProcessThread);
+			packetS_detach->p_pointer[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_other_pop_from_stack(this->typePreProcessThread, alloc_slot);
 			packetS_detach->p_pointer[1] = opt_preprocess_packet_stack == 1 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackOtherBasic :
 						       #if ENABLE_MOODY_CAMEL
 						       opt_preprocess_packet_stack == 2 ? (void*)preProcessPacket[PreProcessPacket::ppt_detach]->stackOtherMoodyCamel :
@@ -1751,6 +1765,18 @@ private:
 		*(packet_s*)packetS = *(packet_s*)packetS_detach;
 		packetS->__type = __type;
 		preProcessPacket[typePreProcessThread]->push_packet(packetS);
+	}
+	inline void prefetch_DETACH_plus(packet_s_plus_pointer **batch, unsigned batch_index, unsigned batch_end) {
+		if(if_likely(batch_index + 4 < batch_end)) {
+			__builtin_prefetch(batch[batch_index + 4], 0, 1);
+		}
+		if(if_likely(batch_index + 2 < batch_end)) {
+			void *dst = batch[batch_index + 2]->p_pointer[0];
+			if(if_likely(dst)) {
+				__builtin_prefetch(dst, 1, 1);
+				__builtin_prefetch((char*)dst + 64, 1, 1);
+			}
+		}
 	}
 	inline void process_DETACH_plus(packet_s_plus_pointer *packetS_detach, bool push = true) {
 		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
@@ -1881,6 +1907,8 @@ private:
 	void endOutThread(bool force = false);
 	void *outThreadFunction();
 	void *nextThreadFunction(int next_thread_index_plus);
+	template<eTypePreProcessThread Stage>
+	inline void process_batch_direct(batch_packet_s_process *batch, unsigned count);
 	void createNextThread();
 	void termNextThread();
 	inline void processNextAction(packet_s_process *packetS);
@@ -1929,7 +1957,9 @@ private:
 	u_int64_t qring_active_push_item_limit_us;
 	unsigned qring_push_index;
 	unsigned qring_push_index_count;
+	char _pad_readit[64];
 	volatile unsigned int readit;
+	char _pad_writeit[64];
 	volatile unsigned int writeit;
 	sem_t sem_qring_free_count;
 	sem_t sem_qring_filled_count;
@@ -1940,10 +1970,22 @@ private:
 	volatile int next_threads_count_mod;
 	s_next_thread next_threads[MAX_PRE_PROCESS_PACKET_NEXT_THREADS];
 	sem_t sem_items_ready;
+	char _pad_active_threads[64];
 	volatile int active_threads_for_batch;
 	volatile int next_threads_completed;
+	char _pad_items_flag[64];
 	volatile int8_t *items_flag;
 	volatile int8_t *items_thread_index;
+	u_int32_t *tm_caplen_buf;
+	unsigned tm_caplen_buf_size;
+	inline u_int32_t *ensure_tm_caplen_buf(unsigned count) {
+		if(if_unlikely(count > tm_caplen_buf_size)) {
+			delete [] tm_caplen_buf;
+			tm_caplen_buf_size = count;
+			tm_caplen_buf = new FILE_LINE(0) u_int32_t[tm_caplen_buf_size];
+		}
+		return(tm_caplen_buf);
+	}
 	volatile int items_processed;
 	volatile int _sync_push;
 	volatile int _sync_count;
@@ -1959,6 +2001,13 @@ private:
 	volatile int outThreadState;
 	unsigned long allocCounter[2];
 	unsigned long allocStackCounter[2];
+	struct sAllocCounterSlot {
+		unsigned long alloc;
+		unsigned long alloc_stack;
+		char _pad[64 - 2 * sizeof(unsigned long)];
+	};
+	char _pad_alloc_counters[64];
+	sAllocCounterSlot allocCountersPerThread[MAX_PRE_PROCESS_PACKET_NEXT_THREADS + 1];
 	u_int64_t getCpuUsagePerc_counter;
 	u_int64_t getCpuUsagePerc_counter_at_start_out_thread;
 	static u_long autoStartNextLevelPreProcessPacket_last_time_s;
@@ -2311,6 +2360,10 @@ public:
 private:
 	void *outThreadFunction();
 	void *nextThreadFunction(int next_thread_index_plus);
+	template<bool SemConsumeMode>
+	inline void find_hash_range(packet_s_process_0 **batch_packets, unsigned range_begin, unsigned range_end,
+				    unsigned *counters, u_int16_t stack_queue_index,
+				    bool enable_dtls_with_lock, bool enable_dtls_lockless);
 	void rtp_batch(batch_packet_s_process *batch, unsigned count);
 	inline void rtp_packet_distr(packet_s_process_0 *packetS, int _process_rtp_packets_distribute_threads_use);
 	inline void find_hash(packet_s_process_0 *packetS, unsigned *counters, bool lock = true);
@@ -2331,7 +2384,9 @@ private:
 	u_int64_t qring_active_push_item_limit_us;
 	unsigned qring_push_index;
 	unsigned qring_push_index_count;
+	char _pad_readit[64];
 	volatile unsigned int readit;
+	char _pad_writeit[64];
 	volatile unsigned int writeit;
 	sem_t sem_qring_free_count;
 	sem_t sem_qring_filled_count;
@@ -2340,7 +2395,9 @@ private:
 	bool term_processRtp;
 	s_hash_next_thread hash_next_threads[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
 	sem_t sem_items_ready;
+	char _pad_active_threads[64];
 	volatile int active_threads_for_batch;
+	char _pad_hash_find_flag[64];
 	volatile int8_t *hash_find_flag;
 	u_int32_t last_rtp_threads_push;
 	volatile int _sync_count;

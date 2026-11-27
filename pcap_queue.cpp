@@ -10330,9 +10330,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 				unsigned completed = 0;
 				int _next_threads_count = this->next_threads_count;
 				bool _process_only_in_next_threads = _next_threads_count > 1;
-				for(unsigned batch_index = 0; batch_index < count; batch_index++) {
-					this->items_flag[batch_index] = 0;
-				}
+				memset((void*)this->items_flag, 0, count * sizeof(this->items_flag[0]));
 				__SYNC_SET_TO(this->active_threads_for_batch, _next_threads_count);
 				for(int i = 0; i < _next_threads_count; i++) {
 					this->next_threads[i].next_data.null();
@@ -10380,10 +10378,13 @@ void *PcapQueue_outputThread::outThreadFunction() {
 						}
 					}
 				} else {
-					for(unsigned batch_index = 0;
-					    batch_index < count / (_next_threads_count + 1);
-					    batch_index++) {
-						if(opt_t2_boost_pb_detach_thread == 2) {
+					unsigned main_end = count / (_next_threads_count + 1);
+					if(opt_t2_boost_pb_detach_thread == 2) {
+						for(unsigned batch_index = 0; batch_index < main_end; batch_index++) {
+							if(if_likely(batch_index + 4 < main_end)) {
+								__builtin_prefetch(batch->batch[batch_index + 4].header, 0, 1);
+								__builtin_prefetch(batch->batch[batch_index + 4].packet, 0, 1);
+							}
 							this->processDetach_findHeaderIp(&batch->batch[batch_index]);
 						}
 					}
@@ -10412,9 +10413,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 				unsigned completed = 0;
 				int _next_threads_count = this->next_threads_count;
 				bool _process_only_in_next_threads = _next_threads_count > 1;
-				for(unsigned batch_index = 0; batch_index < count; batch_index++) {
-					this->items_flag[batch_index] = 0;
-				}
+				memset((void*)this->items_flag, 0, count * sizeof(this->items_flag[0]));
 				#if DEBUG_ALLOC_PACKETS
 				for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
 					if(!batch->batch[batch_index].block_store) {
@@ -10491,9 +10490,12 @@ void *PcapQueue_outputThread::outThreadFunction() {
 						}
 					}
 				} else {
-					for(unsigned batch_index = 0;
-					    batch_index < count / (_next_threads_count + 1);
-					    batch_index++) {
+					unsigned main_end = count / (_next_threads_count + 1);
+					for(unsigned batch_index = 0; batch_index < main_end; batch_index++) {
+						if(if_likely(batch_index + 4 < main_end)) {
+							__builtin_prefetch(batch->batch[batch_index + 4].header, 1, 1);
+							__builtin_prefetch(batch->batch[batch_index + 4].packet, 0, 1);
+						}
 						this->items_flag[batch_index] = this->pcapQueue->processPacket_analysis(&batch->batch[batch_index]) ? 1 : -1;
 					}
 				}
@@ -10533,8 +10535,8 @@ void *PcapQueue_outputThread::outThreadFunction() {
 				unsigned completed = 0;
 				int _next_threads_count = this->next_threads_count;
 				bool _process_only_in_next_threads = _next_threads_count > 1;
+				memset((void*)this->items_flag, 0, count * sizeof(this->items_flag[0]));
 				for(unsigned batch_index = 0; batch_index < count; batch_index++) {
-					this->items_flag[batch_index] = 0;
 					sHeaderPacketPQout *hp = &batch->batch[batch_index];
 					if(hp->header->header_ip_encaps_offset != 0xFFFF) {
 						iphdr2 *header_ip_encaps = (iphdr2*)(hp->packet + hp->header->header_ip_encaps_offset);
@@ -10626,24 +10628,41 @@ void *PcapQueue_outputThread::outThreadFunction() {
 				}
 			}
 			else {
-				for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
-					switch(typeOutputThread) {
-					case detach:
+				unsigned count = batch->count;
+				switch(typeOutputThread) {
+				case detach:
+					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+						if(if_likely(batch_index + 4 < count)) {
+							__builtin_prefetch(batch->batch[batch_index + 4].header, 0, 1);
+							__builtin_prefetch(batch->batch[batch_index + 4].packet, 0, 1);
+						}
 						this->processDetach(&batch->batch[batch_index]);
-						break;
-					case defrag:
-						this->processDefrag(&batch->batch[batch_index], -1);
-						break;
-					case dedup:
-						this->processDedup(&batch->batch[batch_index]);
-						break;
-					case esp:
-						this->processEsp(&batch->batch[batch_index]);
-						break;
-					case detach2:
-						this->processDetach2(&batch->batch[batch_index]);
-						break;
 					}
+					break;
+				case defrag:
+					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+						this->processDefrag(&batch->batch[batch_index], -1);
+					}
+					break;
+				case dedup:
+					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+						this->processDedup(&batch->batch[batch_index]);
+					}
+					break;
+				case esp:
+					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+						this->processEsp(&batch->batch[batch_index]);
+					}
+					break;
+				case detach2:
+					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+						if(if_likely(batch_index + 4 < count)) {
+							__builtin_prefetch(batch->batch[batch_index + 4].header, 1, 1);
+							__builtin_prefetch(batch->batch[batch_index + 4].packet, 0, 1);
+						}
+						this->processDetach2(&batch->batch[batch_index]);
+					}
+					break;
 				}
 			}
 			if(typeOutputThread == defrag) {
@@ -10762,11 +10781,9 @@ void *PcapQueue_outputThread::nextThreadFunction(int next_thread_index_plus) {
 			switch(typeOutputThread) {
 			case detach: {
 				sHeaderPacketPQout *batch = (sHeaderPacketPQout*)next_thread_data->batch;
-				// Partition in up to 64-byte cache-line chunks to eliminate false sharing on items_flag[]
-				unsigned chunk_size = batch_index_skip > 1 ?
-						       min(64u, max(16u, (batch_index_end + batch_index_skip - 1) / batch_index_skip)) :
-						       batch_index_end - batch_index_start;
-				for(unsigned chunk_base = batch_index_skip > 1 ? batch_index_start * chunk_size : batch_index_start;
+				bool do_find_header_ip = (opt_t2_boost_pb_detach_thread == 2);
+				unsigned chunk_size = batch_chunk_size(batch_index_start, batch_index_end, batch_index_skip, 16u);
+				for(unsigned chunk_base = batch_chunk_base(batch_index_start, batch_index_skip, chunk_size);
 				    chunk_base < batch_index_end;
 				    chunk_base += batch_index_skip * chunk_size) {
 					unsigned chunk_end = chunk_base + chunk_size;
@@ -10774,7 +10791,7 @@ void *PcapQueue_outputThread::nextThreadFunction(int next_thread_index_plus) {
 						chunk_end = batch_index_end;
 					}
 					for(unsigned batch_index = chunk_base; batch_index < chunk_end; batch_index++) {
-						if(opt_t2_boost_pb_detach_thread == 2) {
+						if(do_find_header_ip) {
 							if(if_likely(batch_index + 4 < chunk_end)) {
 								__builtin_prefetch(batch[batch_index + 4].header, 0, 1);
 								__builtin_prefetch(batch[batch_index + 4].packet, 0, 1);
@@ -10790,11 +10807,8 @@ void *PcapQueue_outputThread::nextThreadFunction(int next_thread_index_plus) {
 				break;
 			case detach2: {
 				sHeaderPacketPQout *batch = (sHeaderPacketPQout*)next_thread_data->batch;
-				// Partition in up to 64-byte cache-line chunks to eliminate false sharing on items_flag[]
-				unsigned chunk_size = batch_index_skip > 1 ?
-						       min(64u, max(16u, (batch_index_end + batch_index_skip - 1) / batch_index_skip)) :
-						       batch_index_end - batch_index_start;
-				for(unsigned chunk_base = batch_index_skip > 1 ? batch_index_start * chunk_size : batch_index_start;
+				unsigned chunk_size = batch_chunk_size(batch_index_start, batch_index_end, batch_index_skip, 16u);
+				for(unsigned chunk_base = batch_chunk_base(batch_index_start, batch_index_skip, chunk_size);
 				    chunk_base < batch_index_end;
 				    chunk_base += batch_index_skip * chunk_size) {
 					unsigned chunk_end = chunk_base + chunk_size;
@@ -10815,10 +10829,16 @@ void *PcapQueue_outputThread::nextThreadFunction(int next_thread_index_plus) {
 				break;
 			case defrag: {
 				sHeaderPacketPQout *batch = (sHeaderPacketPQout*)next_thread_data->batch;
+				int my_thread_index = next_thread_data->thread_index;
 				for(unsigned batch_index = batch_index_start;
 				    batch_index < batch_index_end;
 				    batch_index += batch_index_skip) {
-					if(this->items_thread_index[batch_index] == next_thread_data->thread_index) {
+					if(this->items_thread_index[batch_index] == my_thread_index) {
+						if(if_likely(batch_index + 4 < batch_index_end) &&
+						   this->items_thread_index[batch_index + 4] == my_thread_index) {
+							__builtin_prefetch(batch[batch_index + 4].header, 0, 1);
+							__builtin_prefetch(batch[batch_index + 4].packet, 0, 1);
+						}
 						this->items_flag[batch_index] = this->processDefrag_defrag(&batch[batch_index], this->items_index[batch_index]) ? 1 : -1;
 						if(if_unlikely(sem_consume_mode)) {
 							sem_post(&this->sem_items_ready);
