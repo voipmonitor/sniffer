@@ -1355,6 +1355,8 @@ public:
 		}
 		unsigned count;
 		u_int64_t limit_time_us;
+		// Isolate per-distribute-thread buffers onto distinct 64B cache lines
+		char _pad_cacheline[64];
 	};
 public:
 	rtp_read_thread()  {
@@ -1369,17 +1371,11 @@ public:
 	void term_qring();
 	void term_thread_buffer();
 	size_t qring_size();
+	void flush_thread_buffer_locked(batch_packet_rtp_thread_buffer *thread_buffer) __attribute__((noinline));
+	void push_direct_qring(CallBranch *c_branch, packet_s_process_0 *packet, int iscaller, bool find_by_dest, int is_rtcp, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, int enable_save_packet) __attribute__((noinline));
 	inline void push(CallBranch *c_branch, packet_s_process_0 *packet, int iscaller, bool find_by_dest, int is_rtcp, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, int enable_save_packet, int threadIndex = 0) {
-		
-		/* destroy and quit - debug
-		void PACKET_S_PROCESS_DESTROY(packet_s_process_0 **packet);
-		PACKET_S_PROCESS_DESTROY(&packet);
-		return;
-		*/
-		
 		extern int opt_t2_boost;
-		if(threadIndex && opt_t2_boost) {
-		 
+		if(if_likely(threadIndex && opt_t2_boost)) {
 			#if DEBUG_QUEUE_RTP_THREAD
 			unsigned tid = get_unix_tid();
 			if(!tdd[threadIndex-1].tid) {
@@ -1396,55 +1392,12 @@ public:
 			extern bool use_push_batch_limit_ms;
 			u_int64_t time_us = use_push_batch_limit_ms ? packet->getTimeUS() : 0;
 			batch_packet_rtp_thread_buffer *thread_buffer = this->thread_buffer[threadIndex - 1];
-			if(thread_buffer->count == thread_buffer->max_count ||
-			   time_us > thread_buffer->limit_time_us) {
-				__SYNC_LOCK(this->push_lock_sync);
+			if(if_unlikely(thread_buffer->count == thread_buffer->max_count ||
+			   time_us > thread_buffer->limit_time_us)) {
 				packet->blockstore_addflag(62 /*pb lock flag*/);
-
-				/* destroy threadbuffer array - debug
-				for(unsigned i = 0; i < thread_buffer->count; i++) {
-					thread_buffer->batch.pt[i].packet->blockstore_addflag(64); // pb lock flag
-					void PACKET_S_PROCESS_DESTROY(packet_s_process_0 **packet);
-					PACKET_S_PROCESS_DESTROY(&thread_buffer->batch.pt[i].packet);
-				}
-				goto end_thread_buffer_copy;
-				*/
-				
-				batch_packet_rtp *current_batch = this->qring[this->writeit];
-				extern int opt_rtp_read_thread_qring_sem_sync;
-				if(opt_rtp_read_thread_qring_sem_sync) {
-					if(sem_trywait(&this->sem_qring_free_count) == -1) {
-						sem_wait(&this->sem_qring_free_count);
-					}
-				} else {
-					unsigned int usleepCounter = 0;
-					while(current_batch->used != 0) {
-						USLEEP_C(20, usleepCounter++);
-					}
-				}
-				memcpy(current_batch->batch, thread_buffer->batch, sizeof(rtp_packet_pcap_queue) * thread_buffer->count);
-				#if RQUEUE_SAFE
-					__SYNC_SET_TO_LOCK(current_batch->count, thread_buffer->count, this->count_lock_sync);
-					__SYNC_SET(current_batch->used);
-					__SYNC_INCR(this->writeit, this->qring_length);
-				#else
-					__SYNC_LOCK(this->count_lock_sync);
-					current_batch->count = thread_buffer->count;
-					__SYNC_UNLOCK(this->count_lock_sync);
-					__SYNC_INC(current_batch->used);
-					if((this->writeit + 1) == this->qring_length) {
-						this->writeit = 0;
-					} else {
-						this->writeit++;
-					}
-				#endif
-				if(opt_rtp_read_thread_qring_sem_sync) {
-					sem_post(&this->sem_qring_filled_count);
-				}
-				thread_buffer->count = 0;
-				__SYNC_UNLOCK(this->push_lock_sync);
+				this->flush_thread_buffer_locked(thread_buffer);
 			}
-			if(thread_buffer->count == 0) {
+			if(if_unlikely(thread_buffer->count == 0)) {
 				extern unsigned int opt_push_batch_limit_ms;
 				thread_buffer->limit_time_us = use_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
 			}
@@ -1460,73 +1413,7 @@ public:
 			packet->blockstore_addflag(63 /*pb lock flag*/);
 			thread_buffer->count++;
 		} else {
-			__SYNC_LOCK(this->push_lock_sync);
-		 
-			#if DEBUG_QUEUE_RTP_THREAD
-			unsigned tid = get_unix_tid();
-			if(!tdd[0].tid) {
-				tdd[0].tid = tid;
-			} else if(tdd[0].tid != tid) {
-				syslog(LOG_NOTICE, "RACE in rtp_read_thread(%i)::push - %u / %u", threadNum, tdd[0].tid, tid);
-			}
-			#endif
-		 
-			packet->blockstore_addflag(61 /*pb lock flag*/);
-			packet->blockstore_addflag(threadNum /*pb lock flag*/);
-			
-			if(!qring_push_index) {
-				packet->blockstore_addflag(62 /*pb lock flag*/);
-				extern int opt_rtp_read_thread_qring_sem_sync;
-				if(opt_rtp_read_thread_qring_sem_sync) {
-					if(sem_trywait(&this->sem_qring_free_count) == -1) {
-						sem_wait(&this->sem_qring_free_count);
-					}
-				} else {
-					unsigned int usleepCounter = 0;
-					while(this->qring[this->writeit]->used != 0) {
-						USLEEP_C(20, usleepCounter++);
-					}
-				}
-				qring_push_index = this->writeit + 1;
-				qring_push_index_count = 0;
-				qring_active_push_item = this->qring[qring_push_index - 1];
-			}
-			rtp_packet_pcap_queue *rtpp_pq = &qring_active_push_item->batch[qring_push_index_count];
-			rtpp_pq->c_branch = c_branch;
-			rtpp_pq->packet = packet;
-			rtpp_pq->iscaller = iscaller;
-			rtpp_pq->find_by_dest = find_by_dest;
-			rtpp_pq->is_rtcp = is_rtcp;
-			rtpp_pq->stream_in_multiple_calls = stream_in_multiple_calls;
-			rtpp_pq->sdp_flags = sdp_flags;
-			rtpp_pq->save_packet = enable_save_packet;
-			__SYNC_INC(qring_push_index_count);
-			packet->blockstore_addflag(63 /*pb lock flag*/);
-			if(qring_push_index_count == qring_active_push_item->max_count) {
-				packet->blockstore_addflag(64 /*pb lock flag*/);
-				#if RQUEUE_SAFE
-					__SYNC_SET_TO_LOCK(qring_active_push_item->count, qring_push_index_count, this->count_lock_sync);
-					__SYNC_SET(qring_active_push_item->used);
-					__SYNC_INCR(this->writeit, this->qring_length);
-				#else
-					__SYNC_LOCK(this->count_lock_sync);
-					qring_active_push_item->count = qring_push_index_count;
-					__SYNC_UNLOCK(this->count_lock_sync);
-					qring_active_push_item->used = 1;
-					if((this->writeit + 1) == this->qring_length) {
-						this->writeit = 0;
-					} else {
-						this->writeit++;
-					}
-				#endif
-				extern int opt_rtp_read_thread_qring_sem_sync;
-				if(opt_rtp_read_thread_qring_sem_sync) {
-					sem_post(&this->sem_qring_filled_count);
-				}
-				qring_push_index = 0;
-				qring_push_index_count = 0;
-			}
-			__SYNC_UNLOCK(this->push_lock_sync);
+			this->push_direct_qring(c_branch, packet, iscaller, find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_packet);
 		}
 	}
 	inline void push_batch() {
@@ -1579,45 +1466,10 @@ public:
 			
 		batch_packet_rtp_thread_buffer *thread_buffer = this->thread_buffer[threadIndex];
 		if(thread_buffer->count) {
-		 
 			#if DEBUG_QUEUE_RTP_THREAD
 			syslog(LOG_NOTICE, "push_thread_buffer in rtp_read_thread(%i) - %i", threadNum, threadIndex);
 			#endif
-		 
-			__SYNC_LOCK(this->push_lock_sync);
-			batch_packet_rtp *current_batch = this->qring[this->writeit];
-			extern int opt_rtp_read_thread_qring_sem_sync;
-			if(opt_rtp_read_thread_qring_sem_sync) {
-				if(sem_trywait(&this->sem_qring_free_count) == -1) {
-					sem_wait(&this->sem_qring_free_count);
-				}
-			} else {
-				unsigned int usleepCounter = 0;
-				while(current_batch->used != 0) {
-					USLEEP_C(20, usleepCounter++);
-				}
-			}
-			memcpy(current_batch->batch, thread_buffer->batch, sizeof(rtp_packet_pcap_queue) * thread_buffer->count);
-			#if RQUEUE_SAFE
-				__SYNC_SET_TO_LOCK(current_batch->count, thread_buffer->count, this->count_lock_sync);
-				__SYNC_SET(current_batch->used);
-				__SYNC_INCR(this->writeit, this->qring_length);
-			#else
-				__SYNC_LOCK(this->count_lock_sync);
-				current_batch->count = thread_buffer->count;
-				__SYNC_UNLOCK(this->count_lock_sync);
-				current_batch->used = 1;
-				if((this->writeit + 1) == this->qring_length) {
-					this->writeit = 0;
-				} else {
-					this->writeit++;
-				}
-			#endif
-			if(opt_rtp_read_thread_qring_sem_sync) {
-				sem_post(&this->sem_qring_filled_count);
-			}
-			thread_buffer->count = 0;
-			__SYNC_UNLOCK(this->push_lock_sync);
+			this->flush_thread_buffer_locked(thread_buffer);
 		}
 	}
 public:
@@ -1635,17 +1487,22 @@ public:
 	batch_packet_rtp *qring_active_push_item;
 	volatile unsigned qring_push_index;
 	volatile unsigned qring_push_index_count;
+	char _pad_readit[64];
 	volatile unsigned int readit;
+	char _pad_writeit[64];
 	volatile unsigned int writeit;
 	pstat_data threadPstatData[2][2];
 	volatile bool remove_flag;
 	u_int32_t last_use_time_s;
 	volatile u_int32_t calls;
 	volatile double cpu;
+	char _pad_push_lock[64];
 	volatile int push_lock_sync;
 	volatile int count_lock_sync;
 	sem_t sem_qring_free_count;
 	sem_t sem_qring_filled_count;
+	// Prevent false sharing between adjacent elements of rtp_threads[]
+	char _pad_end[64];
 };
 
 #define MAXLIVEFILTERS 10
