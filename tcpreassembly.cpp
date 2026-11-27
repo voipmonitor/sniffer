@@ -6,6 +6,7 @@
 #include <sys/syscall.h>
 
 #include "tcpreassembly.h"
+#include "tcp_sip_stream.h"
 #include "webrtc.h"
 #include "ssldata.h"
 #include "sip_tcp_data.h"
@@ -82,6 +83,7 @@ u_char *TcpReassemblyProcessData::decompressWebSocket(vmIP ip_src, vmIP ip_dst, 
 		inflateStream = &this->webSocketInflateStreams[id];
 		inflateStream->inflate = new FILE_LINE(0) cWebSocketInflate;
 		inflateStream->next_seq = 0;
+		__SYNC_INC(this->_websocket_inflate_count);
 	} else {
 		inflateStream = &iter->second;
 		if(skipRetransmission &&
@@ -102,7 +104,7 @@ u_char *TcpReassemblyProcessData::decompressWebSocket(vmIP ip_src, vmIP ip_dst, 
 }
 
 bool TcpReassemblyProcessData::existsWebSocketInflateContext(vmIP ip_src, vmIP ip_dst, vmPort port_src, vmPort port_dst) {
-	if(this->webSocketInflateStreams.empty()) {
+	if(!__SYNC_ADD(this->_websocket_inflate_count, 0)) {
 		return(false);
 	}
 	bool rslt = false;
@@ -122,7 +124,7 @@ bool TcpReassemblyProcessData::existsWebSocketInflateContext(vmIP ip_src, vmIP i
 }
 
 void TcpReassemblyProcessData::destroyWebSocketInflate(vmIP ip_src, vmIP ip_dst, vmPort port_src, vmPort port_dst) {
-	if(this->webSocketInflateStreams.empty()) {
+	if(!__SYNC_ADD(this->_websocket_inflate_count, 0)) {
 		return;
 	}
 	vmIPportLink id(ip_src, port_src, ip_dst, port_dst);
@@ -135,6 +137,7 @@ void TcpReassemblyProcessData::destroyWebSocketInflate(vmIP ip_src, vmIP ip_dst,
 		if(iter != this->webSocketInflateStreams.end()) {
 			delete iter->second.inflate;
 			this->webSocketInflateStreams.erase(iter);
+			__SYNC_DEC(this->_websocket_inflate_count);
 		}
 	}
 	unlock_websocket_inflate();
@@ -3248,6 +3251,18 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->dumperSync = 0;
 	this->dumperFileCounter = 0;
 	this->dumperPacketCounter = 0;
+	this->sipStreamEngine = NULL;
+}
+
+void TcpReassembly::setEnableSipStreamEngine(bool enable) {
+	if(enable && this->type == sip) {
+		if(!this->sipStreamEngine) {
+			this->sipStreamEngine = new FILE_LINE(0) TcpSipStreamEngine(this);
+		}
+	} else if(!enable && this->sipStreamEngine) {
+		delete this->sipStreamEngine;
+		this->sipStreamEngine = NULL;
+	}
 }
 
 TcpReassembly::~TcpReassembly() {
@@ -3261,6 +3276,13 @@ TcpReassembly::~TcpReassembly() {
 	}
 	if(this->packetQueue) {
 		delete this->packetQueue;
+	}
+	if(this->sipStreamEngine) {
+		if(!this->enableCleanupThread || opt_pb_read_from_file[0]) {
+			this->sipStreamEngine->cleanup(true);
+		}
+		delete this->sipStreamEngine;
+		this->sipStreamEngine = NULL;
 	}
 	if(!this->enableCleanupThread || opt_pb_read_from_file[0]) {
 		if(this->enableCleanupThread) {
@@ -3372,6 +3394,16 @@ string TcpReassembly::getCpuUsagePerc(int pstatDataIndex) {
 	}
 	if(existsPerc) {
 		outStr << '%';
+	}
+	if(this->sipStreamEngine) {
+		size_t links_size = this->sipStreamEngine->getLinkCount();
+		if(links_size) {
+			if(existsPerc) {
+				outStr << '|';
+			}
+			outStr << links_size << 'l';
+		}
+		return(outStr.str());
 	}
 	size_t links_size = links.size();
 	if(links_size) {
@@ -3579,6 +3611,19 @@ void TcpReassembly::push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *pac
 		}
 		return;
 	}
+	if(this->sipStreamEngine && !this->enablePacketThread) {
+		this->sipStreamEngine->push(header, header_ip, packet,
+					    handle_index, dlt, sensor_id, sensor_ip, pid,
+					    uData, uData2);
+		if(alloc_packet) {
+			delete header;
+			delete [] packet;
+		}
+		if(block_store && block_store_locked) {
+			block_store->unlock_packet(block_store_index);
+		}
+		return;
+	}
 	if(this->enablePacketThread) {
 		if(!alloc_packet &&
 		   block_store && !block_store_locked) {
@@ -3720,47 +3765,8 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 	u_int32_t datalen;
 	u_int32_t datacaplen;
 	
-	if(!header || !header_ip || !packet || (u_char*)header_ip < packet) {
+	if(!extractTcpSegment(header, header_ip, packet, &header_tcp_pointer, &data, &datalen, &datacaplen)) {
 		return;
-	}
-	u_int32_t ip_offset = (u_int32_t)((u_char*)header_ip - packet);
-	if(ip_offset >= header->caplen) {
-		return;
-	}
-	u_int8_t proto = 0;
-	u_int16_t ip_hdr_size = header_ip->get_hdr_size(&proto);
-	if(ip_hdr_size == (u_int16_t)-1 || ip_offset + ip_hdr_size + sizeof(tcphdr2) > header->caplen) {
-		return;
-	}
-	header_tcp_pointer = (tcphdr2*)((u_char*)header_ip + ip_hdr_size);
-	u_int32_t tcp_hdr_size = (u_int32_t)header_tcp_pointer->doff << 2;
-	if(tcp_hdr_size < sizeof(tcphdr2) || ip_offset + ip_hdr_size + tcp_hdr_size > header->caplen) {
-		return;
-	}
-	data = (u_char*)header_tcp_pointer + tcp_hdr_size;
-	
-	datacaplen = header->caplen - (ip_offset + ip_hdr_size + tcp_hdr_size);
-	datalen = datacaplen;
-	if(header->len > header->caplen) {
-		datalen += (header->len - header->caplen);
-	}
-	u_int32_t ip_tot_len = header_ip->get_tot_len();
-	u_int32_t ip_footer_size = 0;
-	if(proto == IPPROTO_ESP) {
-		if(ip_tot_len < (u_int32_t)ip_hdr_size + (u_int32_t)IPPROTO_ESP_FOOTER_SIZE || ip_offset + ip_tot_len > header->caplen) {
-			return;
-		}
-		ip_footer_size = header_ip->get_footer_size(proto);
-	}
-	if(ip_tot_len < (u_int32_t)ip_hdr_size + ip_footer_size + tcp_hdr_size) {
-		return;
-	}
-	u_int32_t tcp_data_length = ip_tot_len - ip_hdr_size - ip_footer_size - tcp_hdr_size;
-	if(datalen > tcp_data_length) {
-		datalen = tcp_data_length;
-	}
-	if(datacaplen > tcp_data_length) {
-		datacaplen = tcp_data_length;
 	}
 	
 	header_tcp = *header_tcp_pointer;
@@ -4157,6 +4163,10 @@ void TcpReassembly::cleanup(bool all) {
 }
 
 void TcpReassembly::cleanup_simple(bool all, bool lock) {
+	if(this->sipStreamEngine) {
+		this->sipStreamEngine->cleanup(all);
+		return;
+	}
  
 	if(lock) lock_cleanup();
 		

@@ -202,7 +202,7 @@ void SipTcpData::dispatchSipMessage(vmIP _ip_src, vmIP _ip_dst,
 						handle_index, tcpHeader, tcpPacket, _t_packet_alloc_header_std, 
 						pflags, (iphdr2*)(tcpPacket + ethHeaderLength), NULL,
 						NULL, 0, dlt, sensor_id, sensor_ip, pid,
-						false);
+						true);
 			}
 		}
 	}

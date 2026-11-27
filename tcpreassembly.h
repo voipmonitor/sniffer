@@ -256,6 +256,7 @@ public:
 public:
 	TcpReassemblyProcessData() {
 		this->_sync_websocket_inflate = 0;
+		this->_websocket_inflate_count = 0;
 	}
 	virtual ~TcpReassemblyProcessData();
 	virtual void processData(vmIP ip_src, vmIP ip_dst,
@@ -284,6 +285,7 @@ private:
 private:
 	map<vmIPportLink, sWebSocketInflateStream> webSocketInflateStreams;
 	volatile int _sync_websocket_inflate;
+	volatile int _websocket_inflate_count;
 };
 
 struct TcpReassemblyLink_id {
@@ -1246,6 +1248,63 @@ public:
 	void setLinkTimeout(u_int32_t linkTimeout) {
 		this->linkTimeout = linkTimeout;
 	}
+	u_int32_t getLinkTimeout() const {
+		return(this->linkTimeout);
+	}
+	TcpReassemblyProcessData *getDataCallback() const {
+		return(this->dataCallback);
+	}
+	void setEnableSipStreamEngine(bool enable = true);
+	static inline bool extractTcpSegment(const pcap_pkthdr *header, iphdr2 *header_ip, const u_char *packet,
+					     tcphdr2 **header_tcp_out, u_char **data_out,
+					     u_int32_t *datalen_out, u_int32_t *datacaplen_out) {
+		if(!header || !header_ip || !packet || (const u_char*)header_ip < packet) {
+			return(false);
+		}
+		u_int32_t ip_offset = (u_int32_t)((const u_char*)header_ip - packet);
+		if(ip_offset >= header->caplen) {
+			return(false);
+		}
+		u_int8_t proto = 0;
+		u_int16_t ip_hdr_size = header_ip->get_hdr_size(&proto);
+		if(ip_hdr_size == (u_int16_t)-1 || ip_offset + ip_hdr_size + sizeof(tcphdr2) > header->caplen) {
+			return(false);
+		}
+		tcphdr2 *tcp_ptr = (tcphdr2*)((u_char*)header_ip + ip_hdr_size);
+		u_int32_t tcp_hdr_size = (u_int32_t)tcp_ptr->doff << 2;
+		if(tcp_hdr_size < sizeof(tcphdr2) || ip_offset + ip_hdr_size + tcp_hdr_size > header->caplen) {
+			return(false);
+		}
+		u_char *data = (u_char*)tcp_ptr + tcp_hdr_size;
+		u_int32_t datacaplen = header->caplen - (ip_offset + ip_hdr_size + tcp_hdr_size);
+		u_int32_t datalen = datacaplen;
+		if(header->len > header->caplen) {
+			datalen += (header->len - header->caplen);
+		}
+		u_int32_t ip_tot_len = header_ip->get_tot_len();
+		u_int32_t ip_footer_size = 0;
+		if(proto == IPPROTO_ESP) {
+			if(ip_tot_len < (u_int32_t)ip_hdr_size + (u_int32_t)IPPROTO_ESP_FOOTER_SIZE || ip_offset + ip_tot_len > header->caplen) {
+				return(false);
+			}
+			ip_footer_size = header_ip->get_footer_size(proto);
+		}
+		if(ip_tot_len < (u_int32_t)ip_hdr_size + ip_footer_size + tcp_hdr_size) {
+			return(false);
+		}
+		u_int32_t tcp_data_length = ip_tot_len - ip_hdr_size - ip_footer_size - tcp_hdr_size;
+		if(datalen > tcp_data_length) {
+			datalen = tcp_data_length;
+		}
+		if(datacaplen > tcp_data_length) {
+			datacaplen = tcp_data_length;
+		}
+		*header_tcp_out = tcp_ptr;
+		*data_out = data;
+		*datalen_out = datalen;
+		*datacaplen_out = datacaplen;
+		return(true);
+	}
 	bool checkOkData(u_char * data, u_int32_t datalen, int8_t strict_mode, list<d_u_int32_t> *sip_offsets, u_int32_t *datalen_used = NULL);
 	void enableDumper(const char *fileName, const char *ports);
 private:
@@ -1351,6 +1410,7 @@ private:
 	volatile int dumperSync;
 	u_int64_t dumperFileCounter;
 	u_int64_t dumperPacketCounter;
+	class TcpSipStreamEngine *sipStreamEngine;
 friend class TcpReassemblyLink;
 friend class TcpReassemblyStream;
 friend void *_TcpReassembly_cleanupThreadFunction(void* arg);
