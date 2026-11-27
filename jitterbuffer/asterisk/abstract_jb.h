@@ -210,6 +210,26 @@ void jb_fixed_flush_deliver(struct ast_channel *chan);
 int ast_jb_test(struct ast_channel *c0);
 
 /*!
+ * \brief Fast inline timeval + milliseconds helper shared between jitterbuffer and RTP.
+ */
+static inline struct timeval ast_tv_add_ms_fast(struct timeval tv, int ms)
+{
+	long us = tv.tv_usec + (long)ms * 1000L;
+	if (__builtin_expect(us >= 1000000L, 0)) {
+		if (__builtin_expect(us < 2000000L, 1)) {
+			tv.tv_sec += 1;
+			tv.tv_usec = us - 1000000L;
+		} else {
+			tv.tv_sec += us / 1000000L;
+			tv.tv_usec = us % 1000000L;
+		}
+	} else {
+		tv.tv_usec = us;
+	}
+	return tv;
+}
+
+/*!
  * \brief Fast-path jitterbuffer simulation step for MOS-only channels (no audio payload).
  * Combines usecheck, periodic get_and_deliver, and put without heap frame allocation.
  */

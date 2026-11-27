@@ -123,20 +123,45 @@ void jb_history_promote32(jitterbuf *jb)
 	jb->history32 = h32;
 }
 
-__attribute__((noinline, cold))
-void jb_history_rebuild_min(jitterbuf *jb)
+static inline __attribute__((always_inline)) void jb_hist_rebuild_feed(
+	int32_t *buf, int32_t *p_T, int *p_eq_out, int32_t x, int is_max)
+{
+	int32_t T = *p_T;
+	if (__builtin_expect(is_max ? (x >= T) : (x <= T), 0)) {
+		if (is_max ? (x > T) : (x < T)) {
+			int j = JB_HIST_TRACK_SZ - 1;
+			int32_t new_T;
+			while (j > 0 && (is_max ? (buf[j - 1] < x) : (buf[j - 1] > x))) {
+				buf[j] = buf[j - 1];
+				j--;
+			}
+			buf[j] = x;
+			new_T = buf[JB_HIST_TRACK_SZ - 1];
+			if (new_T == T) {
+				(*p_eq_out)++;
+			} else {
+				*p_eq_out = 0;
+				*p_T = new_T;
+			}
+		} else {
+			(*p_eq_out)++;
+		}
+	}
+}
+
+static inline __attribute__((always_inline)) void jb_history_rebuild_impl(
+	jitterbuf *jb, int32_t *buf, int16_t *p_len, int16_t *p_eq_out, uint8_t *p_valid, int is_max)
 {
 	int count = jb->hist_count;
 	const int32_t *h32 = jb->history32;
 	const int16_t *h16 = jb->history16;
-	int32_t *buf = jb->hist_minbuf;
 	int init_n = (count < JB_HIST_TRACK_SZ) ? count : JB_HIST_TRACK_SZ;
 	int i, eq_out = 0;
 
 	for (i = 0; i < init_n; i++) {
 		int32_t x = h32 ? h32[i] : (int32_t)h16[i];
 		int j = i;
-		while (j > 0 && buf[j - 1] > x) {
+		while (j > 0 && (is_max ? (buf[j - 1] < x) : (buf[j - 1] > x))) {
 			buf[j] = buf[j - 1];
 			j--;
 		}
@@ -147,132 +172,30 @@ void jb_history_rebuild_min(jitterbuf *jb)
 		int32_t T = buf[JB_HIST_TRACK_SZ - 1];
 		if (__builtin_expect(h32 == NULL, 1)) {
 			for (i = JB_HIST_TRACK_SZ; i < count; i++) {
-				int32_t x = (int32_t)h16[i];
-				if (__builtin_expect(x <= T, 0)) {
-					if (x < T) {
-						int j = JB_HIST_TRACK_SZ - 1;
-						while (j > 0 && buf[j - 1] > x) {
-							buf[j] = buf[j - 1];
-							j--;
-						}
-						buf[j] = x;
-						int32_t new_T = buf[JB_HIST_TRACK_SZ - 1];
-						if (new_T == T) {
-							eq_out++;
-						} else {
-							eq_out = 0;
-							T = new_T;
-						}
-					} else {
-						eq_out++;
-					}
-				}
+				jb_hist_rebuild_feed(buf, &T, &eq_out, (int32_t)h16[i], is_max);
 			}
 		} else {
 			for (i = JB_HIST_TRACK_SZ; i < count; i++) {
-				int32_t x = h32[i];
-				if (__builtin_expect(x <= T, 0)) {
-					if (x < T) {
-						int j = JB_HIST_TRACK_SZ - 1;
-						while (j > 0 && buf[j - 1] > x) {
-							buf[j] = buf[j - 1];
-							j--;
-						}
-						buf[j] = x;
-						int32_t new_T = buf[JB_HIST_TRACK_SZ - 1];
-						if (new_T == T) {
-							eq_out++;
-						} else {
-							eq_out = 0;
-							T = new_T;
-						}
-					} else {
-						eq_out++;
-					}
-				}
+				jb_hist_rebuild_feed(buf, &T, &eq_out, h32[i], is_max);
 			}
 		}
 	}
 
-	jb->hist_min_len = (int16_t)init_n;
-	jb->hist_min_eq_out = (int16_t)eq_out;
-	jb->hist_min_valid = 1;
+	*p_len = (int16_t)init_n;
+	*p_eq_out = (int16_t)eq_out;
+	*p_valid = 1;
+}
+
+__attribute__((noinline, cold))
+void jb_history_rebuild_min(jitterbuf *jb)
+{
+	jb_history_rebuild_impl(jb, jb->hist_minbuf, &jb->hist_min_len, &jb->hist_min_eq_out, &jb->hist_min_valid, 0);
 }
 
 __attribute__((noinline, cold))
 void jb_history_rebuild_max(jitterbuf *jb)
 {
-	int count = jb->hist_count;
-	const int32_t *h32 = jb->history32;
-	const int16_t *h16 = jb->history16;
-	int32_t *buf = jb->hist_maxbuf;
-	int init_n = (count < JB_HIST_TRACK_SZ) ? count : JB_HIST_TRACK_SZ;
-	int i, eq_out = 0;
-
-	for (i = 0; i < init_n; i++) {
-		int32_t x = h32 ? h32[i] : (int32_t)h16[i];
-		int j = i;
-		while (j > 0 && buf[j - 1] < x) {
-			buf[j] = buf[j - 1];
-			j--;
-		}
-		buf[j] = x;
-	}
-
-	if (count > JB_HIST_TRACK_SZ) {
-		int32_t T = buf[JB_HIST_TRACK_SZ - 1];
-		if (__builtin_expect(h32 == NULL, 1)) {
-			for (i = JB_HIST_TRACK_SZ; i < count; i++) {
-				int32_t x = (int32_t)h16[i];
-				if (__builtin_expect(x >= T, 0)) {
-					if (x > T) {
-						int j = JB_HIST_TRACK_SZ - 1;
-						while (j > 0 && buf[j - 1] < x) {
-							buf[j] = buf[j - 1];
-							j--;
-						}
-						buf[j] = x;
-						int32_t new_T = buf[JB_HIST_TRACK_SZ - 1];
-						if (new_T == T) {
-							eq_out++;
-						} else {
-							eq_out = 0;
-							T = new_T;
-						}
-					} else {
-						eq_out++;
-					}
-				}
-			}
-		} else {
-			for (i = JB_HIST_TRACK_SZ; i < count; i++) {
-				int32_t x = h32[i];
-				if (__builtin_expect(x >= T, 0)) {
-					if (x > T) {
-						int j = JB_HIST_TRACK_SZ - 1;
-						while (j > 0 && buf[j - 1] < x) {
-							buf[j] = buf[j - 1];
-							j--;
-						}
-						buf[j] = x;
-						int32_t new_T = buf[JB_HIST_TRACK_SZ - 1];
-						if (new_T == T) {
-							eq_out++;
-						} else {
-							eq_out = 0;
-							T = new_T;
-						}
-					} else {
-						eq_out++;
-					}
-				}
-			}
-		}
-	}
-
-	jb->hist_max_len = (int16_t)init_n;
-	jb->hist_max_eq_out = (int16_t)eq_out;
-	jb->hist_max_valid = 1;
+	jb_history_rebuild_impl(jb, jb->hist_maxbuf, &jb->hist_max_len, &jb->hist_max_eq_out, &jb->hist_max_valid, 1);
 }
 
 __attribute__((noinline, cold))
