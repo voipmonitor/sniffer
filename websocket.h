@@ -64,9 +64,16 @@ public:
 	u_int64_t getDataLength() {
 		switch(isExtendedLength()) {
 		case 1:
-			return(htons(*(u_int16_t*)(header + 2)));
+			return(((u_int64_t)header[2] << 8) | (u_int64_t)header[3]);
 		case 2:
-			return(htonl(*(u_int64_t*)(header + 2)));
+			return(((u_int64_t)header[2] << 56) |
+			       ((u_int64_t)header[3] << 48) |
+			       ((u_int64_t)header[4] << 40) |
+			       ((u_int64_t)header[5] << 32) |
+			       ((u_int64_t)header[6] << 24) |
+			       ((u_int64_t)header[7] << 16) |
+			       ((u_int64_t)header[8] << 8)  |
+			       ((u_int64_t)header[9]));
 		}
 		return(((sFixHeader*)header)->payload_len);
 	}
@@ -95,7 +102,15 @@ public:
 		       size >= getHeaderLength());
 	}
 	bool isDataSizeOk(eCheckDataSizeType checkDataSizeType) {
-		u_int64_t headerWithDataLength = getHeaderLength() + getDataLength();
+		if(!isHeaderSizeOk()) {
+			return(false);
+		}
+		u_int64_t hdrLen = getHeaderLength();
+		u_int64_t dataLen = getDataLength();
+		if(dataLen > (u_int64_t)size) {
+			return(checkDataSizeType == _chdst_na);
+		}
+		u_int64_t headerWithDataLength = hdrLen + dataLen;
 		switch(checkDataSizeType) {
 		case _chdst_na:
 			return(true);

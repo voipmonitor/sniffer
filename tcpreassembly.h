@@ -28,16 +28,24 @@ extern int isSslIpPort_server_side(vmIP sip, vmPort sport, vmIP dip, vmPort dpor
 extern int opt_tcpreassembly_thread;
 
 
-#define TCP_SEQ_IS_ROT(seq1, seq2) ((seq1) > ((u_int32_t)0xFFFF0000u) && (seq2) < (u_int32_t)0xFFFF)
+static inline int32_t tcp_seq_diff(u_int32_t a, u_int32_t b) {
+	return((int32_t)(a - b));
+}
+static inline bool tcp_seq_lt(u_int32_t a, u_int32_t b) {
+	return((int32_t)(a - b) < 0);
+}
+static inline bool tcp_seq_le(u_int32_t a, u_int32_t b) {
+	return((int32_t)(a - b) <= 0);
+}
+static inline bool tcp_seq_gt(u_int32_t a, u_int32_t b) {
+	return((int32_t)(a - b) > 0);
+}
+static inline bool tcp_seq_ge(u_int32_t a, u_int32_t b) {
+	return((int32_t)(a - b) >= 0);
+}
 
-#define TCP_SEQ_CMP(seq1, seq2) \
-	((seq1) > (seq2) ? (TCP_SEQ_IS_ROT(seq1, seq2) ? -1 : 1) : \
-	 (seq2) > (seq1) ? (TCP_SEQ_IS_ROT(seq2, seq1) ? 1 : -1): \
-			   0)
-	
-#define TCP_SEQ_SUB(seq1, seq2) \
-	(TCP_SEQ_IS_ROT(seq1, seq2) ? (((u_int32_t)0xFFFFFFFFu) - (seq1) + (seq2)) : \
-				      ((seq1) - (seq2)))
+#define TCP_SEQ_CMP(seq1, seq2) (tcp_seq_lt((seq1), (seq2)) ? -1 : (tcp_seq_gt((seq1), (seq2)) ? 1 : 0))
+#define TCP_SEQ_SUB(seq1, seq2) ((u_int32_t)((seq1) - (seq2)))
 
 
 #define REMAIN_DATA_LIMIT_ITEMS 300
@@ -103,6 +111,9 @@ public:
 		}
 	}
 	TcpReassemblyDataItem& operator = (const TcpReassemblyDataItem &dataItem) {
+		if(this == &dataItem) {
+			return(*this);
+		}
 		if(this->data) {
 			delete [] this->data;
 		}
@@ -310,10 +321,13 @@ struct TcpReassemblyLink_id {
 		       this->ip_dst == other.ip_dst);
 	}
 	inline size_t hash() const {
-		size_t h = this->ip_src.hash();
-		h = (h << 13) ^ (h >> 51) ^ this->ip_dst.hash();
-		h = (h << 7) ^ (h >> 57) ^ ((size_t)(u_int16_t)this->port_src.port << 16) ^ (size_t)(u_int16_t)this->port_dst.port;
-		return(h);
+		u_int64_t h = (u_int64_t)this->ip_src.hash();
+		h = ((h << 13) | (h >> 51)) ^ (u_int64_t)this->ip_dst.hash();
+		h = ((h << 7) | (h >> 57)) ^ (((u_int64_t)(u_int16_t)this->port_src.port << 16) | (u_int64_t)(u_int16_t)this->port_dst.port);
+		h ^= h >> 33;
+		h *= 0xff51afd7ed558ccdULL;
+		h ^= h >> 33;
+		return((size_t)h);
 	}
 	struct TcpReassemblyLink_id_hasher {
 		inline size_t operator () (const TcpReassemblyLink_id &id) const {
@@ -353,10 +367,12 @@ public:
 	}
 	TcpReassemblyStream_packet(const TcpReassemblyStream_packet &packet) {
 		this->copyFrom(packet);
-		if(packet.data) {
+		if(packet.data && packet.datacaplen) {
 			this->data = new FILE_LINE(37005) u_char[packet.datacaplen];
 			memcpy_heapsafe(this->data, packet.data, packet.datacaplen, 
 					__FILE__, __LINE__);
+		} else {
+			this->data = NULL;
 		}
 	}
 	~TcpReassemblyStream_packet() {
@@ -365,14 +381,20 @@ public:
 		}
 	}
 	TcpReassemblyStream_packet& operator = (const TcpReassemblyStream_packet &packet) {
+		if(this == &packet) {
+			return(*this);
+		}
 		if(this->data) {
 			delete [] this->data;
+			this->data = NULL;
 		}
 		this->copyFrom(packet);
-		if(packet.data) {
+		if(packet.data && packet.datacaplen) {
 			this->data = new FILE_LINE(37006) u_char[packet.datacaplen];
 			memcpy_heapsafe(this->data, packet.data, packet.datacaplen, 
 					__FILE__, __LINE__);
+		} else {
+			this->data = NULL;
 		}
 		return(*this);
 	}
@@ -380,10 +402,14 @@ public:
 		     u_char *data, u_int32_t datalen, u_int32_t datacaplen,
 		     pcap_block_store *block_store, int block_store_index,
 		     bool isSip) {
+		if(this->data) {
+			delete [] this->data;
+			this->data = NULL;
+		}
 		this->time = time;
 		this->header_tcp = header_tcp;
 		this->next_seq = header_tcp.seq + datalen;
-		if(datacaplen) {
+		if(data && datacaplen) {
 			this->data = new FILE_LINE(37007) u_char[datacaplen];
 			memcpy_heapsafe(this->data, this->data,
 					data, block_store ? NULL : data,
@@ -438,7 +464,7 @@ public:
 		offset = 0;
 		last_packet_at_from_header = 0;
 	}
-	void push(TcpReassemblyStream_packet packet);
+	void push(const TcpReassemblyStream_packet &packet);
 	u_int32_t getNextSeqCheck() {
 		map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
 		for(iter = this->queuePackets.begin(); iter != this->queuePackets.end(); iter++) {
@@ -547,6 +573,7 @@ public:
 		http_header_length = 0;
 		http_content_length = 0;
 		http_ok = false;
+		http_ok_data_complete = false;
 		http_expect_continue = false;
 		http_ok_expect_continue_post = false;
 		http_ok_expect_continue_data = false;
@@ -558,7 +585,7 @@ public:
 		this->link = link;
 		counterTryOk = 0;
 	}
-	void push(TcpReassemblyStream_packet packet);
+	void push(const TcpReassemblyStream_packet &packet);
 	int ok(bool crazySequence = false, bool enableSimpleCmpMaxNextSeq = false, u_int32_t maxNextSeq = 0,
 	       int enableValidateDataViaCheckData = -1, int needValidateDataViaCheckData = -1, int unlimitedReassemblyAttempts = -1,
 	       TcpReassemblyStream *prevHttpStream = NULL, bool enableDebug = false,
@@ -721,6 +748,9 @@ public:
 		this->fin_to_source = false;
 		this->_sync_queue = 0;
 		this->_erase = 0;
+		this->_cleanup_ref = 0;
+		this->last_ok_seq_direction[0] = 0;
+		this->last_ok_seq_direction[1] = 0;
 		//this->created_at = getTimeMS();
 		//this->last_packet_at = 0;
 		this->created_at_from_header = 0;
@@ -960,7 +990,7 @@ private:
 		__SYNC_UNLOCK(this->_sync_queue);
 	}
 	void pushpacket(TcpReassemblyStream::eDirection direction,
-		        TcpReassemblyStream_packet packet,
+		        const TcpReassemblyStream_packet &packet,
 			bool isSip);
 	void setLastSeq(TcpReassemblyStream::eDirection direction, 
 			u_int32_t lastSeq);
@@ -987,6 +1017,7 @@ private:
 	uint32_t last_ok_seq_direction[2];
 	volatile int _sync_queue;
 	volatile int _erase;
+	volatile int _cleanup_ref;
 	//u_int64_t created_at;
 	//u_int64_t last_packet_at;
 	u_int64_t created_at_from_header;
