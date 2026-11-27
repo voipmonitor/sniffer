@@ -118,25 +118,125 @@ private:
 	}
 	void cleanStream(tcp_stream *stream, bool callFromClean = false);
 public:
+	static inline int parseSipHeader(const u_char *data, int data_len,
+					 bool &existsContentLength, u_int32_t &contentLength,
+					 int &hdrTotalLen, int start_off = 0, int *next_scan_off = NULL) {
+		const int MAX_SIP_HDR_LEN = 65536;
+		const u_int32_t MAX_SIP_BODY_LEN = 16u * 1024u * 1024u;
+		int limit = data_len < MAX_SIP_HDR_LEN ? data_len : MAX_SIP_HDR_LEN;
+		int pos = start_off;
+		while(pos < limit) {
+			const u_char *nl = (const u_char*)memchr(data + pos, '\n', limit - pos);
+			if(!nl) {
+				if(next_scan_off) {
+					*next_scan_off = pos;
+				}
+				if(data_len >= MAX_SIP_HDR_LEN ||
+				   (limit > pos && memchr(data + pos, '\0', limit - pos) != NULL)) {
+					return(-1);
+				}
+				return(0);
+			}
+			int line_end = (int)(nl - data);
+			int line_len = line_end - pos;
+			if(line_len > 0 && data[line_end - 1] == '\r') {
+				--line_len;
+			}
+			if(line_len == 0) {
+				hdrTotalLen = line_end + 1;
+				if(memchr(data, '\0', hdrTotalLen) != NULL) {
+					return(-1);
+				}
+				if(next_scan_off) {
+					*next_scan_off = hdrTotalLen;
+				}
+				return(1);
+			}
+			if(pos > 0 && !existsContentLength && line_len >= 2) {
+				u_char c0 = data[pos] | 0x20;
+				int val_pos = -1;
+				if(c0 == 'c' && line_len >= 15) {
+					if(((data[pos + 1]  | 0x20) == 'o') &&
+					   ((data[pos + 2]  | 0x20) == 'n') &&
+					   ((data[pos + 3]  | 0x20) == 't') &&
+					   ((data[pos + 4]  | 0x20) == 'e') &&
+					   ((data[pos + 5]  | 0x20) == 'n') &&
+					   ((data[pos + 6]  | 0x20) == 't') &&
+					   (data[pos + 7] == '-') &&
+					   ((data[pos + 8]  | 0x20) == 'l') &&
+					   ((data[pos + 9]  | 0x20) == 'e') &&
+					   ((data[pos + 10] | 0x20) == 'n') &&
+					   ((data[pos + 11] | 0x20) == 'g') &&
+					   ((data[pos + 12] | 0x20) == 't') &&
+					   ((data[pos + 13] | 0x20) == 'h')) {
+						int p = pos + 14;
+						int le = pos + line_len;
+						while(p < le && (data[p] == ' ' || data[p] == '\t')) ++p;
+						if(p < le && data[p] == ':') {
+							val_pos = p + 1;
+						}
+					}
+				} else if(c0 == 'l') {
+					int p = pos + 1;
+					int le = pos + line_len;
+					while(p < le && (data[p] == ' ' || data[p] == '\t')) ++p;
+					if(p < le && data[p] == ':') {
+						val_pos = p + 1;
+					}
+				}
+				if(val_pos >= 0) {
+					int le = pos + line_len;
+					while(val_pos < le && (data[val_pos] == ' ' || data[val_pos] == '\t')) ++val_pos;
+					u_int64_t val = 0;
+					bool any_digit = false;
+					while(val_pos < le && data[val_pos] >= '0' && data[val_pos] <= '9') {
+						val = val * 10 + (u_int64_t)(data[val_pos] - '0');
+						any_digit = true;
+						if(val > MAX_SIP_BODY_LEN) {
+							return(-1);
+						}
+						++val_pos;
+					}
+					if(any_digit) {
+						contentLength = (u_int32_t)val;
+						existsContentLength = true;
+					}
+				}
+			}
+			pos = line_end + 1;
+		}
+		if(next_scan_off) {
+			*next_scan_off = pos;
+		}
+		return(data_len >= MAX_SIP_HDR_LEN ? -1 : 0);
+	}
 	static int checkSip(u_char *data, int data_len, int8_t strict_mode, list<d_u_int32_t> *offsets = NULL, int *data_len_used = NULL) {
 		if(data_len_used) {
 			*data_len_used = 0;
+		}
+		if(!data || data_len <= 0) {
+			return(false);
 		}
 		if(check_websocket(data, data_len)) {
 			cWebSocketHeader ws(data, data_len);
 			bool allocData;
 			u_char *ws_data = ws.decodeData(&allocData);
 			if(ws_data) {
-				int rslt = checkSip(ws_data, ws.getDataLength(), strict_mode, offsets);
+				int rslt = checkSip(ws_data, (int)ws.getDataLength(), strict_mode, offsets);
 				if(rslt && offsets && offsets->size()) {
 					unsigned count = 0;
+					unsigned wsHdrLen = ws.getHeaderLength();
 					for(list<d_u_int32_t>::iterator iter = offsets->begin(); iter != offsets->end(); iter++) {
-						if(count > 0) {
-							iter->val[0] += ws.getHeaderLength();
+						if(count == 0) {
+							iter->val[1] += wsHdrLen;
+						} else {
+							iter->val[0] += wsHdrLen;
 						}
-						iter->val[1] += ws.getHeaderLength();
 						++count;
 					}
+				}
+				if(rslt && data_len_used) {
+					*data_len_used = (int)(ws.getHeaderLength() + ws.getDataLength());
 				}
 				if(allocData) {
 					delete [] ws_data;
@@ -147,7 +247,7 @@ public:
 			}
 		}
 		extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp);
-		if(!data || data_len < 10 ||
+		if(data_len < 10 ||
 		   !check_sip20((char*)data, data_len, NULL, true)) {
 			return(false);
 		}
@@ -162,44 +262,29 @@ public:
 			*data_len_used = 0;
 		}
 		while(data_len > 0) {
-			bool existsContentLength = false;
-			unsigned int contentLength = 0;
-			bool use_lf_line_separator = false;
-			u_char *endHeaderSepPos = NULL;
-			for(int pass_line_separator = 0; pass_line_separator < 2 && !endHeaderSepPos; pass_line_separator++) {
-				endHeaderSepPos = (u_char*)memmem(data, min(data_len, 5000), 
-								  SIP_DBLLINE_SEPARATOR(pass_line_separator == 1), 
-								  SIP_DBLLINE_SEPARATOR_SIZE(pass_line_separator == 1));
-				if(endHeaderSepPos && pass_line_separator == 1) {
-					use_lf_line_separator = true;
-				}
+			while(data_len > 0 && (data[0] == CR_CHAR || data[0] == LF_CHAR)) {
+				++data;
+				--data_len;
+				++offset;
 			}
-			if(endHeaderSepPos) {
-				u_char endHeaderSepPos_char = *endHeaderSepPos;
-				*endHeaderSepPos = 0;
-				for(int pass = 0; pass < 2; ++pass) {
-					char *contentLengthPos = strcasestr((char*)data, 
-									    pass ? 
-									     LF_LINE_SEPARATOR "l:" : 
-									     LF_LINE_SEPARATOR "Content-Length:");
-					if(contentLengthPos) {
-						contentLengthPos += (pass ? 2 : 15) + 1;
-						while(*contentLengthPos == ' ') {
-							++contentLengthPos;
-						}
-						contentLength = atol(contentLengthPos);
-						existsContentLength = true;
-						break;
-					}
-				}
-				*endHeaderSepPos = endHeaderSepPos_char;
-			} else {
+			if(data_len <= 0) {
 				break;
 			}
-			if((strict_mode & _chssm_content_length)  && !existsContentLength) {
+			bool existsContentLength = false;
+			u_int32_t contentLength = 0;
+			int hdrTotalLen = 0;
+			int hdrRslt = parseSipHeader(data, data_len, existsContentLength, contentLength, hdrTotalLen);
+			if(hdrRslt <= 0) {
+				break;
+			}
+			if((strict_mode & _chssm_content_length) && !existsContentLength) {
 				return(0);
 			}
-			int sipDataLen = (endHeaderSepPos - data) + SIP_DBLLINE_SEPARATOR_SIZE(use_lf_line_separator) + contentLength;
+			u_int64_t sipDataLen64 = (u_int64_t)hdrTotalLen + (u_int64_t)contentLength;
+			if(sipDataLen64 > (u_int64_t)data_len) {
+				break;
+			}
+			int sipDataLen = (int)sipDataLen64;
 			if(sipDataLen == data_len) {
 				if((strict_mode & _chssm_ext) && !_checkSipExt(data, sipDataLen)) {
 					return(0);
@@ -230,9 +315,25 @@ public:
 						return(count_ok + 1);
 					}
 				}
-				if(!check_sip20((char*)(data + sipDataLen), data_len - sipDataLen, NULL, true)) {
+				int next_skip = sipDataLen;
+				while(next_skip < data_len && (data[next_skip] == CR_CHAR || data[next_skip] == LF_CHAR)) {
+					++next_skip;
+				}
+				if(next_skip == data_len) {
+					if((strict_mode & _chssm_ext) && !_checkSipExt(data, sipDataLen)) {
+						return(0);
+					}
 					if(data_len_used) {
-						*data_len_used = (strict_mode & _chssm_strict) ? 0 : offset + sipDataLen;
+						*data_len_used = data_len_orig;
+					}
+					if(offsets) {
+						offsets->push_back(d_u_int32_t(offset, sipDataLen));
+					}
+					return(count_ok + 1);
+				}
+				if(!check_sip20((char*)(data + next_skip), data_len - next_skip, NULL, true)) {
+					if(data_len_used) {
+						*data_len_used = (strict_mode & _chssm_strict) ? 0 : offset + next_skip;
 					}
 					if(offsets) {
 						offsets->push_back(d_u_int32_t(offset, sipDataLen));
@@ -242,9 +343,9 @@ public:
 					if(offsets) {
 						offsets->push_back(d_u_int32_t(offset, sipDataLen));
 					}
-					data += sipDataLen;
-					data_len -= sipDataLen;
-					offset += sipDataLen;
+					data += next_skip;
+					data_len -= next_skip;
+					offset += next_skip;
 					++count_ok;
 				}
 			} else {

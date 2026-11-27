@@ -5557,6 +5557,7 @@ int main_init_read() {
 			// tcpReassemblyDiameter->setUnlimitedReassemblyAttempts();
 			tcpReassemblyDiameter->setEnableWildLink();
 			tcpReassemblyDiameter->setIgnoreTcpHandshake();
+			tcpReassemblyDiameter->setEnablePushLock();
 			diameterTcpData = new FILE_LINE(0) DiameterTcpData;
 			tcpReassemblyDiameter->setDataCallback(diameterTcpData);
 		}
