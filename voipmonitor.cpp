@@ -1252,6 +1252,7 @@ int opt_t2_boost_direct_rtp = false;
 int opt_t2_boost_direct_rtp_delay_queue_ms = 0;
 int opt_t2_boost_direct_rtp_max_queue_length_ms = 0;
 int opt_pipeline_v2 = 1;
+int opt_pipeline_v2_fuse_rd = 0;
 int opt_t2_boost_call_find_threads = false;
 int opt_t2_boost_call_threads = 3;
 int opt_t2_boost_pb_detach_thread = 0;
@@ -5409,7 +5410,7 @@ int main_init_read() {
 		   (!opt_fork || opt_t2_boost) &&
 		   opt_enable_process_rtp_packet && enable_pcap_split &&
 		   is_enable_packetbuffer()) {
-			if(opt_pipeline_v2) {
+			if(opt_pipeline_v2 && opt_pipeline_v2_fuse_rd) {
 				// Fused hash+distribute inside ProcessRtpPacket::hash (zero rd hop!)
 				process_rtp_packets_distribute_threads_use = 0;
 			} else {
@@ -5999,6 +6000,9 @@ void terminate_processpacket() {
 		processRtpPacketHash->terminate();
 		delete processRtpPacketHash;
 		processRtpPacketHash = NULL;
+	}
+	if(calltable && opt_t2_boost_ht_hash_queue) {
+		calltable->applyHashModifyQueue(true, true, true);
 	}
 	
 	for(int termPass = 0; termPass < 2; termPass++) {
@@ -6766,6 +6770,7 @@ void cConfig::addConfigItems() {
 						->addValues("high_traffic:2")
 						->addAlias("threading_expanded"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pipeline_v2", &opt_pipeline_v2));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pipeline_v2_fuse_rd", &opt_pipeline_v2_fuse_rd));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_rtp_delay_ms"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_rtp_delay_queue_ms", &opt_t2_boost_rtp_delay_queue_ms));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_rtp_max_queue_length_ms", &opt_t2_boost_rtp_max_queue_length_ms));
@@ -10174,7 +10179,7 @@ void set_context_config() {
 	}
 	
 	if(opt_t2_boost) {
-		if(opt_t2_boost == 2 && !opt_pipeline_v2 && !CONFIG.isSet("t2_boost_ht_hash_queue")) {
+		if(opt_t2_boost == 2 && !CONFIG.isSet("t2_boost_ht_hash_queue")) {
 			opt_t2_boost_ht_hash_queue = true;
 		}
 		if(!CONFIG.isSet("t2_boost_ht_cleanup_calls")) {
@@ -10233,7 +10238,7 @@ void set_context_config() {
 		}
 	}
 
-	hash_modify_queue_length_ms = opt_t2_boost == 2 && !opt_pipeline_v2 && (CONFIG.isSet("hash_queue_length_ms_high_traffic") || !CONFIG.isSet("hash_queue_length_ms")) ?
+	hash_modify_queue_length_ms = opt_t2_boost == 2 && (CONFIG.isSet("hash_queue_length_ms_high_traffic") || !CONFIG.isSet("hash_queue_length_ms")) ?
 					opt_hash_modify_queue_length_ms_high_traffic :
 					opt_hash_modify_queue_length_ms;
 	

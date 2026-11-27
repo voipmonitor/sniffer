@@ -5386,7 +5386,8 @@ public:
 	int hashRemoveForce(CallBranch *c_branch);
 	inline int _hashRemove(CallBranch *c_branch, bool use_lock = true);
 	void applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash = true, bool force = false);
-	inline void _applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash = true, bool force = false);
+	bool useHashModifyQueue() const;
+	void enqueueHashModify(const sHashModifyData &hmd);
 	string getHashStats();
 	
 	void processCallsInAudioQueue(bool lock = true);
@@ -5499,9 +5500,13 @@ private:
 	
 	class AsyncSystemCommand *asyncSystemCommand;
 	
-	list<sHashModifyData> hash_modify_queue;
+	vector<sHashModifyData> hash_modify_queue;
+	vector<sHashModifyData> hash_modify_queue_apply;
 	u_int64_t hash_modify_queue_begin_ms;
+	volatile unsigned int hash_modify_queue_pending;
+	volatile unsigned int hash_modify_queue_applying;
 	cPaddedSpinLock _sync_lock_hash_modify_queue;
+	cPaddedSpinLock _sync_lock_hash_modify_apply;
 	
 	sChcThreadData *chc_threads;
 	volatile int chc_threads_count;
