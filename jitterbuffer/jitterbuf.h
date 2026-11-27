@@ -289,13 +289,13 @@ static inline void jb_hist_min_replace(jitterbuf *jb, int32_t kicked, int32_t de
 	jb->hist_dirty = 1;
 
 	if (kicked < T) {
-		int lo = 0, hi = len - 2;
+		int lo = 0, hi = len - 2, j;
 		while (lo < hi) {
 			int mid = (lo + hi) >> 1;
 			if (buf[mid] < kicked) lo = mid + 1;
 			else hi = mid;
 		}
-		for (int j = lo; j < len - 1; j++) {
+		for (j = lo; j < len - 1; j++) {
 			buf[j] = buf[j + 1];
 		}
 		len--;
@@ -360,13 +360,13 @@ static inline void jb_hist_max_replace(jitterbuf *jb, int32_t kicked, int32_t de
 	jb->hist_dirty = 1;
 
 	if (kicked > T) {
-		int lo = 0, hi = len - 2;
+		int lo = 0, hi = len - 2, j;
 		while (lo < hi) {
 			int mid = (lo + hi) >> 1;
 			if (buf[mid] > kicked) lo = mid + 1;
 			else hi = mid;
 		}
-		for (int j = lo; j < len - 1; j++) {
+		for (j = lo; j < len - 1; j++) {
 			buf[j] = buf[j + 1];
 		}
 		len--;

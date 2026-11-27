@@ -113,10 +113,11 @@ __attribute__((noinline, cold))
 void jb_history_promote32(jitterbuf *jb)
 {
 	int32_t *h32 = (int32_t *)ast_malloc(JB_HISTORY_SZ * sizeof(int32_t));
+	int count, i;
 	if (!h32)
 		return;
-	int count = jb->hist_count;
-	for (int i = 0; i < count; i++) {
+	count = jb->hist_count;
+	for (i = 0; i < count; i++) {
 		h32[i] = (int32_t)jb->history16[i];
 	}
 	jb->history32 = h32;
@@ -130,8 +131,9 @@ void jb_history_rebuild_min(jitterbuf *jb)
 	const int16_t *h16 = jb->history16;
 	int32_t *buf = jb->hist_minbuf;
 	int init_n = (count < JB_HIST_TRACK_SZ) ? count : JB_HIST_TRACK_SZ;
+	int i, eq_out = 0;
 
-	for (int i = 0; i < init_n; i++) {
+	for (i = 0; i < init_n; i++) {
 		int32_t x = h32 ? h32[i] : (int32_t)h16[i];
 		int j = i;
 		while (j > 0 && buf[j - 1] > x) {
@@ -141,11 +143,10 @@ void jb_history_rebuild_min(jitterbuf *jb)
 		buf[j] = x;
 	}
 
-	int eq_out = 0;
 	if (count > JB_HIST_TRACK_SZ) {
 		int32_t T = buf[JB_HIST_TRACK_SZ - 1];
 		if (__builtin_expect(h32 == NULL, 1)) {
-			for (int i = JB_HIST_TRACK_SZ; i < count; i++) {
+			for (i = JB_HIST_TRACK_SZ; i < count; i++) {
 				int32_t x = (int32_t)h16[i];
 				if (__builtin_expect(x <= T, 0)) {
 					if (x < T) {
@@ -168,7 +169,7 @@ void jb_history_rebuild_min(jitterbuf *jb)
 				}
 			}
 		} else {
-			for (int i = JB_HIST_TRACK_SZ; i < count; i++) {
+			for (i = JB_HIST_TRACK_SZ; i < count; i++) {
 				int32_t x = h32[i];
 				if (__builtin_expect(x <= T, 0)) {
 					if (x < T) {
@@ -206,8 +207,9 @@ void jb_history_rebuild_max(jitterbuf *jb)
 	const int16_t *h16 = jb->history16;
 	int32_t *buf = jb->hist_maxbuf;
 	int init_n = (count < JB_HIST_TRACK_SZ) ? count : JB_HIST_TRACK_SZ;
+	int i, eq_out = 0;
 
-	for (int i = 0; i < init_n; i++) {
+	for (i = 0; i < init_n; i++) {
 		int32_t x = h32 ? h32[i] : (int32_t)h16[i];
 		int j = i;
 		while (j > 0 && buf[j - 1] < x) {
@@ -217,11 +219,10 @@ void jb_history_rebuild_max(jitterbuf *jb)
 		buf[j] = x;
 	}
 
-	int eq_out = 0;
 	if (count > JB_HIST_TRACK_SZ) {
 		int32_t T = buf[JB_HIST_TRACK_SZ - 1];
 		if (__builtin_expect(h32 == NULL, 1)) {
-			for (int i = JB_HIST_TRACK_SZ; i < count; i++) {
+			for (i = JB_HIST_TRACK_SZ; i < count; i++) {
 				int32_t x = (int32_t)h16[i];
 				if (__builtin_expect(x >= T, 0)) {
 					if (x > T) {
@@ -244,7 +245,7 @@ void jb_history_rebuild_max(jitterbuf *jb)
 				}
 			}
 		} else {
-			for (int i = JB_HIST_TRACK_SZ; i < count; i++) {
+			for (i = JB_HIST_TRACK_SZ; i < count; i++) {
 				int32_t x = h32[i];
 				if (__builtin_expect(x >= T, 0)) {
 					if (x > T) {

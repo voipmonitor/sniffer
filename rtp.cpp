@@ -1310,20 +1310,21 @@ RTP::jitterbuffer_mos_all() {
 
 	char m1 = base_marker, m2 = base_marker, m3 = base_marker;
 	if(__builtin_expect(opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap && !base_marker, 0)) {
-		auto check_pause_marker = [&](struct ast_channel *ch, char &m) {
-			if(!ch || !ch->jb_reseted || !ast_jb_test(ch)) return;
-			struct timeval next_ts = vm_tv_add_ms(ch->last_ts, packetization);
-			int msdiff = ast_tvdiff_ms(header_ts, next_ts);
-			if(msdiff <= packetization * 10000 &&
-			   msdiff >= opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap &&
-			   seqno == ROT_SEQ(last_seq + 1) &&
-			   frame_ts > _last_ts && (int)(frame_ts - _last_ts) < packetization * 2) {
-				m = 1;
+		if(seqno == ROT_SEQ(last_seq + 1) &&
+		   frame_ts > _last_ts && (int)(frame_ts - _last_ts) < packetization * 2) {
+			struct ast_channel *chs[3] = { ch1, ch2, ch3 };
+			char *ms[3] = { &m1, &m2, &m3 };
+			for(int ci = 0; ci < 3; ci++) {
+				struct ast_channel *ch = chs[ci];
+				if(!ch || !ch->jb_reseted || !ast_jb_test(ch)) continue;
+				struct timeval next_ts = vm_tv_add_ms(ch->last_ts, packetization);
+				int msdiff = ast_tvdiff_ms(header_ts, next_ts);
+				if(msdiff <= packetization * 10000 &&
+				   msdiff >= opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap) {
+					*ms[ci] = 1;
+				}
 			}
-		};
-		check_pause_marker(ch1, m1);
-		check_pause_marker(ch2, m2);
-		check_pause_marker(ch3, m3);
+		}
 	}
 
 	ast_jb_sim_step_3(ch1, ch2, ch3, &header_ts, frame_ts, packetization, seqno,

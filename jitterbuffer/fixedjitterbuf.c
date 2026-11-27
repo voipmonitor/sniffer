@@ -258,8 +258,11 @@ static int resynch_jb_slot(struct fixed_jb *jb, const struct fixed_jb_slot *in, 
 
 	/* apply the offset to the jb state */
 	jb->rxcore -= offset;
-	for (int i = 0; i < jb->count; i++) {
-		jb->slots[(jb->head + i) & jb->mask].ts += offset;
+	{
+		int i;
+		for (i = 0; i < jb->count; i++) {
+			jb->slots[(jb->head + i) & jb->mask].ts += offset;
+		}
 	}
 
 	/* now jb_put() should add the frame at a last position */
@@ -363,7 +366,8 @@ int fixed_jb_put_slot_slow(struct fixed_jb *jb, const struct fixed_jb_slot *in, 
 		jb->slots[jb->head].delivery = delivery;
 		jb->count++;
 	} else {
-		for (int k = jb->count - 1; k >= ins; k--) {
+		int k;
+		for (k = jb->count - 1; k >= ins; k--) {
 			jb->slots[(jb->head + k + 1) & jb->mask] = jb->slots[(jb->head + k) & jb->mask];
 		}
 		struct fixed_jb_slot *dst = &jb->slots[(jb->head + ins) & jb->mask];
