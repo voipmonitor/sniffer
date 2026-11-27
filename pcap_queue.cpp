@@ -10758,29 +10758,58 @@ void *PcapQueue_outputThread::nextThreadFunction(int next_thread_index_plus) {
 			unsigned batch_index_start = next_thread_data->start;
 			unsigned batch_index_end = next_thread_data->end;
 			unsigned batch_index_skip = next_thread_data->skip;
+			bool sem_consume_mode = opt_pcap_queue_output_next_thread_sem_sync == 2 && opt_use_sem_items_ready;
 			switch(typeOutputThread) {
 			case detach: {
 				sHeaderPacketPQout *batch = (sHeaderPacketPQout*)next_thread_data->batch;
-				for(unsigned batch_index = batch_index_start;
-				    batch_index < batch_index_end;
-				    batch_index += batch_index_skip) {
-					if(opt_t2_boost_pb_detach_thread == 2) {
-						this->processDetach_findHeaderIp(&batch[batch_index]);
+				// Partition in up to 64-byte cache-line chunks to eliminate false sharing on items_flag[]
+				unsigned chunk_size = batch_index_skip > 1 ?
+						       min(64u, max(16u, (batch_index_end + batch_index_skip - 1) / batch_index_skip)) :
+						       batch_index_end - batch_index_start;
+				for(unsigned chunk_base = batch_index_skip > 1 ? batch_index_start * chunk_size : batch_index_start;
+				    chunk_base < batch_index_end;
+				    chunk_base += batch_index_skip * chunk_size) {
+					unsigned chunk_end = chunk_base + chunk_size;
+					if(chunk_end > batch_index_end) {
+						chunk_end = batch_index_end;
 					}
-					this->items_flag[batch_index] = 1;
-					if(opt_pcap_queue_output_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
-						sem_post(&this->sem_items_ready);
+					for(unsigned batch_index = chunk_base; batch_index < chunk_end; batch_index++) {
+						if(opt_t2_boost_pb_detach_thread == 2) {
+							if(if_likely(batch_index + 4 < chunk_end)) {
+								__builtin_prefetch(batch[batch_index + 4].header, 0, 1);
+								__builtin_prefetch(batch[batch_index + 4].packet, 0, 1);
+							}
+							this->processDetach_findHeaderIp(&batch[batch_index]);
+						}
+						this->items_flag[batch_index] = 1;
+						if(if_unlikely(sem_consume_mode)) {
+							sem_post(&this->sem_items_ready);
+						}
 					}
 				} }
 				break;
 			case detach2: {
 				sHeaderPacketPQout *batch = (sHeaderPacketPQout*)next_thread_data->batch;
-				for(unsigned batch_index = batch_index_start;
-				    batch_index < batch_index_end;
-				    batch_index += batch_index_skip) {
-					this->items_flag[batch_index] = this->pcapQueue->processPacket_analysis(&batch[batch_index]) ? 1 : -1;
-					if(opt_pcap_queue_output_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
-						sem_post(&this->sem_items_ready);
+				// Partition in up to 64-byte cache-line chunks to eliminate false sharing on items_flag[]
+				unsigned chunk_size = batch_index_skip > 1 ?
+						       min(64u, max(16u, (batch_index_end + batch_index_skip - 1) / batch_index_skip)) :
+						       batch_index_end - batch_index_start;
+				for(unsigned chunk_base = batch_index_skip > 1 ? batch_index_start * chunk_size : batch_index_start;
+				    chunk_base < batch_index_end;
+				    chunk_base += batch_index_skip * chunk_size) {
+					unsigned chunk_end = chunk_base + chunk_size;
+					if(chunk_end > batch_index_end) {
+						chunk_end = batch_index_end;
+					}
+					for(unsigned batch_index = chunk_base; batch_index < chunk_end; batch_index++) {
+						if(if_likely(batch_index + 4 < chunk_end)) {
+							__builtin_prefetch(batch[batch_index + 4].header, 1, 1);
+							__builtin_prefetch(batch[batch_index + 4].packet, 0, 1);
+						}
+						this->items_flag[batch_index] = this->pcapQueue->processPacket_analysis(&batch[batch_index]) ? 1 : -1;
+						if(if_unlikely(sem_consume_mode)) {
+							sem_post(&this->sem_items_ready);
+						}
 					}
 				} }
 				break;
@@ -10791,7 +10820,7 @@ void *PcapQueue_outputThread::nextThreadFunction(int next_thread_index_plus) {
 				    batch_index += batch_index_skip) {
 					if(this->items_thread_index[batch_index] == next_thread_data->thread_index) {
 						this->items_flag[batch_index] = this->processDefrag_defrag(&batch[batch_index], this->items_index[batch_index]) ? 1 : -1;
-						if(opt_pcap_queue_output_next_thread_sem_sync == 2 && opt_use_sem_items_ready) {
+						if(if_unlikely(sem_consume_mode)) {
 							sem_post(&this->sem_items_ready);
 						}
 					}
