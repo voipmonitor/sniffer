@@ -208,19 +208,47 @@ enum eRtpMarkType {
 
 class RTP {
 public:
+	struct s_id {
+		u_int32_t ssrc;
+		vmIP saddr;
+		vmIP daddr;
+		vmPort sport;
+		vmPort dport;
+		u_int8_t iscaller;
+		class Call *call_owner;
+	} id;
+	struct s_media {
+		int32_t codec;
+		bool had_audio;
+	} media;
+	struct s_timing {
+		u_int64_t first_packet_time_us;
+		u_int64_t last_packet_time_us;
+	} timing;
+	struct stats_t {
+		u_int32_t received;
+	} stats;
+	struct s_sdp {
+		u_int16_t ssrc_index;
+		bool skip;
+	} sdp;
+	struct s_silence {
+		u_int8_t tailedframes;
+	} silence;
+
 	inline void init(class Call *call) {
-		codec = -1;
-		received = 0;
-		skip = false;
-		had_audio = true;
-		tailedframes = 0;
-		call_owner = call;
+		media.codec = -1;
+		stats.received = 0;
+		sdp.skip = false;
+		media.had_audio = true;
+		silence.tailedframes = 0;
+		id.call_owner = call;
 	}
 	inline unsigned received_() {
-		return(received);
+		return(stats.received);
 	}
 	inline void set_received_(u_int32_t r) {
-		received = r;
+		stats.received = r;
 	}
 	inline unsigned lost_() {
 		return(0);
@@ -243,20 +271,20 @@ public:
 			0);
 	}
 	inline int first_codec_() {
-		return(codec);
+		return(media.codec);
 	}
 	inline void set_first_codec_(int c) {
-		codec = c;
+		media.codec = c;
 	}
 	inline bool ok_other_ip_side_by_sip_() {
 		return(false);
 	}
 	inline bool eqAddrPort(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport) {
-		return(this->sport == sport && this->dport == dport &&
-		       this->saddr == saddr && this->daddr == daddr);
+		return(id.sport == sport && id.dport == dport &&
+		       id.saddr == saddr && id.daddr == daddr);
 	}
 	inline bool eqAddrPort(RTP *rtp) {
-		return(eqAddrPort(rtp->saddr, rtp->daddr, rtp->sport, rtp->dport));
+		return(eqAddrPort(rtp->id.saddr, rtp->id.daddr, rtp->id.sport, rtp->id.dport));
 	}
 	inline bool allowed_for_ab() {
 		return(true);
@@ -277,22 +305,6 @@ public:
 		}
 		return(false);
 	};
-public:
-	u_int16_t ssrc_index;
-	u_int32_t ssrc;
-	vmIP saddr;
-	vmIP daddr;
-	vmPort sport;
-	vmPort dport;
-	u_int8_t iscaller;
-	int32_t codec;
-	u_int64_t first_packet_time_us;
-	u_int64_t last_packet_time_us;
-	u_int32_t received;
-	bool skip;
-	bool had_audio;
-	u_int8_t tailedframes;
-	Call *call_owner;
 };
 
 #else
@@ -305,21 +317,21 @@ class RTP {
 	} extension_hdr_t;
 	struct sRSA {
 		sRSA() {
-			counter = 0;
 			first_packet_time_us = 0;
 			last_packet_time_us = 0;
+			jitter = 0;
+			counter = 0;
 			first_timestamp = 0;
 			last_timestamp = 0;
-			jitter = 0;
 			prev_seq = 0;
 		}
-		u_int32_t counter;
 		u_int64_t first_packet_time_us;
 		u_int64_t last_packet_time_us;
+		double jitter;
+		u_int32_t counter;
 		u_int32_t first_timestamp;
 		u_int32_t last_timestamp;
 		u_int16_t prev_seq;
-		double jitter;
 	};
 	class cDuplCheckSeq {
 	public:
@@ -350,210 +362,489 @@ class RTP {
 	public:
 		bool exists_dupl;
 	};
-public: 
-	// ===== Hot per-packet fields packed together for L1/L2 cache locality =====
-	u_int32_t ssrc;		//!< ssrc of this RTP class
-	u_int32_t ssrc2;	//!< ssrc of this RTP class
-	vmIP saddr;	//!< last source IP adress 
-	vmIP daddr;	//!< last source IP adress 
-	vmPort sport;
-	vmPort dport;
-	void *call_owner;	//!< which Call owns us
-	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
-	struct ast_channel *channel_fix1;
-	struct ast_channel *channel_fix2;
-	struct ast_channel *channel_adapt;
-	struct ast_channel *channel_record;
-	struct ast_frame *frame;
-	#endif
-	unsigned char* data;    //!< pointer to UDP payload
-	iphdr2 *header_ip;
-	unsigned char* payload_data;    //!< pointer to RTP payload
-	int len;		//!< lenght of UDP payload
-	int payload_len;	//!< lenght of RTP payload
-	u_int16_t seq;		//!< current sequence number
-	u_int16_t prev_payload_len;	//!< lenght of RTP payload
-	int last_seq;		//!< last packet sequence number
-	u_int32_t last_ts;	//!< last timestamp 
-	int codec;
-	int prev_payload;
-	int prev_codec;
-	int payload2;
-	int first_codec;
-	int packetization;	//!< packetization in millisenocds
-	int last_packetization;	//!< last packetization in millisenocds
-	int packetization_iterator;	
-	int default_packetization;
-	int lastframetype;		//!< last packet sequence number
-	int iscaller;		//!< flag which indicates if RTP stream is part of caller or callee
-	unsigned int samplerate;
-	uint32_t counter;
-	u_int64_t first_packet_time_us;
-	u_int64_t last_packet_time_us;
-	u_int64_t next_save_mos_graph_us;
-	timeval _last_ts;
-	timeval last_voice_frame_ts;
-	uint32_t last_voice_frame_timestamp;
-	double jitter;
-	float avg_ptime;
-	u_int32_t avg_ptime_count;
-	uint8_t padding_len;	//!< lenght of RTP payload
-	u_int8_t forcemark;
-	u_int8_t forcemark2;
-	uint8_t change_packetization_iterator;
-	uint8_t avgdelay_idx;
-	char lastcng;		//!< last packet sequence number
-	char ignore;
-	char save_mos_graph_wait;
-	bool last_markbit;
-	bool resetgraph;
-	bool had_audio;
-	bool defer_codec_change;
-	bool codecchanged;
-	bool forcemark_by_owner;
-	bool forcemark_by_owner_set;
-	bool pcap_header_ts_bad_time;
-	bool stream_in_multiple_calls;
-	bool stopped_jb_due_to_high_ooo;
-	bool changing_codec;
-	unsigned forcemark_owner_used;
-	s_sdp_flags_base sdp_flags;
-	int sid;
-	int prev_sid;
-	int16_t ttl_min;
-	int16_t ttl_max;
-	u_int64_t ttl_sum;
-	u_int32_t ttl_count;
-	struct dsp *DSP;
-	struct dsp *DSP_ivr;	//!< own DSP for ivrdetect (early media), the shared DSP state stays untouched
+public:
+	// =========================================================================
+	// ZONE 1: HOT per-packet substructures (L1/L2 cache resident, CL 0..13)
+	// =========================================================================
 
+	/* Stream identity, 5-tuple, direction and Call owner (64B = CL 0) */
+	struct s_id {
+		void init() {
+			ssrc = 0;
+			ssrc2 = 0;
+			saddr.clear();
+			daddr.clear();
+			sport.clear();
+			dport.clear();
+			iscaller = 0;
+			call_owner = NULL;
+		}
+		u_int32_t ssrc;		//!< ssrc of this RTP class
+		u_int32_t ssrc2;	//!< matched ssrc of this RTP class
+		vmIP saddr;		//!< last source IP address
+		vmIP daddr;		//!< last destination IP address
+		vmPort sport;
+		vmPort dport;
+		int iscaller;		//!< flag which indicates if RTP stream is part of caller or callee
+		void *call_owner;	//!< which Call owns us
+	} id;
+
+	/* Current packet pointers, timestamp and sequence cursor (64B = CL 1) */
+	struct s_pkt {
+		void init() {
+			memset(this, 0, sizeof(*this));
+			last_seq = -1;
+		}
+		unsigned char *data;		//!< pointer to UDP payload
+		iphdr2 *header_ip;
+		unsigned char *payload_data;	//!< pointer to RTP payload
+		struct timeval header_ts;	//!< pcap timestamp of current packet
+		int len;			//!< length of UDP payload
+		int payload_len;		//!< length of RTP payload
+		int last_seq;			//!< last packet sequence number
+		u_int32_t last_ts;		//!< last RTP timestamp
+		u_int16_t seq;			//!< current sequence number
+		u_int16_t prev_payload_len;	//!< previous length of RTP payload
+		uint8_t padding_len;		//!< length of RTP padding
+		char ignore;
+		bool last_markbit;
+		bool resetgraph;
+	} pkt;
+
+	/* Jitterbuffer channels, frame and DSP instances (64B = CL 2) */
+	struct s_jb {
+		void init() {
+			#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
+			channel_fix1 = NULL;
+			channel_fix2 = NULL;
+			channel_adapt = NULL;
+			channel_record = NULL;
+			frame = NULL;
+			#endif
+			DSP = NULL;
+			DSP_ivr = NULL;
+			lastframetype = 0;
+			pinformed = 0;
+		}
+		#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
+		struct ast_channel *channel_fix1;
+		struct ast_channel *channel_fix2;
+		struct ast_channel *channel_adapt;
+		struct ast_channel *channel_record;
+		struct ast_frame *frame;
+		#endif
+		struct dsp *DSP;
+		struct dsp *DSP_ivr;	//!< own DSP for ivrdetect (early media), the shared DSP state stays untouched
+		int lastframetype;
+		int pinformed;
+	} jb;
+
+	/* Codec, payload, packetization and media flags (64B = CL 3) */
+	struct s_media {
+		void init() {
+			codec = -1;
+			prev_payload = -1;
+			prev_codec = -1;
+			payload2 = -1;
+			first_codec = -1;
+			packetization = 0;
+			last_packetization = 0;
+			packetization_iterator = 0;
+			default_packetization = 0;
+			samplerate = 8000;
+			sid = false;
+			prev_sid = false;
+			avg_ptime = 0;
+			avg_ptime_count = 0;
+			change_packetization_iterator = 0;
+			lastcng = 0;
+			had_audio = false;
+			defer_codec_change = false;
+			codecchanged = false;
+			changing_codec = false;
+			sdp_flags = s_sdp_flags_base();
+			stopped_jb_due_to_high_ooo = false;
+		}
+		int codec;
+		int prev_payload;
+		int prev_codec;
+		int payload2;
+		int first_codec;
+		int packetization;		//!< packetization in milliseconds
+		int last_packetization;		//!< last packetization in milliseconds
+		int packetization_iterator;
+		int default_packetization;
+		unsigned int samplerate;
+		int sid;
+		int prev_sid;
+		float avg_ptime;
+		u_int32_t avg_ptime_count;
+		uint8_t change_packetization_iterator;
+		char lastcng;
+		bool had_audio;
+		bool defer_codec_change;
+		bool codecchanged;
+		bool changing_codec;
+		s_sdp_flags_base sdp_flags;
+		bool stopped_jb_due_to_high_ooo;
+	} media;
+
+	/* Packet timing, voice frame timestamps and instantaneous jitter (72B) */
+	struct s_timing {
+		void init() {
+			memset(this, 0, sizeof(*this));
+		}
+		u_int64_t first_packet_time_us;
+		u_int64_t last_packet_time_us;
+		u_int64_t next_save_mos_graph_us;
+		timeval _last_ts;
+		timeval last_voice_frame_ts;
+		double jitter;
+		uint32_t last_voice_frame_timestamp;
+		char save_mos_graph_wait;
+		bool pcap_header_ts_bad_time;
+	} timing;
+
+	/* IP TTL running statistics (16B) */
+	struct s_ttl {
+		void init() {
+			sum = 0;
+			count = 0;
+			min = -1;
+			max = -1;
+		}
+		u_int64_t sum;
+		u_int32_t count;
+		int16_t min;
+		int16_t max;
+	} ttl;
+
+	/* Forced marker state (8B) */
+	struct s_forcemark {
+		void init() {
+			owner_used = 0;
+			mark = 0;
+			mark2 = 0;
+			by_owner = false;
+			by_owner_set = false;
+		}
+		unsigned owner_used;
+		u_int8_t mark;
+		u_int8_t mark2;
+		bool by_owner;
+		bool by_owner_set;
+	} forcemark;
+
+private:
+	/* Call / CallBranch stream linkage (32B, kept hot with CL 5) */
+	struct s_call_link {
+		void init() {
+			c_branch_created = NULL;
+			index_call_ip_port = -1;
+			index_call_ip_port_other_side = -1;
+			call_ipport_n_orig = 0;
+			leg_index = -1;
+			leg_view_index = -1;
+			index_call_ip_port_by_dest = false;
+			stopReadProcessing = false;
+			stream_in_multiple_calls = false;
+		}
+		class CallBranch *c_branch_created;
+		int index_call_ip_port;
+		int index_call_ip_port_other_side;
+		int call_ipport_n_orig;
+		int leg_index;
+		int leg_view_index;
+		bool index_call_ip_port_by_dest;
+		bool stopReadProcessing;
+		bool stream_in_multiple_calls;
+	} link;
+
+public:
+	/* Per-packet loss, delay and jitter statistics (112B, starts on CL 6) */
 	struct stats_t {
-		u_int32_t	d50;	//!< delay from 0 to 50
-		u_int32_t	d70;
-		u_int32_t	d90;
-		u_int32_t	d120; 
-		u_int32_t	d150; 
-		u_int32_t	d200; 
-		u_int32_t	d300;
-
-		u_int32_t	slost[11];	//!< lost counts
-		
-		u_int32_t	received;	//!< overall received packets
-		u_int32_t	lost;		//!< overall lost packets (real)
+		void init() {
+			memset(this, 0, sizeof(*this));
+		}
+		// Hot per-packet fields in first cache line
+		double		avgjitter;
+		double		maxjitter;
+		u_int32_t	received;		//!< overall received packets
+		u_int32_t	lost;			//!< overall lost packets (real)
 		u_int32_t	lost_with_reinvite_gaps;
 		u_int32_t	reordered;
-		int		last_lost;	//!< last overall lost packepts
-		double 		avgjitter;
-		double 		maxjitter;
+		int		last_lost;		//!< last overall lost packets
+
+		// Delay & serial-loss histograms (only touched on delay >= 50ms or loss)
+		u_int32_t	d50;			//!< delay from 0 to 50
+		u_int32_t	d70;
+		u_int32_t	d90;
+		u_int32_t	d120;
+		u_int32_t	d150;
+		u_int32_t	d200;
+		u_int32_t	d300;
+		u_int32_t	slost[11];		//!< lost counts
 	} stats;
 
-	typedef struct {
-		u_int16_t max_seq;		//!< highest seq. number seen 
+	/* RFC 3550 per-source sequence & delay state (120B, embedded directly) */
+	struct source {
+		void init() {
+			memset(this, 0, sizeof(*this));
+			first = true;
+		}
 		int64_t cycles;			//!< shifted count of seq. number cycles
+		double fdelay;
+		double prevjitter;
+		double avgdelay;
+		struct timeval lastTimeRec;	//!< last received time from pcap packet header
+		struct timeval lastTimeRecJ;	//!< last received time from pcap packet header for jitterbuffer
 		u_int32_t base_seq;		//!< base seq number
 		u_int32_t bad_seq;		//!< last 'bad' seq number + 1
 		u_int32_t probation;		//!< sequ. packets till source is valid
 		u_int32_t received;		//!< packets received
+		u_int32_t lastTimeStamp;	//!< last received timestamp from RTP header
+		u_int32_t lastTimeStampJ;	//!< last received timestamp from RTP header for jitterbuffer
 		u_int32_t expected_prior;	//!< packet expected at last interval
 		u_int32_t received_prior;	//!< packet received at last interval
 		u_int32_t transit;		//!< relative trans time for prev pkt
 		u_int32_t jitter;		//!< estimated jitter
 		u_int32_t lost;			//!< lost packets
-		struct timeval lastTimeRec;	//!< last received time from pcap packet header
-		struct timeval lastTimeRecJ;	//!< last received time from pcap packet header for jitterbuffer
-		u_int32_t lastTimeStamp;	//!< last received timestamp from RTP header
-		u_int32_t lastTimeStampJ;	//!< last received timestamp from RTP header for jitterbuffer
 		int delay;
-		double fdelay;
-		double prevjitter;
-		double avgdelay;
-	} source;
+		u_int16_t max_seq;		//!< highest seq. number seen
+		bool first;
+	};
 
-	source *s;
-	source s_inline;
-	float avgdelays[30];
+	source s;
 
-	// ===== Warm / cold fields moved below hot per-packet region =====
-	bool change_src_port;
-	bool change_dst_port;
-	bool find_by_dest;
-	bool ok_other_ip_side_by_sip;
-	u_int16_t sdp_ptime;
-	int frame_size;
-	int bit_rate;
-	int rtpmap_call_index;
-	int rtpmap_other_side_call_index;
-	int ssrc_index;		//!< index 
-	int pinformed;
-	unsigned int last_end_timestamp;
-	char lastdtmf;
-	uint8_t dscp;
-	bool skip;
-	u_int64_t last_save_mos_graph_ms;
-	u_int64_t last_call_save_mos_graph_ms;
-	uint8_t	mosf1_min;
-	uint8_t	mosf2_min;
-	uint8_t	mosAD_min;
-	uint8_t	mosSilence_min;
-	float	mosf1_avg;
-	float	mosf2_avg;
-	float	mosAD_avg;
-	float	mosSilence_avg;
-	uint64_t mos_time_ms;
-	uint32_t last_stat_lost;
-	uint32_t last_stat_received;
-	double last_stat_loss_perc_mult10;
-	uint32_t tailedframes;
-	bool last_was_silence;
-	uint32_t sum_silence_changes;
-	bool confirm_both_sides_by_sdp;
-	unsigned char last_interval_mosf1;
-	unsigned char last_interval_mosf2;
-	unsigned char last_interval_mosAD;
-	unsigned char last_interval_mosSilence;
+	/* Sliding 30-packet delay average window (128B) */
+	struct s_delay_win {
+		void init() {
+			counter = 0;
+			idx = 0;
+		}
+		float avgdelays[30];
+		uint32_t counter;
+		uint8_t idx;
+	} delay_win;
 
-	/* RTCP data */
+private:
+	/* SRTP decryption state (40B; hot decrypt/is_srtp checked per packet in first 16B) */
+	struct s_srtp {
+		void init() {
+			decrypt = NULL;
+			auth_tag_size = 0;
+			is_srtp = false;
+			probably_unencrypted_payload = false;
+			decrypt_local = false;
+			tag_verified = false;
+			decrypt_index_call_ip_port = -1;
+			decrypt_rtp_attempt[0] = 0;
+			decrypt_rtp_attempt[1] = 0;
+			decrypt_ok = 0;
+			decrypt_failed = 0;
+		}
+		class RTPsecure *decrypt;
+		unsigned auth_tag_size;
+		bool is_srtp;
+		bool probably_unencrypted_payload;
+		bool decrypt_local;
+		bool tag_verified;
+		int decrypt_index_call_ip_port;
+		unsigned decrypt_rtp_attempt[2];
+		unsigned decrypt_ok;
+		unsigned decrypt_failed;
+	} srtp;
+
+	cDuplCheckSeq dupl_check_seq;	//!< per-packet seq duplicate ringbuffer (44B, CL 12)
+	int nintervals;			//!< graph delimiter packet interval counter (4B, CL 12)
+
+public:
+	RtpGraphSaver graph;		//!< per-packet when FLAG_SAVEGRAPH is active (64B, CL 13)
+
+	// =========================================================================
+	// ZONE 2: WARM / COLD substructures (periodic / RTCP / setup / recording)
+	// =========================================================================
+
+	/* Periodic (10s) MOS & interval loss statistics (64B = 1 CL) */
+	struct s_mos {
+		void init() {
+			last_save_graph_ms = 0;
+			last_call_save_graph_ms = 0;
+			time_ms = 0;
+			last_stat_loss_perc_mult10 = 0;
+			f1_avg = 0;
+			f2_avg = 0;
+			AD_avg = 0;
+			Silence_avg = 0;
+			last_stat_lost = 0;
+			last_stat_received = 0;
+			f1_min = 45;
+			f2_min = 45;
+			AD_min = 45;
+			Silence_min = (uint8_t)-1;
+			last_interval_f1 = 45;
+			last_interval_f2 = 45;
+			last_interval_AD = 45;
+			last_interval_Silence = 45;
+		}
+		u_int64_t last_save_graph_ms;
+		u_int64_t last_call_save_graph_ms;
+		uint64_t time_ms;
+		double last_stat_loss_perc_mult10;
+		float f1_avg;
+		float f2_avg;
+		float AD_avg;
+		float Silence_avg;
+		uint32_t last_stat_lost;
+		uint32_t last_stat_received;
+		uint8_t f1_min;
+		uint8_t f2_min;
+		uint8_t AD_min;
+		uint8_t Silence_min;
+		unsigned char last_interval_f1;
+		unsigned char last_interval_f2;
+		unsigned char last_interval_AD;
+		unsigned char last_interval_Silence;
+	} mos;
+
+	/* SDP negotiation metadata, DSCP, skip & port-change flags (32B) */
+	struct s_sdp {
+		void init() {
+			frame_size = 0;
+			bit_rate = 0;
+			rtpmap_call_index = -1;
+			rtpmap_other_side_call_index = -1;
+			ssrc_index = 0;
+			ptime = 0;
+			dscp = 0;
+			skip = false;
+			change_src_port = false;
+			change_dst_port = false;
+			find_by_dest = false;
+			ok_other_ip_side_by_sip = false;
+			confirm_both_sides_by_sdp = false;
+		}
+		int frame_size;
+		int bit_rate;
+		int rtpmap_call_index;
+		int rtpmap_other_side_call_index;
+		int ssrc_index;		//!< index
+		u_int16_t ptime;
+		uint8_t dscp;
+		bool skip;
+		bool change_src_port;
+		bool change_dst_port;
+		bool find_by_dest;
+		bool ok_other_ip_side_by_sip;
+		bool confirm_both_sides_by_sdp;
+	} sdp;
+
+	/* RFC 2833 DTMF state (8B) */
+	struct s_dtmf_state {
+		void init() {
+			last_end_timestamp = 0;
+			lastdtmf = 0;
+		}
+		unsigned int last_end_timestamp;
+		char lastdtmf;
+	} dtmf;
+
+	/* Silence detection & jitterbuffer tail counters (12B) */
+	struct s_silence {
+		void init() {
+			tailedframes = 0;
+			sum_changes = 0;
+			last_was_silence = false;
+		}
+		uint32_t tailedframes;
+		uint32_t sum_changes;
+		bool last_was_silence;
+	} silence;
+
+	/* RTCP data (64B = 1 CL) */
 	struct rtcp_t {
+		void init() {
+			memset(this, 0, sizeof(*this));
+		}
+		double avgfr;
+		double avgjitter;
 		int loss;
 		unsigned int maxfr;
-		double avgfr;
 		unsigned int maxjitter;
-		double avgjitter;
 		unsigned int counter;
 		unsigned int jitt_counter;
 		unsigned int fraclost_pkt_counter;
 		unsigned int rtd_rfc_sum;	/* roundtrip delay */
 		unsigned int rtd_rfc_count;
 		unsigned int rtd_rfc_max;
-		unsigned int rtd_ws_sum;	/* roundtrip delay by wireshark*/
+		unsigned int rtd_ws_sum;	/* roundtrip delay by wireshark */
 		unsigned int rtd_ws_count;
 		unsigned int rtd_ws_max;
 	} rtcp;
 
+	/* RTCP XR data (32B) */
 	struct rtcp_xr_t {
-		uint8_t 	maxfr;
-		double 		avgfr;
-		uint8_t		minmos;
-		double 		avgmos;
+		void init() {
+			memset(this, 0, sizeof(*this));
+			minmos = 45;
+		}
+		double avgfr;
+		double avgmos;
 		unsigned int counter_fr;
 		unsigned int counter_mos;
+		uint8_t maxfr;
+		uint8_t minmos;
 	} rtcp_xr;
 
-	RtpGraphSaver graph;
-	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
-	FILE *gfileRAW;	 //!< file for storing RTP payload in RAW format
-	volatile int gfileRAW_lock;
-	bool initRAW;
-	bool needInitRawForChannelRecord;
-	char *gfileRAW_buffer;
-	int rawiterator;	//!< iterator for raw file name 
-	char basefilename[1024];
-	#endif
-	char gfilename[1024];	//!< file name of this file 
-	u_int16_t channel_record_seq_ringbuffer[50];
-	u_int16_t channel_record_seq_ringbuffer_pos;
-	RTPMAP rtpmap[MAX_RTPMAP];
-	RTPMAP rtpmap_other_side[MAX_RTPMAP];
+	/* RAW audio recording state & deduplication ringbuffer */
+	struct s_raw {
+		void init() {
+			#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
+			gfile = NULL;
+			gfile_buffer = NULL;
+			gfile_lock = 0;
+			iterator = 0;
+			init_done = false;
+			need_init_for_channel_record = false;
+			#endif
+			memset(seq_ringbuffer, 0, sizeof(seq_ringbuffer));
+			seq_ringbuffer_pos = 0;
+		}
+		#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
+		FILE *gfile;			//!< file for storing RTP payload in RAW format
+		char *gfile_buffer;
+		volatile int gfile_lock;
+		int iterator;			//!< iterator for raw file name
+		bool init_done;
+		bool need_init_for_channel_record;
+		#endif
+		u_int16_t seq_ringbuffer[50];
+		u_int16_t seq_ringbuffer_pos;
+	} raw;
+
+	/* Output filename buffers (2048B) */
+	struct s_files {
+		void init() {
+			#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
+			basefilename[0] = '\0';
+			#endif
+			gfilename[0] = '\0';
+		}
+		#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
+		char basefilename[1024];
+		#endif
+		char gfilename[1024];		//!< file name of graph file
+	} files;
+
+	/* Dynamic payload RTPMAP tables (640B) */
+	struct s_rtpmap {
+		void init() {
+			memset((void*)local, 0, sizeof(local));
+			memset((void*)other_side, 0, sizeof(other_side));
+		}
+		RTPMAP local[MAX_RTPMAP];
+		RTPMAP other_side[MAX_RTPMAP];
+	} rtpmap;
 
 	/**
 	* constructor which allocates and zeroing stats structure
@@ -661,9 +952,9 @@ public:
 	 *
 	 * @return received packets
 	*/
-	const u_int32_t getReceived() { return s->received; };
+	const u_int32_t getReceived() { return s.received; };
 
-	inline const int getMarker() { return getHeader()->marker ? 1 : forcemark; };
+	inline const int getMarker() { return getHeader()->marker ? 1 : forcemark.mark; };
 	
 	inline const bool isSetMarkerInHeader() { return getHeader()->marker; };
 	static inline const bool isSetMarkerInHeader(void *data) { return getHeader(data)->marker; };
@@ -712,10 +1003,10 @@ public:
 	*/
 	const int get_payload_len();
 	inline const int get_payload_len_fast() {
-		if(__builtin_expect(data[0] == 0x80, 1)) {
-			payload_data = data + sizeof(RTPFixedHeader);
-			payload_len = len - sizeof(RTPFixedHeader);
-			return payload_len;
+		if(__builtin_expect(pkt.data[0] == 0x80, 1)) {
+			pkt.payload_data = pkt.data + sizeof(RTPFixedHeader);
+			pkt.payload_len = pkt.len - sizeof(RTPFixedHeader);
+			return pkt.payload_len;
 		}
 		return get_payload_len();
 	}
@@ -752,33 +1043,33 @@ public:
 	 *
 	 * @return count of lost packets
 	*/
-	u_int32_t getLost() { return s->probation ? 0 : ((s->cycles + s->max_seq) - s->base_seq + 1) - s->received; };
+	u_int32_t getLost() { return s.probation ? 0 : ((s.cycles + s.max_seq) - s.base_seq + 1) - s.received; };
 
 	void save_mos_graph(bool delimiter);
 	
 	inline void clearAudioBuff(class Call *call, ast_channel *channel);
 	
 	bool eqAddrPort(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport) {
-		return(this->sport == sport && this->dport == dport &&
-		       this->saddr == saddr && this->daddr == daddr);
+		return(id.sport == sport && id.dport == dport &&
+		       id.saddr == saddr && id.daddr == daddr);
 	}
 	bool eqAddrPort(RTP *rtp) {
-		return(eqAddrPort(rtp->saddr, rtp->daddr, rtp->sport, rtp->dport));
+		return(eqAddrPort(rtp->id.saddr, rtp->id.daddr, rtp->id.sport, rtp->id.dport));
 	}
 	
 	bool checkDuplChannelRecordSeq(u_int16_t seq) {
 		extern int opt_saveaudio_dedup_seq;
 		if(opt_saveaudio_dedup_seq) {
-			unsigned ringbuffer_length = sizeof(channel_record_seq_ringbuffer) / sizeof(channel_record_seq_ringbuffer[0]);
+			unsigned ringbuffer_length = sizeof(raw.seq_ringbuffer) / sizeof(raw.seq_ringbuffer[0]);
 			for(unsigned i = 0; i < ringbuffer_length; i++) {
-				if(seq == channel_record_seq_ringbuffer[i]) {
+				if(seq == raw.seq_ringbuffer[i]) {
 					return(false);
 				}
 			}
-			channel_record_seq_ringbuffer[channel_record_seq_ringbuffer_pos] = seq;
-			++channel_record_seq_ringbuffer_pos;
-			if(channel_record_seq_ringbuffer_pos >= ringbuffer_length) {
-				channel_record_seq_ringbuffer_pos = 0;
+			raw.seq_ringbuffer[raw.seq_ringbuffer_pos] = seq;
+			++raw.seq_ringbuffer_pos;
+			if(raw.seq_ringbuffer_pos >= ringbuffer_length) {
+				raw.seq_ringbuffer_pos = 0;
 			}
 		}
 		return(true);
@@ -808,7 +1099,7 @@ public:
 	void addEnergyLevel(void *data, int datalen, int codec);
 	
 	bool is_video() {
-		return(sdp_flags.is_mt_video());
+		return(media.sdp_flags.is_mt_video());
 	}
 	bool allowed_for_ab() {
 		return(!is_video());
@@ -841,13 +1132,13 @@ public:
 			0);
 	}
 	inline int first_codec_() {
-		return(first_codec);
+		return(media.first_codec);
 	}
 	inline void set_first_codec_(int c) {
-		first_codec = c;
+		media.first_codec = c;
 	}
 	inline bool ok_other_ip_side_by_sip_() {
-		return(ok_other_ip_side_by_sip);
+		return(sdp.ok_other_ip_side_by_sip);
 	}
 	
 	RTPMAP *get_rtpmap(class Call *call, class CallBranch *c_branch, bool other_side = false);
@@ -856,21 +1147,17 @@ public:
 	
 	bool channel_is_adaptive(struct ast_channel *channel);
 	bool channel_record_is_adaptive() {
-		return(channel_is_adaptive(channel_record));
+		#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
+		return(channel_is_adaptive(jb.channel_record));
+		#else
+		return(false);
+		#endif
 	}
 	
 	string getJson();
 	
 private: 
-	/*
-	* Per-source state information
-	*/
-
-	struct timeval header_ts;
-	bool first;
-	int nintervals;
-
-	inline RTPFixedHeader* getHeader() const { return reinterpret_cast<RTPFixedHeader*>(data); }
+	inline RTPFixedHeader* getHeader() const { return reinterpret_cast<RTPFixedHeader*>(pkt.data); }
 	static inline RTPFixedHeader* getHeader(void *data) { return reinterpret_cast<RTPFixedHeader*>(data); }
 	
 	void update_stats();
@@ -879,45 +1166,42 @@ private:
 	void init_seq(u_int16_t seq);
 	int update_seq(u_int16_t seq);
 
-	int sensor_id;
-	vmIP sensor_ip;
-	int index_call_ip_port;
-	int index_call_ip_port_other_side;
-	bool index_call_ip_port_by_dest;
-	int leg_index;
-	int leg_view_index;
-	class CallBranch *c_branch_created;
-	
-	int _last_sensor_id;
-	char _last_ifname[10];
-	
-	u_int64_t lastTimeSyslog;
-	
-	bool stopReadProcessing;
-	
-	class RTPsecure *srtp_decrypt;
-	bool srtp_decrypt_local;
-	int srtp_decrypt_index_call_ip_port;
-	bool is_srtp;
-	unsigned srtp_auth_tag_size;
-	bool srtp_tag_verified;
-	
+	// ===== Cold private substructures =====
+
+	/* Energy levels recording state (16B) */
+	struct s_energy {
+		void init() {
+			buf = NULL;
+			counter = 0;
+			last_seq = 0;
+			via_jb = false;
+		}
+		SimpleChunkBuffer *buf;
+		u_int32_t counter;
+		u_int16_t last_seq;
+		bool via_jb;
+	} energy;
+
 	sRSA rsa;
-	
-	SimpleChunkBuffer *energylevels;
-	u_int16_t energylevels_last_seq;
-	bool energylevels_via_jb;
-	u_int32_t energylevels_counter;
-	
-	int call_ipport_n_orig;
-	unsigned decrypt_rtp_attempt[2];
-	unsigned decrypt_srtp_ok;
-	unsigned decrypt_srtp_failed;
-	bool probably_unencrypted_payload;
-	
-	unsigned read_rtp_counter;
-	
-	cDuplCheckSeq dupl_check_seq;
+
+	/* Sensor metadata, syslog throttling and debug counters (56B) */
+	struct s_diag {
+		void init(int sensor_id_, vmIP sensor_ip_) {
+			lastTimeSyslog = 0;
+			sensor_ip = sensor_ip_;
+			sensor_id = sensor_id_;
+			_last_sensor_id = 0;
+			read_rtp_counter = 0;
+			_last_ifname[0] = '\0';
+		}
+		u_int64_t lastTimeSyslog;
+		vmIP sensor_ip;
+		int sensor_id;
+		int _last_sensor_id;
+		unsigned read_rtp_counter;
+		char _last_ifname[10];
+	} diag;
+
 friend class Call;
 friend class RTPsecure;
 };

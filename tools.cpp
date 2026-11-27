@@ -2152,8 +2152,8 @@ bool RtpGraphSaver::open(eTypeSpoolFile typeSpoolFile, const char *fileName) {
 	}
 	*/
 	this->handle = new FILE_LINE(38003) FileZipHandler(opt_pcap_dump_bufflength, -1, opt_gzipGRAPH,
-							   false, rtp && rtp->call_owner ? (Call*)rtp->call_owner : 0,
-							   FileZipHandler::graph_rtp, rtp ? rtp->ssrc_index : 0);
+							   false, rtp && rtp->id.call_owner ? (Call*)rtp->id.call_owner : 0,
+							   FileZipHandler::graph_rtp, rtp ? rtp->sdp.ssrc_index : 0);
 	if(!this->handle->open(typeSpoolFile, fileName)) {
 		syslog(LOG_NOTICE, "graphsaver: error open file %s - %s", fileName, this->handle->error.c_str());
 		delete this->handle;
@@ -2194,7 +2194,7 @@ void RtpGraphSaver::close(bool updateFilesQueue) {
 	this->enableAutoOpen = false;
 	if(this->isOpen()) {
 		#if not EXPERIMENTAL_LITE_RTP_MOD
-		uint16_t packetization = uint16_t(this->rtp->packetization);
+		uint16_t packetization = uint16_t(this->rtp->media.packetization);
 		this->write((char*)&packetization, 2);
 		#endif
 		if(!this->handle->enableAsyncWrite) {
@@ -2202,7 +2202,7 @@ void RtpGraphSaver::close(bool updateFilesQueue) {
 			delete this->handle;
 			this->handle = NULL;
 		} else {
-			Call *call = (Call*)this->rtp->call_owner;
+			Call *call = (Call*)this->rtp->id.call_owner;
 			if(call) {
 				asyncClose->add(this->handle, updateFilesQueue,
 						call, this,

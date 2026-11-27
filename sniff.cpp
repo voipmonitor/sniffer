@@ -9618,7 +9618,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 							}
 						}
 						if(payload_dump[rtp_stream_filename]) {
-							fwrite(rtp.payload_data, 1, payload_len, payload_dump[rtp_stream_filename]);
+							fwrite(rtp.pkt.payload_data, 1, payload_len, payload_dump[rtp_stream_filename]);
 						}
 					}
 				}

@@ -122,11 +122,11 @@ void cSeparateProcessing::sendRtpStreams(Call *call) {
 		for(unsigned i = 0; i < count_streams; i++) {
 			RTP *rtp = call->rtp_stream_by_index(i);
 			memset((void*)&streams[i], 0, sizeof(cSeparateProcessing::sDataRtpStream));
-			streams[i].saddr = rtp->saddr;
-			streams[i].daddr = rtp->daddr;
-			streams[i].sport = rtp->sport;
-			streams[i].dport = rtp->dport;
-			streams[i].ssrc = rtp->ssrc;
+			streams[i].saddr = rtp->id.saddr;
+			streams[i].daddr = rtp->id.daddr;
+			streams[i].sport = rtp->id.sport;
+			streams[i].dport = rtp->id.dport;
+			streams[i].ssrc = rtp->id.ssrc;
 			streams[i].first_codec = rtp->first_codec_();
 			streams[i].received = rtp->received_();
 			streams[i].lost = rtp->lost_();
@@ -628,11 +628,11 @@ void cSeparateProcessing::processRtpStreams(const char *call_id, u_int32_t count
 				#else
 				rtp = new FILE_LINE(0) RTP;
 				#endif
-				rtp->saddr = streams[i].saddr;
-				rtp->daddr = streams[i].daddr;
-				rtp->sport = streams[i].sport;
-				rtp->dport = streams[i].dport;
-				rtp->ssrc = streams[i].ssrc;
+				rtp->id.saddr = streams[i].saddr;
+				rtp->id.daddr = streams[i].daddr;
+				rtp->id.sport = streams[i].sport;
+				rtp->id.dport = streams[i].dport;
+				rtp->id.ssrc = streams[i].ssrc;
 				rtp->set_first_codec_(streams[i].first_codec);
 				rtp->set_received_(streams[i].received);
 				rtp->set_lost_(streams[i].lost);

@@ -1006,7 +1006,7 @@ public:
 			}
 			RTP *rtp = side == 0 ? call->lastactivecallerrtp : call->lastactivecalledrtp;
 			if(rtp) {
-				return(rtp->saddr);
+				return(rtp->id.saddr);
 			}
 			return(0);
 			}

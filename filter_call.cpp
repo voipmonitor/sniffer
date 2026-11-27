@@ -1418,8 +1418,8 @@ void cRecordFilterItem_Call::getSaddrExists(void *rec, bool *a_saddr, bool *b_sa
 
 int cRecordFilterItem_Call::rtpMosF2Mult10(RTP *rtp) {
 	#if not EXPERIMENTAL_LITE_RTP_MOD
-	if(rtp && rtp->mosf2_avg > 0) {
-		return(LIMIT_TINYINT_UNSIGNED((int)round(rtp->mosf2_avg)));
+	if(rtp && rtp->mos.f2_avg > 0) {
+		return(LIMIT_TINYINT_UNSIGNED((int)round(rtp->mos.f2_avg)));
 	}
 	#endif
 	return(-1);
@@ -3095,7 +3095,7 @@ double cCallFilter::getField_float(void *rec, unsigned registerFieldIndex, bool 
 			#if not EXPERIMENTAL_LITE_RTP_MOD
 			RTP *rtp = registerFieldIndex == cf_dscp_caller_rtp ? call->lastactivecallerrtp : call->lastactivecalledrtp;
 			if(rtp) {
-				rslt = rtp->dscp;
+				rslt = rtp->sdp.dscp;
 			}
 			#endif
 		}

@@ -1132,8 +1132,8 @@ void cChartInterval::sCdrProblems::add(sChartsCallData *call_data, int src_dst) 
 		}
 		bye = call->rslt_save_cdr_bye;
 		flags = call->rslt_save_cdr_flags;
-		rtp_a_set = call->rtpab[0] && call->rtpab[0]->saddr.isSet();
-		rtp_b_set = call->rtpab[1] && call->rtpab[1]->saddr.isSet();
+		rtp_a_set = call->rtpab[0] && call->rtpab[0]->id.saddr.isSet();
+		rtp_b_set = call->rtpab[1] && call->rtpab[1]->id.saddr.isSet();
 	} else {
 		Call::getChartCacheValue(call_data->tables_content(), src_dst == 0 ? _chartType_mos_caller : _chartType_mos_called, &mos, NULL, &mos_null, chartsCache);
 		bool connect_duration_null;
@@ -1452,8 +1452,8 @@ void cChartInterval::add_summary(sChartsCallData *call, unsigned call_interval, 
 					bool exists_rtp;
 					if(call->type == sChartsCallData::_call) {
 						connected = call->call()->connect_time_us != 0;
-						exists_rtp = (call->call()->rtpab[0] && call->call()->rtpab[0]->saddr.isSet()) ||
-							     (call->call()->rtpab[1] && call->call()->rtpab[1]->saddr.isSet());
+						exists_rtp = (call->call()->rtpab[0] && call->call()->rtpab[0]->id.saddr.isSet()) ||
+							     (call->call()->rtpab[1] && call->call()->rtpab[1]->id.saddr.isSet());
 					} else {
 						bool connect_duration_null;
 						call->tables_content()->getValue_int(_t_cdr, "connect_duration", false, &connect_duration_null);

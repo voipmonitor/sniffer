@@ -349,8 +349,8 @@ static inline RTP *find_rtp(Call *call, u_int32_t ssrc, u_int32_t ssrc_sender, v
 	if(ssrc) {
 		for(int i = 0; i < call->rtp_size(); i++) { 
 			RTP *rtp_i = call->rtp_stream_by_index(i);
-			if(rtp_i->ssrc == ssrc &&
-			   rtp_i->saddr == ip_dst && rtp_i->daddr == ip_src) {
+			if(rtp_i->id.ssrc == ssrc &&
+			   rtp_i->id.saddr == ip_dst && rtp_i->id.daddr == ip_src) {
 				rtp = rtp_i;
 				*rtp_find_type = 1;
 			}
@@ -359,14 +359,14 @@ static inline RTP *find_rtp(Call *call, u_int32_t ssrc, u_int32_t ssrc_sender, v
 	if(!rtp && ssrc_sender) {
 		for(int i = 0; i < call->rtp_size() && !rtp; i++) { 
 			RTP *rtp_i = call->rtp_stream_by_index(i);
-			if(rtp_i->ssrc == ssrc_sender &&
-			   rtp_i->saddr == ip_src && rtp_i->daddr == ip_dst) {
+			if(rtp_i->id.ssrc == ssrc_sender &&
+			   rtp_i->id.saddr == ip_src && rtp_i->id.daddr == ip_dst) {
 				RTP *_rtp = NULL;
 				int c = 0;
 				for(int j = 0; j < call->rtp_size(); j++) { 
 					if(j != i) {
 						RTP *rtp_j = call->rtp_stream_by_index(j);
-						if(rtp_j->saddr == ip_dst && rtp_j->daddr == ip_src) {
+						if(rtp_j->id.saddr == ip_dst && rtp_j->id.daddr == ip_src) {
 							_rtp = rtp_j;
 							++c;
 						}
@@ -383,7 +383,7 @@ static inline RTP *find_rtp(Call *call, u_int32_t ssrc, u_int32_t ssrc_sender, v
 	if(!rtp) {
 		for(int i = 0; i < call->rtp_size(); i++) { 
 			RTP *rtp_i = call->rtp_stream_by_index(i);
-			if(rtp_i->ssrc == ssrc) {
+			if(rtp_i->id.ssrc == ssrc) {
 				rtp = rtp_i;
 				*rtp_find_type = 3;
 			}
@@ -550,7 +550,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_br
 				if(sverb.debug_rtcp) {
 					cout << "sSSRC: " << hex << reportblock.ssrc << dec
 					     << " " << ip_src.getString() << "->" << ip_dst.getString() << " (" <<  rtp_find_type << ")"
-					     << " RTP->ssrc_index: " << rtp->ssrc_index
+					     << " RTP->ssrc_index: " << rtp->sdp.ssrc_index
 					     << " Fraction lost: " << (int)reportblock.frac_lost
 					     << " Packets lost: " << loss
 					     << " Highest seqno received: " << reportblock.ext_seqno_recvd
@@ -680,7 +680,7 @@ char *dump_rtcp_rr(char *data, int datalen, int count, CallBranch *c_branch, str
 				if(sverb.debug_rtcp) {
 					cout << "rSSRC: " << hex << reportblock.ssrc << dec
 					     << " " << ip_src.getString() << "->" << ip_dst.getString() << " (" <<  rtp_find_type << ")"
-					     << " RTP->ssrc_index: " << rtp->ssrc_index
+					     << " RTP->ssrc_index: " << rtp->sdp.ssrc_index
 					     << " Fraction lost: " << (int)reportblock.frac_lost
 					     << " Packets lost: " << loss
 					     << " Highest seqno received: " << reportblock.ext_seqno_recvd
@@ -865,7 +865,7 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int all_block_size, CallBran
 		unsigned count_use_rtp = 0;
 		#if not EXPERIMENTAL_LITE_RTP_MOD
 		for(int i = 0; i < c_branch->call->rtp_size(); i++) { RTP *rtp_i = c_branch->call->rtp_stream_by_index(i);
-			if(rtp_i->ssrc == ntohl(xr->ssrc)) {
+			if(rtp_i->id.ssrc == ntohl(xr->ssrc)) {
 				RTP *rtp = rtp_i;
 				rtp->rtcp_xr.counter_fr++;
 				rtp->rtcp_xr.maxfr = (rtp->rtcp_xr.maxfr < xr->loss_rate) ? xr->loss_rate : rtp->rtcp_xr.maxfr;
