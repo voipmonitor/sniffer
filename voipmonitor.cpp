@@ -1578,6 +1578,7 @@ int opt_sip_tcp_reassembly_stream_max_attempts = 200;
 int opt_sip_tcp_reassembly_stream_max_length = 0;
 int opt_sip_tcp_reassembly_clean_period = 10;
 bool opt_sip_tcp_reassembly_ext = true;
+bool opt_sip_tcp_reassembly_ext_stream = true;
 int opt_sip_tcp_reassembly_ext_link_timeout = 0;
 int opt_sip_tcp_reassembly_ext_quick_mod = 0;
 int opt_sip_tcp_reassembly_ext_complete_mod = 1;
@@ -5517,7 +5518,9 @@ int main_init_read() {
 			tcpReassemblySipExt->setMaxStreamLength(opt_sip_tcp_reassembly_stream_max_length);
 		}
 		tcpReassemblySipExt->setLinkTimeout(opt_sip_tcp_reassembly_ext_link_timeout ? opt_sip_tcp_reassembly_ext_link_timeout : 10);
-		if(opt_sip_tcp_reassembly_ext_quick_mod & 2) {
+		if(opt_sip_tcp_reassembly_ext_stream) {
+			tcpReassemblySipExt->setEnableSipStreamEngine(true);
+		} else if(opt_sip_tcp_reassembly_ext_quick_mod & 2) {
 			if(!is_read_from_file()) {
 				tcpReassemblySipExt->setEnableExtCleanupStreams(opt_sip_tcp_reassembly_stream_max_attempts, 25);
 			}
@@ -8204,6 +8207,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_stream_max_length", &opt_sip_tcp_reassembly_stream_max_length));
 				addConfigItem(new FILE_LINE(42463) cConfigItem_integer("sip_tcp_reassembly_clean_period", &opt_sip_tcp_reassembly_clean_period));
 				addConfigItem(new FILE_LINE(42464) cConfigItem_yesno("sip_tcp_reassembly_ext", &opt_sip_tcp_reassembly_ext));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip_tcp_reassembly_ext_stream", &opt_sip_tcp_reassembly_ext_stream));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_ext_link_timeout", &opt_sip_tcp_reassembly_ext_link_timeout));
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip_tcp_reassembly_ext_quick_mod", &opt_sip_tcp_reassembly_ext_quick_mod))
 					->addValues("ext:2|comb_ext:3"));
