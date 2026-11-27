@@ -271,48 +271,48 @@ extern PreProcessPacket **preProcessPacketCallFindX;
 extern int preProcessPacketCallX_count;
 extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
-sSipCausalEpoch g_sip_causal_epoch;
+sSipRtpSync g_sip_rtp_sync;
 
-sSipCausalEpoch::sSipCausalEpoch()
-	: open_epoch(1), last_sealed_epoch(0), open_has_sip(0), completed_epoch(0) {
+sSipRtpSync::sSipRtpSync()
+	: open_seq(1), last_sealed_seq(0), open_has_sip(0), completed_seq(0) {
 	_seal_lock.init();
 	_advance_lock.init();
 	memset((void*)slots, 0, sizeof(slots));
-	slots[1 & RING_MASK].epoch_id = 1;
+	slots[1 & RING_MASK].seq_id = 1;
 	slots[1 & RING_MASK].pending = 1;
 }
 
-u_int32_t sSipCausalEpoch::acquire_packet() {
+u_int32_t sSipRtpSync::acquire_packet() {
 	_seal_lock.lock(0);
-	u_int32_t ep = open_epoch;
-	sSlot *s = &slots[ep & RING_MASK];
+	u_int32_t seq = open_seq;
+	sSlot *s = &slots[seq & RING_MASK];
 	__sync_add_and_fetch(&s->pending, 1);
 	VM_ATOMIC_STORE_RELEASE(open_has_sip, 1);
 	_seal_lock.unlock();
-	return ep;
+	return seq;
 }
 
-u_int32_t sSipCausalEpoch::seal_for_rtp_batch() {
+u_int32_t sSipRtpSync::seal_for_rtp_batch() {
 	if(!ATOMIC_LOAD(open_has_sip)) {
-		return ATOMIC_LOAD(last_sealed_epoch);
+		return ATOMIC_LOAD(last_sealed_seq);
 	}
 	_seal_lock.lock(0);
 	while(true) {
 		if(!open_has_sip) {
-			u_int32_t req = last_sealed_epoch;
+			u_int32_t req = last_sealed_seq;
 			_seal_lock.unlock();
 			return req;
 		}
-		u_int32_t sealed_ep = open_epoch;
-		u_int32_t next_ep = next_id(sealed_ep);
-		if(if_unlikely((u_int32_t)(next_ep - ATOMIC_LOAD(completed_epoch)) >= RING_SIZE)) {
-			// Ring full (1024 consecutive in-flight SIP epochs): wait for oldest epoch to drain.
+		u_int32_t sealed_seq = open_seq;
+		u_int32_t next_seq = next_id(sealed_seq);
+		if(if_unlikely((u_int32_t)(next_seq - ATOMIC_LOAD(completed_seq)) >= RING_SIZE)) {
+			// Ring full (1024 consecutive in-flight SIP sync batches): wait for oldest to drain.
 			_seal_lock.unlock();
 			if(is_terminating()) {
 				return 0;
 			}
 			uint32_t wake_tok = wake.prepare_sleep();
-			if((u_int32_t)(next_ep - ATOMIC_LOAD(completed_epoch)) >= RING_SIZE && !is_terminating()) {
+			if((u_int32_t)(next_seq - ATOMIC_LOAD(completed_seq)) >= RING_SIZE && !is_terminating()) {
 				wake.sleep_if_marked(wake_tok, 1000);
 			} else {
 				wake.cancel_sleep();
@@ -320,29 +320,29 @@ u_int32_t sSipCausalEpoch::seal_for_rtp_batch() {
 			_seal_lock.lock(0);
 			continue;
 		}
-		sSlot *next_slot = &slots[next_ep & RING_MASK];
-		// Publish pending=1 BEFORE epoch_id=next_ep (release) so advance_completed() can never
-		// observe a matching epoch_id with a stale pending==0 from the previous ring wrap.
+		sSlot *next_slot = &slots[next_seq & RING_MASK];
+		// Publish pending=1 BEFORE seq_id=next_seq (release) so advance_completed() can never
+		// observe a matching seq_id with a stale pending==0 from the previous ring wrap.
 		VM_ATOMIC_STORE_RELAXED(next_slot->pending, 1);
-		VM_ATOMIC_STORE_RELEASE(next_slot->epoch_id, next_ep);
-		VM_ATOMIC_STORE_RELEASE(last_sealed_epoch, sealed_ep);
-		open_epoch = next_ep;
+		VM_ATOMIC_STORE_RELEASE(next_slot->seq_id, next_seq);
+		VM_ATOMIC_STORE_RELEASE(last_sealed_seq, sealed_seq);
+		open_seq = next_seq;
 		VM_ATOMIC_STORE_RELEASE(open_has_sip, 0);
 		_seal_lock.unlock();
-		release_ref(sealed_ep);
-		return sealed_ep;
+		release_ref(sealed_seq);
+		return sealed_seq;
 	}
 }
 
-void sSipCausalEpoch::advance_completed() {
+void sSipRtpSync::advance_completed() {
 	_advance_lock.lock(0);
-	u_int32_t cur = completed_epoch;
+	u_int32_t cur = completed_seq;
 	bool advanced = false;
 	while(true) {
 		u_int32_t next = next_id(cur);
 		sSlot *ns = &slots[next & RING_MASK];
-		if(ATOMIC_LOAD(ns->epoch_id) == next && ATOMIC_LOAD(ns->pending) == 0) {
-			VM_ATOMIC_STORE_RELEASE(ns->epoch_id, 0);
+		if(ATOMIC_LOAD(ns->seq_id) == next && ATOMIC_LOAD(ns->pending) == 0) {
+			VM_ATOMIC_STORE_RELEASE(ns->seq_id, 0);
 			cur = next;
 			advanced = true;
 		} else {
@@ -350,19 +350,19 @@ void sSipCausalEpoch::advance_completed() {
 		}
 	}
 	if(advanced) {
-		VM_ATOMIC_STORE_RELEASE(completed_epoch, cur);
+		VM_ATOMIC_STORE_RELEASE(completed_seq, cur);
 		wake.notify_all();
 	}
 	_advance_lock.unlock();
 }
 
-void sSipCausalEpoch::wait_for(u_int32_t req, const volatile bool *term_flag) {
-	for(int sp = 0; sp < 32 && is_before(ATOMIC_LOAD(completed_epoch), req); sp++) {
+void sSipRtpSync::wait_for(u_int32_t req, const volatile bool *term_flag) {
+	for(int sp = 0; sp < 32 && is_before(ATOMIC_LOAD(completed_seq), req); sp++) {
 		__ASM_PAUSE;
 	}
-	while(is_before(ATOMIC_LOAD(completed_epoch), req) && !is_terminating() && (!term_flag || !*term_flag)) {
+	while(is_before(ATOMIC_LOAD(completed_seq), req) && !is_terminating() && (!term_flag || !*term_flag)) {
 		uint32_t wake_tok = wake.prepare_sleep();
-		if(is_before(ATOMIC_LOAD(completed_epoch), req) && !is_terminating() && (!term_flag || !*term_flag)) {
+		if(is_before(ATOMIC_LOAD(completed_seq), req) && !is_terminating() && (!term_flag || !*term_flag)) {
 			wake.sleep_if_marked(wake_tok, 1000);
 		} else {
 			wake.cancel_sleep();
@@ -370,7 +370,7 @@ void sSipCausalEpoch::wait_for(u_int32_t req, const volatile bool *term_flag) {
 	}
 }
 
-static inline bool use_sip_causal_epoch() {
+static inline bool use_sip_rtp_sync() {
 	return opt_pipeline_v2 &&
 	       preProcessPacket[PreProcessPacket::ppt_pp_rtp] &&
 	       !preProcessPacket[PreProcessPacket::ppt_pp_rtp]->isActiveOutThread() &&
@@ -10615,7 +10615,7 @@ void link_packets_queue::destroyAll() {
 packet_s_process *packet_s_process::clone() {
 	packet_s_process *newPacketS = PACKET_S_PROCESS_SIP_CREATE();
 	*newPacketS = *this;
-	newPacketS->clone_sip_epoch_from(this);
+	newPacketS->clone_sip_rtp_sync_from(this);
 	newPacketS->blockstore_clear();
 	pcap_pkthdr *new_header = new FILE_LINE(0) pcap_pkthdr;
 	*new_header = *newPacketS->header_pt;
@@ -10634,7 +10634,7 @@ packet_s_process *packet_s_process::clone() {
 packet_s_process *packet_s_process::clone(u_char *newData, unsigned newDataLength) {
 	packet_s_process *newPacketS = PACKET_S_PROCESS_SIP_CREATE();
 	*newPacketS = *this;
-	newPacketS->clone_sip_epoch_from(this);
+	newPacketS->clone_sip_rtp_sync_from(this);
 	newPacketS->blockstore_clear();
 	long newLen = newDataLength + newPacketS->dataoffset_();
 	pcap_pkthdr *new_header = new FILE_LINE(0) pcap_pkthdr;
@@ -11318,11 +11318,11 @@ inline void PreProcessPacket::process_batch_direct(batch_packet_s_process *batch
 
 static inline void dispatch_ppt_detach_direct_rtp(packet_s_process *p) {
 	if(p->need_sip_process || !p->is_rtp) {
-		if(use_sip_causal_epoch() && p->need_sip_process && !p->pflags.get_tcp()) {
-			p->mark_sip_epoch();
+		if(use_sip_rtp_sync() && p->need_sip_process && !p->pflags.get_tcp()) {
+			p->mark_sip_rtp_sync();
 		}
 		preProcessPacket[PreProcessPacket::ppt_sip]->push_packet(p);
-	} else if(if_likely(use_sip_causal_epoch() && processRtpPacketHash &&
+	} else if(if_likely(use_sip_rtp_sync() && processRtpPacketHash &&
 			    !ENABLE_DTLS_HANDSHAKE_SAFE_LINKS &&
 			    !processing_limitations.suppressRtpAllProcessing())) {
 		processRtpPacketHash->push_packet(p);
@@ -11675,7 +11675,7 @@ void *PreProcessPacket::outThreadFunction() {
 				}
 				if(opt_t2_boost_direct_rtp) {
 					counter_all_packets += batch_detach->count;
-					if(use_sip_causal_epoch()) {
+					if(use_sip_rtp_sync()) {
 						preProcessPacket[ppt_sip]->push_batch();
 					}
 				}
@@ -12561,7 +12561,7 @@ void PreProcessPacket::flushDownstream() {
 	case ppt_detach:
 		preProcessPacket[ppt_sip]->push_batch();
 		if(opt_t2_boost_direct_rtp) {
-			if(use_sip_causal_epoch() && processRtpPacketHash) {
+			if(use_sip_rtp_sync() && processRtpPacketHash) {
 				processRtpPacketHash->push_batch();
 			} else {
 				preProcessPacket[ppt_pp_rtp]->push_batch();
@@ -12845,7 +12845,7 @@ void PreProcessPacket::terminate() {
 	this->term_preProcess = true;
 	this->wake_filled.notify_all();
 	this->wake_free.notify_all();
-	g_sip_causal_epoch.wake.notify_all();
+	g_sip_rtp_sync.wake.notify_all();
 	extern int opt_preprocess_packets_qring_sem_sync;
 	if(opt_preprocess_packets_qring_sem_sync) {
 		sem_post(&this->sem_qring_filled_count);
@@ -13114,7 +13114,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 		}
 	}
 	if(other) {
-		packetS->complete_sip_epoch();
+		packetS->complete_sip_rtp_sync();
 		packetS->init_reuse();
 		packetS->blockstore_addflag(19 /*pb lock flag*/);
 		if(parallel_threads) {
@@ -13125,7 +13125,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 	}
 }
 
-static inline bool sip_packet_needs_causal_epoch(packet_s_process *packetS) {
+static inline bool sip_packet_needs_rtp_sync(packet_s_process *packetS) {
 	if(packetS->is_register()) {
 		return false;
 	}
@@ -13154,41 +13154,41 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 	if(packetS->typeContentIsSip()) {
 		packetS->blockstore_addflag(101 /*pb lock flag*/);
 		if(!packetS->is_register()) {
-			if(use_sip_causal_epoch() && sip_packet_needs_causal_epoch(packetS)) {
-				packetS->mark_sip_epoch();
+			if(use_sip_rtp_sync() && sip_packet_needs_rtp_sync(packetS)) {
+				packetS->mark_sip_rtp_sync();
 			} else {
-				packetS->complete_sip_epoch();
+				packetS->complete_sip_rtp_sync();
 			}
 			preProcessPacket[ppt_pp_find_call]->push_packet(packetS);
 		} else {
-			packetS->complete_sip_epoch();
+			packetS->complete_sip_rtp_sync();
 			preProcessPacket[ppt_pp_register]->push_packet(packetS);
 		}
 	} else if(packetS->typeContentIsSkinny()) {
 		packetS->blockstore_addflag(102 /*pb lock flag*/);
-		if(use_sip_causal_epoch()) {
-			packetS->mark_sip_epoch();
+		if(use_sip_rtp_sync()) {
+			packetS->mark_sip_rtp_sync();
 		}
 		preProcessPacket[ppt_pp_find_call]->push_packet(packetS);
 	} else if(packetS->typeContentIsMgcp()) {
 		//packetS->blockstore_addflag(102 /*pb lock flag*/);
-		if(use_sip_causal_epoch()) {
-			packetS->mark_sip_epoch();
+		if(use_sip_rtp_sync()) {
+			packetS->mark_sip_rtp_sync();
 		}
 		preProcessPacket[ppt_pp_find_call]->push_packet(packetS);
 	} else if(packetS->typeContentIsIpFixQos()) {
 		//packetS->blockstore_addflag(102 /*pb lock flag*/);
-		packetS->complete_sip_epoch();
+		packetS->complete_sip_rtp_sync();
 		preProcessPacket[ppt_pp_find_call]->push_packet(packetS);
 	} else if(packetS->typeContentIsHepLog()) {
-		packetS->complete_sip_epoch();
+		packetS->complete_sip_rtp_sync();
 		preProcessPacket[ppt_pp_find_call]->push_packet(packetS);
 	} else if(packetS->typeContentIsDiameter()) {
-		packetS->complete_sip_epoch();
+		packetS->complete_sip_rtp_sync();
 		preProcessPacket[ppt_pp_diameter]->push_packet(packetS);
 	} else if(!opt_t2_boost) {
 		packetS->blockstore_addflag(103 /*pb lock flag*/);
-		packetS->complete_sip_epoch();
+		packetS->complete_sip_rtp_sync();
 		preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
 	}
 }
@@ -13233,7 +13233,7 @@ void PreProcessPacket::_process_FIND_CALL_push(packet_s_process *packetS) {
 			if((packetS->is_options() && (opt_sip_options || livesnifferfilterUseSipTypes.u_options)) ||
 			   (packetS->is_subscribe() && (opt_sip_subscribe || livesnifferfilterUseSipTypes.u_subscribe)) ||
 			   (packetS->is_notify() && (opt_sip_notify || livesnifferfilterUseSipTypes.u_notify))) {
-				packetS->complete_sip_epoch();
+				packetS->complete_sip_rtp_sync();
 				push_to_thread = ppt_pp_sip_other;
 			}
 		}
@@ -13342,7 +13342,7 @@ void PreProcessPacket::process_PROCESS_CALL(packet_s_process *packetS, int threa
 	if(callCleanupCalls) {
 		_process_packet__cleanup_calls(packetS, 0, __FILE__, __LINE__);
 	}
-	packetS->complete_sip_epoch();
+	packetS->complete_sip_rtp_sync();
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 10 + threadIndex);
 }
 
@@ -13565,7 +13565,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, pack
 			if(multipleSip) {
 				packet_s_process *partPacketS = PACKET_S_PROCESS_SIP_CREATE();
 				*partPacketS = *packetS;
-				partPacketS->clone_sip_epoch_from(packetS);
+				partPacketS->clone_sip_rtp_sync_from(packetS);
 				partPacketS->p_stack = NULL;
 				partPacketS->blockstore_relock(18 /*pb lock flag*/);
 				if(partPacketS->_packet_alloc_type > _t_packet_alloc_na) {
@@ -14188,9 +14188,9 @@ bool ProcessRtpPacket::_push_packet__new_batch(u_int64_t time_us, packet_s_proce
 	cThreadMonitor::sThread::buffer_push_account_all(thread_data);
 	batch_packet_s_process *slot = this->qring[this->writeit];
 	if(ATOMIC_LOAD(slot->used) != 0) {
-		// Deadlock prevention for SIP-epoch causal sync: flush any partial SIP batch owned by this thread
-		// before blocking on rh's ring buffer so SIP can advance completed_epoch while we wait.
-		if(use_sip_causal_epoch() && this->type == hash) {
+		// Deadlock prevention for SIP-to-RTP sync: flush any partial SIP batch owned by this thread
+		// before blocking on rh's ring buffer so SIP can advance completed_seq while we wait.
+		if(use_sip_rtp_sync() && this->type == hash) {
 			PreProcessPacket *sip_stage = opt_t2_boost_direct_rtp ?
 				preProcessPacket[PreProcessPacket::ppt_sip] :
 				preProcessPacket[PreProcessPacket::ppt_pp_find_call];
@@ -14226,16 +14226,16 @@ bool ProcessRtpPacket::_push_packet__new_batch(u_int64_t time_us, packet_s_proce
 }
 
 void ProcessRtpPacket::_push_packet__push_batch() {
-	if(use_sip_causal_epoch() && this->type == hash) {
+	if(use_sip_rtp_sync() && this->type == hash) {
 		// Ensure every SIP signaling packet stamped before this RTP batch is already published
-		// into the SIP worker queue so rh can wait causally without any deadlock!
+		// into the SIP worker queue so rh can wait for SIP-to-RTP sync without any deadlock!
 		PreProcessPacket *sip_stage = opt_t2_boost_direct_rtp ?
 			preProcessPacket[PreProcessPacket::ppt_sip] :
 			preProcessPacket[PreProcessPacket::ppt_pp_find_call];
 		if(sip_stage && sip_stage->hasPendingPushBatch()) {
 			sip_stage->push_batch();
 		}
-		qring_active_push_item->required_sip_seq = g_sip_causal_epoch.seal_for_rtp_batch();
+		qring_active_push_item->required_sip_seq = g_sip_rtp_sync.seal_for_rtp_batch();
 	} else {
 		qring_active_push_item->required_sip_seq = 0;
 	}
@@ -14521,13 +14521,13 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 	if(type == hash) {
 		if(batch->required_sip_seq > 0) {
 			u_int32_t req = batch->required_sip_seq;
-			if(if_unlikely(sSipCausalEpoch::is_before(ATOMIC_LOAD(g_sip_causal_epoch.completed_epoch), req))) {
-				g_sip_causal_epoch.wait_for(req, &this->term_processRtp);
+			if(if_unlikely(sSipRtpSync::is_before(ATOMIC_LOAD(g_sip_rtp_sync.completed_seq), req))) {
+				g_sip_rtp_sync.wait_for(req, &this->term_processRtp);
 			}
 			if(opt_t2_boost_ht_hash_queue || hash_modify_queue_length_ms) {
 				calltable->applyHashModifyQueue(true, true, true);
 			}
-		} else if(opt_t2_boost_ht_hash_queue && opt_pipeline_v2 && (!opt_t2_boost_direct_rtp || !use_sip_causal_epoch())) {
+		} else if(opt_t2_boost_ht_hash_queue && opt_pipeline_v2 && (!opt_t2_boost_direct_rtp || !use_sip_rtp_sync())) {
 			calltable->applyHashModifyQueue(true, true, true);
 		}
 		int _process_rtp_packets_hash_next_threads = this->process_rtp_packets_hash_next_threads;
@@ -15004,7 +15004,7 @@ void ProcessRtpPacket::terminate() {
 	this->term_processRtp = true;
 	this->wake_filled.notify_all();
 	this->wake_free.notify_all();
-	g_sip_causal_epoch.wake.notify_all();
+	g_sip_rtp_sync.wake.notify_all();
 	extern int opt_preprocess_rtp_packets_qring_sem_sync;
 	if(opt_preprocess_rtp_packets_qring_sem_sync) {
 		sem_post(&this->sem_qring_filled_count);
