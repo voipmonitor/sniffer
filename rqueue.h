@@ -12,6 +12,7 @@
 
 #include "heap_safe.h"
 #include "sync.h"
+#include "sync_modern.h"
 #include "tools_global.h"
 
 
@@ -37,65 +38,50 @@ public:
 		}
 		readit = 0;
 		writeit = 0;
-		_sync_lock = 0;
+		_sync_lock.init();
 		useSemSync = false;
 	}
 	~rqueue_quick() {
 		delete [] buffer;
 		delete [] free;
-		if(useSemSync) {
-			sem_destroy(&sem_qring_free);
-			sem_destroy(&sem_qring_filled);
-		}
 	}
 	void setUseSemSync(bool enable) {
-		if(enable && !useSemSync) {
-			sem_init(&sem_qring_free, 0, length);
-			sem_init(&sem_qring_filled, 0, 0);
-			useSemSync = true;
-		} else if(!enable && useSemSync) {
-			sem_destroy(&sem_qring_free);
-			sem_destroy(&sem_qring_filled);
-			useSemSync = false;
-		}
+		useSemSync = enable;
 	}
 	bool push(typeItem *item, bool waitForFree, bool useLock = false) {
-		if(useSemSync) {
-			if(waitForFree) {
-				while(true) {
-					if(term_rqueue && *term_rqueue) {
-						return(false);
-					}
-					if(SEM_TIMEDWAIT_US(&sem_qring_free, pushUsleep) == 0) {
-						break;
-					}
-				}
-			} else {
-				if(sem_trywait(&sem_qring_free) == -1) {
-					return(false);
-				}
-			}
-		} else if(!waitForFree && free[writeit] != 1) {
-			return(false);
-		}
 		#if IS_ARM
 		useLock = true;
 		#endif
+		if(!useLock && !waitForFree && ATOMIC_LOAD(free[writeit]) != 1) {
+			return(false);
+		}
 		if(useLock) lock();
-		if(!useSemSync) {
-			while(free[writeit] != 1) {
-				if(waitForFree) {
-					if(term_rqueue && *term_rqueue) {
-						if(useLock) unlock();
-						return(false);
-					}
-					if(useLock) unlock();
-					USLEEP(pushUsleep);
-					if(useLock) lock();
-				} else {
+		while(ATOMIC_LOAD(free[writeit]) != 1) {
+			if(waitForFree) {
+				if(term_rqueue && *term_rqueue) {
 					if(useLock) unlock();
 					return(false);
 				}
+				if(useLock) unlock();
+				if(useSemSync) {
+					for(int sp = 0; sp < 128 && ATOMIC_LOAD(free[writeit]) != 1; sp++) {
+						__ASM_PAUSE;
+					}
+					if(ATOMIC_LOAD(free[writeit]) != 1) {
+						uint32_t wake_tok = wake_free.prepare_sleep();
+						if(ATOMIC_LOAD(free[writeit]) != 1 && !(term_rqueue && *term_rqueue)) {
+							wake_free.sleep_if_marked(wake_tok, pushUsleep ? pushUsleep : 1000);
+						} else {
+							wake_free.cancel_sleep();
+						}
+					}
+				} else {
+					USLEEP(pushUsleep);
+				}
+				if(useLock) lock();
+			} else {
+				if(useLock) unlock();
+				return(false);
 			}
 		}
 		if(binaryBuffer) {
@@ -105,7 +91,9 @@ public:
 		}
 		#if RQUEUE_SAFE
 			__SYNC_NULL(free[writeit]);
-			__SYNC_INCR(writeit, length);
+			u_int32_t next_w = writeit + 1;
+			if(next_w == length) next_w = 0;
+			__SYNC_SET_TO(writeit, next_w);
 		#else
 			free[writeit] = 0;
 			if((writeit + 1) == length) {
@@ -116,43 +104,41 @@ public:
 		#endif
 		if(useLock) unlock();
 		if(useSemSync) {
-			sem_post(&sem_qring_filled);
+			wake_filled.notify();
 		}
 		return(true);
 	}
 	bool pop(typeItem *item, bool waitForFree, bool useLock = false) {
-		if(useSemSync) {
-			if(waitForFree) {
-				while(true) {
-					if(term_rqueue && *term_rqueue) {
-						return(false);
-					}
-					if(SEM_TIMEDWAIT_US(&sem_qring_filled, popUsleep) == 0) {
-						break;
-					}
-				}
-			} else {
-				if(sem_trywait(&sem_qring_filled) == -1) {
-					return(false);
-				}
-			}
-		}
 		#if IS_ARM
 		useLock = true;
 		#endif
 		if(useLock) lock();
-		if(!useSemSync) {
-			while(free[readit] != 0) {
-				if(waitForFree) {
-					if(term_rqueue && *term_rqueue) {
-						if(useLock) unlock();
-						return(false);
-					}
-					USLEEP(popUsleep);
-				} else {
+		while(ATOMIC_LOAD(free[readit]) != 0) {
+			if(waitForFree) {
+				if(term_rqueue && *term_rqueue) {
 					if(useLock) unlock();
 					return(false);
 				}
+				if(useLock) unlock();
+				if(useSemSync) {
+					for(int sp = 0; sp < 128 && ATOMIC_LOAD(free[readit]) != 0; sp++) {
+						__ASM_PAUSE;
+					}
+					if(ATOMIC_LOAD(free[readit]) != 0) {
+						uint32_t wake_tok = wake_filled.prepare_sleep();
+						if(ATOMIC_LOAD(free[readit]) != 0 && !(term_rqueue && *term_rqueue)) {
+							wake_filled.sleep_if_marked(wake_tok, popUsleep ? popUsleep : 1000);
+						} else {
+							wake_filled.cancel_sleep();
+						}
+					}
+				} else {
+					USLEEP(popUsleep);
+				}
+				if(useLock) lock();
+			} else {
+				if(useLock) unlock();
+				return(false);
 			}
 		}
 		if(binaryBuffer) {
@@ -162,7 +148,9 @@ public:
 		}
 		#if RQUEUE_SAFE
 			__SYNC_SET(free[readit]);
-			__SYNC_INCR(readit, length);
+			u_int32_t next_r = readit + 1;
+			if(next_r == length) next_r = 0;
+			__SYNC_SET_TO(readit, next_r);
 		#else
 			free[readit] = 1;
 			if((readit + 1) == length) {
@@ -173,31 +161,25 @@ public:
 		#endif
 		if(useLock) unlock();
 		if(useSemSync) {
-			sem_post(&sem_qring_free);
+			wake_free.notify();
 		}
 		return(true);
 	}
 	u_int8_t popq(typeItem *item, bool useLock = false) {
-		if(useSemSync) {
-			if(sem_trywait(&sem_qring_filled) == -1) {
-				return(false);
-			}
-		}
 		#if IS_ARM
 		useLock = true;
 		#endif
 		if(useLock) lock();
-		if(free[readit] != 0) {
+		if(ATOMIC_LOAD(free[readit]) != 0) {
 			if(useLock) unlock();
-			if(useSemSync) {
-				sem_post(&sem_qring_filled);
-			}
 			return(false);
 		}
 		*item = buffer[readit];
 		#if RQUEUE_SAFE
 			__SYNC_SET(free[readit]);
-			__SYNC_INCR(readit, length);
+			u_int32_t next_r = readit + 1;
+			if(next_r == length) next_r = 0;
+			__SYNC_SET_TO(readit, next_r);
 		#else
 			free[readit] = 1;
 			if((readit + 1) == length) {
@@ -208,7 +190,7 @@ public:
 		#endif
 		if(useLock) unlock();
 		if(useSemSync) {
-			sem_post(&sem_qring_free);
+			wake_free.notify();
 		}
 		return(true);
 	}
@@ -217,7 +199,7 @@ public:
 		useLock = true;
 		#endif
 		if(useLock) lock();
-		if(free[readit] != 0) {
+		if(ATOMIC_LOAD(free[readit]) != 0) {
 			if(useLock) unlock();
 			return(false);
 		}
@@ -236,7 +218,9 @@ public:
 		if(useLock) lock();
 		#if RQUEUE_SAFE
 			__SYNC_SET(free[readit]);
-			__SYNC_INCR(readit, length);
+			u_int32_t next_r = readit + 1;
+			if(next_r == length) next_r = 0;
+			__SYNC_SET_TO(readit, next_r);
 		#else
 			free[readit] = 1;
 			if((readit + 1) == length) {
@@ -247,30 +231,61 @@ public:
 		#endif
 		if(useLock) unlock();
 		if(useSemSync) {
-			sem_trywait(&sem_qring_filled);
-			sem_post(&sem_qring_free);
+			wake_free.notify();
 		}
 	}
 	unsigned int wait_for_data(unsigned int timeout_us, unsigned int counter = (unsigned int)-1) {
-		return(usleep(timeout_us, counter, __FILE__, __LINE__, useSemSync ? &sem_qring_filled : NULL));
+		if(useSemSync) {
+			if(ATOMIC_LOAD(free[readit]) == 0) return(0);
+			for(int sp = 0; sp < 128 && ATOMIC_LOAD(free[readit]) != 0; sp++) __ASM_PAUSE;
+			if(ATOMIC_LOAD(free[readit]) == 0) return(0);
+			uint32_t wake_tok = wake_filled.prepare_sleep();
+			if(ATOMIC_LOAD(free[readit]) != 0 && !(term_rqueue && *term_rqueue)) {
+				u_int64_t t0 = getTimeUS();
+				wake_filled.sleep_if_marked(wake_tok, timeout_us ? timeout_us : 1000);
+				u_int64_t t1 = getTimeUS();
+				return(t1 > t0 ? (unsigned int)(t1 - t0) : 0);
+			}
+			wake_filled.cancel_sleep();
+			return(0);
+		}
+		return(usleep(timeout_us, counter, __FILE__, __LINE__, NULL));
 	}
 	unsigned int wait_for_free(unsigned int timeout_us, unsigned int counter = (unsigned int)-1) {
-		return(usleep(timeout_us, counter, __FILE__, __LINE__, useSemSync ? &sem_qring_free : NULL));
+		if(useSemSync) {
+			if(ATOMIC_LOAD(free[writeit]) == 1) return(0);
+			for(int sp = 0; sp < 128 && ATOMIC_LOAD(free[writeit]) != 1; sp++) __ASM_PAUSE;
+			if(ATOMIC_LOAD(free[writeit]) == 1) return(0);
+			uint32_t wake_tok = wake_free.prepare_sleep();
+			if(ATOMIC_LOAD(free[writeit]) != 1 && !(term_rqueue && *term_rqueue)) {
+				u_int64_t t0 = getTimeUS();
+				wake_free.sleep_if_marked(wake_tok, timeout_us ? timeout_us : 1000);
+				u_int64_t t1 = getTimeUS();
+				return(t1 > t0 ? (unsigned int)(t1 - t0) : 0);
+			}
+			wake_free.cancel_sleep();
+			return(0);
+		}
+		return(usleep(timeout_us, counter, __FILE__, __LINE__, NULL));
+	}
+	void wake_all() {
+		wake_free.notify_all();
+		wake_filled.notify_all();
 	}
 	void lock() {
-		__SYNC_LOCK(this->_sync_lock);
+		_sync_lock.lock(0);
 	}
 	void unlock() {
-		__SYNC_UNLOCK(this->_sync_lock);
+		_sync_lock.unlock();
 	}
 	size_t size() {
-		u_int32_t _writeit = writeit;
-		u_int32_t _readit = readit;
+		u_int32_t _writeit = ATOMIC_LOAD(writeit);
+		u_int32_t _readit = ATOMIC_LOAD(readit);
 		return(_writeit > _readit ?
 			_writeit - _readit :
 		       _writeit < _readit ?
 			_writeit + length - _readit :
-			free[_writeit] ? 0 : length);
+			ATOMIC_LOAD(free[_writeit]) ? 0 : length);
 	}
 private:
 	size_t length;
@@ -280,12 +295,15 @@ private:
 	volatile int *term_rqueue;
 	typeItem *buffer;
 	v_int *free;
-	v_u_int32_t readit;
-	v_u_int32_t writeit;
-	volatile int _sync_lock;
 	bool useSemSync;
-	sem_t sem_qring_free;
-	sem_t sem_qring_filled;
+	char _pad_r[VM_CACHELINE_SIZE];
+	v_u_int32_t readit;
+	char _pad_w[VM_CACHELINE_SIZE];
+	v_u_int32_t writeit;
+	char _pad_l[VM_CACHELINE_SIZE];
+	cPaddedSpinLock _sync_lock;
+	cAdaptiveWake wake_free;
+	cAdaptiveWake wake_filled;
 };
 
 

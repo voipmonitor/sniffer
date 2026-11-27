@@ -1455,7 +1455,9 @@ TarQueue::write(int qtype, data_t data) {
 		tarthreads[tar->thread_id].queue_data[tar_name] = new FILE_LINE(0) tarthreads_tq;
 	}
 	tarthreads[tar->thread_id].queue_data[tar_name]->push_back(data);
+	__SYNC_INC(tarthreads[tar->thread_id]._enq_seq);
 	tarthreads[tar->thread_id].qunlock();
+	tarthreads[tar->thread_id]._wake.notify();
 	return 0;
 }
 
@@ -1477,7 +1479,9 @@ void *TarQueue::tarthreadworker(void *arg) {
 
 	while(1) {
 		int terminate_pass = terminated_tar_flush_queue[this2->spoolIndex];
+		uint32_t seen_seq = 0;
 		while(1) {
+			seen_seq = ATOMIC_LOAD(tarthread->_enq_seq);
 			bool doProcessData = false;
 			if(tarthread->queue_data.empty()) { 
 				if(this2->terminate) {
@@ -1730,10 +1734,18 @@ void *TarQueue::tarthreadworker(void *arg) {
 				break;
 			}
 		}
-		// quque is empty - sleep before next run
-		USLEEP(is_terminating() ? 100000 : 250000);
+		// queue is empty - wait adaptively before next run (wakes immediately on write/terminate)
 		if(terminate_pass) {
 			break;
+		}
+		{
+			uint32_t wake_tok = tarthread->_wake.prepare_sleep();
+			if(ATOMIC_LOAD(tarthread->_enq_seq) == seen_seq &&
+			   !this2->terminate && !terminated_tar_flush_queue[this2->spoolIndex]) {
+				tarthread->_wake.sleep_if_marked(wake_tok, is_terminating() ? 20000 : 250000);
+			} else {
+				tarthread->_wake.cancel_sleep();
+			}
 		}
 	}
 	tarthread->threadEnd = true;
@@ -1969,6 +1981,9 @@ TarQueue::~TarQueue() {
 		cout << "destroy tar queue" << endl;
 	}
 	terminate = true;
+	for(int i = 0; i < maxthreads; i++) {
+		tarthreads[i]._wake.notify_all();
+	}
 	for(int i = 0; i < maxthreads; i++) { 
 		pthread_join(tarthreads[i].thread, NULL);
 	}
@@ -2290,6 +2305,9 @@ void *TarQueueThread(void *_tarQueue) {
 			if(do_terminated_tar_flush_queue || 
 			   (!opt_pcap_dump_asyncwrite && is_terminating())) {
 				 terminated_tar_flush_queue[tarQueue->getSpoolIndex()] = 1;
+				 for(unsigned i = 0; i < TARQMAXTHREADS; i++) {
+					 tarQueue->tarthreads[i]._wake.notify_all();
+				 }
 				 syslog(LOG_NOTICE, "terminated - tar - flush queue");
 			}
 		}
