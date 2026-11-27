@@ -780,6 +780,7 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 		bool stop = false;
 		switch(rsltProcessResponse) {
 		case _qbrs_ok:
+			this->clearLastError();
 			ok = true;
 			stop = true;
 			++pass;
@@ -2863,6 +2864,7 @@ bool SqlDb_mysql::connected() {
 }
 
 bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, const char *dropProcQuery) {
+	this->clearLastError();
 	this->invalidateCachesByQuery(query.c_str());
 	if(isCloud() || snifferClientOptions.isEnableRemoteQuery()) {
 		string preparedQuery = this->prepareQuery(query, false);
@@ -3069,6 +3071,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 					}
 				}
 			} else {
+				this->clearLastError();
 				if(verbosity > 1) {
 					syslog(LOG_NOTICE, "query ok - %s", prepareQueryForPrintf(preparedQuery).c_str());
 				}
