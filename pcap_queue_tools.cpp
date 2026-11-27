@@ -804,9 +804,9 @@ void sPcapStatData::sHeap::load() {
 		}
 	}
 	extern bool opt_use_dpdk;
-	extern bool opt_dpdk_rotate_packetbuffer;
-	extern bool opt_dpdk_copy_packetbuffer;
-	extern bool opt_dpdk_prealloc_packetbuffer;
+	extern int opt_dpdk_rotate_packetbuffer;
+	extern int opt_dpdk_copy_packetbuffer;
+	extern int opt_dpdk_prealloc_packetbuffer;
 	if(opt_use_dpdk && opt_dpdk_rotate_packetbuffer &&
 	   (opt_dpdk_copy_packetbuffer || opt_dpdk_prealloc_packetbuffer)) {
 		pool_perc = buffersControl.getPerc_pb_pool();

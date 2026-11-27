@@ -9,7 +9,7 @@ ifeq ($(PLATFORM),FreeBSD)
 endif
 
 .DEFAULT_GOAL := shared
-.PHONY: default
+.PHONY: default clean pgo-clean pgo-gen pgo-use pgo-gen-static pgo-use-static
 default: shared ;
 
 WIRESHARKLIBSTATIC =$(shell pkg-config --libs-only-l --static wireshark)
@@ -18,6 +18,18 @@ WIRESHARKCFLAGS =$(shell pkg-config --cflags wireshark)
 
 core2cust: GCCARCH = core2
 core2: GCCARCH = core2
+v2: GCCARCH = x86-64-v2
+v2: MTUNE = -mtune=generic
+v2shared: GCCARCH = x86-64-v2
+v2shared: MTUNE = -mtune=generic
+v3: GCCARCH = x86-64-v3
+v3: MTUNE = -mtune=generic
+v3shared: GCCARCH = x86-64-v3
+v3shared: MTUNE = -mtune=generic
+v4: GCCARCH = x86-64-v4
+v4: MTUNE = -mtune=generic
+v4shared: GCCARCH = x86-64-v4
+v4shared: MTUNE = -mtune=generic
 armv6k: GCCARCH = armv6k
 arm64: GCCARCH = native
 clean: GCCARCH = core2
@@ -90,8 +102,8 @@ LIBWHISPER=@LIBWHISPER@
 LIBSRTP=@LIBSRTP@
 LIBGNUTLSSTATIC=-lgcrypt -lgpg-error $(shell pkg-config gnutls --libs --static)
 EXCLUDE_STATIC_LIBS=@EXCLUDE_STATIC_LIBS@
-SHARED_LIBS = ${LIBLD} -licuuc -licudata -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg ${LIBLAME} ${LIBMPG123} -lodbc ${MYSQLLIB} -lrt -lsnappy ${CURLLIB} -lssl -lcrypto ${JSONLIB} -lxml2 -lrrd ${LIBGCRYPT} ${LIBGNUTLS} @LIBTCMALLOC@ ${GLIBLIB} ${LIBLZMA} ${LIBZSTD} ${LIBLZ4} -llzo2 ${LIBPNG} ${LIBJPEG} ${LIBFFT} @DPDK_LDFLAGS@ ${SS7} @FLTO@ ${LIBBLAKE3} ${LIBWHISPER} ${LIBSRTP}
-STATIC_LIBS_RAW = -static @LIBCDIRLIB@ @LIBTCMALLOC@ -licuuc -licudata -lodbc -lltdl -lrt -lz -lcrypt -lm ${CURLLIBSTATIC} -lssl -lcrypto -static-libstdc++ -static-libgcc ${PCAPLIBSTATIC} -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg ${LIBLAME} ${LIBMPG123} -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIBSTATIC} -lpcre -lz -ldbi ${LIBLZMA} ${LIBZSTD} ${LIBLZ4} ${LIBGNUTLSSTATIC} ${LIBGNUTLSSTATIC} -llzo2 ${LIBPNG} ${LIBJPEG} ${LIBFFT} -lpthread ${SS7} ${LIBLD} @FLTO@ @DPDK_LDFLAGSSTATIC@ ${LIBBLAKE3} ${LIBWHISPER} ${LIBSRTP}
+SHARED_LIBS = ${LIBLD} -licuuc -licudata -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg ${LIBLAME} ${LIBMPG123} -lodbc ${MYSQLLIB} -lrt -lsnappy ${CURLLIB} -lssl -lcrypto ${JSONLIB} -lxml2 -lrrd ${LIBGCRYPT} ${LIBGNUTLS} @LIBTCMALLOC@ ${GLIBLIB} ${LIBLZMA} ${LIBZSTD} ${LIBLZ4} -llzo2 ${LIBPNG} ${LIBJPEG} ${LIBFFT} @DPDK_LDFLAGS@ ${SS7} ${LIBBLAKE3} ${LIBWHISPER} ${LIBSRTP}
+STATIC_LIBS_RAW = -static @LIBCDIRLIB@ @LIBTCMALLOC@ -licuuc -licudata -lodbc -lltdl -lrt -lz -lcrypt -lm ${CURLLIBSTATIC} -lssl -lcrypto -static-libstdc++ -static-libgcc ${PCAPLIBSTATIC} -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg ${LIBLAME} ${LIBMPG123} -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIBSTATIC} -lpcre -lz -ldbi ${LIBLZMA} ${LIBZSTD} ${LIBLZ4} ${LIBGNUTLSSTATIC} ${LIBGNUTLSSTATIC} -llzo2 ${LIBPNG} ${LIBJPEG} ${LIBFFT} -lpthread ${SS7} ${LIBLD} @DPDK_LDFLAGSSTATIC@ ${LIBBLAKE3} ${LIBWHISPER} ${LIBSRTP}
 ifneq ($(EXCLUDE_STATIC_LIBS),)
 STATIC_LIBS = $(shell echo "${STATIC_LIBS_RAW}" | tr ' ' '\n' | grep -v -E '^(${EXCLUDE_STATIC_LIBS})$$' | tr '\n' ' ')
 else
@@ -99,7 +111,12 @@ STATIC_LIBS = ${STATIC_LIBS_RAW}
 endif
 INCLUDES = @LIBCDIRINC@ ${DPDKINC} -I/usr/local/include ${MYSQLINC} -I jitterbuffer/ ${JSONCFLAGS} ${GLIBCFLAGS} ${XML2CFLAGS} @OPENSSLDIRINC@
 LIBS_PATH = ${DPDKLIB} -L/usr/local/lib/ @OPENSSLDIRLIB@ ${GLIBLIBPATH}
-CXXFLAGS +=  -Wall -Wno-deprecated-declarations -Wno-unused-result -fPIC -g3 -O3 @FLTO@ -march=$(GCCARCH) ${MTUNE} ${INCLUDES} ${FBSDDEF} ${MYSQL_WITHOUT_SSL_SUPPORT} @HEAPPROF_CXXFLAG@ @DPDK_CFLAGS@
+PICFLAGS = @PIE_CFLAGS@
+PGO_DIR ?= $(CURDIR)/pgo_data
+PGO_CFLAGS =
+PGO_LDFLAGS =
+LINK_OPT_FLAGS = -O3 @FLTO@ -march=$(GCCARCH) ${MTUNE} ${PGO_LDFLAGS}
+CXXFLAGS +=  -Wall -Wno-deprecated-declarations -Wno-unused-result ${PICFLAGS} -g3 -O3 @FLTO@ -march=$(GCCARCH) ${MTUNE} ${PGO_CFLAGS} ${INCLUDES} ${FBSDDEF} ${MYSQL_WITHOUT_SSL_SUPPORT} @HEAPPROF_CXXFLAG@ @DPDK_CFLAGS@
 CFLAGS += ${CXXFLAGS}
 LIBS = ${SHARED_LIBS} 
 LIBS2 = @LIBS2@
@@ -108,15 +125,47 @@ CFLAGS += @CFLAGS@
 CXXFLAGS += @CXXFLAGS@
 LDFLAGS += @LDFLAGS@
 
-shared: LDFLAGS += -Wl,--allow-multiple-definition
+shared: LDFLAGS += @PIE_LDFLAGS@ -Wl,--allow-multiple-definition
 shared: cleantest $(objects) 
-	${CXX} $(objects) ${LIBS_PATH} ${LDFLAGS} -o voipmonitor ${LIBS}
+	${CXX} ${LINK_OPT_FLAGS} $(objects) ${LIBS_PATH} ${LDFLAGS} -o voipmonitor ${LIBS}
 
+static: PICFLAGS = @STATIC_PICFLAGS@
 static: LDFLAGS += -Wl,--allow-multiple-definition
 static: cleantest $(objects) 
-	${CXX} $(objects) ${LIBS_PATH} ${LDFLAGS} -o voipmonitor ${STATIC_LIBS}
+	${CXX} ${LINK_OPT_FLAGS} $(objects) ${LIBS_PATH} ${LDFLAGS} -o voipmonitor ${STATIC_LIBS}
 
 core2: cleantest static
+
+v2: cleantest static
+
+v2shared: cleantest shared
+
+v3: cleantest static
+
+v3shared: cleantest shared
+
+v4: cleantest static
+
+v4shared: cleantest shared
+
+pgo-gen: PGO_CFLAGS = -fprofile-generate=$(PGO_DIR) @PGO_ATOMIC_FLAG@
+pgo-gen: PGO_LDFLAGS = -fprofile-generate=$(PGO_DIR) @PGO_ATOMIC_FLAG@
+pgo-gen: shared
+
+pgo-use: PGO_CFLAGS = -fprofile-use=$(PGO_DIR) -fprofile-correction -Wno-missing-profile
+pgo-use: PGO_LDFLAGS = -fprofile-use=$(PGO_DIR) -fprofile-correction -Wno-missing-profile
+pgo-use: shared
+
+pgo-gen-static: PGO_CFLAGS = -fprofile-generate=$(PGO_DIR) @PGO_ATOMIC_FLAG@
+pgo-gen-static: PGO_LDFLAGS = -fprofile-generate=$(PGO_DIR) @PGO_ATOMIC_FLAG@
+pgo-gen-static: static
+
+pgo-use-static: PGO_CFLAGS = -fprofile-use=$(PGO_DIR) -fprofile-correction -Wno-missing-profile
+pgo-use-static: PGO_LDFLAGS = -fprofile-use=$(PGO_DIR) -fprofile-correction -Wno-missing-profile
+pgo-use-static: static
+
+pgo-clean:
+	rm -rf $(PGO_DIR)
 
 armv6k: cleantest static
 
@@ -130,6 +179,7 @@ armv5static: CXXFLAGS+= -DPACKED
 armv5static: CFLAGS+= -DPACKED 
 armv5static: cleantest static
 
+core2cust: PICFLAGS = @STATIC_PICFLAGS@
 core2cust: LDFLAGS = -nostartfiles -static -Wl,--allow-multiple-definition
 core2cust: GLIBCDIR = /opt/libc/lib
 core2cust: STARTFILES = $(GLIBCDIR)/crt1.o $(GLIBCDIR)/crti.o $(shell gcc --print-file-name=crtbegin.o)
@@ -138,7 +188,7 @@ core2cust: LIBGROUP = -Wl,--start-group $(GLIBCDIR)/libc.a -lgcc -lgcc_eh -Wl,--
 core2cust: CXXFLAGS += -I /opt/libc/include 
 core2cust: CFLAGS += ${CXXFLAGS}
 core2cust: cleantest $(objects)
-	${CXX} ${LIBS_PATH} $(LDFLAGS) -o voipmonitor $(STARTFILES) ${objects} $(LIBGROUP) $(ENDFILES) -L/opt/libc/lib ${STATIC_LIBS} 
+	${CXX} ${LINK_OPT_FLAGS} ${LIBS_PATH} $(LDFLAGS) -o voipmonitor $(STARTFILES) ${objects} $(LIBGROUP) $(ENDFILES) -L/opt/libc/lib ${STATIC_LIBS} 
 
 DEPENDSC:=${shell find . -type f -name '*.c' -print}
 DEPENDSCPP:=${shell find . -type f -name '*.cpp' -print}
@@ -215,6 +265,51 @@ targz64: core2
 	chmod +x voipmonitor-amd64-${version}-static/install-script.sh
 	tar -czf voipmonitor-amd64-${version}-static.tar.gz voipmonitor-amd64-${version}-static
 	rm -rf voipmonitor-amd64-${version}-static
+targz64v2: v2
+	rm -rf voipmonitor-amd64-${version}-v2-static*
+	mkdir -p voipmonitor-amd64-${version}-v2-static/usr/local/sbin
+	cp voipmonitor voipmonitor-amd64-${version}-v2-static/usr/local/sbin/
+	chmod +x voipmonitor-amd64-${version}-v2-static/usr/local/sbin/voipmonitor
+	mkdir -p voipmonitor-amd64-${version}-v2-static/usr/local/share/voipmonitor/audio
+	cp samples/audio/* voipmonitor-amd64-${version}-v2-static/usr/local/share/voipmonitor/audio/
+	mkdir -p voipmonitor-amd64-${version}-v2-static/etc/init.d
+	cp config/voipmonitor.conf voipmonitor-amd64-${version}-v2-static/etc/
+	cp config/init.d/voipmonitor voipmonitor-amd64-${version}-v2-static/etc/init.d/
+	chmod +x voipmonitor-amd64-${version}-v2-static/etc/init.d/voipmonitor 
+	cp scripts/install-script.sh voipmonitor-amd64-${version}-v2-static/
+	chmod +x voipmonitor-amd64-${version}-v2-static/install-script.sh
+	tar -czf voipmonitor-amd64-${version}-v2-static.tar.gz voipmonitor-amd64-${version}-v2-static
+	rm -rf voipmonitor-amd64-${version}-v2-static
+targz64v3: v3
+	rm -rf voipmonitor-amd64-${version}-v3-static*
+	mkdir -p voipmonitor-amd64-${version}-v3-static/usr/local/sbin
+	cp voipmonitor voipmonitor-amd64-${version}-v3-static/usr/local/sbin/
+	chmod +x voipmonitor-amd64-${version}-v3-static/usr/local/sbin/voipmonitor
+	mkdir -p voipmonitor-amd64-${version}-v3-static/usr/local/share/voipmonitor/audio
+	cp samples/audio/* voipmonitor-amd64-${version}-v3-static/usr/local/share/voipmonitor/audio/
+	mkdir -p voipmonitor-amd64-${version}-v3-static/etc/init.d
+	cp config/voipmonitor.conf voipmonitor-amd64-${version}-v3-static/etc/
+	cp config/init.d/voipmonitor voipmonitor-amd64-${version}-v3-static/etc/init.d/
+	chmod +x voipmonitor-amd64-${version}-v3-static/etc/init.d/voipmonitor 
+	cp scripts/install-script.sh voipmonitor-amd64-${version}-v3-static/
+	chmod +x voipmonitor-amd64-${version}-v3-static/install-script.sh
+	tar -czf voipmonitor-amd64-${version}-v3-static.tar.gz voipmonitor-amd64-${version}-v3-static
+	rm -rf voipmonitor-amd64-${version}-v3-static
+targz64v4: v4
+	rm -rf voipmonitor-amd64-${version}-v4-static*
+	mkdir -p voipmonitor-amd64-${version}-v4-static/usr/local/sbin
+	cp voipmonitor voipmonitor-amd64-${version}-v4-static/usr/local/sbin/
+	chmod +x voipmonitor-amd64-${version}-v4-static/usr/local/sbin/voipmonitor
+	mkdir -p voipmonitor-amd64-${version}-v4-static/usr/local/share/voipmonitor/audio
+	cp samples/audio/* voipmonitor-amd64-${version}-v4-static/usr/local/share/voipmonitor/audio/
+	mkdir -p voipmonitor-amd64-${version}-v4-static/etc/init.d
+	cp config/voipmonitor.conf voipmonitor-amd64-${version}-v4-static/etc/
+	cp config/init.d/voipmonitor voipmonitor-amd64-${version}-v4-static/etc/init.d/
+	chmod +x voipmonitor-amd64-${version}-v4-static/etc/init.d/voipmonitor 
+	cp scripts/install-script.sh voipmonitor-amd64-${version}-v4-static/
+	chmod +x voipmonitor-amd64-${version}-v4-static/install-script.sh
+	tar -czf voipmonitor-amd64-${version}-v4-static.tar.gz voipmonitor-amd64-${version}-v4-static
+	rm -rf voipmonitor-amd64-${version}-v4-static
 targz64ivybridge: core2
 	rm -rf voipmonitor-amd64-${version}-ivybridge-static*
 	mkdir -p voipmonitor-amd64-${version}-ivybridge-static/usr/local/sbin

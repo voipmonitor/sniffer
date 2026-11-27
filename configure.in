@@ -488,51 +488,134 @@ fi
 #AC_CHECK_FUNCS([gethostbyname gettimeofday inet_ntoa memmove memset mkdir mkfifo pow select setenv setlocale socket sqrt strcasecmp strchr strdup strerror strncasecmp strndup strstr strtol])
 
 
+# Detect PIE / -fno-plt flags for executable builds (replaces hardcoded -fPIC on executables)
+PIE_CFLAGS=""
+PIE_LDFLAGS=""
+STATIC_PICFLAGS=""
+
+AC_MSG_CHECKING([whether compiler supports -fPIE -pie])
+saved_CFLAGS="$CFLAGS"
+saved_LDFLAGS="$LDFLAGS"
+CFLAGS="$CFLAGS -fPIE"
+LDFLAGS="$LDFLAGS -pie"
+AC_LINK_IFELSE(
+  [AC_LANG_SOURCE([[int main() { return 0; }]])],
+  [
+    AC_MSG_RESULT([yes])
+    PIE_CFLAGS="-fPIE"
+    PIE_LDFLAGS="-pie"
+  ],
+  [
+    AC_MSG_RESULT([no])
+    PIE_CFLAGS="-fPIC"
+    PIE_LDFLAGS=""
+  ]
+)
+CFLAGS="$saved_CFLAGS"
+LDFLAGS="$saved_LDFLAGS"
+
+AC_ARG_ENABLE([no-plt],
+  [AS_HELP_STRING([--disable-no-plt], [Disable -fno-plt optimization for shared builds])],
+  [enable_no_plt=$enableval],
+  [enable_no_plt=yes]
+)
+
+if test "x$enable_no_plt" != "xno"; then
+  AC_MSG_CHECKING([whether compiler supports -fno-plt])
+  saved_CFLAGS="$CFLAGS"
+  saved_LDFLAGS="$LDFLAGS"
+  CFLAGS="$CFLAGS $PIE_CFLAGS -fno-plt"
+  LDFLAGS="$LDFLAGS $PIE_LDFLAGS"
+  AC_LINK_IFELSE(
+    [AC_LANG_SOURCE([[int main() { return 0; }]])],
+    [
+      AC_MSG_RESULT([yes])
+      PIE_CFLAGS="$PIE_CFLAGS -fno-plt"
+    ],
+    [
+      AC_MSG_RESULT([no])
+    ]
+  )
+  CFLAGS="$saved_CFLAGS"
+  LDFLAGS="$saved_LDFLAGS"
+fi
+
+AC_MSG_CHECKING([whether compiler supports -fno-PIE for static builds])
+saved_CFLAGS="$CFLAGS"
+CFLAGS="$CFLAGS -fno-PIE"
+AC_COMPILE_IFELSE(
+  [AC_LANG_SOURCE([[int main() { return 0; }]])],
+  [
+    AC_MSG_RESULT([yes])
+    STATIC_PICFLAGS="-fno-PIE"
+  ],
+  [
+    AC_MSG_RESULT([no])
+    STATIC_PICFLAGS=""
+  ]
+)
+CFLAGS="$saved_CFLAGS"
+
+AC_SUBST(PIE_CFLAGS)
+AC_SUBST(PIE_LDFLAGS)
+AC_SUBST(STATIC_PICFLAGS)
+
+# Detect atomic profile counter update flag for multi-threaded PGO builds
+PGO_ATOMIC_FLAG=""
+AC_MSG_CHECKING([whether compiler supports -fprofile-update=atomic])
+saved_CFLAGS="$CFLAGS"
+CFLAGS="$CFLAGS -fprofile-update=atomic"
+AC_COMPILE_IFELSE(
+  [AC_LANG_SOURCE([[int main() { return 0; }]])],
+  [
+    AC_MSG_RESULT([yes])
+    PGO_ATOMIC_FLAG="-fprofile-update=atomic"
+  ],
+  [
+    AC_MSG_RESULT([no])
+  ]
+)
+CFLAGS="$saved_CFLAGS"
+AC_SUBST(PGO_ATOMIC_FLAG)
+
 # Initialize the FLTO variable
 FLTO=""
 
-# Add --enable-flto option
+# Add --enable-flto option (supports --enable-flto, --enable-flto=auto, --enable-flto=N, --disable-flto)
 AC_ARG_ENABLE([flto],
-  [AS_HELP_STRING([--enable-flto], [Enable the use of gcc -flto flag])],
-  [if test "x$enableval" = "xyes"; then
-    enable_flto=yes
-  else
-    enable_flto=no
-  fi],
-  [enable_flto=no]  # Default is to disable flto
+  [AS_HELP_STRING([--enable-flto@<:@=auto|N@:>@], [Enable Link-Time Optimization (-flto=auto or -flto=N)])],
+  [enable_flto=$enableval],
+  [enable_flto=no]
 )
 
-# Check if flto is not disabled by the user
 if test "x$enable_flto" != "xno"; then
-  # Check if gcc supports -flto
-  AC_MSG_CHECKING([whether gcc supports -flto])
-  AC_COMPILE_IFELSE(
-    [AC_LANG_SOURCE([[int main() { return 0; }]])],
-    [
-      # Save the current CFLAGS
-      saved_CFLAGS="$CFLAGS"
-      
-      # Add -flto to CFLAGS for the test
-      CFLAGS="$CFLAGS -flto"
-      
-      # Attempt to compile with -flto
-      AC_COMPILE_IFELSE(
-        [AC_LANG_SOURCE([[int main() { return 0; }]])],
-        [
-          # -flto works, so update the FLTO variable
-          AC_MSG_RESULT([yes])
-          FLTO="-flto"
-        ],
-        [
-          # Compilation failed, so -flto is not supported
-          AC_MSG_RESULT([no])
-        ]
-      )
-      
-      # Restore the original CFLAGS
-      CFLAGS="$saved_CFLAGS"
-    ]
-  )
+  if test "x$enable_flto" = "xyes" || test "x$enable_flto" = "xauto"; then
+    flto_candidates="-flto=auto -flto"
+  else
+    flto_candidates="-flto=$enable_flto -flto"
+  fi
+  for flto_flag in $flto_candidates; do
+    AC_MSG_CHECKING([whether compiler and linker support $flto_flag])
+    saved_CFLAGS="$CFLAGS"
+    saved_LDFLAGS="$LDFLAGS"
+    CFLAGS="$CFLAGS -O3 $flto_flag"
+    LDFLAGS="$LDFLAGS -O3 $flto_flag"
+    AC_LINK_IFELSE(
+      [AC_LANG_SOURCE([[int main() { return 0; }]])],
+      [
+        AC_MSG_RESULT([yes])
+        FLTO="$flto_flag"
+        CFLAGS="$saved_CFLAGS"
+        LDFLAGS="$saved_LDFLAGS"
+        break
+      ],
+      [
+        AC_MSG_RESULT([no])
+        CFLAGS="$saved_CFLAGS"
+        LDFLAGS="$saved_LDFLAGS"
+      ]
+    )
+  done
 fi
 
 # Make the FLTO variable available in the generated Makefile
@@ -572,9 +655,12 @@ openssl >= 1.0.1 found                 : $OPENSSL101_T
 openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL111_T
 libsrtp lib found                      : $HAVE_LIBSRTP_T
 dpdk lib found                         : $DPDK_T
+executable PIC/PIE flags               : $PIE_CFLAGS (link: $PIE_LDFLAGS)
+LTO flags (--enable-flto)              : ${FLTO:-disabled}
 
-shared binary: run make 
-static binary: run make static
+shared binary: run make
+static binary: run make static (or make core2 / make v3)
+PGO build    : run make pgo-gen -> run workload -> make clean && make pgo-use
 
 check README_*.md
 

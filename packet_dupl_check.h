@@ -9,10 +9,7 @@
 
 #include "crc.h"
 #include "tools_rdtsc.h"
-
-#ifdef CLOUD_ROUTER_CLIENT
 #include "murmur_hash.h"
-#endif
 
 
 enum eDedupType {
