@@ -438,7 +438,9 @@ fi
 DPDK_T=no
 if test "x$HAVE_LIBDPDK" = "x1"; then 
 	AC_DEFINE([HAVE_LIBDPDK], [1], [Define if using dpdk])
-	AC_SUBST([DPDK_CFLAGS],[`"$PKGCONFIG" --cflags libdpdk`])
+	DPDK_CFLAGS_RAW=`"$PKGCONFIG" --cflags libdpdk`
+	DPDK_CFLAGS_CLEAN=`echo "$DPDK_CFLAGS_RAW" | sed -e 's/-march=[^ ]*//g' -e 's/-mtune=[^ ]*//g' -e 's/-mrtm//g'`
+	AC_SUBST([DPDK_CFLAGS],["$DPDK_CFLAGS_CLEAN"])
 	AC_SUBST([DPDK_LDFLAGS],[`"$PKGCONFIG" --libs libdpdk`])
 	AC_SUBST([DPDK_LDFLAGSSTATIC],[`"$PKGCONFIG" --static --libs libdpdk`])
 	DPDK_T=yes

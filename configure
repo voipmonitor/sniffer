@@ -6634,7 +6634,9 @@ if test "x$HAVE_LIBDPDK" = "x1"; then
 
 printf "%s\n" "#define HAVE_LIBDPDK 1" >>confdefs.h
 
-	DPDK_CFLAGS=`"$PKGCONFIG" --cflags libdpdk`
+	DPDK_CFLAGS_RAW=`"$PKGCONFIG" --cflags libdpdk`
+	DPDK_CFLAGS_CLEAN=`echo "$DPDK_CFLAGS_RAW" | sed -e 's/-march=^ *//g' -e 's/-mtune=^ *//g' -e 's/-mrtm//g'`
+	DPDK_CFLAGS="$DPDK_CFLAGS_CLEAN"
 
 	DPDK_LDFLAGS=`"$PKGCONFIG" --libs libdpdk`
 
