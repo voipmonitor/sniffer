@@ -5,6 +5,20 @@
 #include "websocket.h"
 
 #include <string.h>
+#include <netinet/tcp.h>
+
+#ifndef TH_FIN
+#define TH_FIN 0x01
+#endif
+#ifndef TH_SYN
+#define TH_SYN 0x02
+#endif
+#ifndef TH_RST
+#define TH_RST 0x04
+#endif
+#ifndef TH_ACK
+#define TH_ACK 0x10
+#endif
 
 extern bool opt_sip_tcp_reassembly_ext;
 
