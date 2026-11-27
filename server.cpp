@@ -1189,8 +1189,12 @@ void cSnifferServerConnection::cp_packetbuffer_block() {
 		       socket->getIP().c_str(), socket->getPort(), socket->getHandle());
 	}
 	extern PcapQueue_readFromFifo *pcapQueueQ;
-	while(!pcapQueueQ || !pcapQueueQ->threadInitIsOk()) {
+	while(!server->isTerminate() && !is_terminating() && (!pcapQueueQ || !pcapQueueQ->isInitOk())) {
 		USLEEP(10000);
+	}
+	if(server->isTerminate() || is_terminating()) {
+		delete this;
+		return;
 	}
 	if(!rsaAesInit()) {
 		delete this;

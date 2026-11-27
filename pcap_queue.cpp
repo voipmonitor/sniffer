@@ -7839,15 +7839,19 @@ bool PcapQueue_readFromFifo::createSocketServerThread() {
 	return(true);
 }
 
-bool PcapQueue_readFromFifo::initThread(void *arg, unsigned int arg2, string *error) {
-	if(this->packetServerDirection == directionRead &&
-	   !this->openPcapDeadHandle(0)) {
-		return(false);
-	}
+bool PcapQueue_readFromFifo::init() {
 	this->pcapStoreQueue.init();
 	extern int opt_pcap_queue_store_queue_sem_sync;
 	if(opt_pcap_queue_store_queue_sem_sync) {
 		this->pcapStoreQueue.setUseSemSync(true);
+	}
+	return(PcapQueue::init());
+}
+
+bool PcapQueue_readFromFifo::initThread(void *arg, unsigned int arg2, string *error) {
+	if(this->packetServerDirection == directionRead &&
+	   !this->openPcapDeadHandle(0)) {
+		return(false);
 	}
 	return(PcapQueue::initThread(arg, arg2, error));
 }

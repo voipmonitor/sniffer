@@ -56,6 +56,7 @@ public:
 			return(false);
 		}
 		if(useLock) lock();
+		unsigned int idle_iters = 0;
 		while(ATOMIC_LOAD(free[writeit]) != 1) {
 			if(waitForFree) {
 				if(term_rqueue && *term_rqueue) {
@@ -64,17 +65,20 @@ public:
 				}
 				if(useLock) unlock();
 				if(useSemSync) {
-					for(int sp = 0; sp < 128 && ATOMIC_LOAD(free[writeit]) != 1; sp++) {
-						__ASM_PAUSE;
+					if(idle_iters == 0) {
+						for(int sp = 0; sp < 128 && ATOMIC_LOAD(free[writeit]) != 1; sp++) {
+							__ASM_PAUSE;
+						}
 					}
 					if(ATOMIC_LOAD(free[writeit]) != 1) {
 						uint32_t wake_tok = wake_free.prepare_sleep();
 						if(ATOMIC_LOAD(free[writeit]) != 1 && !(term_rqueue && *term_rqueue)) {
-							wake_free.sleep_if_marked(wake_tok, pushUsleep ? pushUsleep : 1000);
+							wake_free.sleep_if_marked(wake_tok, computeWaitUs(pushUsleep, idle_iters));
 						} else {
 							wake_free.cancel_sleep();
 						}
 					}
+					++idle_iters;
 				} else {
 					USLEEP(pushUsleep);
 				}
@@ -113,6 +117,7 @@ public:
 		useLock = true;
 		#endif
 		if(useLock) lock();
+		unsigned int idle_iters = 0;
 		while(ATOMIC_LOAD(free[readit]) != 0) {
 			if(waitForFree) {
 				if(term_rqueue && *term_rqueue) {
@@ -121,17 +126,20 @@ public:
 				}
 				if(useLock) unlock();
 				if(useSemSync) {
-					for(int sp = 0; sp < 128 && ATOMIC_LOAD(free[readit]) != 0; sp++) {
-						__ASM_PAUSE;
+					if(idle_iters == 0) {
+						for(int sp = 0; sp < 128 && ATOMIC_LOAD(free[readit]) != 0; sp++) {
+							__ASM_PAUSE;
+						}
 					}
 					if(ATOMIC_LOAD(free[readit]) != 0) {
 						uint32_t wake_tok = wake_filled.prepare_sleep();
 						if(ATOMIC_LOAD(free[readit]) != 0 && !(term_rqueue && *term_rqueue)) {
-							wake_filled.sleep_if_marked(wake_tok, popUsleep ? popUsleep : 1000);
+							wake_filled.sleep_if_marked(wake_tok, computeWaitUs(popUsleep, idle_iters));
 						} else {
 							wake_filled.cancel_sleep();
 						}
 					}
+					++idle_iters;
 				} else {
 					USLEEP(popUsleep);
 				}
@@ -234,15 +242,30 @@ public:
 			wake_free.notify();
 		}
 	}
+	static inline unsigned int computeWaitUs(unsigned int base_us, unsigned int counter) {
+		unsigned int wait_us = base_us ? base_us : 1000;
+		if(counter != (unsigned int)-1 && counter > 0 && wait_us < 50000) {
+			unsigned int shift = counter > 9 ? 9 : counter;
+			unsigned int scaled = wait_us << shift;
+			if(scaled > 50000 || scaled < wait_us) {
+				wait_us = 50000;
+			} else {
+				wait_us = scaled;
+			}
+		}
+		return(wait_us);
+	}
 	unsigned int wait_for_data(unsigned int timeout_us, unsigned int counter = (unsigned int)-1) {
 		if(useSemSync) {
 			if(ATOMIC_LOAD(free[readit]) == 0) return(0);
-			for(int sp = 0; sp < 128 && ATOMIC_LOAD(free[readit]) != 0; sp++) __ASM_PAUSE;
-			if(ATOMIC_LOAD(free[readit]) == 0) return(0);
+			if(counter == 0 || counter == (unsigned int)-1) {
+				for(int sp = 0; sp < 128 && ATOMIC_LOAD(free[readit]) != 0; sp++) __ASM_PAUSE;
+				if(ATOMIC_LOAD(free[readit]) == 0) return(0);
+			}
 			uint32_t wake_tok = wake_filled.prepare_sleep();
 			if(ATOMIC_LOAD(free[readit]) != 0 && !(term_rqueue && *term_rqueue)) {
 				u_int64_t t0 = getTimeUS();
-				wake_filled.sleep_if_marked(wake_tok, timeout_us ? timeout_us : 1000);
+				wake_filled.sleep_if_marked(wake_tok, computeWaitUs(timeout_us, counter));
 				u_int64_t t1 = getTimeUS();
 				return(t1 > t0 ? (unsigned int)(t1 - t0) : 0);
 			}
@@ -254,12 +277,14 @@ public:
 	unsigned int wait_for_free(unsigned int timeout_us, unsigned int counter = (unsigned int)-1) {
 		if(useSemSync) {
 			if(ATOMIC_LOAD(free[writeit]) == 1) return(0);
-			for(int sp = 0; sp < 128 && ATOMIC_LOAD(free[writeit]) != 1; sp++) __ASM_PAUSE;
-			if(ATOMIC_LOAD(free[writeit]) == 1) return(0);
+			if(counter == 0 || counter == (unsigned int)-1) {
+				for(int sp = 0; sp < 128 && ATOMIC_LOAD(free[writeit]) != 1; sp++) __ASM_PAUSE;
+				if(ATOMIC_LOAD(free[writeit]) == 1) return(0);
+			}
 			uint32_t wake_tok = wake_free.prepare_sleep();
 			if(ATOMIC_LOAD(free[writeit]) != 1 && !(term_rqueue && *term_rqueue)) {
 				u_int64_t t0 = getTimeUS();
-				wake_free.sleep_if_marked(wake_tok, timeout_us ? timeout_us : 1000);
+				wake_free.sleep_if_marked(wake_tok, computeWaitUs(timeout_us, counter));
 				u_int64_t t1 = getTimeUS();
 				return(t1 > t0 ? (unsigned int)(t1 - t0) : 0);
 			}

@@ -1147,7 +1147,7 @@ public:
 	string externalError;
 	void initStat();
 	void getThreadCpuUsage(bool writeThread = false);
-	bool threadInitIsOk() { return(threadInitOk); }
+	bool threadInitIsOk() { return(isInitOk()); }
 protected:
 	virtual bool createThread();
 	virtual bool createMainThread();
@@ -1212,7 +1212,7 @@ protected:
 	bool enableAutoTerminate;
 	volatile bool threadInitOk;
 	bool threadInitFailed;
-	bool writeThreadInitOk;
+	volatile bool writeThreadInitOk;
 	bool threadTerminated;
 	bool writeThreadTerminated;
 	bool threadDoTerminate;
@@ -2114,6 +2114,7 @@ protected:
 	bool createThread();
 	bool createDestroyBlocksThread();
 	bool createSocketServerThread();
+	virtual bool init();
 	bool initThread(void *arg, unsigned int arg2, string *error);
 	void *threadFunction(void *arg, unsigned int arg2);
 	void *writeThreadFunction(void *arg, unsigned int arg2);
