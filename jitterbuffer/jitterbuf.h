@@ -211,218 +211,154 @@ static inline void jb_decrement_losspct_inl(jitterbuf *jb)
 	}
 }
 
-static inline void jb_hist_min_add_only(jitterbuf *jb, int32_t delay)
+static inline __attribute__((always_inline)) void jb_hist_add_only_impl(
+	int32_t *buf, int16_t *p_len, int16_t *p_eq_out, int32_t delay, int is_max)
 {
-	int len = jb->hist_min_len;
-	int32_t *buf = jb->hist_minbuf;
+	int len = *p_len;
 	if (__builtin_expect(len < JB_HIST_TRACK_SZ, 0)) {
 		int j = len;
-		while (j > 0 && buf[j - 1] > delay) {
+		while (j > 0 && (is_max ? (buf[j - 1] < delay) : (buf[j - 1] > delay))) {
 			buf[j] = buf[j - 1];
 			j--;
 		}
 		buf[j] = delay;
-		jb->hist_min_len = (int16_t)(len + 1);
+		*p_len = (int16_t)(len + 1);
 	} else {
 		int32_t T = buf[JB_HIST_TRACK_SZ - 1];
-		if (delay > T) return;
+		int j;
+		if (is_max ? (delay < T) : (delay > T)) return;
 		if (delay == T) {
-			jb->hist_min_eq_out++;
+			(*p_eq_out)++;
 			return;
 		}
-		int j = JB_HIST_TRACK_SZ - 1;
-		while (j > 0 && buf[j - 1] > delay) {
+		j = JB_HIST_TRACK_SZ - 1;
+		while (j > 0 && (is_max ? (buf[j - 1] < delay) : (buf[j - 1] > delay))) {
 			buf[j] = buf[j - 1];
 			j--;
 		}
 		buf[j] = delay;
 		if (buf[JB_HIST_TRACK_SZ - 1] == T) {
-			jb->hist_min_eq_out++;
+			(*p_eq_out)++;
 		} else {
-			jb->hist_min_eq_out = 0;
+			*p_eq_out = 0;
 		}
 	}
 }
 
+static inline void jb_hist_min_add_only(jitterbuf *jb, int32_t delay)
+{
+	jb_hist_add_only_impl(jb->hist_minbuf, &jb->hist_min_len, &jb->hist_min_eq_out, delay, 0);
+}
+
 static inline void jb_hist_max_add_only(jitterbuf *jb, int32_t delay)
 {
-	int len = jb->hist_max_len;
-	int32_t *buf = jb->hist_maxbuf;
-	if (__builtin_expect(len < JB_HIST_TRACK_SZ, 0)) {
-		int j = len;
-		while (j > 0 && buf[j - 1] < delay) {
-			buf[j] = buf[j - 1];
-			j--;
+	jb_hist_add_only_impl(jb->hist_maxbuf, &jb->hist_max_len, &jb->hist_max_eq_out, delay, 1);
+}
+
+static inline __attribute__((always_inline)) void jb_hist_replace_impl(
+	jitterbuf *jb, int32_t *buf, int16_t *p_len, int16_t *p_eq_out, uint8_t *p_valid,
+	int32_t kicked, int32_t delay, int is_max)
+{
+	int len = *p_len;
+	int32_t T = buf[len - 1];
+
+	if (__builtin_expect(is_max ? (kicked < T && delay < T) : (kicked > T && delay > T), 1))
+		return;
+
+	jb->hist_dirty = 1;
+
+	if (is_max ? (kicked > T) : (kicked < T)) {
+		int lo = 0, hi = len - 2, j;
+		while (lo < hi) {
+			int mid = (lo + hi) >> 1;
+			if (is_max ? (buf[mid] > kicked) : (buf[mid] < kicked)) lo = mid + 1;
+			else hi = mid;
 		}
-		buf[j] = delay;
-		jb->hist_max_len = (int16_t)(len + 1);
-	} else {
-		int32_t T = buf[JB_HIST_TRACK_SZ - 1];
-		if (delay < T) return;
-		if (delay == T) {
-			jb->hist_max_eq_out++;
-			return;
+		for (j = lo; j < len - 1; j++) {
+			buf[j] = buf[j + 1];
 		}
-		int j = JB_HIST_TRACK_SZ - 1;
-		while (j > 0 && buf[j - 1] < delay) {
-			buf[j] = buf[j - 1];
-			j--;
+		len--;
+		if (*p_eq_out > 0) {
+			buf[len++] = T;
+			(*p_eq_out)--;
 		}
-		buf[j] = delay;
-		if (buf[JB_HIST_TRACK_SZ - 1] == T) {
-			jb->hist_max_eq_out++;
+	} else if (kicked == T) {
+		if (*p_eq_out > 0) {
+			(*p_eq_out)--;
 		} else {
-			jb->hist_max_eq_out = 0;
+			len--;
+			T = buf[len - 1];
 		}
+	}
+
+	if (is_max ? (delay > T) : (delay < T)) {
+		if (len < JB_HIST_TRACK_SZ) {
+			int j = len;
+			while (j > 0 && (is_max ? (buf[j - 1] < delay) : (buf[j - 1] > delay))) {
+				buf[j] = buf[j - 1];
+				j--;
+			}
+			buf[j] = delay;
+			len++;
+		} else {
+			int j = JB_HIST_TRACK_SZ - 1;
+			while (j > 0 && (is_max ? (buf[j - 1] < delay) : (buf[j - 1] > delay))) {
+				buf[j] = buf[j - 1];
+				j--;
+			}
+			buf[j] = delay;
+			if (buf[JB_HIST_TRACK_SZ - 1] == T) {
+				(*p_eq_out)++;
+			} else {
+				*p_eq_out = 0;
+			}
+		}
+	} else if (delay == T) {
+		if (len < JB_HIST_TRACK_SZ) {
+			buf[len++] = T;
+		} else {
+			(*p_eq_out)++;
+		}
+	}
+
+	*p_len = (int16_t)len;
+	if (__builtin_expect(len <= JB_HIST_MAX_INDEX, 0)) {
+		*p_valid = 0;
 	}
 }
 
 static inline void jb_hist_min_replace(jitterbuf *jb, int32_t kicked, int32_t delay)
 {
-	int len = jb->hist_min_len;
-	int32_t *buf = jb->hist_minbuf;
-	int32_t T = buf[len - 1];
-
-	if (__builtin_expect(kicked > T && delay > T, 1))
-		return;
-
-	jb->hist_dirty = 1;
-
-	if (kicked < T) {
-		int lo = 0, hi = len - 2, j;
-		while (lo < hi) {
-			int mid = (lo + hi) >> 1;
-			if (buf[mid] < kicked) lo = mid + 1;
-			else hi = mid;
-		}
-		for (j = lo; j < len - 1; j++) {
-			buf[j] = buf[j + 1];
-		}
-		len--;
-		if (jb->hist_min_eq_out > 0) {
-			buf[len++] = T;
-			jb->hist_min_eq_out--;
-		}
-	} else if (kicked == T) {
-		if (jb->hist_min_eq_out > 0) {
-			jb->hist_min_eq_out--;
-		} else {
-			len--;
-			T = buf[len - 1];
-		}
-	}
-
-	if (delay < T) {
-		if (len < JB_HIST_TRACK_SZ) {
-			int j = len;
-			while (j > 0 && buf[j - 1] > delay) {
-				buf[j] = buf[j - 1];
-				j--;
-			}
-			buf[j] = delay;
-			len++;
-		} else {
-			int j = JB_HIST_TRACK_SZ - 1;
-			while (j > 0 && buf[j - 1] > delay) {
-				buf[j] = buf[j - 1];
-				j--;
-			}
-			buf[j] = delay;
-			if (buf[JB_HIST_TRACK_SZ - 1] == T) {
-				jb->hist_min_eq_out++;
-			} else {
-				jb->hist_min_eq_out = 0;
-			}
-		}
-	} else if (delay == T) {
-		if (len < JB_HIST_TRACK_SZ) {
-			buf[len++] = T;
-		} else {
-			jb->hist_min_eq_out++;
-		}
-	}
-
-	jb->hist_min_len = (int16_t)len;
-	if (__builtin_expect(len <= JB_HIST_MAX_INDEX, 0)) {
-		jb->hist_min_valid = 0;
-	}
+	jb_hist_replace_impl(jb, jb->hist_minbuf, &jb->hist_min_len, &jb->hist_min_eq_out, &jb->hist_min_valid, kicked, delay, 0);
 }
 
 static inline void jb_hist_max_replace(jitterbuf *jb, int32_t kicked, int32_t delay)
 {
-	int len = jb->hist_max_len;
-	int32_t *buf = jb->hist_maxbuf;
-	int32_t T = buf[len - 1];
+	jb_hist_replace_impl(jb, jb->hist_maxbuf, &jb->hist_max_len, &jb->hist_max_eq_out, &jb->hist_max_valid, kicked, delay, 1);
+}
 
-	if (__builtin_expect(kicked < T && delay < T, 1))
-		return;
-
+static inline void jb_history_reset_state(jitterbuf *jb, long ts, long now)
+{
+	jb->info.cnt_delay_discont = 0;
+	jb->hist_pos = 0;
+	jb->hist_count = 0;
+	jb->hist_min_len = 0;
+	jb->hist_max_len = 0;
+	jb->hist_min_eq_out = 0;
+	jb->hist_max_eq_out = 0;
+	jb->hist_min_valid = 1;
+	jb->hist_max_valid = 1;
 	jb->hist_dirty = 1;
-
-	if (kicked > T) {
-		int lo = 0, hi = len - 2, j;
-		while (lo < hi) {
-			int mid = (lo + hi) >> 1;
-			if (buf[mid] > kicked) lo = mid + 1;
-			else hi = mid;
-		}
-		for (j = lo; j < len - 1; j++) {
-			buf[j] = buf[j + 1];
-		}
-		len--;
-		if (jb->hist_max_eq_out > 0) {
-			buf[len++] = T;
-			jb->hist_max_eq_out--;
-		}
-	} else if (kicked == T) {
-		if (jb->hist_max_eq_out > 0) {
-			jb->hist_max_eq_out--;
-		} else {
-			len--;
-			T = buf[len - 1];
-		}
-	}
-
-	if (delay > T) {
-		if (len < JB_HIST_TRACK_SZ) {
-			int j = len;
-			while (j > 0 && buf[j - 1] < delay) {
-				buf[j] = buf[j - 1];
-				j--;
-			}
-			buf[j] = delay;
-			len++;
-		} else {
-			int j = JB_HIST_TRACK_SZ - 1;
-			while (j > 0 && buf[j - 1] < delay) {
-				buf[j] = buf[j - 1];
-				j--;
-			}
-			buf[j] = delay;
-			if (buf[JB_HIST_TRACK_SZ - 1] == T) {
-				jb->hist_max_eq_out++;
-			} else {
-				jb->hist_max_eq_out = 0;
-			}
-		}
-	} else if (delay == T) {
-		if (len < JB_HIST_TRACK_SZ) {
-			buf[len++] = T;
-		} else {
-			jb->hist_max_eq_out++;
-		}
-	}
-
-	jb->hist_max_len = (int16_t)len;
-	if (__builtin_expect(len <= JB_HIST_MAX_INDEX, 0)) {
-		jb->hist_max_valid = 0;
-	}
+	jb->info.resync_offset = ts - now;
+	jb->info.last_delay = 0;
 }
 
 static inline int jb_history_put_inl(jitterbuf *jb, long ts, long now)
 {
 	long delay = now - (ts - jb->info.resync_offset);
 	long threshold = 2 * jb->info.jitter + jb->info.conf.resync_threshold;
+	int32_t d32;
+	int pos, next_pos;
 
 	/* don't add special/negative times to history */
 	if (__builtin_expect(ts <= 0, 0))
@@ -431,34 +367,14 @@ static inline int jb_history_put_inl(jitterbuf *jb, long ts, long now)
 	/* check for drastic change in delay */
 	if (__builtin_expect(jb->info.conf.resync_threshold != -1, 1)) {
 		if (__builtin_expect(jb->info.frames_in == 0, 0)) {
-			jb->info.cnt_delay_discont = 0;
-			jb->hist_pos = 0;
-			jb->hist_count = 0;
-			jb->hist_min_len = 0;
-			jb->hist_max_len = 0;
-			jb->hist_min_eq_out = 0;
-			jb->hist_max_eq_out = 0;
-			jb->hist_min_valid = 1;
-			jb->hist_max_valid = 1;
-			jb->hist_dirty = 1;
-			jb->info.resync_offset = ts - now;
-			jb->info.last_delay = delay = 0;
+			jb_history_reset_state(jb, ts, now);
+			delay = 0;
 		} else {
 			if (__builtin_expect(abs((int)(delay - jb->info.last_delay)) > threshold, 0)) {
 				jb->info.cnt_delay_discont++;
 				if (jb->info.cnt_delay_discont > 3) {
-					jb->info.cnt_delay_discont = 0;
-					jb->hist_pos = 0;
-					jb->hist_count = 0;
-					jb->hist_min_len = 0;
-					jb->hist_max_len = 0;
-					jb->hist_min_eq_out = 0;
-					jb->hist_max_eq_out = 0;
-					jb->hist_min_valid = 1;
-					jb->hist_max_valid = 1;
-					jb->hist_dirty = 1;
-					jb->info.resync_offset = ts - now;
-					jb->info.last_delay = delay = 0;
+					jb_history_reset_state(jb, ts, now);
+					delay = 0;
 				} else {
 					return -1;
 				}
@@ -469,13 +385,13 @@ static inline int jb_history_put_inl(jitterbuf *jb, long ts, long now)
 		}
 	}
 
-	int32_t d32 = (int32_t)delay;
+	d32 = (int32_t)delay;
 	if (__builtin_expect(jb->history32 == NULL && (d32 < -32768 || d32 > 32767), 0)) {
 		jb_history_promote32(jb);
 	}
 
-	int pos = jb->hist_pos;
-	int next_pos = pos + 1;
+	pos = jb->hist_pos;
+	next_pos = pos + 1;
 	if (next_pos == JB_HISTORY_SZ) next_pos = 0;
 	jb->hist_pos = (int16_t)next_pos;
 
