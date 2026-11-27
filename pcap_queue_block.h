@@ -502,10 +502,15 @@ struct pcap_block_store : public pcap_block_store_copydata {
 		#endif
 		#endif
 	}
+	inline void lock_packets(int n) {
+		if(n > 0) {
+			__SYNC_ADD(this->_sync_packet_lock, n);
+		}
+	}
 	#if DEBUG_SYNC_PCAP_BLOCK_STORE
 	void unlock_packet(int index) {
 	#else
-	void unlock_packet(int index) {
+	void unlock_packet(int /*index*/) {
 	#endif
 		__SYNC_DEC(this->_sync_packet_lock);
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
@@ -517,6 +522,11 @@ struct pcap_block_store : public pcap_block_store_copydata {
 		}
 		__SYNC_DEC(this->_sync_packets_lock[index]);
 		#endif
+	}
+	inline void unlock_packets(int n) {
+		if(n > 0) {
+			__SYNC_SUB(this->_sync_packet_lock, n);
+		}
 	}
 	#if DEBUG_SYNC_PCAP_BLOCK_STORE
 	void add_flag(int index, int flag) {
@@ -579,7 +589,9 @@ struct pcap_block_store : public pcap_block_store_copydata {
 	size_t restoreBufferSize;
 	size_t restoreBufferAllocSize;
 	u_int64_t pushToTrashMS;
+	char _pad_pkt_lock_0[VM_CACHELINE_SIZE];
 	volatile int _sync_packet_lock;
+	char _pad_pkt_lock_1[VM_CACHELINE_SIZE - sizeof(int)];
 	volatile int _destroy_flag;
 	#if DEBUG_DESTROY_PCAP_BLOCK_STORE
 	volatile int destroy_src_flag[2];
