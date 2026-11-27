@@ -183,52 +183,52 @@ extern bool sip_data_subst;
 extern int opt_t2_boost_direct_rtp;
 extern int opt_pipeline_v2;
 
-// Cache-line isolated in-order causal epoch ring ensuring RTP never races ahead of prior SIP call setup
-// even with multiple parallel SIP worker threads, without requiring any blind time-based delay queue.
-// Uses wrap-safe 32-bit epoch IDs (0 reserved as untracked/free) for tear-free loads on 32-bit i686 too.
-struct sSipCausalEpoch {
+// Cache-line isolated in-order SIP-to-RTP packet synchronization ring ensuring RTP never races ahead
+// of prior SIP call setup even with multiple parallel SIP worker threads, without a blind delay queue.
+// Uses wrap-safe 32-bit sequence IDs (0 reserved as untracked/free) for tear-free loads on 32-bit i686 too.
+struct sSipRtpSync {
 	static const unsigned RING_SIZE = 1024;
 	static const unsigned RING_MASK = RING_SIZE - 1;
 	struct sSlot {
-		volatile u_int32_t epoch_id;
+		volatile u_int32_t seq_id;
 		volatile int32_t pending;
 		char _pad[VM_CACHELINE_SIZE - sizeof(u_int32_t) - sizeof(int32_t)];
 	};
-	static inline u_int32_t next_id(u_int32_t ep) {
-		++ep;
-		return ep ? ep : 1;
+	static inline u_int32_t next_id(u_int32_t seq) {
+		++seq;
+		return seq ? seq : 1;
 	}
 	static inline bool is_before(u_int32_t a, u_int32_t b) {
 		return (int32_t)(a - b) < 0;
 	}
 	char _pad0[VM_CACHELINE_SIZE];
-	volatile u_int32_t open_epoch;
-	volatile u_int32_t last_sealed_epoch;
+	volatile u_int32_t open_seq;
+	volatile u_int32_t last_sealed_seq;
 	volatile int open_has_sip;
 	char _pad1[VM_CACHELINE_SIZE - 2 * sizeof(u_int32_t) - sizeof(int)];
-	volatile u_int32_t completed_epoch;
+	volatile u_int32_t completed_seq;
 	char _pad2[VM_CACHELINE_SIZE - sizeof(u_int32_t)];
 	cPaddedSpinLock _seal_lock;
 	cPaddedSpinLock _advance_lock;
 	cAdaptiveWake wake;
 	sSlot slots[RING_SIZE];
-	sSipCausalEpoch();
+	sSipRtpSync();
 	u_int32_t acquire_packet() __attribute__((noinline));
 	u_int32_t seal_for_rtp_batch() __attribute__((noinline));
 	void advance_completed() __attribute__((noinline));
 	void wait_for(u_int32_t req, const volatile bool *term_flag) __attribute__((noinline, cold));
-	inline void add_ref(u_int32_t ep) {
-		sSlot *s = &slots[ep & RING_MASK];
+	inline void add_ref(u_int32_t seq) {
+		sSlot *s = &slots[seq & RING_MASK];
 		__sync_add_and_fetch(&s->pending, 1);
 	}
-	inline void release_ref(u_int32_t ep) {
-		sSlot *s = &slots[ep & RING_MASK];
+	inline void release_ref(u_int32_t seq) {
+		sSlot *s = &slots[seq & RING_MASK];
 		if(__sync_sub_and_fetch(&s->pending, 1) == 0) {
 			advance_completed();
 		}
 	}
 };
-extern sSipCausalEpoch g_sip_causal_epoch;
+extern sSipRtpSync g_sip_rtp_sync;
 
 // Coalesces consecutive pcap_block_store::unlock_packet() calls for the same 1 MB block
 // inside a batch into a single atomic subtraction per block (100x-1000x fewer L3 atomic bounces).
@@ -777,19 +777,19 @@ struct packet_s_stack : public packet_s {
 	volatile u_int8_t reuse_counter_sync;
 	u_int8_t type_content;
 	u_int8_t next_action;
-	u_int32_t sip_epoch;
+	u_int32_t sip_rtp_sync_seq;
 	inline packet_s_stack() {
 		__type = _t_packet_s_stack; 
 		init();
 	}
 	inline ~packet_s_stack() {
-		complete_sip_epoch();
+		complete_sip_rtp_sync();
 	}
 	inline void init() {
 		packet_s::init();
 		p_stack = NULL;
 		use_reuse_counter = 0;
-		sip_epoch = 0;
+		sip_rtp_sync_seq = 0;
 	}
 	inline void init_reuse() {
 		if(__type >= _t_packet_s_stack) {
@@ -798,27 +798,27 @@ struct packet_s_stack : public packet_s {
 			reuse_counter_sync = 0;
 		}
 	}
-	inline void mark_sip_epoch() {
-		if(!sip_epoch) {
-			sip_epoch = g_sip_causal_epoch.acquire_packet();
+	inline void mark_sip_rtp_sync() {
+		if(!sip_rtp_sync_seq) {
+			sip_rtp_sync_seq = g_sip_rtp_sync.acquire_packet();
 		}
 	}
-	inline void clone_sip_epoch_from(const packet_s_stack *src) {
-		sip_epoch = 0;
-		if(if_unlikely(src && src->sip_epoch)) {
-			sip_epoch = src->sip_epoch;
-			g_sip_causal_epoch.add_ref(sip_epoch);
+	inline void clone_sip_rtp_sync_from(const packet_s_stack *src) {
+		sip_rtp_sync_seq = 0;
+		if(if_unlikely(src && src->sip_rtp_sync_seq)) {
+			sip_rtp_sync_seq = src->sip_rtp_sync_seq;
+			g_sip_rtp_sync.add_ref(sip_rtp_sync_seq);
 		}
 	}
-	inline void complete_sip_epoch() {
-		if(if_unlikely(sip_epoch)) {
-			u_int32_t ep = sip_epoch;
-			sip_epoch = 0;
-			g_sip_causal_epoch.release_ref(ep);
+	inline void complete_sip_rtp_sync() {
+		if(if_unlikely(sip_rtp_sync_seq)) {
+			u_int32_t seq = sip_rtp_sync_seq;
+			sip_rtp_sync_seq = 0;
+			g_sip_rtp_sync.release_ref(seq);
 		}
 	}
 	inline void term() {
-		complete_sip_epoch();
+		complete_sip_rtp_sync();
 		packet_s::term();
 	}
 	inline bool is_use_reuse_counter() {
@@ -1059,7 +1059,7 @@ struct packet_s_process : public packet_s_process_0 {
 	}
 	inline packet_s_process& operator = (const packet_s_process& other) {
 		memcpy((void*)this, &other, sizeof(*this));
-		this->sip_epoch = 0;
+		this->sip_rtp_sync_seq = 0;
 		if(other.callid_long) {
 			this->callid_long = new FILE_LINE(0) char[strlen(other.callid_long) + 1];
 			strcpy(this->callid_long, other.callid_long);
