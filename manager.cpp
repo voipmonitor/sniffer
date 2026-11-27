@@ -2437,6 +2437,7 @@ int Mgmt_getversion(Mgmt_params* params) {
 			{"getversion", "return the version of the sniffer", true},
 			{"getbuild", "return the build number of the sniffer", true},
 			{"getverbuild", "return the version and build number of the sniffer", true},
+			{"getarch", "return the compiled and CPU ISA architecture of the sniffer", true},
 			{NULL, NULL}
 		};
 		params->registerCommand(ch);
@@ -2448,6 +2449,8 @@ int Mgmt_getversion(Mgmt_params* params) {
 		return(params->sendString(RTPSENSOR_BUILD_NUMBER));
 	} else if(strstr(params->buf, "getverbuild") != NULL) {
 		return(params->sendString(RTPSENSOR_VERSION + string(" (") + RTPSENSOR_BUILD_NUMBER + ")"));
+	} else if(strstr(params->buf, "getarch") != NULL) {
+		return(params->sendString(string(get_compiled_isa_str()) + " (cpu: " + get_cpu_isa_str() + ")"));
 	}
 	return(0);
 }
@@ -4941,6 +4944,8 @@ int Mgmt_sniffer_stat(Mgmt_params *params) {
 		}
 	}
 	json.add("build", RTPSENSOR_BUILD_NUMBER);
+	json.add("arch", get_compiled_isa_str());
+	json.add("cpu_isa", get_cpu_isa_str());
 	json.add("rrd_version", intToString(vm_rrd_version));
 	json.add("storingCdrLastWriteAt", storingCdrLastWriteAt);
 	if(plainOutput) {
